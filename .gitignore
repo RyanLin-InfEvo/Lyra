@@ -1,0 +1,21 @@
+# C++ Build Artifacts
+build/
+out/
+vcpkg_installed/
+*.so
+*.dll
+*.dylib
+*.exe
+*.o
+*.a
+
+# Flutter Build Artifacts
+ui/build/
+ui/.dart_tool/
+ui/.flutter-plugins
+ui/.flutter-plugins-dependencies
+
+# IDE Settings (Optional, but recommended)
+.vscode/
+.idea/
+*.DS_Store
