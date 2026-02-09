@@ -19,3 +19,5 @@ ui/.flutter-plugins-dependencies
 .vscode/
 .idea/
 *.DS_Store
+docs/db.mwb.bak
+docs/Lyra_Design_Document_AI.md
