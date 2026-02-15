@@ -1,16 +1,24 @@
 # Lyra Design Document
 
-> 一個為「長期可信、可重現、工程潔癖」而生的個人音樂資產系統
-Lyra 管的是「聲音主體」，並指定一個可被信任的 Master，其他格式全部是衍生物。
+
 ---
 
 ## 0. 專案定位
 
-Lyra 是一個由**個人需求**出發的**開源音樂資產管理系統**，管理一個**全面的音樂庫**將不再是一件令人頭疼的事。
 
-Lyra 的宗旨：
-* 內容定址儲存：**依據**資料「內容」而非「實體位址」來存取資料。
-* 不可變性：一旦寫入 `/objects/`，音訊物件視為唯讀。
+Lyra 是一個為 「數位音樂資產的永恆性」 而設計的個人管理系統。
+
+在串流媒體盛行與檔案易於更動的時代，Lyra 不僅僅是存放音樂的容器，它更是一座數位公證圖書館。它專門解決核心的信任問題：
+
+    「當我十年後再次開啟這段音訊，我如何確信它依然是當初那份最純粹、未被任何軟體或傳輸過程竄改的原音？」
+
+核心使命
+
+  * 建立信任座標：透過「不可變性（Immutability）」設計，確保原始音訊物件一旦入庫，即成為不可撼動的歷史存證，不因軟體升級或標籤修改而產生變異。
+
+  *  工程透明化：以解碼後的 PCM 內容作為唯一指紋（Content-Addressable），讓音樂的識別回歸聲音本質，而非脆弱的檔名或 Metadata。
+
+  *  私有化主權：這是一個專為個人收藏家打造的長期維護系統，不依賴雲端演算法，只服從於資料庫中的唯一真實來源。
 
 ---
 
@@ -47,16 +55,18 @@ Lyra 的宗旨：
 
 ## 2. Hash 定義
 
-### 2.1 Hash 的意義
+### 2.1 Asset Hash
+
+使用 `SHA-256` 計算，因為即使在7年前的 Snapdragon 865 上，其運算速度也遠大於 `md5`。
 
 Lyra 的 hash 用來回答：
 
 > 「在**明確定義的技術條件下**，這段聲音是否與另一段聲音相同？」
 
-* 例如：`ffmpeg -f md5`
+* 例如：`ffmpeg -f s32le -f sha256`
 ---
 
-### 2.2 Hash 規格
+### 2.2 Audio Hash
 
 * 工具：`ffmpeg` 
 * 版本：固定版本（記錄於資料庫）
@@ -64,9 +74,8 @@ Lyra 的 hash 用來回答：
 * 流程：
 
   1. 解碼為 PCM
-  2. 不進行 resample
-  3. 固定輸出格式（例如 `s32le`）
-  4. 對 PCM 串流計算雜湊（預設 md5）
+  2. 統一輸出`s32le`,有符號 32bit little-endian
+  3. 對 PCM 串流計算雜湊（預設 `sha256`）
 
 ---
 
@@ -157,7 +166,7 @@ lyra/
 
 ## 4.前後端交互分式
 
-### v0.1 單機 MVP
+### v0.1 local MVP
 目標：
 * 暫時不考慮 Server
 * 先完成 Core，用 Json 與外界交互
@@ -169,135 +178,517 @@ Core 功能：
 * 調用 yt-dlp 取得歌曲資訊、下載
 * DB 的 MVP
 
-Core 對外功能：
-* 查詢 `Work、Track、File、Source`內項目，Json Request 範例：
-``` json
-  {
-    "protocol": "lyra-core",
-    "version": 0,
-    "command": "FindDB",
-    "params":{
-      "text":[ "会开花的云","周深深" ],
-      "Search_DB":{
-        "Work":[ "title","artist","year" ],
-        "Track":[ "title","artist" ]
-      },
-      "Return_DB":{
-        "Work":[ "title","artist","uuid","cover","year" ],
-        "Track":[ "title","artist","uuid","cover","year" ]
-      },
-      "Sort":{ "Track":{ "title":"asc" } },
-      "Limit":10
+## 4. API
+
+### 4.1 資料查詢 (Query)
+
+#### 📋 實體列表 (ListEntities)
+*   **功能**: 列出、篩選、排序及分頁所有實體。
+*   **📥 Request**:
+```json
+{
+  "protocol": "lyra-core",
+  "version": 0,
+  "command": "ListEntities",
+  "params":{
+    "type":"Track",
+    "filter":{
+      "artist_id": "uuid_周杰倫",  //Artist周杰倫 的 UUID
+      "album_id": "uuid_十一月的蕭邦",
+      "work_id": "uuid",
+      "playlist_id": "uuid",
+      "tag_id": "uuid",
+      "year": [2020, 2026], // 支援範圍
+    },
+    "sort": [
+      { "field": "year", "order": "desc" },
+      { "field": "album", "order": "asc" },
+      { "field": "track", "order": "asc" }
+    ],
+    "limit": 50,
+    "Offset": 0
+  }
+} 
+```
+
+```dart
+// Flutter
+class SortPresets {
+  // Define static sorting strategy
+  static const List<SortRule> byYearDesc = [
+    SortRule(field: 'year', order: 'desc'),
+    SortRule(field: 'album', order: 'asc'),  // Autocomplete logic
+    SortRule(field: 'track', order: 'asc'),  // Autocomplete logic
+  ];
+
+  static const List<SortRule> byTitleAz = [
+    SortRule(field: 'title', order: 'asc'),
+    SortRule(field: 'artist', order: 'asc'),
+  ];
+}
+
+// Call API
+lyraApi.listEntities(
+  type: 'Track',
+  sort: SortPresets.byYearDesc // 傳送的是完整的陣列規則
+);
+```
+
+*   **📨 Response**:
+```json
+{
+  "protocol": "lyra-core",
+  "version": 0,
+  "code": 200,
+  "data": {
+    "items": [
+      { "id": "uuid_1", "title": "夜曲", "artist": "周杰倫", "album": "十一月的蕭邦", "duration": 215 },
+      { "id": "uuid_2", "title": "一路向北", "artist": "周杰倫", "album": "十一月的蕭邦", "duration": 240 }
+    ],
+    "total_count": 145  // 讓前端知道總共有幾頁
+  }
+}
+```
+
+#### 📄 搜尋所有實體 (SearchEntity)
+*   **功能**: 利用 SQLite FTS 實現「模糊查找」與「權重排序」。
+*   **📥 Request**:
+```json
+{
+  "command": "SearchEntity",
+  "params": {
+    "query": "周杰倫",
+    "scopes": ["Track", "Artist", "Album"], // 或者只傳 ["Track"]
+    "limit": 20,
+    "offset": 0
+  }
+}
+```
+*   **📨 Response**:
+```json
+{
+  "code": 200,
+  "data": {
+      "results": [
+        {
+          "entity_type": "Artist",
+          "uuid": "uuid_jay_chou",
+          "display_title": "周杰倫",
+          "subtitle": "Artist", // 或 "Taiwanese Pop Singer"
+          "match_score": 1.0,
+          "metadata": { // 原始資料放在這裡，供點擊後詳情使用
+              "spotify_id": "..."
+          }
+        },
+        {
+          "entity_type": "Track",
+          "uuid": "uuid_ye_hui_mei",
+          "display_title": "以父之名",
+          "subtitle": "周杰倫 • 葉惠美", // Track 的 subtitle 通常顯示 Artist • Album
+          "match_score": 0.95,
+          "metadata": {
+              "duration": 342
+          }
+        }
+      ],
+      "total_count": 150 // 供分頁計算使用
     }
-  } 
+}
+```
+
+#### 🔍 取得 Entity 詳細資訊 (GetEntity)
+*   **功能**: 取得 Entity 詳細資訊，所有Image、Text、Work、Artist 等關聯資訊。
+*   **📥 Request**:
+```json
+{
+  "protocol": "lyra-core",
+  "version": 0,
+  "command": "GetEntity",
+  "params": {
+    "uuid": "entity_uuid"
+  }
+}
+```
+
+#### ✏️ 更新實體資訊 (UpdateEntity)
+*   **功能**: 修改 Artist, Work, Album, Playlist 的 Title, Year, Description 等非外鍵欄位，支援多個 Entity 統一更新。
+
+*   **📥 Request**:
+```json
+{
+  "protocol": "lyra-core",
+  "version": 0,
+  "command": "UpdateEntity",
+  "params": {
+    "ids": ["entity_uuid1", "entity_uuid2"],
+    "fields": {
+      "title": "New Title",
+      "year": 2025,
+      "description": "Updated description"
+    }
+  }
+}
+```
+
+#### 🗑️ 刪除實體 (DeleteEntity)
+*   **功能**: 刪除 Entity。(未來實做 垃圾桶功能，先標記「已刪除」)
+*   **📥 Request**:
+```json
+{
+  "protocol": "lyra-core",
+  "version": 0,
+  "command": "DeleteEntity",
+  "params": {
+    "uuid": "entity_uuid"
+  }
+}
+```
+---
+---
+#### 🔗 追加 Artist (AddTrackArtist)
+*   **功能**: 處理 Track_Artist, Album_Artist, Work_Artist。
+*   **📥 Request**:
+```json
+{
+  "protocol": "lyra-core",
+  "version": 0,
+  "command": "AddTrackArtist",
+  "params": {
+    "target_type": "Track", // Track, Album, Work
+    "target_uuid": "track_uuid_1",
+    "artist_uuid": "artist_uuid_A",
+    "role": "featured",
+    "position": 1 // 選填，用於排序
+  }
+}
+```
+
+#### ⛓️‍💥 移除 Artist (RemoveTrackArtist)
+*   **功能**: 處理 Track_Artist, Album_Artist, Work_Artist。
+*   **📥 Request**:
+```json
+{
+  "protocol": "lyra-core",
+  "version": 0,
+  "command": "RemoveTrackArtist",
+  "params": {
+    "target_type": "Track", // Track, Album, Work
+    "target_uuid": "track_uuid_1",
+    "artist_uuid": "artist_uuid_A"
+  }
+}
+```
+
+---
+#### 📌 指派 Work (SetWork)
+*   **功能**: 處理 Track_Work。
+*   **📥 Request**:
+```json
+{
+  "command": "SetWork",
+  "params": {
+    "track_uuid": "track_uuid_1",
+    "work_uuid": "work_uuid_9" 
+  }
+}
+```
+
+---
+#### 🏷️ 新增 Tag (AddTag)
+*   **功能**: 對 Entity 新增 Tag。
+*   **📥 Request**:
+```json
+{
+  "protocol": "lyra-core",
+  "version": 0,
+  "command": "AddTag",
+  "params": {
+    "entity_uuid": "track_uuid",
+    "tags": [ "J-Pop", "Female Vocal" ]
+  }
+}
+```
+
+#### 🏷️ 移除 Tag (RemoveTag)
+*   **功能**: 對 Entity 移除 Tag。
+*   **📥 Request**:
+```json
+{
+  "protocol": "lyra-core",
+  "version": 0,
+  "command": "RemoveTag",
+  "params": {
+    "entity_uuid": "track_uuid",
+    "tags": [ "J-Pop", "Female Vocal" ]
+  }
+}
+```
+
+### 4.4 播放清單管理 (Playlist Management)
+
+#### ✨ 新增 Playlist (CreatePlaylist)
+*   **📥 Request**:
+```json
+{
+  "protocol": "lyra-core",
+  "version": 0,
+  "command": "CreatePlaylist",
+  "params":{
+    "title": "My Playlist",
+    "description": "My Playlist Description"
+  }
+} 
 ``` 
 
-
-* 列出 `Work、Track、File、Source`內項目，Json Request 範例：
-``` json
-  {
-    "protocol": "lyra-core",
-    "version": 0,
-    "command": "ListDB",
-    "params":{
-      "Return_DB":{
-        "Track":[ "title","artist","cover","year","album" ]
-      },
-      "Sort":{ "Track":{ "title":"asc" } },
-      "Limit":10
-    }
-  } 
+#### ➕ 新增歌曲至 Playlist (AddPlaylistTrack)
+*   **📥 Request**:
+```json
+{
+  "protocol": "lyra-core",
+  "version": 0,
+  "command": "AddPlaylistTrack",
+  "params":{
+    "playlist_uuid": "playlist_id",
+    "track_uuids": [ "track_id_1", "track_id_2" ]
+  }
+} 
 ``` 
 
-* 從 YTM 匯入 song 或 playlist，Json Request 範例：
-``` json
+#### ➖ 從 Playlist 移除歌曲 (RemovePlaylistTrack)
+*   **📥 Request**:
+```json
+{
+  "protocol": "lyra-core",
+  "version": 0,
+  "command": "RemovePlaylistTrack",
+  "params":{
+    "playlist_uuid": "playlist_id",
+    "track_uuids": [ "track_id_1", "track_id_2" ]
+  }
+} 
+```
+
+#### 🔃 調整播放順序 (MovePlaylistTrack)
+*   **功能**: 更新歌曲在 Playlist 中的順序 (Update `position` index)。
+*   **📥 Request**:
+```json
+{
+  "protocol": "lyra-core",
+  "version": 0,
+  "command": "MovePlaylistTrack",
+  "params": {
+    "move": {
+      "track_uuid": "track_id_1",
+      "before": "track_id_2" // 插在誰前面 (NULL 代表移到最後)
+    }
+  }
+}
+```
+
+### 資料匯入 (Ingestion)
+
+#### ☁️ 從 YTM 匯入 (ImportYTM)
+*   **功能**: 解析 YouTube Music 網址 (Song/Playlist) 並下載。
+*   **📥 Request**:
+```json
 {
   "protocol": "lyra-core",
   "version": 0,
   "command": "ImportYTM",
   "params":{
     "url": [
-      "https://music.youtube.com/playlist?list=PLl56WN7M6o4wGU6Cdk_q1BA6akQK417FU&si=AvIBY5RsdcKdA-XN", 
-    "https://music.youtube.com/playlist?list=PLl56WN7M6o4xd81bcgKRbwYFUm96jiBxp"]
-  }
+      "https://music.youtube.com/playlist?list=PL...", 
+      "https://music.youtube.com/watch?v=..."
+    ]
+  },
+  "cookies_path": "/path/to/cookies.txt" // 選填，用於會員限定內容
 } 
-``` 
+```
+*   **📨 Response**:
+```json
+{
+  "protocol": "lyra-core",
+  "version": 0,
+  "code": 202, // Accepted
+  "data": {
+    "task_id": "task_uuid_12345",
+    "message": "YTM import task started."
+  }
+}
+```
 
-* 匯入檔案，Json Request 範例：
-``` json
+#### 📂 匯入檔案 (ImportFile)
+*   **功能**: 匯入本地音訊檔案或資料夾。
+*   **📥 Request**:
+```json
 {
   "protocol": "lyra-core",
   "version": 0,
   "command": "ImportFile",
   "params":{
-    "path":"/home/ryan/Downloads/music.opus"
+    "path": "/home/ryan/Downloads/music.opus"
   }
 } 
-``` 
-
-* 新增 Playlist，Json Request 範例：
-``` json
+```
+*   **📨 Response**:
+```json
 {
   "protocol": "lyra-core",
   "version": 0,
-  "command": "NewPlaylist",
-  "params":{
-    "title":"My Playlist",
-    "description":"My Playlist Description"
+  "code": 202,
+  "data": {
+    "task_id": "task_uuid_67890",
+    "message": "File import task started."
   }
-} 
-``` 
+}
+```
+---
 
-* 刪除 Playlist，Json Request 範例：
-``` json
-{
-  "protocol": "lyra-core",
-  "version": 0,
-  "command": "DeletePlaylist",
-  "params":{
-    "uuid":[ "playlist_id", "playlist_id"]
-  }
-} 
-``` 
 
-* 新增歌曲至 Playlist，Json Request 範例：
-  可將 tracks們 都 加入至 playlists們。
-``` json
-{
-  "protocol": "lyra-core",
-  "version": 0,
-  "command": "AddTrackToPlaylist",
-  "params":{
-    "playlist_uuid":[ "playlist_id", "playlist_id"],
-    "track_uuid":[ "track_id", "track_id" ]
-  }
-} 
-``` 
 
-* 刪除歌曲自 Playlist，Json Request 範例：
-``` json
-{
-  "protocol": "lyra-core",
-  "version": 0,
-  "command": "DeleteTrackFromPlaylist",
-  "params":{
-    "playlist_uuid":[ "playlist_id", "playlist_id"],
-    "track_uuid":[ "track_id", "track_id" ]
-  }
-} 
-``` 
 
-* 獲取資源路徑，Json Request 範例：
-``` json
+
+
+
+---
+
+### 4.6 資源存取 (Resource Access)
+
+#### 🎵 獲取資源路徑 (GetResourcePath)
+*   **功能**: 取得檔案實體路徑以便播放器 (mpv/vlc) 讀取。
+*   **📥 Request**:
+
+```json
 {
   "protocol": "lyra-core",
   "version": 0,
   "command": "GetResourcePath",
   "params":{
-    "uuid": [ "resource_id", "resource_id" ]
+    "uuid": "track_uuid" 
   }
 } 
 ``` 
+
+*   **📨 Response** (Only valid in local mode.):
+```json
+{
+  "protocol": "lyra-core",
+  "version": 0,
+  "code": 200,
+  "data": {
+    "path": "/lyra/objects/ab/cd/abcd1234.flac",
+    "mime_type": "audio/flac"
+  }
+}
+```
+
+---
+
+### 4.7 任務管理 (Task Management)
+用於追蹤長耗時操作（如匯入、備份、資料庫重整）的進度。
+
+#### 📊 查詢任務狀態 (GetTaskStatus)
+*   **功能**: Client 定時輪詢 (Polling) 此接口以更新 UI 進度條。
+*   **📥 Request**:
+```json
+{
+  "protocol": "lyra-core",
+  "version": 0,
+  "command": "GetTaskStatus",
+  "params":{
+    "task_id": "task_uuid_12345"
+  }
+} 
+```
+*   **📨 Response (進行中)**:
+```json
+{
+  "protocol": "lyra-core",
+  "version": 0,
+  "code": 200,
+  "data": {
+    "task_id": "task_uuid_12345",
+    "state": "processing", // pending, processing, finished, failed, cancelled
+    "progress": 45.5,      // 百分比 0.0 ~ 100.0
+    "step_description": "Converting audio: Track 3/10 (Jay Chou - Nocturne)",
+    "created_at": "2026-02-15T10:00:00Z",
+    "result": null
+  }
+}
+```
+*   **📨 Response (已完成)**:
+```json
+{
+  "protocol": "lyra-core",
+  "version": 0,
+  "code": 200,
+  "data": {
+    "task_id": "task_uuid_12345",
+    "state": "finished",
+    "progress": 100.0,
+    "step_description": "Done.",
+    "result": {
+        // 任務完成後的摘要報告
+        "total_tracks": 10,
+        "success_count": 10,
+        "playlist_uuid": "playlist_new_uuid",
+        "errors": [] 
+    }
+  }
+}
+```
+
+#### 📋 列出所有任務 (ListTasks)
+*   **功能**: 查看背景任務列表（例如顯示在「下載管理器」面板）。
+*   **📥 Request**:
+```json
+
+{
+  "protocol": "lyra-core",
+  "version": 0,
+  "command": "ListTasks",
+  "params":{
+    "states": ["processing", "pending", "failed", "finished", "partially_failed", "cancelled"] // 篩選條件，可選
+  }
+} 
+```
+*   **📨 Response** (Only valid in local mode.):
+```json
+{
+  "protocol": "lyra-core",
+  "version": 0,
+  "code": 200,
+  "data": {
+    "tasks": [
+      {
+        "task_id": "task_uuid_12345",
+        "state": "processing",
+        "progress": 45.5,
+        "step_description": "Converting audio: Track 3/10 (Jay Chou - Nocturne)",
+        "created_at": "2026-02-15T10:00:00Z",
+        "result": null
+      }
+    ],
+    "total_count": 1
+  }
+}
+```
+
+#### 🛑 取消任務 (CancelTask)
+*   **功能**: 中斷正在進行的任務（如 yt-dlp 下載、轉檔）。
+*   **📥 Request**:
+```json
+
+{
+  "protocol": "lyra-core",
+  "version": 0,
+  "command": "CancelTask",
+  "params":{
+    "task_id": "task_uuid_12345"
+  }
+}
+```
+
 ### v0.2 GUI 的開始
 
 emm... Flutter(Dart) 的 GUI 框架
@@ -426,7 +817,7 @@ ENUM(
 * **`Audio` Table**：用於描述一段聲音的各種 metadata，
 系統會根據`quality_score`來選擇**master**，而**master** 的 `pcm_hash`會是其餘`quality_score`較差的`Audio.parent_hash`，同時也是`Track.pcm_hash`的內容。
 
-* **`Aduio_Asset` Table**：用於**關聯一段聲音<->實際檔案**，而這正是為了「PCM 相同、檔案不同的 Wav& Flac」設計，使系統能夠同時保留兩者。通常情況(沒有兩個PCM相同的聲音)下是一對一的關聯，即**`Audio`<->`Asset`**。
+* **`Aduio_Asset` Table**：用於**關聯一段聲音<->實際檔案**，而這正是為了「PCM 相同、檔案不同的 Wav& Flac」設計，使系統能夠同時保留兩者。通常情況(沒有兩個PCM相同的聲音)下是一對一的關聯，即 **`Audio`<->`Asset`**。
   > PS：
   這是因為即使 Wav 與 Flac 的 PCM 相同，可能因為各種因素造成在盲聽測試上 Wav 的表現更佳。 
   （Marantz M-CR612 + DALI OBERON 1 + Optical Fiber + CD RIP *wav vs flac*）
