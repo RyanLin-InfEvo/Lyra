@@ -8,25 +8,24 @@ Lyra is currently in active development. We are building a robust, content-addre
 
 ---
 
-## 📜 License
 
-Lyra is available under the **PolyForm Noncommercial License 1.0.0**.
 
-* ✅ **Free for Personal Use**: You can download, modify, and use Lyra for your own music collection.
-* ❌ **No Commercial Use**: You may not sell Lyra, include it in a paid product, or use it for commercial services without permission.
+## 📜 License & Commercial Use
 
-After careful consideration, we've found this license to be the most suitable for the project's goals.
+Lyra is available under a **Dual Licensing** model. This allows us to support the open-source community while maintaining a sustainable business for long-term development.
 
-### 🎯 Our Core Stances
+### 1. Community Edition (Open Source)
+For personal use, educational purposes, or open-source projects, Lyra is licensed under the **GNU Affero General Public License v3.0 (AGPLv3)**.
 
-*   **🛡️ Prevention of Malicious Resale**
-    We aim to prevent third parties from repackaging Lyra and charging unsuspecting users.
-    The value of technology should flow back to the developers and the community, rather than to intermediaries seeking unearned gain.
+### 2. Commercial Edition (Enterprise)
+If you wish to use Lyra in a proprietary software product, a commercial SaaS offering, or a hardware device **without open-sourcing your own code**, you must purchase a Commercial License.
 
-*   **⚖️ Defending Individual Freedom**
-    We fully support the rights of individual users to conduct research, learn, modify, and use Lyra for non-commercial purposes.
-    Users are free to adapt both the Core and UI layers to meet their personal needs.
+---
+<!-- 
+## 🤝 Contributing & CLA
 
-*   **🛡️ Mitigation of Reputational Risk**
-    This license prevents malicious commercial "wrapping"—where entities claim Lyra’s technology as their exclusive proprietary work.
-    Such practices protect the Lyra project from being unfairly blamed for issues arising from unauthorized, third-party commercial distributions.
+We welcome contributions! However, to maintain the legal ability to offer Dual Licensing (and ensure Lyra remains defensible against cloud monopolies), all contributors must sign a **Contributor License Agreement (CLA)**.
+
+The CLA ensures that:
+1.  You retain the copyright to your contribution.
+2.  You grant us permission to use your contribution in both the Open Source and Commercial editions of Lyra.-->
