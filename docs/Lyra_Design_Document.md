@@ -5,7 +5,6 @@
 
 ## 0. 專案定位
 
-
 Lyra 是一個為 「數位音樂資產的永恆性」 而設計的個人管理系統。
 
 在串流媒體盛行與檔案易於更動的時代，Lyra 不僅僅是存放音樂的容器，它更是一座數位公證圖書館。它專門解決核心的信任問題：
@@ -24,65 +23,77 @@ Lyra 是一個為 「數位音樂資產的永恆性」 而設計的個人管理�
 
 ## 1. 核心哲學
 
-### 1.1 音訊內容優先（Content over Container）
+### 1.1 專案定位：去中心化音樂資產管理系統 (Audio DAM)
 
-* 音樂的本質是「聲音」，不是檔名、不是標籤、不是容器格式。
-* Lyra 以 **解碼後音訊內容** 作為識別與驗證基礎。
+Lyra 是一個為「數位音樂資產永恆性」設計的個人管理系統。與傳統播放器不同，Lyra 不以「檔案」為核心，而是以「聲學內容」與「音樂作品」為核心。它解決的是長期數位收藏中的信任與結構化問題。
 
----
+### 1.2 設計哲學 (Design Philosophy)
 
-### 1.2 內容定址儲存（Content-Addressable Storage, CAS）
+* 內容定址 (Content-Addressable):
+    系統只認得「聲音」。若兩個檔案（例如 .wav 與 .flac）解碼後的 PCM 波形一致，在 Lyra 的定義中它們就是同一個 Audio 實體。這確保了收藏的唯一性，避免重複儲存相同的聲音內容。
 
-* 每一個音訊物件都由其內容雜湊值唯一識別。
-* 相同聲音只會儲存一次。
+* 資料庫中心主義 (Database as Source of Truth):
+    讀取：所有 UI 顯示的資訊（標題、演出者、封面）100% 來自 SQLite 資料庫。
 
----
+    寫入：Lyra 嚴禁回寫 原始音訊檔案。我們視原始檔案為「唯讀的歷史文物」，任何修改（如更正曲名、替換封面）僅發生在資料庫層面。這確保了原始資產的純淨與可遷移性。
 
-### 1.3 資料庫是唯一真理（Database as Source of Truth）
+* 結構化分離 (Structural Decoupling):
+    Lyra 將音樂資料嚴格分層，拒絕將 Metadata 直接寫入音訊檔案。
 
-* 匯入後，所有顯示資訊以資料庫為準。
-* Lyra **不回寫音檔 metadata**，避免污染原始資料。
+    * 作品 (Work) 與 錄音 (Track) 分離：區分「貝多芬第五號交響曲」(Work) 與「卡拉揚 1963 年指揮的版本」(Track)。
 
----
+    * 內容 (Audio) 與 容器 (Asset) 分離：區分「實際聽到的聲音」(PCM) 與「硬碟上的檔案」(File)。
 
-### 1.4 不可變性（Immutability）
-
-* 一旦寫入 `/objects/`，音訊物件視為唯讀。
-* 所有修改都以「新增新物件」的方式進行。
-* 不可變性 ≠ 不可刪除；允許標記損毀並重建。
+* 嚴格的不可變性 (Strict Immutability):
+    一旦檔案被寫入儲存層 (/objects/)，即視為唯讀資料。
+    系統不允許「原地修改」檔案內容。任何音質的修復或更動，都必須作為一個「新物件」被導入，而非覆蓋舊物件。
 
 ---
 
-## 2. Hash 定義
+## 2. 結構化架構設計 (Structural Architecture)
 
-### 2.1 Asset Hash
+### 2.1 基礎層級定義
 
-使用 `SHA-256` 計算，因為即使在7年前的 Snapdragon 865 上，其運算速度也遠大於 `md5`。
+#### **Level 1: Asset (物理容器)**
+- **定義**: 負責檔案的 I/O、儲存與完整性校驗，硬碟上實際存在的位元組流 (Byte Stream)。
+- **Idenity**: `file_hash` (SHA-256)。
+- **特性**: 這裡是 Lossless (無損) 與 Lossy (有損) 的物理棲息地。
+  - *例子*: `nocturne.flac`, `nocturne.mp3`。
 
-Lyra 的 hash 用來回答：
+#### **Level 2: Audio (聲學實體)**
+- **定義**: 即「聲音本身」，解碼後的純音訊數據 (Raw PCM)。
+- **Idenity**: `pcm_hash` (ffmpeg s32le decoded SHA-256)。
+- **格式無關 (Format Agnostic)**。
+  - 若擁有同一個錄音的 `.wav` 和 `.flac` ，且兩者解碼後 PCM 相同，Lyra 會在資料庫中建立 1 個 Audio 記錄，並關聯到 2 個 Asset。
+  - 這允許系統同時保留「原始來源」與「節省空間的版本」，而在邏輯上視為同一首歌。
 
-> 「在**明確定義的技術條件下**，這段聲音是否與另一段聲音相同？」
+#### **Level 3: Track (錄音版本)**
+- **定義**: 特定時間、地點、演出者所錄製的具體差異。
+- **Idenity**: `UUID`。
+- **職責**: 連結 Audio 與 Metadata (Title, Album, Year)。即在播放清單中看到的「一首歌」。
+- **關鍵設計**: Track 指向一個 Audio。若未來使添加更高音質的檔案（但內容不同，例如 Remaster 版），這是更新 ` Track -> Audio` 的關聯，而不必刪除 Track 與 低音質的 Audio。
 
-* 例如：`ffmpeg -f s32le -f sha256`
----
+#### **Level 4: Work (抽象作品)**
+- **定義**: 音樂作品本身，獨立於任何錄音。
+- **Idenity**: `UUID`。
+- **關鍵設計**: **尤其利好古典樂、翻唱與 Remix**。
+  - 所有的「貝多芬第九號交響曲」錄音 (Tracks) 都指向同一個 Work。
+  - 這讓使用者能查詢「這首歌有哪些版本？」，將 Library 的維度從「檔案列表」提升為「音樂資料庫」。
 
-### 2.2 Audio Hash
+### 2.2 實作標準
 
-* 工具：`ffmpeg` 
-* 版本：固定版本（記錄於資料庫）
-* 輸入：任意支援的音訊檔案
-* 流程：
+為了支撐上述結構，Core 必須遵循嚴格的雜湊計算標準：
 
-  1. 解碼為 PCM
-  2. 統一輸出`s32le`,有符號 32bit little-endian
-  3. 對 PCM 串流計算雜湊（預設 `sha256`）
+#### **Audio Hash Pipeline**
+所有輸入檔案必須經過統一的正規化流程計算指紋：
+`Input File -> Decoder-> S32LE PCM -> SHA-256`
+這是 Lyra 能夠跨格式識別聲音的唯一依據。
 
----
+#### **Immutability Contract**
+寫入 `/objects/` 的檔案由 Asset 表管理。一旦寫入，**禁止修改內容**。若需修改 Tag 等任何資訊，則操作 DB；若需修改音訊（例如剪輯），則匯入為新 Asset。
 
-### 2.3 關於一致性
+    注意：Audio Hash 僅保證在相同解碼器版本與編譯參數下的一致性。Lyra 資料庫中將記錄計算該 Hash 時的 `ffmpeg_version` 以供未來稽核。
 
-* hash 僅保證在 **相同環境與定義** 下可重現。
-* 不保證跨 ffmpeg 版本、不同 decoder、不同 compile flags 完全一致。
 
 ---
 
@@ -135,32 +146,6 @@ lyra/
     └── build_all.py
 ```
 
-### 分層原則說明
-
-* **docs/**：
-
-  * 可隨時修改，不影響執行結果
-  * 用來避免未來「不知道自己當初為什麼這樣設計」
-
-* **core/include/**：
-
-  * 對外 API 契約
-  * 一旦修改，UI 與其他語言綁定都會受影響
-
-* **core/src/**：
-
-  * 允許重構與實驗
-  * 不應被 UI 或外部程式直接依賴
-
-* **ui/**：
-
-  * 快速變動層
-  * 嚴禁直接假設 core 的內部實作
-
-* **scripts/**：
-
-  * 方便比「優雅」重要
-  * 可重寫、可刪除，不算技術債
 
 ---
 
@@ -180,7 +165,7 @@ Core 功能：
 
 ## 4. API
 
-### 4.1 資料查詢 (Query)
+### 4.1 實體通用操作
 
 #### 📋 實體列表 (ListEntities)
 *   **功能**: 列出、篩選、排序及分頁所有實體。
@@ -242,8 +227,8 @@ lyraApi.listEntities(
   "code": 200,
   "data": {
     "items": [
-      { "id": "uuid_1", "title": "夜曲", "artist": "周杰倫", "album": "十一月的蕭邦", "duration": 215 },
-      { "id": "uuid_2", "title": "一路向北", "artist": "周杰倫", "album": "十一月的蕭邦", "duration": 240 }
+      { "id": "uuid_1", "display_title": "夜曲", "artist": "周杰倫", "album": "十一月的蕭邦", "duration": 215 },
+      { "id": "uuid_2", "display_title": "一路向北", "artist": "周杰倫", "album": "十一月的蕭邦", "duration": 240 }
     ],
     "total_count": 145  // 讓前端知道總共有幾頁
   }
@@ -309,6 +294,58 @@ lyraApi.listEntities(
   }
 }
 ```
+*   **📨 Response**:
+```json
+{
+  "protocol": "lyra-core",
+  "version": 0,
+  "code": 200,
+  "data": {
+    "uuid": "entity_uuid",
+    "title": "Entity Title",
+    "type": "Entity Type",
+    "description": "Entity Description",
+    "year": 2025,
+    "images": [
+      {
+        "url": "https://example.com/image.jpg",
+        "width": 100,
+        "height": 100
+      }
+    ],
+    "texts": [
+      {
+        "type": "description",
+        "content": "Entity Description"
+      }
+    ],
+    "works": [
+      {
+        "uuid": "work_uuid",
+        "title": "Work Title"
+      }
+    ],
+    "artists": [
+      {
+        "uuid": "artist_uuid",
+        "title": "Artist Title"
+      }
+    ],
+    "albums": [
+      {
+        "uuid": "album_uuid",
+        "title": "Album Title"
+      }
+    ],
+    "playlists": [
+      {
+        "uuid": "playlist_uuid",
+        "title": "Playlist Title"
+      }
+    ]
+  }
+}
+```
 
 #### ✏️ 更新實體資訊 (UpdateEntity)
 *   **功能**: 修改 Artist, Work, Album, Playlist 的 Title, Year, Description 等非外鍵欄位，支援多個 Entity 統一更新。
@@ -343,8 +380,72 @@ lyraApi.listEntities(
   }
 }
 ```
+
+#### 🔗 追加 Entity 圖片 (AddEntityImage)
+*   **功能**: 更新 Entity 的圖片資產，管理Entity_Image。
+*   **📥 Request**:
+```json
+{
+  "protocol": "lyra-core",
+  "version": 0,
+  "command": "AddEntityImage",
+  "params": {
+    "uuid": "entity_uuid",
+    "image_path": "~/Downloads/image.jpg", // local path, can be null
+    "image_url": "https://example.com/image.jpg", // url, can be null
+    "image_role": "front" // front, back, 
+  }
+}
+```
+
+#### 🔗 追加 Entity 文字 (AddEntityText)
+*   **功能**: 更新 Entity 的文字資產，管理Entity_Text。
+*   **📥 Request**:
+```json
+{
+  "protocol": "lyra-core",
+  "version": 0,
+  "command": "AddEntityText",
+  "params": {
+    "uuid": "entity_uuid",
+    "text_content": "~/Downloads/image.jpg", // local path, can be null
+    "text_role": "description" // description, lyrics, tags
+  }
+}
+```
+
 ---
----
+### 4.2 Artist 操作
+
+#### ✨ 建立 Artist (CreateArtist)
+*   **功能**: 建立 Artist。
+*   **📥 Request**:
+```json
+{
+  "protocol": "lyra-core",
+  "version": 0,
+  "command": "CreateArtist",
+  "params": {
+    "name": "Artist Name",
+    "description": "Artist Description"
+  }
+}
+```
+
+#### 🗑️ 刪除 Artist (DeleteArtist)
+*   **功能**: 刪除 Artist。
+*   **📥 Request**:
+```json
+{
+  "protocol": "lyra-core",
+  "version": 0,
+  "command": "DeleteArtist",
+  "params": {
+    "uuid": "artist_uuid"
+  }
+}
+```
+
 #### 🔗 追加 Artist (AddTrackArtist)
 *   **功能**: 處理 Track_Artist, Album_Artist, Work_Artist。
 *   **📥 Request**:
@@ -380,6 +481,37 @@ lyraApi.listEntities(
 ```
 
 ---
+### 4.3 Work 操作
+
+#### ✨建立 Work (CreateWork)
+*   **功能**: 建立 Work。
+*   **📥 Request**:
+```json
+{
+  "protocol": "lyra-core",
+  "version": 0,
+  "command": "CreateWork",
+  "params": {
+    "name": "Work Name",
+    "description": "Work Description"
+  }
+}
+```
+
+#### 🗑️ 刪除 Work (DeleteWork)
+*   **功能**: 刪除 Work。
+*   **📥 Request**:
+```json
+{
+  "protocol": "lyra-core",
+  "version": 0,
+  "command": "DeleteWork",
+  "params": {
+    "uuid": "work_uuid"
+  }
+}
+```
+
 #### 📌 指派 Work (SetWork)
 *   **功能**: 處理 Track_Work。
 *   **📥 Request**:
@@ -394,6 +526,95 @@ lyraApi.listEntities(
 ```
 
 ---
+### 4.3 Album 操作
+
+#### ✨ 建立 Album (CreateAlbum)
+*   **功能**: 建立 Album。
+*   **📥 Request**:
+```json
+{
+  "protocol": "lyra-core",
+  "version": 0,
+  "command": "CreateAlbum",
+  "params": {
+    "name": "Album Name",
+    "description": "Album Description"
+  }
+}
+```
+
+#### 🗑️ 刪除 Album (DeleteAlbum)
+*   **功能**: 刪除 Album。
+*   **📥 Request**:
+```json
+{
+  "protocol": "lyra-core",
+  "version": 0,
+  "command": "DeleteAlbum",
+  "params": {
+    "uuid": "album_uuid"
+  }
+}
+```
+
+#### 🔗 追加 Album (AddAlbum)
+*   **功能**: 處理 Track_Album。
+*   **📥 Request**:
+```json
+{
+  "command": "AddAlbum",
+  "params": {
+    "track_uuid": "track_uuid_1",
+    "album_uuid": "album_uuid_9" 
+  }
+}
+```
+
+#### ⛓️‍💥 移除 Album (RemoveAlbum)
+*   **功能**: 處理 Track_Album。
+*   **📥 Request**:
+```json
+{
+  "command": "RemoveAlbum",
+  "params": {
+    "track_uuid": "track_uuid_1",
+    "album_uuid": "album_uuid_9" 
+  }
+}
+```
+
+---
+### 4.4 Tag 操作
+
+#### ✨ 建立 Tag (CreateTag)
+*   **功能**: 建立 Tag。
+*   **📥 Request**:
+```json
+{
+  "protocol": "lyra-core",
+  "version": 0,
+  "command": "CreateTag",
+  "params": {
+    "name": "J-Pop",
+    "description": "Japanese Pop Music"
+  }
+}
+```
+
+#### 🗑️ 刪除 Tag (DeleteTag)
+*   **功能**: 刪除 Tag。
+*   **📥 Request**:
+```json
+{
+  "protocol": "lyra-core",
+  "version": 0,
+  "command": "DeleteTag",
+  "params": {
+    "uuid": "tag_uuid"
+  }
+}
+```
+
 #### 🏷️ 新增 Tag (AddTag)
 *   **功能**: 對 Entity 新增 Tag。
 *   **📥 Request**:
@@ -423,8 +644,240 @@ lyraApi.listEntities(
   }
 }
 ```
+---
+### 4.5 合併操作 (Merge)
 
-### 4.4 播放清單管理 (Playlist Management)
+#### ➡️ 預覽合併 (GetMergePreview)
+*   **功能**: 預覽兩個重複的 Entity。
+*   **📥 Request**:
+```json
+{
+  "protocol": "lyra-core",
+  "version": 0,
+  "command": "GetMergePreview",
+  "params": {
+    "entity_type": "Artist", // Track, Album, Work
+    "target_uuid": "entity_uuid_1",
+    "source_uuid": "entity_uuid_2"
+  }
+}
+```
+
+
+*   **📨 Response** (Merge Artist Preview):
+```json
+{
+  "code": 200,
+  "data": {
+    "can_merge": true, // 是否可以合併，類型不兼容、唯讀、合併同一個 UUID
+    "preview": {
+      // 1. Confilct：兩邊數據不同，二選一
+      "conflicts": [
+        {
+          "key": "name",           // 後端欄位名
+          "label": "Name",         // 前端顯示標題
+          "target_value": "周杰倫",
+          "source_value": "Jay Chou",
+          "recommended": "target_value" // target_value, source_value, null
+        },
+        {
+          "key": "spotify_id",
+          "label": "Spotify ID",
+          "target_value": "uuid_spotify_1",
+          "source_value": "uuid_spotify_2"
+        }
+      ],
+      // 2. Patch：Target 原本沒資料，將從 Source 繼承
+      "patches": [
+        {
+          "key": "country",
+          "label": "Country",
+          "value": "Taiwan",
+          "is_selected": true  // 預設勾選
+        },
+        {
+          "key": "bio",
+          "label": "Biography",
+          "value": "Jay Chou is a...",
+          "is_selected": true
+        }
+      ],
+      // 3. Union：集合類型的欄位，例如 Tag、Image、Genre 等
+      "unions": {
+        "tags": [
+          { 
+            "id": "tag_uuid_1", 
+            "label": "Pop", 
+            "origin": "both",    // 兩邊都有
+            "is_selected": true
+          },
+          { 
+            "id": "tag_uuid_2", 
+            "label": "R&B", 
+            "origin": "source",  // 來自來源
+            "is_selected": true
+          },
+          { 
+            "id": "tag_uuid_3", 
+            "label": "Mandopop", 
+            "origin": "target",  // 來自目標
+            "is_selected": true 
+          }
+        ],
+        "images": [
+           // 圖片也可以用一樣的邏輯，讓使用者挑選要保留哪些封面
+           { "id": "img_hash_1", "url": "...", "origin": "source", "is_selected": true }
+        ]
+      },
+      // 4. Impact：影響區
+      // 這些是 Read-Only，告訴使用者：「這些孩子要換爸爸了」
+      "impact": {
+        "summary": "12 Albums and 45 Tracks will be moved from 'Jay Chou' to '周杰倫'.",
+        "details": [
+          {
+            "type": "Album",
+            "count": 12,
+            "items": [ // 只列出前幾筆作為範例，避免 JSON 太大
+              { "uuid": "album_uuid_1", "title": "葉惠美", "year": 2003 },
+              { "uuid": "album_uuid_2", "title": "七里香", "year": 2004 }
+            ]
+          },
+          {
+            "type": "Track",
+            "count": 45,
+            "items": [
+              { "uuid": "track_uuid_1", "title": "以父之名", "album": "葉惠美" },
+              { "uuid": "track_uuid_2", "title": "晴天", "album": "葉惠美" }
+            ]
+          }
+        ]
+      }
+
+    }
+  }
+}
+```
+
+
+*   **📨 Response** (Merge Track Preview):
+```json
+{
+  "code": 200,
+  "data": {
+    "can_merge": true, // 是否可以合併，類型不兼容、唯讀、合併同一個 UUID
+    "preview": {
+      // 1. Confilct：兩邊數據不同，二選一
+      "conflicts": [
+        {
+          "key": "title",           // 後端欄位名
+          "label": "Title",         // 前端顯示標題
+          "target_value": "Nocturne",
+          "source_value": "夜曲",
+          "recommended": "target_value" // target_value, source_value, null
+        }
+      ],
+      // 2. Patch：Target 原本沒資料，將從 Source 繼承
+      "patches": [
+        {
+          "key": "recording_month",
+          "label": "Recording Month",
+          "value": 12,
+          "is_selected": true  // 預設勾選
+        },
+        {
+          "key": "recording_year",
+          "label": "Recording Year",
+          "value": 2005,
+          "is_selected": true
+        }
+      ],
+      // 3. Union：集合類型的欄位，例如 Tag、Image、Genre 等
+      "unions": {
+        "tags": [
+          { 
+            "id": "tag_uuid_1", 
+            "label": "Pop", 
+            "origin": "both",    // 兩邊都有
+            "is_selected": true
+          }
+        ],
+        "images": [
+           // 讓使用者挑選要保留哪些 Image
+           { "id": "img_hash_1", "path": "/path/to/image.jpg", "origin": "source", "is_selected": true }
+        ]
+      },
+      // 4. Impact：影響區
+      // 這些是 Read-Only，告訴使用者：「這些孩子要換爸爸了」
+      "impact": {
+        "summary": "12 Albums and 45 Tracks will be moved from 'Jay Chou' to '周杰倫'.",
+        "details": [
+          {
+            "type": "Audio",
+            "count": 12,
+            "items": [
+              { "uuid": "pcm_hash_1", "duration": 120, "quality_score": 100 }
+            ]
+          }
+        ]
+      }
+
+    }
+  }
+}
+```
+---
+#### 🔀 合併 Artist (MergeArtist)
+*   **功能**: 合併兩個重複的 Artist。
+*   **📥 Request**:
+```json
+{
+  "protocol": "lyra-core",
+  "version": 0,
+  "command": "MergeArtist",
+  "params": {
+    "target_uuid": "artist_uuid_1",
+    "source_uuid": "artist_uuid_2",
+    "conflicts": {  // 指定保留哪一個值
+       "name": "周杰倫",    
+       "spotify_id": "..."
+    },
+    
+    "unions": {  // 選擇哪些保留
+      "tags": [
+        { 
+          "id": "tag_uuid_1", 
+          "is_selected": true
+        },
+        { 
+          "id": "tag_uuid_2", 
+          "is_selected": false
+        }
+      ],
+      "images": [
+          { "id": "img_hash_1", "path": "/path/to/image.jpg", "origin": "source", "is_selected": true }
+      ]
+    },
+    "patches": [  // 選擇要不要新增
+      {
+        "key": "recording_month",
+        "label": "Recording Month",
+        "value": 12,
+        "is_selected": true  // 預設勾選
+      },
+      {
+        "key": "recording_year",
+        "label": "Recording Year",
+        "value": 2005,
+        "is_selected": true
+      }
+    ]
+  }
+}
+```
+
+
+
+### 4.6 Playlist 操作
 
 #### ✨ 新增 Playlist (CreatePlaylist)
 *   **📥 Request**:
@@ -485,7 +938,7 @@ lyraApi.listEntities(
 }
 ```
 
-### 資料匯入 (Ingestion)
+### 4.7 資料匯入 (Ingestion)
 
 #### ☁️ 從 YTM 匯入 (ImportYTM)
 *   **功能**: 解析 YouTube Music 網址 (Song/Playlist) 並下載。
@@ -518,7 +971,7 @@ lyraApi.listEntities(
 ```
 
 #### 📂 匯入檔案 (ImportFile)
-*   **功能**: 匯入本地音訊檔案或資料夾。
+*   **功能**: 匯入本地音訊檔案或資料夾，參考 Metadata。
 *   **📥 Request**:
 ```json
 {
@@ -526,7 +979,7 @@ lyraApi.listEntities(
   "version": 0,
   "command": "ImportFile",
   "params":{
-    "path": "/home/ryan/Downloads/music.opus"
+    "path": "/home/ryan/Downloads/music.opus" //確保 Path 是 Core Process 可讀的絕對路徑
   }
 } 
 ```
@@ -542,17 +995,12 @@ lyraApi.listEntities(
   }
 }
 ```
----
-
-
-
-
-
-
 
 ---
 
-### 4.6 資源存取 (Resource Access)
+### 4.8 資源存取 (Resource Access)
+
+未來增加品質篩選功能，例如：選擇 320k、wav 等
 
 #### 🎵 獲取資源路徑 (GetResourcePath)
 *   **功能**: 取得檔案實體路徑以便播放器 (mpv/vlc) 讀取。
@@ -584,11 +1032,17 @@ lyraApi.listEntities(
 
 ---
 
-### 4.7 任務管理 (Task Management)
+### 4.9 任務管理 (Task Management)
 用於追蹤長耗時操作（如匯入、備份、資料庫重整）的進度。
+未來加入 task type : Import、Backup、Database Verify、 etc
+#### 📋 任務狀態 (Task Status)
+*   **`pending`**: 任務已接受，正在排隊等待執行。
+*   **`running`**: 任務正在執行中。
+*   **`completed`**: 任務已成功完成。
+*   **`failed`**: 任務執行失敗。
 
 #### 📊 查詢任務狀態 (GetTaskStatus)
-*   **功能**: Client 定時輪詢 (Polling) 此接口以更新 UI 進度條。
+*   **功能**: Client 定時輪詢 (Polling) 此接口以更新 UI 進度條。也可根據 progress 增加速度決定輪詢頻率，兩者成正比關係。
 *   **📥 Request**:
 ```json
 {
@@ -629,7 +1083,7 @@ lyraApi.listEntities(
     "step_description": "Done.",
     "result": {
         // 任務完成後的摘要報告
-        "total_tracks": 10,
+        "total_items": 10,
         "success_count": 10,
         "playlist_uuid": "playlist_new_uuid",
         "errors": [] 
@@ -688,8 +1142,98 @@ lyraApi.listEntities(
   }
 }
 ```
+---
+### 4.10 General Response
 
-### v0.2 GUI 的開始
+#### ✨ 實體創建 (Entity Created)
+*   **適用於**：CreatePlaylist, CreateTag, CreateArtist, CreateAlbum, CreateWork, CreateTrack 
+*   **功能**：回傳新創建實體的 UUID。
+
+*   **📨 Response**:
+```json
+{
+  "code": 201, // Created
+  "data": {
+    "uuid": "new_generated_uuid_123", // 剛生成的 ID
+    "affected_rows": 1
+  }
+}
+```
+
+#### 🔗 關聯變更 (Relation Modified)
+*   **適用於**：AddPlaylistTrack, AddTag, RemoveTag
+*   **功能**：確認操作了多少筆資料（例如批次加了 10 首歌進清單）。
+*   **📨 Response**:
+```json
+{
+  "code": 200, // OK
+  "data": {
+    "success": true,
+    "affected_rows": 10, // 告知前端實際上變更了幾筆 (例如用於顯示: "Added 10 tracks")
+    "target_uuid": "playlist_uuid_abc" // 操作的目標主體 (Context)
+  }
+}
+```
+
+#### 🛠️ 實體更新 (Entity Updated)
+*   **適用於**：UpdatePlaylist, UpdateTag, UpdateArtist, UpdateAlbum, UpdateWork, UpdateTrack 
+*   **功能**：確認更新成功，回傳變更的欄位。
+*   **📨 Response**:
+```json
+{
+  "code": 200,
+  "data": {
+    "uuid": "entity_uuid_123",
+    "updated_fields": ["title", "year"], // 讓前端知道哪些欄位被變更了 (可用於局部刷新)
+    "affected_rows": 1
+  }
+}
+```
+
+---
+### 4.11 ReportPlayback
+
+#### 📊 報告播放 (Report Playback)
+*   **功能**：回報播放的歌曲，用於統計播放次數。
+    通常在超過一定時長的播放時間後會自動 report一次 `play_time` 並歸零 UI 計時器，
+    或在切換下一首歌時 report `play_time`。
+    在超過一定比例時 report `play_count`。
+*   **📥 Request**:
+```json
+{
+  "protocol": "lyra-core",
+  "version": 0,
+  "command": "ReportPlayback",
+  "params": {
+    "track_uuid": "track_uuid_123",
+    "play_count": 1, // 播放次數
+    "play_time": 120.5 // 播放時間 (second)
+  }
+}
+```
+
+---
+### 4.12 General Error Response
+
+#### 📛 一般錯誤 (General Error)
+*   **功能**：當 code 不為 2xx 時，data 欄位為 null，並回傳 error 物件。
+*   **📨 Response**:
+```json
+{
+  "code": 404, // 400 bad request / 404 not found /409 conflict / 500 internal server error / etc.
+  "error": {
+      "type": "ConstraintViolation",
+      "message": "Tag with name 'J-Pop' already exists.",
+      "details": {
+        "field": "name",
+        "rejected_value": "J-Pop",
+        "existing_uuid": "existing_tag_uuid_xyz" // 貼心地回傳已存在的 ID，讓 UI 提示「是否要直接使用現有標籤？」
+      }
+    }
+}
+```
+
+## v0.2 GUI 的開始
 
 emm... Flutter(Dart) 的 GUI 框架
 
@@ -709,11 +1253,11 @@ LyraRepo/
 
 ---
 
-## 6. 資料庫 Schema 設計邏輯
+## 6. DB Schema 設計
 
 ### Entity Layer
-所有具備業務意義的物件（Artist, Work, Album, Playlist, Track）皆繼承自 `Entity` 表，共用 UUID 主鍵。
-* **設計目的**：統一 ID 空間，方便圖片 (Entity_Images) 與文本 (Entity_Text) 的掛載。
+所有具備業務意義的物件（Artist, Work, Album, Playlist, Track）皆繼承自 `Entity` 表，與其共用 UUID 主鍵。
+* **設計目的**：統一 ID 空間，方便圖片 (Entity_Images) 與文本 (Entity_Text) 等資源的掛載。
 
 #### Junction Tables
 * **`Entity_Text`**Table：多對多關聯，**`entity_id`<->`Text`**。
@@ -776,7 +1320,7 @@ ENUM(
 * **`Track_Artist.role`**：
 ```sql
 ENUM(
-    'main',       -- 主依人 (Primary Artist, 專輯列表上顯示的名字)
+    'main',       -- 主藝人 (Primary Artist, 專輯列表上顯示的名字)
     'featured',   -- 客串 (Feat., Guest)
     'remixer',    -- 混音師 (對於電子音樂或 Remix 版本，此人權重等同 Main)
     'producer',   -- 製作人 (決定錄音品質與風格的人)
@@ -804,7 +1348,7 @@ ENUM(
     * 重整(Rebalance)，當 $Gap < 1$，$Gap_{new}= \frac{2^{32}}{ (n_{end} + n_{end} \times 10)}$
 
 ### Asset Layer
-* **Idenity**：`file_hash` SHA256, BINARY(16) in DB。
+* **Idenity**：`file_hash` SHA256, BINARY(32) in DB。
 * **儲存**：對應 `/objects/` 下的實體檔案。
 * **`Asset.asset_type`**：`SUBSTRING_INDEX(mime_type, '/', 1)`
 
@@ -871,4 +1415,4 @@ ENUM(
 ---
 
 
-> *願未來的你，能看懂現在的你在想什麼。*
+> *願未來的你，與Lyra一起，聽見更多。*
