@@ -1367,34 +1367,147 @@ ENUM(
   （Marantz M-CR612 + DALI OBERON 1 + Optical Fiber + CD RIP *wav vs flac*）
 
 
-## 8. 技術實作決策（v0.1）
+## 8. 技術實作決策與架構規範 (v0.1) _Temporary Gemini
 
-### 8.1 Hash 計算
+本章節定義 Lyra Core 的技術堆疊、編譯規範與內部架構，確保 C++ Backend 能夠穩定地與 Flutter Frontend 協作。
 
-* 使用 `ffmpeg` CLI（允許 shell out）
-* 不使用 libav* library
+### 8.1 技術堆疊 (Technology Stack)
 
-理由：
+*   **程式語言標準**: C++20 (利用 Concepts, Modules, Ranges 優化程式碼可讀性)。
+*   **建置系統**: CMake 3.20+ + vcpkg (套件管理)。
+*   **資料庫**: SQLite 3
+    *   **模式**：Local Embedded。
+    *   **設定**：開啟 WAL (Write-Ahead Logging) 模式以支援並發讀寫；開啟 Foreign Keys 支援。
+*   **JSON 處理**: `nlohmann/json` (現代 C++ JSON 庫，易於與 STL 容器轉換)。
+*   **字串/格式化**: `fmt` (提供類似 Python/Rust 的字串格式化，比 `std::format` 更成熟)。
+*   **外部工具依賴**:
+    *   **ffmpeg / ffprobe**: 透過 `std::process` (或 `reproc`) 呼叫 CLI 執行，不連結 `libav*` 函式庫。
+    *   **理由**：避免陷入 FFmpeg 複雜的 API 變動與編譯地獄，將解碼與 Metadata 解析隔離在獨立進程，提高 Core 的穩定性 (Crash 不會導致 App 閃退)。
 
-* 降低 build 複雜度
-* 專注於系統行為而非編譯問題
+### 8.2 核心架構設計 (Core Architecture)
 
----
+Lyra Core 採用 "**無狀態請求路由器 (Stateless Request Router)**" 模式。
 
-### 8.2 Core Library
+```mermaid
+graph LR
+    Flutter(UI) -- "JSON String (FFI)" --> Dispatcher(C++ API)
+    Dispatcher -- "Request Object" --> Router
+    Router -- "DTO" --> Controller
+    Controller -- "SQL" --> Service(Database)
+    Controller -- "CLI" --> Ingestion(FFmpeg)
+    Controller -- "Response DTO" --> Dispatcher
+    Dispatcher -- "JSON String" --> Flutter
+```
 
-* 語言：C++
-* 產物：`liblyra.so` / `lyra.dll`
-* 對外介面：`extern "C"`
+*   **FFI Boundary (邊界層)**:
+    *   只暴露單一入口函數 `lyra_dispatch(const char* request_json)`。
+    *   回傳 `char* response_json` (需注意記憶體釋放策略，或使用 Callback 形式)。
+*   **Router (路由層)**:
+    *   解析 JSON 中的 `command` 欄位。
+    *   將 `params` 轉換為 C++ struct (DTO)。
+    *   分發給對應的 Controller (e.g., `TrackController`, `SystemController`)。
+*   **Service/Repository (業務層)**:
+    *   負責 SQL 語句組裝與執行。
+    *   負責呼叫外部 ffmpeg 進程。
+    *   **原子性保證**: 所有的寫入操作必須包在 SQLite Transaction 中。
 
----
+### 8.3 資料庫實作細節
 
-### 8.3 UI 溝通方式
+鑑於 SQLite 與 MySQL 的差異，Schema 實作需遵循以下映射規則：
 
-* Flutter 透過 FFI 呼叫
-* 不回傳 struct 陣列
-* 回傳 JSON string 或 opaque handle
+*   **UUID**: 使用 `TEXT (36 chars)` 或 `BLOB (16 bytes)`。為了除錯方便，v0.1 建議使用 Standard String UUID。
+*   **ENUM**: 轉為 `TEXT`，並在應用層 (C++) 定義對應的 `enum class` 進行驗證，或在 SQLite Table 定義 `CHECK (role IN ('front', 'back', ...))`。
+*   **BINARY(32) (Hashes)**: 使用 `BLOB` 儲存 SHA-256 raw bytes，或 `TEXT` (Hex String)。考慮到索引效能與空間，建議使用 `BLOB`，並在 DTO 層做 Hex String 轉換。
+*   **FTS 整合**:
+    *   建立 `Entities_FTS` 虛擬表。
+    *   使用 SQLite Triggers (`AFTER INSERT/UPDATE/DELETE`) 自動同步 `Artist.name`, `Track.title`, `Album.title` 到 FTS 表中。
 
+### 8.4 音訊處理管線 (Audio Pipeline)
+
+#### Hashing & Identification
+
+為了確保「內容定址」的唯一性，所有匯入檔案必須經過標準化指紋計算。
+雖使用 CLI，但必須確保參數嚴格一致。
+
+**Command Template:**
+```bash
+ffmpeg -v error -i "{INPUT_FILE}" -f s32le -ac 1 -ar 44100 -c:a pcm_s32le -
+```
+
+*   **說明**: 強制轉為單聲道、44.1kHz、32bit Float/Int PCM，輸出到 Stdout。
+*   **Hash**: C++ 讀取 Stdout 的 Byte Stream，邊讀邊計算 SHA-256。
+
+#### Metadata Extraction
+
+使用 `ffprobe` 獲取 JSON 格式的 Metadata。
+
+**Command Template:**
+```bash
+ffprobe -v quiet -print_format json -show_format -show_streams "{INPUT_FILE}"
+```
+
+*   C++ 解析 JSON 輸出，映射到 `Track`, `Album`, `Artist` 結構。
+
+### 8.5 非同步任務與並發 (Concurrency)
+
+由於 Import 與 Hash 是 CPU 密集型操作，嚴禁在 FFI 呼叫的主執行緒 (Main Thread) 中執行。
+
+*   **Task System**:
+    *   `lyra_dispatch` 收到 `ImportFile` 請求後，僅建立一條 Task 記錄 (`Status: Pending`) 寫入 DB，並立即回傳 Task ID。
+    *   C++ 內部維護一個 `ThreadPool` (大小 = CPU Cores - 1)。
+    *   Worker Thread 輪詢或透過 `std::condition_variable` 獲取 Pending Task 執行。
+    *   執行過程中更新 DB 中的 `Task.progress` 與 `Task.step_description`。
+    *   Flutter 端透過定時輪詢 (Polling) `GetTaskStatus` API 來更新進度條。
+
+### 8.6 FFI 介面定義 (C Header)
+
+```c
+#ifndef LYRA_C_API_H
+#define LYRA_C_API_H
+
+#include <stdint.h>
+
+#ifdef _WIN32
+    #define LYRA_EXPORT __declspec(dllexport)
+#else
+    #define LYRA_EXPORT __attribute__((visibility("default")))
+#endif
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+    /**
+     * @brief 初始化 Lyra Core (DB 連線、執行緒池等)
+     * @param storage_root 資料庫與檔案儲存的根目錄路徑
+     * @return 0 成功, <0 失敗代碼
+     */
+    LYRA_EXPORT int lyra_init(const char* storage_root);
+
+    /**
+     * @brief 釋放 Lyra Core 資源
+     */
+    LYRA_EXPORT void lyra_shutdown();
+
+    /**
+     * @brief 統一請求入口
+     * @param json_request JSON 格式的請求字串
+     * @return JSON 格式的回應字串 (由呼叫者負責 free)
+     * * 注意：回傳的指標必須透過 lyra_free_string 釋放
+     */
+    LYRA_EXPORT char* lyra_dispatch(const char* json_request);
+
+    /**
+     * @brief 釋放由 lyra_dispatch 產生的字串記憶體
+     */
+    LYRA_EXPORT void lyra_free_string(char* str);
+
+#ifdef __cplusplus
+}
+#endif
+
+#endif // LYRA_C_API_H
+```
 
 ---
 
