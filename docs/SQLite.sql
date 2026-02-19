@@ -8,15 +8,18 @@
 CREATE TABLE IF NOT EXISTS Asset (
   file_hash BLOB NOT NULL,
   mime_type TEXT NULL DEFAULT NULL,
-  asset_type TEXT GENERATED ALWAYS AS (SUBSTRING_INDEX(mime_type, '/', 1)) VIRTUAL,
-  file_size INTEGER NULL DEFAULT NULL,
+
+  -- 利用 instr 找到 '/' 的位置，再用 substr 切割
+  -- 例如 'audio/flac' -> instr 會回傳 6，substr 從 1 取 5 個字元 -> 'audio'
+  asset_type TEXT GENERATED ALWAYS AS (
+    CASE 
+      WHEN instr(mime_type, '/') > 0 THEN substr(mime_type, 1, instr(mime_type, '/') - 1)
+      ELSE mime_type 
+    END
+  ) VIRTUAL,  file_size INTEGER NULL DEFAULT NULL,
   created_at TEXT NULL DEFAULT NULL,
   PRIMARY KEY (file_hash)
-);
-
--- Note: SUBSTRING_INDEX is not a built-in function in SQLite. 
--- For a real SQLite implementation, asset_type should be handled in the application layer 
--- or using a custom extension. 
+); 
 
 -- -----------------------------------------------------
 -- Table Image
@@ -388,3 +391,28 @@ CREATE TABLE IF NOT EXISTS Entity_Tag (
     ON DELETE NO ACTION
     ON UPDATE NO ACTION
 );
+
+-- ==========================================
+-- 手動建立的外鍵與效能索引
+-- ==========================================
+
+-- 1. 單一 PK 表中的外鍵索引
+CREATE INDEX idx_Image_file_hash ON Image(file_hash);
+CREATE INDEX idx_Text_file_hash ON Text(file_hash);
+CREATE INDEX idx_Audio_parent_hash ON Audio(parent_hash);
+CREATE INDEX idx_Track_work_id ON Track(work_id);
+CREATE INDEX idx_Track_pcm_hash ON Track(pcm_hash);
+
+-- 2. Junction Tables (複合主鍵) 的第二外鍵索引
+CREATE INDEX idx_Work_Artist_artist_id ON Work_Artist(artist_id);
+CREATE INDEX idx_Track_Album_album_id ON Track_Album(album_id);
+CREATE INDEX idx_Track_Artist_artist_id ON Track_Artist(artist_id);
+CREATE INDEX idx_Tracks_Playlist_track_id ON Tracks_Playlist(track_id);
+CREATE INDEX idx_Audio_Asset_file_hash ON Audio_Asset(file_hash);
+CREATE INDEX idx_Entity_Images_image_hash ON Entity_Images(image_hash);
+CREATE INDEX idx_Entity_Text_text_hash ON Entity_Text(text_hash);
+CREATE INDEX idx_Album_Artist_artist_id ON Album_Artist(artist_id);
+CREATE INDEX idx_Entity_Tag_tag_id ON Entity_Tag(tag_id);
+
+-- 3. 其他非外鍵但常被查詢的效能索引
+CREATE INDEX idx_Asset_asset_type ON Asset(asset_type);
