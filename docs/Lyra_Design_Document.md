@@ -1,6 +1,5 @@
 # Lyra Design Document
 
-
 ---
 
 ## 0. 專案定位
@@ -13,11 +12,11 @@ Lyra 是一個為 「數位音樂資產的永恆性」 而設計的個人管理�
 
 核心使命
 
-  * 建立信任座標：透過「不可變性（Immutability）」設計，確保原始音訊物件一旦入庫，即成為不可撼動的歷史存證，不因軟體升級或標籤修改而產生變異。
+* 建立信任座標：透過「不可變性（Immutability）」設計，確保原始音訊物件一旦入庫，即成為不可撼動的歷史存證，不因軟體升級或標籤修改而產生變異。
 
-  *  工程透明化：以解碼後的 PCM 內容作為唯一指紋（Content-Addressable），讓音樂的識別回歸聲音本質，而非脆弱的檔名或 Metadata。
+* 工程透明化：以解碼後的 PCM 內容作為唯一指紋（Content-Addressable），讓音樂的識別回歸聲音本質，而非脆弱的檔名或 Metadata。
 
-  *  私有化主權：這是一個專為個人收藏家打造的長期維護系統，不依賴雲端演算法，只服從於資料庫中的唯一真實來源。
+* 私有化主權：這是一個專為個人收藏家打造的長期維護系統，不依賴雲端演算法，只服從於資料庫中的唯一真實來源。
 
 ---
 
@@ -40,9 +39,9 @@ Lyra 是一個為「數位音樂資產永恆性」設計的個人管理系統。
 * 結構化分離 (Structural Decoupling):
     Lyra 將音樂資料嚴格分層，拒絕將 Metadata 直接寫入音訊檔案。
 
-    * 作品 (Work) 與 錄音 (Track) 分離：區分「貝多芬第五號交響曲」(Work) 與「卡拉揚 1963 年指揮的版本」(Track)。
+  * 作品 (Work) 與 錄音 (Track) 分離：區分「貝多芬第五號交響曲」(Work) 與「卡拉揚 1963 年指揮的版本」(Track)。
 
-    * 內容 (Audio) 與 容器 (Asset) 分離：區分「實際聽到的聲音」(PCM) 與「硬碟上的檔案」(File)。
+  * 內容 (Audio) 與 容器 (Asset) 分離：區分「實際聽到的聲音」(PCM) 與「硬碟上的檔案」(File)。
 
 * 嚴格的不可變性 (Strict Immutability):
     一旦檔案被寫入儲存層 (/objects/)，即視為唯讀資料。
@@ -55,45 +54,50 @@ Lyra 是一個為「數位音樂資產永恆性」設計的個人管理系統。
 ### 2.1 基礎層級定義
 
 #### **Level 1: Asset (物理容器)**
+
 - **定義**: 負責檔案的 I/O、儲存與完整性校驗，硬碟上實際存在的位元組流 (Byte Stream)。
-- **Idenity**: `file_hash` (SHA-256)。
-- **特性**: 這裡是 Lossless (無損) 與 Lossy (有損) 的物理棲息地。
-  - *例子*: `nocturne.flac`, `nocturne.mp3`。
+* **Idenity**: `file_hash` (SHA-256)。
+* **特性**: 這裡是 Lossless (無損) 與 Lossy (有損) 的物理棲息地。
+  * *例子*: `nocturne.flac`, `nocturne.mp3`。
 
 #### **Level 2: Audio (聲學實體)**
+
 - **定義**: 即「聲音本身」，解碼後的純音訊數據 (Raw PCM)。
-- **Idenity**: `pcm_hash` (ffmpeg s32le decoded SHA-256)。
-- **格式無關 (Format Agnostic)**。
-  - 若擁有同一個錄音的 `.wav` 和 `.flac` ，且兩者解碼後 PCM 相同，Lyra 會在資料庫中建立 1 個 Audio 記錄，並關聯到 2 個 Asset。
-  - 這允許系統同時保留「原始來源」與「節省空間的版本」，而在邏輯上視為同一首歌。
+* **Idenity**: `pcm_hash` (ffmpeg s32le decoded SHA-256)。
+* **格式無關 (Format Agnostic)**。
+  * 若擁有同一個錄音的 `.wav` 和 `.flac` ，且兩者解碼後 PCM 相同，Lyra 會在資料庫中建立 1 個 Audio 記錄，並關聯到 2 個 Asset。
+  * 這允許系統同時保留「原始來源」與「節省空間的版本」，而在邏輯上視為同一首歌。
 
 #### **Level 3: Track (錄音版本)**
+
 - **定義**: 特定時間、地點、演出者所錄製的具體差異。
-- **Idenity**: `UUID`。
-- **職責**: 連結 Audio 與 Metadata (Title, Album, Year)。即在播放清單中看到的「一首歌」。
-- **關鍵設計**: Track 指向一個 Audio。若未來使添加更高音質的檔案（但內容不同，例如 Remaster 版），這是更新 ` Track -> Audio` 的關聯，而不必刪除 Track 與 低音質的 Audio。
+* **Idenity**: `UUID`。
+* **職責**: 連結 Audio 與 Metadata (Title, Album, Year)。即在播放清單中看到的「一首歌」。
+* **關鍵設計**: Track 指向一個 Audio。若未來使添加更高音質的檔案（但內容不同，例如 Remaster 版），這是更新 `Track -> Audio` 的關聯，而不必刪除 Track 與 低音質的 Audio。
 
 #### **Level 4: Work (抽象作品)**
+
 - **定義**: 音樂作品本身，獨立於任何錄音。
-- **Idenity**: `UUID`。
-- **關鍵設計**: **尤其利好古典樂、翻唱與 Remix**。
-  - 所有的「貝多芬第九號交響曲」錄音 (Tracks) 都指向同一個 Work。
-  - 這讓使用者能查詢「這首歌有哪些版本？」，將 Library 的維度從「檔案列表」提升為「音樂資料庫」。
+* **Idenity**: `UUID`。
+* **關鍵設計**: **尤其利好古典樂、翻唱與 Remix**。
+  * 所有的「貝多芬第九號交響曲」錄音 (Tracks) 都指向同一個 Work。
+  * 這讓使用者能查詢「這首歌有哪些版本？」，將 Library 的維度從「檔案列表」提升為「音樂資料庫」。
 
 ### 2.2 實作標準
 
 為了支撐上述結構，Core 必須遵循嚴格的雜湊計算標準：
 
 #### **Audio Hash Pipeline**
+
 所有輸入檔案必須經過統一的正規化流程計算指紋：
 `Input File -> Decoder-> S32LE PCM -> SHA-256`
 這是 Lyra 能夠跨格式識別聲音的唯一依據。
 
 #### **Immutability Contract**
+
 寫入 `/objects/` 的檔案由 Asset 表管理。一旦寫入，**禁止修改內容**。若需修改 Tag 等任何資訊，則操作 DB；若需修改音訊（例如剪輯），則匯入為新 Asset。
 
     注意：Audio Hash 僅保證在相同解碼器版本與編譯參數下的一致性。Lyra 資料庫中將記錄計算該 Hash 時的 `ffmpeg_version` 以供未來稽核。
-
 
 ---
 
@@ -146,17 +150,19 @@ lyra/
     └── build_all.py
 ```
 
-
 ---
 
 ## 4.前後端交互分式
 
 ### v0.1 local MVP
+
 目標：
+
 * 暫時不考慮 Server
 * 先完成 Core，用 Json 與外界交互
 
 Core 功能：
+
 * 計算 Hash
 * 用 hash 值歸檔到 /objects
 * 與外界使用 Json 交互
@@ -168,8 +174,10 @@ Core 功能：
 ### 4.1 實體通用操作
 
 #### 📋 實體列表 (ListEntities)
-*   **功能**: 列出、篩選、排序及分頁所有實體。
-*   **📥 Request**:
+
+* **功能**: 列出、篩選、排序及分頁所有實體。
+* **📥 Request**:
+
 ```json
 {
   "protocol": "lyra-core",
@@ -219,7 +227,8 @@ lyraApi.listEntities(
 );
 ```
 
-*   **📨 Response**:
+* **📨 Response**:
+
 ```json
 {
   "protocol": "lyra-core",
@@ -236,8 +245,10 @@ lyraApi.listEntities(
 ```
 
 #### 📄 搜尋所有實體 (SearchEntity)
-*   **功能**: 利用 SQLite FTS 實現「模糊查找」與「權重排序」。
-*   **📥 Request**:
+
+* **功能**: 利用 SQLite FTS 實現「模糊查找」與「權重排序」。
+* **📥 Request**:
+
 ```json
 {
   "command": "SearchEntity",
@@ -249,7 +260,9 @@ lyraApi.listEntities(
   }
 }
 ```
-*   **📨 Response**:
+
+* **📨 Response**:
+
 ```json
 {
   "code": 200,
@@ -282,8 +295,10 @@ lyraApi.listEntities(
 ```
 
 #### 🔍 取得 Entity 詳細資訊 (GetEntity)
-*   **功能**: 取得 Entity 詳細資訊，所有Image、Text、Work、Artist 等關聯資訊。
-*   **📥 Request**:
+
+* **功能**: 取得 Entity 詳細資訊，所有Image、Text、Work、Artist 等關聯資訊。
+* **📥 Request**:
+
 ```json
 {
   "protocol": "lyra-core",
@@ -294,7 +309,9 @@ lyraApi.listEntities(
   }
 }
 ```
-*   **📨 Response**:
+
+* **📨 Response**:
+
 ```json
 {
   "protocol": "lyra-core",
@@ -348,9 +365,11 @@ lyraApi.listEntities(
 ```
 
 #### ✏️ 更新實體資訊 (UpdateEntity)
-*   **功能**: 修改 Artist, Work, Album, Playlist 的 Title, Year, Description 等非外鍵欄位，支援多個 Entity 統一更新。
 
-*   **📥 Request**:
+* **功能**: 修改 Artist, Work, Album, Playlist 的 Title, Year, Description 等非外鍵欄位，支援多個 Entity 統一更新。
+
+* **📥 Request**:
+
 ```json
 {
   "protocol": "lyra-core",
@@ -368,8 +387,10 @@ lyraApi.listEntities(
 ```
 
 #### 🗑️ 刪除實體 (DeleteEntity)
-*   **功能**: 刪除 Entity。(未來實做 垃圾桶功能，先標記「已刪除」)
-*   **📥 Request**:
+
+* **功能**: 刪除 Entity。(未來實做 垃圾桶功能，先標記「已刪除」)
+* **📥 Request**:
+
 ```json
 {
   "protocol": "lyra-core",
@@ -382,8 +403,10 @@ lyraApi.listEntities(
 ```
 
 #### 🔗 追加 Entity 圖片 (AddEntityImage)
-*   **功能**: 更新 Entity 的圖片資產，管理Entity_Image。
-*   **📥 Request**:
+
+* **功能**: 更新 Entity 的圖片資產，管理Entity_Image。
+* **📥 Request**:
+
 ```json
 {
   "protocol": "lyra-core",
@@ -399,8 +422,10 @@ lyraApi.listEntities(
 ```
 
 #### 🔗 追加 Entity 文字 (AddEntityText)
-*   **功能**: 更新 Entity 的文字資產，管理Entity_Text。
-*   **📥 Request**:
+
+* **功能**: 更新 Entity 的文字資產，管理Entity_Text。
+* **📥 Request**:
+
 ```json
 {
   "protocol": "lyra-core",
@@ -415,11 +440,14 @@ lyraApi.listEntities(
 ```
 
 ---
+
 ### 4.2 Artist 操作
 
 #### ✨ 建立 Artist (CreateArtist)
-*   **功能**: 建立 Artist。
-*   **📥 Request**:
+
+* **功能**: 建立 Artist。
+* **📥 Request**:
+
 ```json
 {
   "protocol": "lyra-core",
@@ -433,8 +461,10 @@ lyraApi.listEntities(
 ```
 
 #### 🗑️ 刪除 Artist (DeleteArtist)
-*   **功能**: 刪除 Artist。
-*   **📥 Request**:
+
+* **功能**: 刪除 Artist。
+* **📥 Request**:
+
 ```json
 {
   "protocol": "lyra-core",
@@ -447,8 +477,10 @@ lyraApi.listEntities(
 ```
 
 #### 🔗 追加 Artist (AddTrackArtist)
-*   **功能**: 處理 Track_Artist, Album_Artist, Work_Artist。
-*   **📥 Request**:
+
+* **功能**: 處理 Track_Artist, Album_Artist, Work_Artist。
+* **📥 Request**:
+
 ```json
 {
   "protocol": "lyra-core",
@@ -465,8 +497,10 @@ lyraApi.listEntities(
 ```
 
 #### ⛓️‍💥 移除 Artist (RemoveTrackArtist)
-*   **功能**: 處理 Track_Artist, Album_Artist, Work_Artist。
-*   **📥 Request**:
+
+* **功能**: 處理 Track_Artist, Album_Artist, Work_Artist。
+* **📥 Request**:
+
 ```json
 {
   "protocol": "lyra-core",
@@ -481,11 +515,14 @@ lyraApi.listEntities(
 ```
 
 ---
+
 ### 4.3 Work 操作
 
 #### ✨建立 Work (CreateWork)
-*   **功能**: 建立 Work。
-*   **📥 Request**:
+
+* **功能**: 建立 Work。
+* **📥 Request**:
+
 ```json
 {
   "protocol": "lyra-core",
@@ -499,8 +536,10 @@ lyraApi.listEntities(
 ```
 
 #### 🗑️ 刪除 Work (DeleteWork)
-*   **功能**: 刪除 Work。
-*   **📥 Request**:
+
+* **功能**: 刪除 Work。
+* **📥 Request**:
+
 ```json
 {
   "protocol": "lyra-core",
@@ -513,8 +552,10 @@ lyraApi.listEntities(
 ```
 
 #### 📌 指派 Work (SetWork)
-*   **功能**: 處理 Track_Work。
-*   **📥 Request**:
+
+* **功能**: 處理 Track_Work。
+* **📥 Request**:
+
 ```json
 {
   "command": "SetWork",
@@ -526,11 +567,14 @@ lyraApi.listEntities(
 ```
 
 ---
+
 ### 4.3 Album 操作
 
 #### ✨ 建立 Album (CreateAlbum)
-*   **功能**: 建立 Album。
-*   **📥 Request**:
+
+* **功能**: 建立 Album。
+* **📥 Request**:
+
 ```json
 {
   "protocol": "lyra-core",
@@ -544,8 +588,10 @@ lyraApi.listEntities(
 ```
 
 #### 🗑️ 刪除 Album (DeleteAlbum)
-*   **功能**: 刪除 Album。
-*   **📥 Request**:
+
+* **功能**: 刪除 Album。
+* **📥 Request**:
+
 ```json
 {
   "protocol": "lyra-core",
@@ -558,8 +604,10 @@ lyraApi.listEntities(
 ```
 
 #### 🔗 追加 Album (AddAlbum)
-*   **功能**: 處理 Track_Album。
-*   **📥 Request**:
+
+* **功能**: 處理 Track_Album。
+* **📥 Request**:
+
 ```json
 {
   "command": "AddAlbum",
@@ -571,8 +619,10 @@ lyraApi.listEntities(
 ```
 
 #### ⛓️‍💥 移除 Album (RemoveAlbum)
-*   **功能**: 處理 Track_Album。
-*   **📥 Request**:
+
+* **功能**: 處理 Track_Album。
+* **📥 Request**:
+
 ```json
 {
   "command": "RemoveAlbum",
@@ -584,11 +634,14 @@ lyraApi.listEntities(
 ```
 
 ---
+
 ### 4.4 Tag 操作
 
 #### ✨ 建立 Tag (CreateTag)
-*   **功能**: 建立 Tag。
-*   **📥 Request**:
+
+* **功能**: 建立 Tag。
+* **📥 Request**:
+
 ```json
 {
   "protocol": "lyra-core",
@@ -602,8 +655,10 @@ lyraApi.listEntities(
 ```
 
 #### 🗑️ 刪除 Tag (DeleteTag)
-*   **功能**: 刪除 Tag。
-*   **📥 Request**:
+
+* **功能**: 刪除 Tag。
+* **📥 Request**:
+
 ```json
 {
   "protocol": "lyra-core",
@@ -616,8 +671,10 @@ lyraApi.listEntities(
 ```
 
 #### 🏷️ 新增 Tag (AddTag)
-*   **功能**: 對 Entity 新增 Tag。
-*   **📥 Request**:
+
+* **功能**: 對 Entity 新增 Tag。
+* **📥 Request**:
+
 ```json
 {
   "protocol": "lyra-core",
@@ -631,8 +688,10 @@ lyraApi.listEntities(
 ```
 
 #### 🏷️ 移除 Tag (RemoveTag)
-*   **功能**: 對 Entity 移除 Tag。
-*   **📥 Request**:
+
+* **功能**: 對 Entity 移除 Tag。
+* **📥 Request**:
+
 ```json
 {
   "protocol": "lyra-core",
@@ -644,12 +703,16 @@ lyraApi.listEntities(
   }
 }
 ```
+
 ---
+
 ### 4.5 合併操作 (Merge)
 
 #### ➡️ 預覽合併 (GetMergePreview)
-*   **功能**: 預覽兩個重複的 Entity。
-*   **📥 Request**:
+
+* **功能**: 預覽兩個重複的 Entity。
+* **📥 Request**:
+
 ```json
 {
   "protocol": "lyra-core",
@@ -663,8 +726,8 @@ lyraApi.listEntities(
 }
 ```
 
+* **📨 Response** (Merge Artist Preview):
 
-*   **📨 Response** (Merge Artist Preview):
 ```json
 {
   "code": 200,
@@ -758,8 +821,8 @@ lyraApi.listEntities(
 }
 ```
 
+* **📨 Response** (Merge Track Preview):
 
-*   **📨 Response** (Merge Track Preview):
 ```json
 {
   "code": 200,
@@ -825,10 +888,14 @@ lyraApi.listEntities(
   }
 }
 ```
+
 ---
+
 #### 🔀 合併 Artist (MergeArtist)
-*   **功能**: 合併兩個重複的 Artist。
-*   **📥 Request**:
+
+* **功能**: 合併兩個重複的 Artist。
+* **📥 Request**:
+
 ```json
 {
   "protocol": "lyra-core",
@@ -875,12 +942,12 @@ lyraApi.listEntities(
 }
 ```
 
-
-
 ### 4.6 Playlist 操作
 
 #### ✨ 新增 Playlist (CreatePlaylist)
-*   **📥 Request**:
+
+* **📥 Request**:
+
 ```json
 {
   "protocol": "lyra-core",
@@ -891,10 +958,12 @@ lyraApi.listEntities(
     "description": "My Playlist Description"
   }
 } 
-``` 
+```
 
 #### ➕ 新增歌曲至 Playlist (AddPlaylistTrack)
-*   **📥 Request**:
+
+* **📥 Request**:
+
 ```json
 {
   "protocol": "lyra-core",
@@ -905,10 +974,12 @@ lyraApi.listEntities(
     "track_uuids": [ "track_id_1", "track_id_2" ]
   }
 } 
-``` 
+```
 
 #### ➖ 從 Playlist 移除歌曲 (RemovePlaylistTrack)
-*   **📥 Request**:
+
+* **📥 Request**:
+
 ```json
 {
   "protocol": "lyra-core",
@@ -922,8 +993,10 @@ lyraApi.listEntities(
 ```
 
 #### 🔃 調整播放順序 (MovePlaylistTrack)
-*   **功能**: 更新歌曲在 Playlist 中的順序 (Update `position` index)。
-*   **📥 Request**:
+
+* **功能**: 更新歌曲在 Playlist 中的順序 (Update `position` index)。
+* **📥 Request**:
+
 ```json
 {
   "protocol": "lyra-core",
@@ -941,8 +1014,10 @@ lyraApi.listEntities(
 ### 4.7 資料匯入 (Ingestion)
 
 #### ☁️ 從 YTM 匯入 (ImportYTM)
-*   **功能**: 解析 YouTube Music 網址 (Song/Playlist) 並下載。
-*   **📥 Request**:
+
+* **功能**: 解析 YouTube Music 網址 (Song/Playlist) 並下載。
+* **📥 Request**:
+
 ```json
 {
   "protocol": "lyra-core",
@@ -957,7 +1032,9 @@ lyraApi.listEntities(
   "cookies_path": "/path/to/cookies.txt" // 選填，用於會員限定內容
 } 
 ```
-*   **📨 Response**:
+
+* **📨 Response**:
+
 ```json
 {
   "protocol": "lyra-core",
@@ -971,8 +1048,10 @@ lyraApi.listEntities(
 ```
 
 #### 📂 匯入檔案 (ImportFile)
-*   **功能**: 匯入本地音訊檔案或資料夾，參考 Metadata。
-*   **📥 Request**:
+
+* **功能**: 匯入本地音訊檔案或資料夾，參考 Metadata。
+* **📥 Request**:
+
 ```json
 {
   "protocol": "lyra-core",
@@ -983,7 +1062,9 @@ lyraApi.listEntities(
   }
 } 
 ```
-*   **📨 Response**:
+
+* **📨 Response**:
+
 ```json
 {
   "protocol": "lyra-core",
@@ -1003,8 +1084,9 @@ lyraApi.listEntities(
 未來增加品質篩選功能，例如：選擇 320k、wav 等
 
 #### 🎵 獲取資源路徑 (GetResourcePath)
-*   **功能**: 取得檔案實體路徑以便播放器 (mpv/vlc) 讀取。
-*   **📥 Request**:
+
+* **功能**: 取得檔案實體路徑以便播放器 (mpv/vlc) 讀取。
+* **📥 Request**:
 
 ```json
 {
@@ -1015,9 +1097,10 @@ lyraApi.listEntities(
     "uuid": "track_uuid" 
   }
 } 
-``` 
+```
 
-*   **📨 Response** (Only valid in local mode.):
+* **📨 Response** (Only valid in local mode.):
+
 ```json
 {
   "protocol": "lyra-core",
@@ -1033,17 +1116,22 @@ lyraApi.listEntities(
 ---
 
 ### 4.9 任務管理 (Task Management)
+
 用於追蹤長耗時操作（如匯入、備份、資料庫重整）的進度。
 未來加入 task type : Import、Backup、Database Verify、 etc
+
 #### 📋 任務狀態 (Task Status)
-*   **`pending`**: 任務已接受，正在排隊等待執行。
-*   **`running`**: 任務正在執行中。
-*   **`completed`**: 任務已成功完成。
-*   **`failed`**: 任務執行失敗。
+
+* **`pending`**: 任務已接受，正在排隊等待執行。
+* **`running`**: 任務正在執行中。
+* **`completed`**: 任務已成功完成。
+* **`failed`**: 任務執行失敗。
 
 #### 📊 查詢任務狀態 (GetTaskStatus)
-*   **功能**: Client 定時輪詢 (Polling) 此接口以更新 UI 進度條。也可根據 progress 增加速度決定輪詢頻率，兩者成正比關係。
-*   **📥 Request**:
+
+* **功能**: Client 定時輪詢 (Polling) 此接口以更新 UI 進度條。也可根據 progress 增加速度決定輪詢頻率，兩者成正比關係。
+* **📥 Request**:
+
 ```json
 {
   "protocol": "lyra-core",
@@ -1054,7 +1142,9 @@ lyraApi.listEntities(
   }
 } 
 ```
-*   **📨 Response (進行中)**:
+
+* **📨 Response (進行中)**:
+
 ```json
 {
   "protocol": "lyra-core",
@@ -1070,7 +1160,9 @@ lyraApi.listEntities(
   }
 }
 ```
-*   **📨 Response (已完成)**:
+
+* **📨 Response (已完成)**:
+
 ```json
 {
   "protocol": "lyra-core",
@@ -1093,8 +1185,10 @@ lyraApi.listEntities(
 ```
 
 #### 📋 列出所有任務 (ListTasks)
-*   **功能**: 查看背景任務列表（例如顯示在「下載管理器」面板）。
-*   **📥 Request**:
+
+* **功能**: 查看背景任務列表（例如顯示在「下載管理器」面板）。
+* **📥 Request**:
+
 ```json
 
 {
@@ -1106,7 +1200,9 @@ lyraApi.listEntities(
   }
 } 
 ```
-*   **📨 Response** (Only valid in local mode.):
+
+* **📨 Response** (Only valid in local mode.):
+
 ```json
 {
   "protocol": "lyra-core",
@@ -1129,8 +1225,10 @@ lyraApi.listEntities(
 ```
 
 #### 🛑 取消任務 (CancelTask)
-*   **功能**: 中斷正在進行的任務（如 yt-dlp 下載、轉檔）。
-*   **📥 Request**:
+
+* **功能**: 中斷正在進行的任務（如 yt-dlp 下載、轉檔）。
+* **📥 Request**:
+
 ```json
 
 {
@@ -1142,14 +1240,18 @@ lyraApi.listEntities(
   }
 }
 ```
+
 ---
+
 ### 4.10 General Response
 
 #### ✨ 實體創建 (Entity Created)
-*   **適用於**：CreatePlaylist, CreateTag, CreateArtist, CreateAlbum, CreateWork, CreateTrack 
-*   **功能**：回傳新創建實體的 UUID。
 
-*   **📨 Response**:
+* **適用於**：CreatePlaylist, CreateTag, CreateArtist, CreateAlbum, CreateWork, CreateTrack
+* **功能**：回傳新創建實體的 UUID。
+
+* **📨 Response**:
+
 ```json
 {
   "code": 201, // Created
@@ -1161,9 +1263,11 @@ lyraApi.listEntities(
 ```
 
 #### 🔗 關聯變更 (Relation Modified)
-*   **適用於**：AddPlaylistTrack, AddTag, RemoveTag
-*   **功能**：確認操作了多少筆資料（例如批次加了 10 首歌進清單）。
-*   **📨 Response**:
+
+* **適用於**：AddPlaylistTrack, AddTag, RemoveTag
+* **功能**：確認操作了多少筆資料（例如批次加了 10 首歌進清單）。
+* **📨 Response**:
+
 ```json
 {
   "code": 200, // OK
@@ -1176,9 +1280,11 @@ lyraApi.listEntities(
 ```
 
 #### 🛠️ 實體更新 (Entity Updated)
-*   **適用於**：UpdatePlaylist, UpdateTag, UpdateArtist, UpdateAlbum, UpdateWork, UpdateTrack 
-*   **功能**：確認更新成功，回傳變更的欄位。
-*   **📨 Response**:
+
+* **適用於**：UpdatePlaylist, UpdateTag, UpdateArtist, UpdateAlbum, UpdateWork, UpdateTrack
+* **功能**：確認更新成功，回傳變更的欄位。
+* **📨 Response**:
+
 ```json
 {
   "code": 200,
@@ -1191,14 +1297,17 @@ lyraApi.listEntities(
 ```
 
 ---
+
 ### 4.11 ReportPlayback
 
 #### 📊 報告播放 (Report Playback)
-*   **功能**：回報播放的歌曲，用於統計播放次數。
+
+* **功能**：回報播放的歌曲，用於統計播放次數。
     通常在超過一定時長的播放時間後會自動 report一次 `play_time` 並歸零 UI 計時器，
     或在切換下一首歌時 report `play_time`。
     在超過一定比例時 report `play_count`。
-*   **📥 Request**:
+* **📥 Request**:
+
 ```json
 {
   "protocol": "lyra-core",
@@ -1213,11 +1322,14 @@ lyraApi.listEntities(
 ```
 
 ---
+
 ### 4.12 General Error Response
 
 #### 📛 一般錯誤 (General Error)
-*   **功能**：當 code 不為 2xx 時，data 欄位為 null，並回傳 error 物件。
-*   **📨 Response**:
+
+* **功能**：當 code 不為 2xx 時，data 欄位為 null，並回傳 error 物件。
+* **📨 Response**:
+
 ```json
 {
   "code": 404, // 400 bad request / 404 not found /409 conflict / 500 internal server error / etc.
@@ -1256,12 +1368,17 @@ LyraRepo/
 ## 6. DB Schema 設計
 
 ### Entity Layer
+
 所有具備業務意義的物件（Artist, Work, Album, Playlist, Track）皆繼承自 `Entity` 表，與其共用 UUID 主鍵。
+
 * **設計目的**：統一 ID 空間，方便圖片 (Entity_Images) 與文本 (Entity_Text) 等資源的掛載。
 
 #### Junction Tables
+
 * **`Entity_Text`**Table：多對多關聯，**`entity_id`<->`Text`**。
 由Gemini生成`Entity_Text.role`，現在先預留，未來再實做功能 :
+SQLite doesn't support ENUM, so I'll use `TEXT` insted in the early version .
+
 ``` sql
 ENUM(
     -- 【歌詞類 Lyrics】
@@ -1283,9 +1400,12 @@ ENUM(
     'other'                    -- 其他
 )
 ```
+
 ---
+
 * **`Entity_Image`**Table：多對多關聯，**`entity_id`<->`Image`**。
 由Gemini生成`Entity_Image.role`，現在先預留，未來再實做功能 :
+
 ```sql
 ENUM(
     -- 專輯/歌曲相關 (Album/Track)
@@ -1306,8 +1426,11 @@ ENUM(
     'other'           -- 備用
 )
 ```
+
 ---
+
 * **`Work_Artist.role`**：
+
 ```sql
 ENUM(
     'composer',   -- 作曲 (通常是 Classical 或 Instrumental 的核心)
@@ -1316,8 +1439,11 @@ ENUM(
     'librettist'  -- 劇本/歌詞作者 (歌劇/音樂劇專用，可視需求合併至 lyricist)
 )
 ```
+
 ---
+
 * **`Track_Artist.role`**：
+
 ```sql
 ENUM(
     'main',       -- 主藝人 (Primary Artist, 專輯列表上顯示的名字)
@@ -1329,8 +1455,11 @@ ENUM(
     'engineer'    -- 錄音/混音/母帶工程師 (視你的潔癖程度決定是否收錄)
 )
 ```
+
 ---
+
 * **`Album_Artist.role`**：
+
 ```sql
 ENUM(
     'main',       -- 主要藝人 (流行樂的歌手、樂團)
@@ -1339,6 +1468,7 @@ ENUM(
     'compiler'    -- 選曲/混音者 (適用於 Compilation 或 DJ Mix 專輯)
 )
 ```
+
 * **`Track_Playlist.position`**：
   * Data Type： **unsigned int**, range: $0 \sim 2^{32}-1$, about 429.4 Million integers
   * 稀疏索引：$Gap_{ideal}=2^{16}$，
@@ -1348,11 +1478,13 @@ ENUM(
     * 重整(Rebalance)，當 $Gap < 1$，$Gap_{new}= \frac{2^{32}}{ (n_{end} + n_{end} \times 10)}$
 
 ### Asset Layer
+
 * **Idenity**：`file_hash` SHA256, BINARY(32) in DB。
 * **儲存**：對應 `/objects/` 下的實體檔案。
 * **`Asset.asset_type`**：`SUBSTRING_INDEX(mime_type, '/', 1)`
 
 ### Audio Layer
+
 * **Idenity**：`pcm_hash`(ffmpeg decoded raw stream hash), BINARY(32) in DB。
 * **設計目的**：
   * 「無損 Wav Flac -> **內容(PCM)相同**」為同一概念、不同檔案
@@ -1363,9 +1495,8 @@ ENUM(
 
 * **`Aduio_Asset` Table**：用於**關聯一段聲音<->實際檔案**，而這正是為了「PCM 相同、檔案不同的 Wav& Flac」設計，使系統能夠同時保留兩者。通常情況(沒有兩個PCM相同的聲音)下是一對一的關聯，即 **`Audio`<->`Asset`**。
   > PS：
-  這是因為即使 Wav 與 Flac 的 PCM 相同，可能因為各種因素造成在盲聽測試上 Wav 的表現更佳。 
+  這是因為即使 Wav 與 Flac 的 PCM 相同，可能因為各種因素造成在盲聽測試上 Wav 的表現更佳。
   （Marantz M-CR612 + DALI OBERON 1 + Optical Fiber + CD RIP *wav vs flac*）
-
 
 ## 8. 技術實作決策與架構規範 (v0.1) _Temporary Gemini
 
@@ -1373,16 +1504,16 @@ ENUM(
 
 ### 8.1 技術堆疊 (Technology Stack)
 
-*   **程式語言標準**: C++20 (利用 Concepts, Modules, Ranges 優化程式碼可讀性)。
-*   **建置系統**: CMake 3.20+ + vcpkg (套件管理)。
-*   **資料庫**: SQLite 3
-    *   **模式**：Local Embedded。
-    *   **設定**：開啟 WAL (Write-Ahead Logging) 模式以支援並發讀寫；開啟 Foreign Keys 支援。
-*   **JSON 處理**: `nlohmann/json` (現代 C++ JSON 庫，易於與 STL 容器轉換)。
-*   **字串/格式化**: `fmt` (提供類似 Python/Rust 的字串格式化，比 `std::format` 更成熟)。
-*   **外部工具依賴**:
-    *   **ffmpeg / ffprobe**: 透過 `std::process` (或 `reproc`) 呼叫 CLI 執行，不連結 `libav*` 函式庫。
-    *   **理由**：避免陷入 FFmpeg 複雜的 API 變動與編譯地獄，將解碼與 Metadata 解析隔離在獨立進程，提高 Core 的穩定性 (Crash 不會導致 App 閃退)。
+* **程式語言標準**: C++20 (利用 Concepts, Modules, Ranges 優化程式碼可讀性)。
+* **建置系統**: CMake 3.20+ + vcpkg (套件管理)。
+* **資料庫**: SQLite 3
+  * **模式**：Local Embedded。
+  * **設定**：開啟 WAL (Write-Ahead Logging) 模式以支援並發讀寫；開啟 Foreign Keys 支援。
+* **JSON 處理**: `nlohmann/json` (現代 C++ JSON 庫，易於與 STL 容器轉換)。
+* **字串/格式化**: `fmt` (提供類似 Python/Rust 的字串格式化，比 `std::format` 更成熟)。
+* **外部工具依賴**:
+  * **ffmpeg / ffprobe**: 透過 `std::process` (或 `reproc`) 呼叫 CLI 執行，不連結 `libav*` 函式庫。
+  * **理由**：避免陷入 FFmpeg 複雜的 API 變動與編譯地獄，將解碼與 Metadata 解析隔離在獨立進程，提高 Core 的穩定性 (Crash 不會導致 App 閃退)。
 
 ### 8.2 核心架構設計 (Core Architecture)
 
@@ -1399,28 +1530,28 @@ graph LR
     Dispatcher -- "JSON String" --> Flutter
 ```
 
-*   **FFI Boundary (邊界層)**:
-    *   只暴露單一入口函數 `lyra_dispatch(const char* request_json)`。
-    *   回傳 `char* response_json` (需注意記憶體釋放策略，或使用 Callback 形式)。
-*   **Router (路由層)**:
-    *   解析 JSON 中的 `command` 欄位。
-    *   將 `params` 轉換為 C++ struct (DTO)。
-    *   分發給對應的 Controller (e.g., `TrackController`, `SystemController`)。
-*   **Service/Repository (業務層)**:
-    *   負責 SQL 語句組裝與執行。
-    *   負責呼叫外部 ffmpeg 進程。
-    *   **原子性保證**: 所有的寫入操作必須包在 SQLite Transaction 中。
+* **FFI Boundary (邊界層)**:
+  * 只暴露單一入口函數 `lyra_dispatch(const char* request_json)`。
+  * 回傳 `char* response_json` (需注意記憶體釋放策略，或使用 Callback 形式)。
+* **Router (路由層)**:
+  * 解析 JSON 中的 `command` 欄位。
+  * 將 `params` 轉換為 C++ struct (DTO)。
+  * 分發給對應的 Controller (e.g., `TrackController`, `SystemController`)。
+* **Service/Repository (業務層)**:
+  * 負責 SQL 語句組裝與執行。
+  * 負責呼叫外部 ffmpeg 進程。
+  * **原子性保證**: 所有的寫入操作必須包在 SQLite Transaction 中。
 
 ### 8.3 資料庫實作細節
 
 鑑於 SQLite 與 MySQL 的差異，Schema 實作需遵循以下映射規則：
 
-*   **UUID**: 使用 `TEXT (36 chars)` 或 `BLOB (16 bytes)`。為了除錯方便，v0.1 建議使用 Standard String UUID。
-*   **ENUM**: 轉為 `TEXT`，並在應用層 (C++) 定義對應的 `enum class` 進行驗證，或在 SQLite Table 定義 `CHECK (role IN ('front', 'back', ...))`。
-*   **BINARY(32) (Hashes)**: 使用 `BLOB` 儲存 SHA-256 raw bytes，或 `TEXT` (Hex String)。考慮到索引效能與空間，建議使用 `BLOB`，並在 DTO 層做 Hex String 轉換。
-*   **FTS 整合**:
-    *   建立 `Entities_FTS` 虛擬表。
-    *   使用 SQLite Triggers (`AFTER INSERT/UPDATE/DELETE`) 自動同步 `Artist.name`, `Track.title`, `Album.title` 到 FTS 表中。
+* **UUID**: 使用 `TEXT (36 chars)` 或 `BLOB (16 bytes)`。為了除錯方便，v0.1 建議使用 Standard String UUID。
+* **ENUM**: 轉為 `TEXT`，並在應用層 (C++) 定義對應的 `enum class` 進行驗證，或在 SQLite Table 定義 `CHECK (role IN ('front', 'back', ...))`。
+* **BINARY(32) (Hashes)**: 使用 `BLOB` 儲存 SHA-256 raw bytes，或 `TEXT` (Hex String)。考慮到索引效能與空間，建議使用 `BLOB`，並在 DTO 層做 Hex String 轉換。
+* **FTS 整合**:
+  * 建立 `Entities_FTS` 虛擬表。
+  * 使用 SQLite Triggers (`AFTER INSERT/UPDATE/DELETE`) 自動同步 `Artist.name`, `Track.title`, `Album.title` 到 FTS 表中。
 
 ### 8.4 音訊處理管線 (Audio Pipeline)
 
@@ -1430,34 +1561,36 @@ graph LR
 雖使用 CLI，但必須確保參數嚴格一致。
 
 **Command Template:**
+
 ```bash
 ffmpeg -v error -i "{INPUT_FILE}" -f s32le -ac 1 -ar 44100 -c:a pcm_s32le -
 ```
 
-*   **說明**: 強制轉為單聲道、44.1kHz、32bit Float/Int PCM，輸出到 Stdout。
-*   **Hash**: C++ 讀取 Stdout 的 Byte Stream，邊讀邊計算 SHA-256。
+* **說明**: 強制轉為單聲道、44.1kHz、32bit Float/Int PCM，輸出到 Stdout。
+* **Hash**: C++ 讀取 Stdout 的 Byte Stream，邊讀邊計算 SHA-256。
 
 #### Metadata Extraction
 
 使用 `ffprobe` 獲取 JSON 格式的 Metadata。
 
 **Command Template:**
+
 ```bash
 ffprobe -v quiet -print_format json -show_format -show_streams "{INPUT_FILE}"
 ```
 
-*   C++ 解析 JSON 輸出，映射到 `Track`, `Album`, `Artist` 結構。
+* C++ 解析 JSON 輸出，映射到 `Track`, `Album`, `Artist` 結構。
 
 ### 8.5 非同步任務與並發 (Concurrency)
 
 由於 Import 與 Hash 是 CPU 密集型操作，嚴禁在 FFI 呼叫的主執行緒 (Main Thread) 中執行。
 
-*   **Task System**:
-    *   `lyra_dispatch` 收到 `ImportFile` 請求後，僅建立一條 Task 記錄 (`Status: Pending`) 寫入 DB，並立即回傳 Task ID。
-    *   C++ 內部維護一個 `ThreadPool` (大小 = CPU Cores - 1)。
-    *   Worker Thread 輪詢或透過 `std::condition_variable` 獲取 Pending Task 執行。
-    *   執行過程中更新 DB 中的 `Task.progress` 與 `Task.step_description`。
-    *   Flutter 端透過定時輪詢 (Polling) `GetTaskStatus` API 來更新進度條。
+* **Task System**:
+  * `lyra_dispatch` 收到 `ImportFile` 請求後，僅建立一條 Task 記錄 (`Status: Pending`) 寫入 DB，並立即回傳 Task ID。
+  * C++ 內部維護一個 `ThreadPool` (大小 = CPU Cores - 1)。
+  * Worker Thread 輪詢或透過 `std::condition_variable` 獲取 Pending Task 執行。
+  * 執行過程中更新 DB 中的 `Task.progress` 與 `Task.step_description`。
+  * Flutter 端透過定時輪詢 (Polling) `GetTaskStatus` API 來更新進度條。
 
 ### 8.6 FFI 介面定義 (C Header)
 
@@ -1523,9 +1656,6 @@ extern "C" {
 * 推薦
 * 每個 uuid 之間的關聯圖，像是Obsidian（沒有太大作用，但觀察這個應該會很有趣）
 
-
-
 ---
-
 
 > *願未來的你，與Lyra一起，聽見更多。*
