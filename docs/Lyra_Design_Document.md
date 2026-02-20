@@ -878,7 +878,8 @@ lyraApi.listEntities(
             "type": "Audio",
             "count": 12,
             "items": [
-              { "uuid": "pcm_hash_1", "duration": 120, "quality_score": 100 }
+              { "uuid": "pcm_hash_1", "duration": 120, "quality_score": 100 },
+              { "uuid": "pcm_hash_2", "duration": 120, "quality_score": 100 }
             ]
           }
         ]
