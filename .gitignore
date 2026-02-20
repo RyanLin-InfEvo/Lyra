@@ -8,6 +8,7 @@ vcpkg_installed/
 *.exe
 *.o
 *.a
+.cache/
 
 # Flutter Build Artifacts
 ui/build/
@@ -15,9 +16,11 @@ ui/.dart_tool/
 ui/.flutter-plugins
 ui/.flutter-plugins-dependencies
 
-# IDE Settings (Optional, but recommended)
+# IDE Settings 
 .vscode/
 .idea/
 *.DS_Store
 docs/db.mwb.bak
 docs/Lyra_Design_Document_AI.md
+lyra.db
+core/compile_commands.json
