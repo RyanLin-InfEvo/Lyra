@@ -13,12 +13,15 @@ include(FetchContent)
 find_package(nlohmann_json CONFIG REQUIRED)
 find_package(fmt CONFIG REQUIRED)
 find_package(SQLiteCpp CONFIG REQUIRED)
+find_package(stduuid CONFIG REQUIRED)
 
-
-add_library(lyra_core SHARED 
+set(CPP
     src/lyra_c_api.cpp
     src/database.cpp
+    src/utils/uuid_generator.cpp
 )
+
+add_library(lyra_core SHARED ${CPP})
 
 # .h files in include/ directory
 target_include_directories(lyra_core PUBLIC include)
@@ -28,4 +31,5 @@ target_link_libraries(lyra_core PRIVATE
     nlohmann_json::nlohmann_json 
     fmt::fmt
     SQLiteCpp
+    stduuid
 )
