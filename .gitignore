@@ -20,9 +20,10 @@ ui/.flutter-plugins-dependencies
 .vscode/
 .idea/
 *.DS_Store
-docs/db.mwb.bak
+*.mwb.bak
 docs/Lyra_Design_Document_AI.md
-lyra.db
+*.db
+*.db-shm
+*.db-wal
 core/compile_commands.json
-lyra.db-shm
-.gitignore
+compile_commands.json
