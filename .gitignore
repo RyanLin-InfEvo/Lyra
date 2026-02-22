@@ -24,3 +24,5 @@ docs/db.mwb.bak
 docs/Lyra_Design_Document_AI.md
 lyra.db
 core/compile_commands.json
+lyra.db-shm
+.gitignore

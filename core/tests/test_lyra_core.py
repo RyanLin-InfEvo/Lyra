@@ -38,6 +38,7 @@ else:
 # -------------------------------------------------------------------------
 # Send request 'CreateArtist' to C++
 # -------------------------------------------------------------------------
+'''
 request_dict = {
     "command": "CreateArtist",
     "params": {
@@ -45,7 +46,14 @@ request_dict = {
         "name": "Jay AChou"
     }
 }
+'''
 
+request_dict = {
+    "command": "GetArtist",
+    "params": {
+        "uuid": "da5d1c54-3f89-4b13-a00a-9228ae564f44"
+    }
+}
 # json.dumps will convert python dict to json string
 request_str = json.dumps(request_dict, ensure_ascii=False)
 
@@ -53,7 +61,7 @@ request_str = json.dumps(request_dict, ensure_ascii=False)
 request_bytes = request_str.encode('utf-8')
 
 print(f"📨 Python sending request: {request_str}")
-print(f"📨 Python sending request(bytes): {request_bytes}")
+# print(f"📨 Python sending request(bytes): {request_bytes}")
 
 
 # call C++ function
@@ -62,7 +70,7 @@ response_ptr = lyra_lib.lyra_dispatch(request_bytes)
 
 # get response from C++ using pointer `response_ptr`
 response_c_string = ctypes.cast(response_ptr, ctypes.c_char_p).value
-print(f"📬 Python received response(bytes): {response_c_string}")
+# print(f"📬 Python received response(bytes): {response_c_string}")
 
 # decode C++ string to python string
 response_str = response_c_string.decode('utf-8')

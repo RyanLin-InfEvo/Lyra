@@ -1,8 +1,18 @@
 #pragma once
+
+#include <optional>
 #include <string>
 
-// initialize database
-void init_database(const std::string &db_path);
+#include "models/artist.h"
 
-// insert artist into database
-void insert_artist(const std::string &uuid, const std::string &name);
+class Database {
+public:
+  // initialize database
+  static void init_database(const std::string &db_path);
+
+  // insert artist into database
+  static bool insert_artist(const Artist &artist);
+
+  // get a artist from database
+  static std::optional<Artist> get_artist(const std::string &artist_id);
+};
