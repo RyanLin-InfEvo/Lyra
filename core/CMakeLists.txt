@@ -18,7 +18,7 @@ find_package(stduuid CONFIG REQUIRED)
 set(CPP
     src/lyra_c_api.cpp
     src/router.cpp
-    src/database.cpp
+    src/services/database.cpp
     src/utils/uuid_generator.cpp
     src/controllers/artist_controller.cpp
 )

@@ -1,11 +1,10 @@
 #include <SQLiteCpp/SQLiteCpp.h>
-#include <iostream>
 #include <memory>
 #include <optional>
 #include <string>
 
+#include "../models/artist.h"
 #include "database.h"
-#include "models/artist.h"
 
 static std::unique_ptr<SQLite::Database> db;
 

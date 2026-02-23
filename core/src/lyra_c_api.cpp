@@ -3,9 +3,9 @@
 #include <nlohmann/json.hpp>
 #include <string>
 
-#include "database.h"
 #include "lyra_c_api.h"
 #include "router.h"
+#include "services/database.h"
 
 using json = nlohmann::json;
 

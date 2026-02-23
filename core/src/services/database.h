@@ -3,7 +3,7 @@
 #include <optional>
 #include <string>
 
-#include "models/artist.h"
+#include "../models/artist.h"
 
 class Database {
 public:

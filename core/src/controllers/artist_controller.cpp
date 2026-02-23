@@ -1,7 +1,7 @@
 #include <string>
 
-#include "../database.h"
 #include "../models/artist.h"
+#include "../services/database.h"
 #include "../utils/uuid_generator.h"
 #include "artist_controller.h"
 
