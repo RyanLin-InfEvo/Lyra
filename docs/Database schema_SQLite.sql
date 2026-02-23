@@ -16,7 +16,8 @@ CREATE TABLE IF NOT EXISTS Asset (
       WHEN instr(mime_type, '/') > 0 THEN substr(mime_type, 1, instr(mime_type, '/') - 1)
       ELSE mime_type 
     END
-  ) VIRTUAL,  file_size INTEGER NULL DEFAULT NULL,
+  ) VIRTUAL,
+  file_size INTEGER NULL DEFAULT NULL,
   created_at TEXT NULL DEFAULT NULL,
   PRIMARY KEY (file_hash)
 ); 
@@ -110,8 +111,11 @@ CREATE TABLE IF NOT EXISTS Artist (
 CREATE TABLE IF NOT EXISTS Work (
   id TEXT NOT NULL,
   title TEXT NOT NULL,
-  composition_date INTEGER NULL,
-  composition_date_str TEXT NULL,
+  composition_start_year INTEGER NULL,
+  composition_end_year INTEGER NULL,
+  composition_date_text TEXT NULL,
+  iswc TEXT NULL,
+  musicbrainz_id TEXT NULL,
   PRIMARY KEY (id),
   CONSTRAINT fk_Work_Entity
     FOREIGN KEY (id)
@@ -152,6 +156,8 @@ CREATE TABLE IF NOT EXISTS Track (
   recording_month INTEGER NULL,
   recording_day INTEGER NULL,
   recording_location TEXT NULL,
+  isrc TEXT NULL,
+  spotify_id TEXT NULL,
   PRIMARY KEY (id, pcm_hash),
   CONSTRAINT fk_Track_Work
     FOREIGN KEY (work_id)
