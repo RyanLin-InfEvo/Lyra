@@ -5,10 +5,10 @@
 using json = nlohmann::json;
 
 class ArtistController {
-public:
-  // CreateArtist
-  static json create(const json &params);
+  public:
+    // CreateArtist
+    static json create(const json &params);
 
-  // Get Artist
-  static json get(const json &params);
+    // Get Artist
+    static json get(const json &params);
 };

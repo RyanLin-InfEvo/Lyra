@@ -5,6 +5,6 @@
 using json = nlohmann::json;
 
 class Router {
-public:
-  static json route(const json &request);
+  public:
+    static json route(const json &request);
 };

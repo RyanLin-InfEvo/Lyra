@@ -2,7 +2,7 @@
 #include <string>
 
 struct Playlist {
-  std::string id;
-  std::string title;
-  std::string description;
+    std::string id;
+    std::string title;
+    std::string description;
 };
