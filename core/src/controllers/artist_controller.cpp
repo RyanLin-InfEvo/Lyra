@@ -5,7 +5,7 @@
 #include <string>
 
 #include "../models/artist.h"
-#include "../services/database.h"
+#include "../services/database_manager.h"
 #include "../utils/json_validator.h"
 #include "../utils/make_error.h"
 #include "../utils/uuid_generator.h"
@@ -33,7 +33,7 @@ json ArtistController::create(const json &params) {
     new_artist.name = params.value("name", "");
 
     // Call: Database
-    auto db_err = Database::insert_artist(new_artist);
+    auto db_err = DatabaseManager::insert_artist(new_artist);
 
     // Return
     if (!db_err) {
@@ -58,7 +58,7 @@ json ArtistController::get(const json &params) {
     }
 
     std::optional<Artist> artist =
-        Database::get_artist(params["uuid"].get<std::string>());
+        DatabaseManager::get_artist(params["uuid"].get<std::string>());
 
     if (artist.has_value()) {
         // Success

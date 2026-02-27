@@ -11,7 +11,7 @@
 
 #include "../models/artist.h"
 
-class Database {
+class DatabaseManager {
   public:
     // initialize database
     static void init_database(const std::string &db_path);

@@ -9,7 +9,7 @@
 
 #include "lyra_c_api.h"
 #include "router.h"
-#include "services/database.h"
+#include "services/database_manager.h"
 
 using json = nlohmann::json;
 
@@ -17,7 +17,7 @@ using json = nlohmann::json;
 int lyra_init(const char *storage_root) {
     try {
         std::string db_path = std::string(storage_root) + "/lyra.db";
-        Database::init_database(db_path);
+        DatabaseManager::init_database(db_path);
         return 0;
 
     } catch (const std::exception &e) {

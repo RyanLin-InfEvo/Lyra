@@ -7,12 +7,10 @@
 #include <optional>
 #include <string>
 
-#include "../models/artist.h"
-#include "database.h"
-
+#include "database_manager.h"
 static std::unique_ptr<SQLite::Database> db;
 
-void Database::init_database(const std::string &db_path) {
+void DatabaseManager::init_database(const std::string &db_path) {
     // open database file. If lyra.db does not exist, create it automatically
     // (OPEN_CREATE)
     db = std::make_unique<SQLite::Database>(db_path, SQLite::OPEN_READWRITE |
@@ -53,7 +51,7 @@ void Database::init_database(const std::string &db_path) {
 }
 
 // Insert artist into database
-std::optional<std::string> Database::insert_artist(const Artist &artist) {
+std::optional<std::string> DatabaseManager::insert_artist(const Artist &artist) {
 
     try {
         SQLite::Transaction transaction(*db);
@@ -80,7 +78,7 @@ std::optional<std::string> Database::insert_artist(const Artist &artist) {
 }
 
 // Get artist from database
-std::optional<Artist> Database::get_artist(const std::string &artist_id) {
+std::optional<Artist> DatabaseManager::get_artist(const std::string &artist_id) {
 
     SQLite::Statement query(*db, "SELECT a.id, a.name, a.description "
                                  "FROM Artist a "
