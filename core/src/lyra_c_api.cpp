@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 Tzu-Ting Lin
+//
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 #include <cstring>
 #include <fmt/core.h>
 #include <nlohmann/json.hpp>

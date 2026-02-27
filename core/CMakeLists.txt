@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 Tzu-Ting Lin
+#
+# SPDX-License-Identifier: AGPL-3.0-or-later
+
 cmake_minimum_required(VERSION 3.20)
 project(LyraCore CXX)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)

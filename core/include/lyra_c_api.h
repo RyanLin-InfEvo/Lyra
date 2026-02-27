@@ -1,3 +1,9 @@
+/*
+ * SPDX-FileCopyrightText: 2026 Tzu-Ting Lin
+ *
+ * SPDX-License-Identifier: AGPL-3.0-or-later
+ */
+
 // Prevent header file from being read multiple times
 #ifndef LYRA_C_API_H
 #define LYRA_C_API_H
