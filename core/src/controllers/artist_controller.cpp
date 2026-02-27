@@ -7,6 +7,7 @@
 #include "../models/artist.h"
 #include "../services/database.h"
 #include "../utils/json_validator.h"
+#include "../utils/make_error.h"
 #include "../utils/uuid_generator.h"
 #include "artist_controller.h"
 
@@ -32,10 +33,10 @@ json ArtistController::create(const json &params) {
     new_artist.name = params.value("name", "");
 
     // Call: Database
-    bool success = Database::insert_artist(new_artist);
+    auto db_err = Database::insert_artist(new_artist);
 
     // Return
-    if (success) {
+    if (!db_err) {
         // Success
         json response;
         response["code"] = 200;
@@ -45,20 +46,15 @@ json ArtistController::create(const json &params) {
         return response;
     } else {
         // Error
-        json error_res;
-        error_res["code"] = 500; // 500 Internal Server Error
-        error_res["error"]["message"] = " Database error";
-        return error_res;
+        return ApiResponse::error(ErrorType::DatabaseError, *db_err);
     }
 }
 
 json ArtistController::get(const json &params) {
 
     if (!params.contains("uuid") || params["uuid"].get<std::string>().empty()) {
-        json error_res;
-        error_res["code"] = 400; // 400 Bad Request
-        error_res["error"]["message"] = "Create Fail: Must provide uuid";
-        return error_res;
+        return ApiResponse::error(ErrorType::MissingParameter,
+                                  "Must provide uuid");
     }
 
     std::optional<Artist> artist =
@@ -73,9 +69,6 @@ json ArtistController::get(const json &params) {
         return response;
     } else {
         // Error
-        json error_res;
-        error_res["code"] = 404; // 404 Not Found
-        error_res["error"]["message"] = "Artist not found";
-        return error_res;
+        return ApiResponse::error(ErrorType::ArtistNotFound, "Artist not found");
     }
 }

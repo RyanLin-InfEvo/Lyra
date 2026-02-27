@@ -53,27 +53,30 @@ void Database::init_database(const std::string &db_path) {
 }
 
 // Insert artist into database
-bool Database::insert_artist(const Artist &artist) {
+std::optional<std::string> Database::insert_artist(const Artist &artist) {
 
-    SQLite::Transaction transaction(*db);
+    try {
+        SQLite::Transaction transaction(*db);
 
-    // insert into Entity table
-    SQLite::Statement query1(
-        *db, "INSERT INTO Entity (id, entity_type) VALUES (?, 'artist')");
-    query1.bind(1, artist.id);
-    query1.exec();
+        // insert into Entity table
+        SQLite::Statement query1(
+            *db, "INSERT INTO Entity (id, entity_type) VALUES (?, 'artist')");
+        query1.bind(1, artist.id);
+        query1.exec();
 
-    // insert into Artist table
-    SQLite::Statement query2(
-        *db, "INSERT INTO Artist (id, name, description) VALUES (?, ?, ?)");
-    query2.bind(1, artist.id);
-    query2.bind(2, artist.name);
-    query2.bind(3, artist.description);
-    query2.exec();
+        // insert into Artist table
+        SQLite::Statement query2(
+            *db, "INSERT INTO Artist (id, name, description) VALUES (?, ?, ?)");
+        query2.bind(1, artist.id);
+        query2.bind(2, artist.name);
+        query2.exec();
 
-    transaction.commit();
+        transaction.commit();
+    } catch (const std::exception &e) {
+        return e.what();
+    }
 
-    return 1;
+    return std::nullopt;
 }
 
 // Get artist from database
@@ -94,9 +97,6 @@ std::optional<Artist> Database::get_artist(const std::string &artist_id) {
         // If use getColumn(1), time complexity is O(1)
         artist.id = query.getColumn("id").getString();
         artist.name = query.getColumn("name").getString();
-        artist.description = query.getColumn("description").isNull()
-                                 ? ""
-                                 : query.getColumn("description").getString();
 
         return artist;
     }
