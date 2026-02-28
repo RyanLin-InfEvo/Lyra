@@ -2,7 +2,11 @@
 //
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+#include <nlohmann/json.hpp>
+#include <optional>
 #include <regex>
+#include <string>
+#include <vector>
 
 #include "json_validator.h"
 #include "make_error.h"

@@ -2,7 +2,13 @@
 //
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+#include <nlohmann/json.hpp>
+#include <string>
+#include <utility>
+
 #include "make_error.h"
+
+using json = nlohmann::json;
 
 // Success return
 json ApiResponse::success(const json &data) {
