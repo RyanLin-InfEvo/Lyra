@@ -5,6 +5,7 @@
 #include <nlohmann/json.hpp>
 
 #include "controllers/artist_controller.h"
+#include "controllers/track_controller.h"
 #include "router.h"
 
 using json = nlohmann::json;
@@ -30,6 +31,10 @@ json Router::route(const json &request) {
         response = ArtistController::create(params);
     } else if (command == "GetArtist") {
         response = ArtistController::get(params);
+    } else if (command == "CreateTrack") {
+        response = TrackController::create(params);
+    } else if (command == "GetTrack") {
+        response = TrackController::get(params);
     } else {
         // Error: Unknown command
         response["code"] = 404;

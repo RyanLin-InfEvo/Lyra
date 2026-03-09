@@ -48,6 +48,31 @@ void DatabaseManager::init_database(const std::string &db_path) {
             ON UPDATE CASCADE
         );
     )");
+
+    // create Track table
+    db->exec(R"(
+        CREATE TABLE IF NOT EXISTS Track (
+          id TEXT NOT NULL,
+          work_id TEXT NULL DEFAULT NULL,
+          pcm_hash TEXT NOT NULL,
+          title TEXT NULL DEFAULT NULL,
+          recording_year INTEGER NULL DEFAULT NULL,
+          recording_month INTEGER NULL DEFAULT NULL,
+          recording_day INTEGER NULL DEFAULT NULL,
+          recording_location TEXT NULL DEFAULT NULL,
+          duration INTEGER NULL DEFAULT NULL,
+          isrc TEXT NULL DEFAULT NULL,
+          musicbrainz_id TEXT NULL DEFAULT NULL,
+          ytm_id TEXT NULL DEFAULT NULL,
+          spotify_id TEXT NULL DEFAULT NULL,
+          PRIMARY KEY (id, pcm_hash),
+          CONSTRAINT fk_Track_Entity
+            FOREIGN KEY (id)
+            REFERENCES Entity (id)
+            ON DELETE CASCADE
+            ON UPDATE CASCADE
+        );
+    )");
 }
 
 // Insert artist into database
@@ -100,5 +125,102 @@ std::optional<Artist> DatabaseManager::get_artist(const std::string &artist_id) 
     }
 
     // if no artist found, return nullopt
+    return std::nullopt;
+}
+
+// Insert track into database
+std::optional<std::string> DatabaseManager::insert_track(const Track &track) {
+    try {
+        SQLite::Transaction transaction(*db);
+
+        // Insert into Entity table
+        SQLite::Statement query1(*db, "INSERT INTO Entity (id, entity_type) VALUES (?, 'track')");
+        query1.bind(1, track.id);
+        query1.exec();
+
+        // Insert into Track table
+        SQLite::Statement query2(
+            *db,
+            "INSERT INTO Track (id, work_id, pcm_hash, title, recording_year, recording_month, recording_day, recording_location, duration, isrc, musicbrainz_id, ytm_id, spotify_id) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
+
+        // --- Create Lambda helper functions ---
+        // Bind optional string (store as NULL if empty string)
+        auto bind_opt_str = [&query2](int index, const std::string &val) {
+            if (val.empty()) {
+                query2.bind(index);
+            } else {
+                query2.bind(index, val);
+            }
+        };
+
+        // Bind optional integer (store as NULL if 0)
+        auto bind_opt_int = [&query2](int index, int val) {
+            if (val == 0) {
+                query2.bind(index);
+            } else {
+                query2.bind(index, val);
+            }
+        };
+
+        // --- Execute binding ---
+        query2.bind(1, track.id);                  // NOT NULL
+        bind_opt_str(2, track.work_id);            // optional
+        query2.bind(3, track.pcm_hash);            // NOT NULL
+        bind_opt_str(4, track.title);              // optional
+        bind_opt_int(5, track.recording_year);     // optional
+        bind_opt_int(6, track.recording_month);    // optional
+        bind_opt_int(7, track.recording_day);      // optional
+        bind_opt_str(8, track.recording_location); // optional
+        bind_opt_str(9, track.isrc);               // optional
+        bind_opt_str(10, track.spotify_id);        // optional
+
+        query2.exec();
+        transaction.commit();
+    } catch (const std::exception &e) {
+        return e.what();
+    }
+
+    return std::nullopt;
+}
+
+// Get track from database
+std::optional<Track> DatabaseManager::get_track(const std::string &track_id) {
+    SQLite::Statement query(*db, "SELECT * FROM Track WHERE id = ?");
+    query.bind(1, track_id);
+
+    if (query.executeStep()) {
+        Track track;
+
+        // If use getColumn("name"), time complexity is O(n). Optimizable if needed.
+        track.id = query.getColumn("id").getString();
+
+        if (!query.getColumn("work_id").isNull())
+            track.work_id = query.getColumn("work_id").getString();
+        track.pcm_hash = query.getColumn("pcm_hash").getString();
+        if (!query.getColumn("title").isNull())
+            track.title = query.getColumn("title").getString();
+        if (!query.getColumn("recording_year").isNull())
+            track.recording_year = query.getColumn("recording_year").getInt();
+        if (!query.getColumn("recording_month").isNull())
+            track.recording_month = query.getColumn("recording_month").getInt();
+        if (!query.getColumn("recording_day").isNull())
+            track.recording_day = query.getColumn("recording_day").getInt();
+        if (!query.getColumn("recording_location").isNull())
+            track.recording_location = query.getColumn("recording_location").getString();
+        if (!query.getColumn("duration").isNull())
+            track.duration = query.getColumn("duration").getInt();
+        if (!query.getColumn("isrc").isNull())
+            track.isrc = query.getColumn("isrc").getString();
+        if (!query.getColumn("musicbrainz_id").isNull())
+            track.musicbrainz_id = query.getColumn("musicbrainz_id").getString();
+        if (!query.getColumn("ytm_id").isNull())
+            track.ytm_id = query.getColumn("ytm_id").getString();
+        if (!query.getColumn("spotify_id").isNull())
+            track.spotify_id = query.getColumn("spotify_id").getString();
+
+        return track;
+    }
+
     return std::nullopt;
 }

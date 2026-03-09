@@ -161,6 +161,8 @@ CREATE TABLE IF NOT EXISTS Track (
   recording_day INTEGER NULL,
   recording_location TEXT NULL,
   isrc TEXT NULL,
+  musicbrainz_id TEXT NULL;
+  ytm_id = TEXT NULL;
   spotify_id TEXT NULL,
   PRIMARY KEY (id, pcm_hash),
   CONSTRAINT fk_Track_Work
