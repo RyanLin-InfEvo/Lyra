@@ -12,9 +12,12 @@ using json = nlohmann::json;
 
 class ArtistController {
   public:
-    // CreateArtist
+    // Create Artist
     static json create(const json &params);
 
     // Get Artist
     static json get(const json &params);
+
+    // Update Artist
+    static json update(const json &params);
 };

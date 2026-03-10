@@ -51,6 +51,54 @@ json ArtistController::create(const json &params) {
     }
 }
 
+json ArtistController::update(const json &params) {
+
+    // Format Check: Validate required ID and optional fields
+    auto err = JsonValidator::validate(
+        params, {{"id", JsonFieldType::String, true, StringFormat::UUID},
+                 {"name", JsonFieldType::String, false},
+                 {"description", JsonFieldType::String, false},
+                 {"musicbrainz_id", JsonFieldType::String, false},
+                 {"ytm_id", JsonFieldType::String, false},
+                 {"spotify_id", JsonFieldType::String, false}});
+
+    if (err)
+        return *err;
+
+    // Create ArtistUpdate DTO
+    ArtistUpdate update_data;
+    update_data.id = params["id"].get<std::string>();
+
+    // Extract optional fields if they exist
+    if (params.contains("name"))
+        update_data.name = params["name"].get<std::string>();
+    if (params.contains("musicbrainz_id"))
+        update_data.musicbrainz_id = params["musicbrainz_id"].get<std::string>();
+    if (params.contains("ytm_id"))
+        update_data.ytm_id = params["ytm_id"].get<std::string>();
+    if (params.contains("spotify_id"))
+        update_data.spotify_id = params["spotify_id"].get<std::string>();
+
+    // Check if there is anything to update
+    if (!update_data.has_updates()) {
+        return ApiResponse::error(ErrorType::InvalidValue, "No fields provided to update.");
+    }
+
+    // Call: Database
+    auto db_err = DatabaseManager::update_artist(update_data);
+
+    // Return
+    if (!db_err) {
+        json response;
+        response["code"] = 200;
+        response["data"]["id"] = update_data.id;
+        response["message"] = "Update Artist success.";
+        return response;
+    } else {
+        return ApiResponse::error(ErrorType::DatabaseError, *db_err);
+    }
+}
+
 json ArtistController::get(const json &params) {
 
     if (!params.contains("uuid") || params["uuid"].get<std::string>().empty()) {

@@ -6,6 +6,7 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <vector>
 
 #include "database_manager.h"
 static std::unique_ptr<SQLite::Database> db;
@@ -101,6 +102,74 @@ std::optional<std::string> DatabaseManager::insert_artist(const Artist &artist) 
     return std::nullopt;
 }
 
+// update artist
+std::optional<std::string> DatabaseManager::update_artist(const ArtistUpdate &data) {
+    try {
+        // Build Dynamic SQL Query
+        std::string sql = "UPDATE Artist SET ";
+        std::vector<std::string> fields;
+
+        fields.reserve(4);
+
+        if (data.name)
+            fields.emplace_back("name = ?");
+        if (data.musicbrainz_id)
+            fields.emplace_back("musicbrainz_id = ?");
+        if (data.ytm_id)
+            fields.emplace_back("ytm_id = ?");
+        if (data.spotify_id)
+            fields.emplace_back("spotify_id = ?");
+
+        if (fields.empty())
+            return std::nullopt; // Poka-yoke : preventing nothing to update
+
+        // Join fields (e.g., "name = ?, musicbrainz_id = ?")
+        for (size_t i = 0; i < fields.size(); ++i) {
+            sql += fields[i];
+            if (i < fields.size() - 1)
+                sql += ", ";
+        }
+
+        sql += " WHERE id = ?";
+
+        // Execute Transaction
+        SQLite::Transaction transaction(*db);
+        SQLite::Statement query(*db, sql);
+
+        // Execute binding
+        int bind_idx = 1;
+        if (data.name)
+            query.bind(bind_idx++, *data.name);
+        if (data.musicbrainz_id)
+            query.bind(bind_idx++, *data.musicbrainz_id);
+        if (data.ytm_id)
+            query.bind(bind_idx++, *data.ytm_id);
+        if (data.spotify_id)
+            query.bind(bind_idx++, *data.spotify_id);
+
+        query.bind(bind_idx, data.id); // Bind the WHERE clause id
+
+        // Check affected rows
+        int affected_rows = query.exec();
+        if (affected_rows == 0) {
+            // Rollback is automatic if not committed
+            return "Artist ID not found or no changes made.";
+        }
+
+        // Update successful, sync Entity updated_at
+        SQLite::Statement update_entity(
+            *db, "UPDATE Entity SET updated_at = datetime('now') WHERE id = ?");
+        update_entity.bind(1, data.id);
+        update_entity.exec();
+
+        transaction.commit();
+    } catch (const std::exception &e) {
+        return e.what();
+    }
+
+    return std::nullopt;
+}
+
 // Get artist from database
 std::optional<Artist> DatabaseManager::get_artist(const std::string &artist_id) {
 
@@ -162,7 +231,7 @@ std::optional<std::string> DatabaseManager::insert_track(const Track &track) {
             }
         };
 
-        // --- Execute binding ---
+        // Execute binding
         query2.bind(1, track.id);                  // NOT NULL
         bind_opt_str(2, track.work_id);            // optional
         query2.bind(3, track.pcm_hash);            // NOT NULL
@@ -176,6 +245,7 @@ std::optional<std::string> DatabaseManager::insert_track(const Track &track) {
 
         query2.exec();
         transaction.commit();
+
     } catch (const std::exception &e) {
         return e.what();
     }

@@ -29,6 +29,8 @@ json Router::route(const json &request) {
     // Distrobute to different controllers
     if (command == "CreateArtist") {
         response = ArtistController::create(params);
+    } else if (command == "UpdateArtist") {
+        response = ArtistController::update(params);
     } else if (command == "GetArtist") {
         response = ArtistController::get(params);
     } else if (command == "CreateTrack") {

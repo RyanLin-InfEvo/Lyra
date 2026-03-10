@@ -20,6 +20,9 @@ class DatabaseManager {
     // insert artist into database
     static std::optional<std::string> insert_artist(const Artist &artist);
 
+    // update artist
+    static std::optional<std::string> update_artist(const ArtistUpdate &update_data);
+
     // get a artist from database
     static std::optional<Artist> get_artist(const std::string &artist_id);
 

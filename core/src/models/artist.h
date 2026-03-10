@@ -5,6 +5,7 @@
  */
 
 #pragma once
+#include <optional>
 #include <string>
 
 struct Artist {
@@ -13,4 +14,19 @@ struct Artist {
     std::string musicbrainz_id;
     std::string ytm_id;
     std::string spotify_id;
+};
+
+struct ArtistUpdate {
+    std::string id;
+    std::optional<std::string> name;
+    std::optional<std::string> musicbrainz_id;
+    std::optional<std::string> ytm_id;
+    std::optional<std::string> spotify_id;
+
+    bool has_updates() const {
+        return name.has_value() ||
+               musicbrainz_id.has_value() ||
+               ytm_id.has_value() ||
+               spotify_id.has_value();
+    }
 };
