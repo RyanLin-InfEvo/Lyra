@@ -36,7 +36,6 @@ void DatabaseManager::init_database(const std::string &db_path) {
         CREATE TABLE IF NOT EXISTS Artist (
           id TEXT NOT NULL,
           name TEXT NOT NULL,
-          description TEXT NULL DEFAULT NULL,
           musicbrainz_id TEXT NULL DEFAULT NULL,
           spotify_id TEXT NULL DEFAULT NULL,
           ytm_id TEXT NULL DEFAULT NULL,
@@ -89,7 +88,7 @@ std::optional<std::string> DatabaseManager::insert_artist(const Artist &artist) 
 
         // insert into Artist table
         SQLite::Statement query2(
-            *db, "INSERT INTO Artist (id, name, description) VALUES (?, ?, ?)");
+            *db, "INSERT INTO Artist (id, name) VALUES (?, ?, ?)");
         query2.bind(1, artist.id);
         query2.bind(2, artist.name);
         query2.exec();
