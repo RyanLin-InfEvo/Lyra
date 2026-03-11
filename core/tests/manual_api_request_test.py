@@ -55,7 +55,7 @@ request_dict = {
 request_dict = {
     "command": "GetArtist",
     "params": {
-        "uuid": "da5d1c54-3f89-4b13-a00a-9228ae564f44"
+        "uuid": "da5d1c54-3f89-4b13-a00a-9228ae50004f44"
     }
 }
 # json.dumps will convert python dict to json string

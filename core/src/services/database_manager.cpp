@@ -89,7 +89,7 @@ std::optional<std::string> DatabaseManager::insert_artist(const Artist &artist) 
 
         // insert into Artist table
         SQLite::Statement query2(
-            *db, "INSERT INTO Artist (id, name) VALUES (?, ?, ?)");
+            *db, "INSERT INTO Artist (id, name) VALUES (?, ?)");
         query2.bind(1, artist.id);
         query2.bind(2, artist.name);
         query2.exec();
@@ -173,7 +173,7 @@ std::optional<std::string> DatabaseManager::update_artist(const ArtistUpdate &da
 // Get artist from database
 std::optional<Artist> DatabaseManager::get_artist(const std::string &artist_id) {
 
-    SQLite::Statement query(*db, "SELECT a.id, a.name, a.description "
+    SQLite::Statement query(*db, "SELECT a.id, a.name "
                                  "FROM Artist a "
                                  "WHERE a.id = ?");
 

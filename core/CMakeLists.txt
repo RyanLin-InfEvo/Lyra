@@ -27,6 +27,7 @@ set(CPP
     src/utils/json_validator.cpp
     src/utils/make_error.cpp
     src/controllers/artist_controller.cpp
+    src/controllers/track_controller.cpp
 )
 
 add_library(lyra_core SHARED ${CPP})

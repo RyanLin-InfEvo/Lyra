@@ -13,7 +13,7 @@ using json = nlohmann::json;
 json Router::route(const json &request) {
     json response;
 
-    // Syntax Check: If 'command' exist in request
+    // Syntax Check: If 'command' exist in json request
     if (!request.contains("command") || !request["command"].is_string()) {
         response["code"] = 400;
         response["error"]["message"] = "Missing or invalid 'command' field";
