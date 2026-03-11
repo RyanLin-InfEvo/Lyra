@@ -85,10 +85,12 @@ json TrackController::create(const json &params) { // `const json &params` is co
 
 json TrackController::get(const json &params) {
 
-    // Format Check
-    if (!params.contains("uuid") || params["uuid"].get<std::string>().empty()) {
-        return ApiResponse::error(ErrorType::MissingParameter, "Must provide uuid");
-    }
+    // Format Check: Validate required UUID
+    auto err = JsonValidator::validate(
+        params, {{"uuid", JsonFieldType::String, true, StringFormat::UUID}});
+
+    if (err)
+        return *err;
 
     // Call: Database
     std::optional<Track> track = DatabaseManager::get_track(params["uuid"].get<std::string>());

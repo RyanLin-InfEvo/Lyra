@@ -101,10 +101,12 @@ json ArtistController::update(const json &params) {
 
 json ArtistController::get(const json &params) {
 
-    if (!params.contains("uuid") || params["uuid"].get<std::string>().empty()) {
-        return ApiResponse::error(ErrorType::MissingParameter,
-                                  "Must provide uuid");
-    }
+    // Format Check: Validate required UUID
+    auto err = JsonValidator::validate(
+        params, {{"uuid", JsonFieldType::String, true, StringFormat::UUID}});
+
+    if (err)
+        return *err;
 
     std::optional<Artist> artist =
         DatabaseManager::get_artist(params["uuid"].get<std::string>());

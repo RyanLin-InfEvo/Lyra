@@ -43,6 +43,8 @@ std::pair<int, std::string> ApiResponse::getErrorMapping(ErrorType type) {
         // 400 Series
         case ErrorType::MissingParameter:
             return {400, "MissingParameter"};
+        case ErrorType::InvalidValue:
+            return {400, "InvalidValue"};
 
         // 500 Series
         case ErrorType::DatabaseError:
