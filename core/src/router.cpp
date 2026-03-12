@@ -26,7 +26,7 @@ json Router::route(const json &request) {
     // If NULL, return a empty JSON Object
     json params = request.value("params", json::object());
 
-    // Distrobute to different controllers
+    // Distribute to different controllers
     if (command == "CreateArtist") {
         response = ArtistController::create(params);
     } else if (command == "UpdateArtist") {
@@ -37,6 +37,8 @@ json Router::route(const json &request) {
         response = TrackController::create(params);
     } else if (command == "GetTrack") {
         response = TrackController::get(params);
+    } else if (command == "UpdateTrack") {
+        // TrackController::update
     } else {
         // Error: Unknown command
         response["code"] = 404;

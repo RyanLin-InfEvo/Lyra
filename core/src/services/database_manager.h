@@ -31,4 +31,7 @@ class DatabaseManager {
 
     // get a track from database
     static std::optional<Track> get_track(const std::string &track_id);
+
+    // update track
+    static std::optional<std::string> update_track(const TrackUpdate &update_data);
 };

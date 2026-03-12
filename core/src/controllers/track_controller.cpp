@@ -7,6 +7,7 @@
 
 #include "../models/track.h"
 #include "../services/database_manager.h"
+#include "../utils/json_helper.h"
 #include "../utils/json_validator.h"
 #include "../utils/make_error.h"
 #include "../utils/uuid_generator.h"
@@ -40,29 +41,33 @@ json TrackController::create(const json &params) { // `const json &params` is co
     Track new_track;
     new_track.id = UuidGenerator::generate_v4();
     new_track.pcm_hash = params["pcm_hash"].get<std::string>();
-    new_track.title = params.value("title", "");
-    new_track.work_id = params.value("work_id", "");
+    new_track.title = JsonHelper::get_safe<std::string>(params, "title", "");
+    new_track.work_id = JsonHelper::get_safe<std::string>(params, "work_id", "");
 
     // Optional integer fields
-    if (params.contains("recording_year") && !params["recording_year"].is_null()) {
-        new_track.recording_year = params["recording_year"].get<int>();
+    auto recording_year_opt = JsonHelper::get_optional<int>(params, "recording_year");
+    if (recording_year_opt) {
+        new_track.recording_year = *recording_year_opt;
     }
-    if (params.contains("recording_month") && !params["recording_month"].is_null()) {
-        new_track.recording_month = params["recording_month"].get<int>();
+    auto recording_month_opt = JsonHelper::get_optional<int>(params, "recording_month");
+    if (recording_month_opt) {
+        new_track.recording_month = *recording_month_opt;
     }
-    if (params.contains("recording_day") && !params["recording_day"].is_null()) {
-        new_track.recording_day = params["recording_day"].get<int>();
+    auto recording_day_opt = JsonHelper::get_optional<int>(params, "recording_day");
+    if (recording_day_opt) {
+        new_track.recording_day = *recording_day_opt;
     }
 
-    if (params.contains("duration") && !params["duration"].is_null()) {
-        new_track.duration = params["duration"].get<int>();
+    auto duration_opt = JsonHelper::get_optional<int>(params, "duration");
+    if (duration_opt) {
+        new_track.duration = *duration_opt;
     }
 
-    new_track.recording_location = params.value("recording_location", "");
-    new_track.isrc = params.value("isrc", "");
-    new_track.musicbrainz_id = params.value("musicbrainz_id", "");
-    new_track.ytm_id = params.value("ytm_id", "");
-    new_track.spotify_id = params.value("spotify_id", "");
+    new_track.recording_location = JsonHelper::get_safe<std::string>(params, "recording_location", "");
+    new_track.isrc = JsonHelper::get_safe<std::string>(params, "isrc", "");
+    new_track.musicbrainz_id = JsonHelper::get_safe<std::string>(params, "musicbrainz_id", "");
+    new_track.ytm_id = JsonHelper::get_safe<std::string>(params, "ytm_id", "");
+    new_track.spotify_id = JsonHelper::get_safe<std::string>(params, "spotify_id", "");
 
     // Call: Database
     auto db_err = DatabaseManager::insert_track(new_track);

@@ -293,3 +293,91 @@ std::optional<Track> DatabaseManager::get_track(const std::string &track_id) {
 
     return std::nullopt;
 }
+
+// update track
+std::optional<std::string> DatabaseManager::update_track(const TrackUpdate &data) {
+    try {
+        std::string sql = "UPDATE Track SET ";
+        std::vector<std::string> fields;
+        fields.reserve(12);
+
+        if (data.work_id)
+            fields.emplace_back("work_id = ?");
+        if (data.pcm_hash)
+            fields.emplace_back("pcm_hash = ?");
+        if (data.title)
+            fields.emplace_back("title = ?");
+        if (data.recording_year)
+            fields.emplace_back("recording_year = ?");
+        if (data.recording_month)
+            fields.emplace_back("recording_month = ?");
+        if (data.recording_day)
+            fields.emplace_back("recording_day = ?");
+        if (data.recording_location)
+            fields.emplace_back("recording_location = ?");
+        if (data.duration)
+            fields.emplace_back("duration = ?");
+        if (data.isrc)
+            fields.emplace_back("isrc = ?");
+        if (data.musicbrainz_id)
+            fields.emplace_back("musicbrainz_id = ?");
+        if (data.ytm_id)
+            fields.emplace_back("ytm_id = ?");
+        if (data.spotify_id)
+            fields.emplace_back("spotify_id = ?");
+
+        if (fields.empty())
+            return std::nullopt;
+
+        for (size_t i = 0; i < fields.size(); ++i) {
+            sql += fields[i];
+            if (i < fields.size() - 1)
+                sql += ", ";
+        }
+        sql += " WHERE id = ?";
+
+        SQLite::Transaction transaction(*db);
+        SQLite::Statement query(*db, sql);
+
+        int bind_idx = 1;
+        if (data.work_id)
+            query.bind(bind_idx++, *data.work_id);
+        if (data.pcm_hash)
+            query.bind(bind_idx++, *data.pcm_hash);
+        if (data.title)
+            query.bind(bind_idx++, *data.title);
+        if (data.recording_year)
+            query.bind(bind_idx++, *data.recording_year);
+        if (data.recording_month)
+            query.bind(bind_idx++, *data.recording_month);
+        if (data.recording_day)
+            query.bind(bind_idx++, *data.recording_day);
+        if (data.recording_location)
+            query.bind(bind_idx++, *data.recording_location);
+        if (data.duration)
+            query.bind(bind_idx++, *data.duration);
+        if (data.isrc)
+            query.bind(bind_idx++, *data.isrc);
+        if (data.musicbrainz_id)
+            query.bind(bind_idx++, *data.musicbrainz_id);
+        if (data.ytm_id)
+            query.bind(bind_idx++, *data.ytm_id);
+        if (data.spotify_id)
+            query.bind(bind_idx++, *data.spotify_id);
+
+        query.bind(bind_idx, data.id);
+
+        int affected_rows = query.exec();
+        if (affected_rows == 0)
+            return "Track ID not found or no changes made.";
+
+        SQLite::Statement update_entity(*db, "UPDATE Entity SET updated_at = datetime('now') WHERE id = ?");
+        update_entity.bind(1, data.id);
+        update_entity.exec();
+
+        transaction.commit();
+    } catch (const std::exception &e) {
+        return e.what();
+    }
+    return std::nullopt;
+}
