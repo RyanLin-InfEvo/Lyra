@@ -162,6 +162,13 @@ class TestLyraCore(unittest.TestCase):
         self.assertEqual(res["code"], 400)
         self.assertTrue("error" in res)
 
+    def test_artist_update_not_exist_uuid(self):
+        """Test an not-exist uuid"""
+        updated_name = "Updated Name"
+        res_update = self.dispatch("UpdateArtist", {"id": '4da4efaf-391a-4c43-a596-000000000000', "name": updated_name})
+        self.assertEqual(res_update["code"], 500)
+        self.assertTrue("error" in res_update)
+
     # ==========================================
     # 3. Track Controller Validation and Operation Tests
     # Tests for Track creation and retrieval behaviors
@@ -211,6 +218,8 @@ class TestLyraCore(unittest.TestCase):
         res = self.dispatch("GetTrack", {"uuid": str(uuid.uuid4())})
         self.assertEqual(res["code"], 404)
         self.assertEqual(res["error"]["type"], "TrackNotFound")
+
+
 
 if __name__ == "__main__":
     unittest.main()
