@@ -12,20 +12,21 @@
 
 using json = nlohmann::json;
 
-class JsonHelper {
-  public:
-    // Safely get Json field. If not null and also exist, than return std::optional, else returl std::nullopt
-    template <typename T>
-    static std::optional<T> get_optional(const json &j, const std::string &key) {
-        if (j.contains(key) && !j[key].is_null()) {
-            return j[key].get<T>();
-        }
-        return std::nullopt;
-    }
+namespace JsonHelper {
 
-    // Have a default value
-    template <typename T>
-    static T get_safe(const json &j, const std::string &key, const T &default_val) {
-        return get_optional<T>(j, key).value_or(default_val);
+// Safely get Json field. If not null and also exist, then return std::optional, else return std::nullopt
+template <typename T>
+inline std::optional<T> get_optional(const json &j, const std::string &key) {
+    if (j.contains(key) && !j[key].is_null()) {
+        return j[key].get<T>();
     }
-};
+    return std::nullopt;
+}
+
+// Have a default value
+template <typename T>
+inline T get_safe(const json &j, const std::string &key, const T &default_val) {
+    return get_optional<T>(j, key).value_or(default_val);
+}
+
+} // namespace JsonHelper
