@@ -34,3 +34,6 @@ compile_commands.json
 .editorconfig
 .clang-format
 Lyra.code-workspace
+
+# Test
+__pycache__/
