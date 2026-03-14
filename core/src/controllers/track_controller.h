@@ -17,4 +17,6 @@ class TrackController {
 
     // Get Track
     static json get(const json &params);
+
+    static json update(const json &params);
 };

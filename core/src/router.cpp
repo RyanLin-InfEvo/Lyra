@@ -38,7 +38,7 @@ json Router::route(const json &request) {
     } else if (command == "GetTrack") {
         response = TrackController::get(params);
     } else if (command == "UpdateTrack") {
-        // TrackController::update
+        response = TrackController::update(params);
     } else {
         // Error: Unknown command
         response["code"] = 404;
