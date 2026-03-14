@@ -59,3 +59,34 @@ class TesttrackController(BaseLyraTestCase):
         self.assertEqual(res["code"], 404)
         self.assertEqual(res["error"]["type"], "TrackNotFound")
 
+    # -----------
+    # Update Test
+    # -----------
+
+    def test_track_update_success(self):
+        """Test successful update of an existing track"""
+        track_id = str(uuid.uuid4())
+        res_create = self.dispatch("Createtrack", {"pcm_hash": "PCM Hash", "title": "Track Title"})
+        self.assertEqual(res_create["code"], 200)
+
+        updated_name = "Updated Track Name"
+        real_id = res_create["data"]["id"]
+        res_update = self.dispatch("Updatetrack", {"name": updated_name})
+        self.assertEqual(res_update["code"], 200)
+        
+        res_get = self.dispatch("Gettrack", {"uuid": real_id})
+        self.assertEqual(res_get["data"]["name"], updated_name)
+
+    def test_track_update_no_fields(self):
+        """Test track update with valid ID but no update fields: Should return 400"""
+        res = self.dispatch("Updatetrack", {"invalide_field": "A value"})
+        self.assertEqual(res["code"], 400)
+        self.assertTrue("error" in res)
+
+    def test_track_update_not_exist_uuid(self):
+        """Test an not-exist uuid"""
+        updated_name = "Updated Name"
+        unexist_id = str(uuid.uuid4())
+        res_update = self.dispatch("Updatetrack", {"id": unexist_id, "name": updated_name})
+        self.assertEqual(res_update["code"], 500)
+        self.assertTrue("error" in res_update)
