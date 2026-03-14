@@ -8,6 +8,7 @@
 #include <string>
 #include <vector>
 
+#include "../utils/sqlite_helper.h"
 #include "database_manager.h"
 static std::unique_ptr<SQLite::Database> db;
 
@@ -188,6 +189,10 @@ std::optional<Artist> DatabaseManager::get_artist(const std::string &artist_id) 
         // If use getColumn(1), time complexity is O(1)
         artist.id = query.getColumn("id").getString();
         artist.name = query.getColumn("name").getString();
+
+        artist.musicbrainz_id = SqliteHelper::get_optional<std::string>(query, "musicbrainz_id");
+        artist.ytm_id = SqliteHelper::get_optional<std::string>(query, "ytm_id");
+        artist.spotify_id = SqliteHelper::get_optional<std::string>(query, "spotify_id");
 
         return artist;
     }
