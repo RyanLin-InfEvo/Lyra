@@ -10,6 +10,7 @@
 #include <string>
 
 #include "../models/artist.h"
+#include "../models/relation_types.h"
 #include "../models/track.h"
 
 class DatabaseManager {
@@ -34,4 +35,10 @@ class DatabaseManager {
 
     // update track
     static std::optional<std::string> update_track(const TrackUpdate &update_data);
+
+    static std::optional<std::string> add_track_artist(const TrackArtistParams &params);
+
+    static std::optional<std::string> remove_track_artist(const std::string_view track_id, const std::string_view artist_id);
+
+    static std::optional<std::string> update_track_artist(const TrackArtistParams &params);
 };

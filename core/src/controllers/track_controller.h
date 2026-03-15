@@ -19,4 +19,8 @@ class TrackController {
     static json get(const json &params);
 
     static json update(const json &params);
+
+    static json add_artist(const json &params);
+    static json remove_artist(const json &params);
+    static json update_artist(const json &params);
 };

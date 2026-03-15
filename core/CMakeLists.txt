@@ -26,6 +26,7 @@ set(CPP
     src/utils/uuid_generator.cpp
     src/utils/json_validator.cpp
     src/utils/make_error.cpp
+    src/models/relation_types.cpp
     src/controllers/artist_controller.cpp
     src/controllers/track_controller.cpp
 )

@@ -47,3 +47,9 @@ struct TrackUpdate {
                musicbrainz_id.has_value() || ytm_id.has_value() || spotify_id.has_value();
     }
 };
+
+struct TrackArtistInfo {
+    std::string artist_id;
+    std::string role; // main, featured, remixer, etc.
+    int position;
+};

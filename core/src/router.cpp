@@ -39,6 +39,12 @@ json Router::route(const json &request) {
         response = TrackController::get(params);
     } else if (command == "UpdateTrack") {
         response = TrackController::update(params);
+    } else if (command == "AddTrackArtist") {
+        response = TrackController::add_artist(params);
+    } else if (command == "RemoveTrackArtist") {
+        response = TrackController::remove_artist(params);
+    } else if (command == "UpdateTrackArtist") {
+        response = TrackController::update_artist(params);
     } else {
         // Error: Unknown command
         response["code"] = 404;
