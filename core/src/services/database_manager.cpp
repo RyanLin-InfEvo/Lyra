@@ -27,9 +27,9 @@ void DatabaseManager::init_database(const std::string &db_path) {
     db->exec(R"(
         CREATE TABLE IF NOT EXISTS Entity (
           id TEXT NOT NULL,
-          entity_type TEXT NULL CHECK( entity_type IN ('track', 'album', 'artist', 'work', 'playlist') ),
-          created_at TEXT NULL,
-          updated_at TEXT NULL,
+          entity_type TEXT NULL CHECK( entity_type IN ('track', 'album', 'artist', 'work', 'playlist', 'tag') ),
+          created_at TEXT DEFAULT (datetime('now')),
+          updated_at TEXT DEFAULT (datetime('now')),
           PRIMARY KEY (id)
         );
     )");
@@ -105,7 +105,7 @@ std::optional<std::string> DatabaseManager::insert_artist(const Artist &artist) 
 
         // insert into Entity table
         SQLite::Statement query1(
-            *db, "INSERT INTO Entity (id, entity_type) VALUES (?, 'artist')");
+            *db, "INSERT INTO Entity (id, entity_type, created_at, updated_at) VALUES (?, 'artist', datetime('now'), datetime('now'))");
         query1.bind(1, artist.id);
         query1.exec();
 
@@ -226,7 +226,7 @@ std::optional<std::string> DatabaseManager::insert_track(const Track &track) {
         SQLite::Transaction transaction(*db);
 
         // Insert into Entity table
-        SQLite::Statement query1(*db, "INSERT INTO Entity (id, entity_type) VALUES (?, 'track')");
+        SQLite::Statement query1(*db, "INSERT INTO Entity (id, entity_type, created_at, updated_at) VALUES (?, 'track', datetime('now'), datetime('now'))");
         query1.bind(1, track.id);
         query1.exec();
 
