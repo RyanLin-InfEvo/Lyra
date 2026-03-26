@@ -6,6 +6,8 @@
 
 #include "controllers/artist_controller.h"
 #include "controllers/track_controller.h"
+#include "utils/json_validator.h"
+
 #include "router.h"
 
 using json = nlohmann::json;
@@ -36,7 +38,21 @@ json Router::route(const json &request) {
     } else if (command == "CreateTrack") {
         response = TrackController::create(params);
     } else if (command == "GetTrack") {
-        response = TrackController::get(params);
+
+        auto err = JsonValidator::validate(params, {{"uuid", JsonFieldType::String, true, StringFormat::UUID}});
+        if (err)
+            return *err;
+
+        std::optional<Track> track = TrackController::get(params["uuid"].get<std::string>());
+
+        if (track.has_value()) {
+            response["code"] = 200;
+            response["data"] = track.value();
+        } else {
+            response["code"] = 404;
+            response["error"]["message"] = "Track not found";
+        }
+
     } else if (command == "UpdateTrack") {
         response = TrackController::update(params);
     } else if (command == "AddTrackArtist") {

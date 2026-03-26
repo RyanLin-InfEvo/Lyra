@@ -6,6 +6,7 @@
 
 #pragma once
 
+#include "../models/track.h"
 #include <nlohmann/json.hpp>
 
 using json = nlohmann::json;
@@ -16,7 +17,7 @@ class TrackController {
     static json create(const json &params);
 
     // Get Track
-    static json get(const json &params);
+    static std::optional<Track> get(const std::string &uuid);
 
     static json update(const json &params);
 

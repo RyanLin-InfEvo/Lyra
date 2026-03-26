@@ -76,42 +76,10 @@ json TrackController::create(const json &params) { // `const json &params` is co
     }
 }
 
-json TrackController::get(const json &params) {
-
-    // Format Check: Validate required UUID
-    auto err = JsonValidator::validate(
-        params, {{"uuid", JsonFieldType::String, true, StringFormat::UUID}});
-
-    if (err)
-        return *err;
-
-    // Call: Database
-    std::optional<Track> track = DatabaseManager::get_track(params["uuid"].get<std::string>());
-
-    // Return Result
-    if (track.has_value()) {
-        // Success
-        json response;
-        response["code"] = 200;
-        response["data"]["id"] = track->id;
-        response["data"]["pcm_hash"] = track->pcm_hash;
-        response["data"]["work_id"] = track->work_id;
-        response["data"]["title"] = track->title;
-        response["data"]["recording_year"] = track->recording_year;
-        response["data"]["recording_month"] = track->recording_month;
-        response["data"]["recording_day"] = track->recording_day;
-        response["data"]["recording_location"] = track->recording_location;
-        response["data"]["duration"] = track->duration;
-        response["data"]["isrc"] = track->isrc;
-        response["data"]["musicbrainz_id"] = track->musicbrainz_id;
-        response["data"]["ytm_id"] = track->ytm_id;
-        response["data"]["spotify_id"] = track->spotify_id;
-        return response;
-    } else {
-        // Error
-        return ApiResponse::error(ErrorType::TrackNotFound, "Track not found");
-    }
+std::optional<Track> TrackController::get(const std::string &uuid) {
+    return DatabaseManager::get_track(uuid);
 }
+
 json TrackController::update(const json &params) {
 
     // Format Check: Validate required ID and optional fields
