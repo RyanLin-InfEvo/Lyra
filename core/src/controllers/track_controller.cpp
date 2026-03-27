@@ -80,66 +80,8 @@ std::optional<Track> TrackController::get(const std::string &uuid) {
     return DatabaseManager::get_track(uuid);
 }
 
-json TrackController::update(const json &params) {
-
-    // Format Check: Validate required ID and optional fields
-    auto err = JsonValidator::validate(
-        params,
-        {{"id", JsonFieldType::String, true, StringFormat::UUID},
-         {"pcm_hash", JsonFieldType::String, false},
-         {"title", JsonFieldType::String, false},
-         {"work_id", JsonFieldType::String, false, StringFormat::UUID},
-         {"recording_year", JsonFieldType::Number, false},
-         {"recording_month", JsonFieldType::Number, false},
-         {"recording_day", JsonFieldType::Number, false},
-         {"recording_location", JsonFieldType::String, false},
-         {"duration", JsonFieldType::Number, false},
-         {"isrc", JsonFieldType::String, false},
-         {"musicbrainz_id", JsonFieldType::String, false},
-         {"ytm_id", JsonFieldType::String, false},
-         {"spotify_id", JsonFieldType::String, false}});
-
-    if (err)
-        return *err;
-
-    // Create TrackUpdate DTO
-    TrackUpdate update_data;
-    update_data.id = params["id"].get<std::string>();
-
-    // Extract optional fields etc.
-    update_data.pcm_hash = JsonHelper::get_optional<std::string>(params, "pcm_hash");
-    update_data.title = JsonHelper::get_optional<std::string>(params, "title");
-    update_data.work_id = JsonHelper::get_optional<std::string>(params, "work_id");
-    update_data.recording_year = JsonHelper::get_optional<int>(params, "recording_year");
-    update_data.recording_month = JsonHelper::get_optional<int>(params, "recording_month");
-    update_data.recording_day = JsonHelper::get_optional<int>(params, "recording_day");
-    update_data.recording_location = JsonHelper::get_optional<std::string>(params, "recording_location");
-    update_data.duration = JsonHelper::get_optional<int>(params, "duration");
-    update_data.isrc = JsonHelper::get_optional<std::string>(params, "isrc");
-    update_data.musicbrainz_id = JsonHelper::get_optional<std::string>(params, "musicbrainz_id");
-    update_data.ytm_id = JsonHelper::get_optional<std::string>(params, "ytm_id");
-    update_data.spotify_id = JsonHelper::get_optional<std::string>(params, "spotify_id");
-
-    // Check if there is anything to update
-    if (!update_data.has_updates()) {
-        return ApiResponse::error(ErrorType::InvalidValue, "No fields provided to update.");
-    }
-
-    // Call: Database
-    auto db_err = DatabaseManager::update_track(update_data);
-
-    // Return Result
-    if (!db_err) {
-        // Success
-        json response;
-        response["code"] = 200;
-        response["data"]["id"] = update_data.id;
-        response["message"] = "Update Track success.";
-        return response;
-    } else {
-        // Error
-        return ApiResponse::error(ErrorType::DatabaseError, *db_err);
-    }
+std::optional<std::string> TrackController::update(const TrackUpdate &track_update) {
+    return DatabaseManager::update_track(track_update);
 }
 
 json TrackController::add_artist(const json &params) {

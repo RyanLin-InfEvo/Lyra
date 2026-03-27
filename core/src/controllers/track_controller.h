@@ -19,7 +19,7 @@ class TrackController {
     // Get Track
     static std::optional<Track> get(const std::string &uuid);
 
-    static json update(const json &params);
+    static std::optional<std::string> update(const TrackUpdate &track_update);
 
     static json add_artist(const json &params);
     static json remove_artist(const json &params);
