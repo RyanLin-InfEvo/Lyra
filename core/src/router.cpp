@@ -15,6 +15,7 @@
 #include "router.h"
 
 using json = nlohmann::json;
+using Type = JsonFieldType;
 
 json Router::route(const json &request) {
     json response;
@@ -40,10 +41,39 @@ json Router::route(const json &request) {
     } else if (command == "GetArtist") {
         response = ArtistController::get(params);
     } else if (command == "CreateTrack") {
-        response = TrackController::create(params);
+        auto err = JsonValidator::validate(
+            params,
+            {{"pcm_hash", Type::String, true},
+             {"title", Type::String, false},
+             {"work_id", Type::String, false, StringFormat::UUID},
+             {"recording_year", Type::Number, false},
+             {"recording_month", Type::Number, false},
+             {"recording_day", Type::Number, false},
+             {"recording_location", Type::String, false},
+             {"duration", Type::Number, false},
+             {"isrc", Type::String, false},
+             {"musicbrainz_id", Type::String, false},
+             {"ytm_id", Type::String, false},
+             {"spotify_id", Type::String, false}});
+
+        if (err)
+            return *err;
+
+        Track track = params.get<Track>();
+        auto db_err = TrackController::create(track);
+
+        if (!db_err) {
+            response["code"] = 201; // Created
+            response["data"]["id"] = track.id;
+            response["data"]["pcm_hash"] = track.pcm_hash;
+            response["data"]["title"] = track.title;
+            response["message"] = "Create Track success.";
+        } else {
+            response = ApiResponse::error(ErrorType::DatabaseError, *db_err);
+        }
     } else if (command == "GetTrack") {
 
-        auto err = JsonValidator::validate(params, {{"id", JsonFieldType::String, true, StringFormat::UUID}});
+        auto err = JsonValidator::validate(params, {{"id", Type::String, true, StringFormat::UUID}});
         if (err)
             return *err;
 
@@ -57,7 +87,7 @@ json Router::route(const json &request) {
 
     } else if (command == "UpdateTrack") {
 
-        auto err = JsonValidator::validate(params, {{"id", JsonFieldType::String, true, StringFormat::UUID}});
+        auto err = JsonValidator::validate(params, {{"id", Type::String, true, StringFormat::UUID}});
         if (err)
             return *err;
 

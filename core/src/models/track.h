@@ -28,8 +28,8 @@ struct Track {
 
 struct TrackUpdate {
     std::string id;
-    std::optional<std::string> work_id;
     std::optional<std::string> pcm_hash;
+    std::optional<std::string> work_id;
     std::optional<std::string> title;
     std::optional<int> recording_year;
     std::optional<int> recording_month;

@@ -17,63 +17,11 @@
 
 using json = nlohmann::json;
 
-json TrackController::create(const json &params) { // `const json &params` is come from the 'params' object in the request json.
+std::optional<std::string> TrackController::create(Track &track) {
+    // Generate UUID for the new track
+    track.id = UuidGenerator::generate_v4();
 
-    // Format Check: Validate required and optional fields
-    auto err = JsonValidator::validate(
-        params,
-        {{"pcm_hash", JsonFieldType::String, true},
-         {"title", JsonFieldType::String, false},
-         {"work_id", JsonFieldType::String, false, StringFormat::UUID},
-         {"recording_year", JsonFieldType::Number, false},
-         {"recording_month", JsonFieldType::Number, false},
-         {"recording_day", JsonFieldType::Number, false},
-         {"recording_location", JsonFieldType::String, false},
-         {"duration", JsonFieldType::Number, false},
-         {"isrc", JsonFieldType::String, false},
-         {"musicbrainz_id", JsonFieldType::String, false},
-         {"ytm_id", JsonFieldType::String, false},
-         {"spotify_id", JsonFieldType::String, false}});
-
-    if (err)
-        return *err;
-
-    // Create Track Object
-    Track new_track;
-    new_track.id = UuidGenerator::generate_v4();
-    new_track.pcm_hash = params["pcm_hash"].get<std::string>();
-
-    new_track.title = JsonHelper::get_optional<std::string>(params, "title");
-    new_track.work_id = JsonHelper::get_optional<std::string>(params, "work_id");
-
-    new_track.recording_year = JsonHelper::get_optional<int>(params, "recording_year");
-    new_track.recording_month = JsonHelper::get_optional<int>(params, "recording_month");
-    new_track.recording_day = JsonHelper::get_optional<int>(params, "recording_day");
-    new_track.duration = JsonHelper::get_optional<int>(params, "duration");
-
-    new_track.recording_location = JsonHelper::get_optional<std::string>(params, "recording_location");
-    new_track.isrc = JsonHelper::get_optional<std::string>(params, "isrc");
-    new_track.musicbrainz_id = JsonHelper::get_optional<std::string>(params, "musicbrainz_id");
-    new_track.ytm_id = JsonHelper::get_optional<std::string>(params, "ytm_id");
-    new_track.spotify_id = JsonHelper::get_optional<std::string>(params, "spotify_id");
-
-    // Call: Database
-    auto db_err = DatabaseManager::insert_track(new_track);
-
-    // Return Result
-    if (!db_err) {
-        // Success
-        json response;
-        response["code"] = 201; // Created
-        response["data"]["id"] = new_track.id;
-        response["data"]["pcm_hash"] = new_track.pcm_hash;
-        response["data"]["title"] = new_track.title;
-        response["message"] = "Create Track success.";
-        return response;
-    } else {
-        // Error
-        return ApiResponse::error(ErrorType::DatabaseError, *db_err);
-    }
+    return DatabaseManager::insert_track(track);
 }
 
 std::optional<Track> TrackController::get(const std::string &id) {

@@ -14,7 +14,7 @@ using json = nlohmann::json;
 class TrackController {
   public:
     // Create Track
-    static json create(const json &params);
+    static std::optional<std::string> create(Track &track);
 
     // Get Track
     static std::optional<Track> get(const std::string &id);
