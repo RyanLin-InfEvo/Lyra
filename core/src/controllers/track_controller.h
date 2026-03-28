@@ -17,7 +17,7 @@ class TrackController {
     static json create(const json &params);
 
     // Get Track
-    static std::optional<Track> get(const std::string &uuid);
+    static std::optional<Track> get(const std::string &id);
 
     static std::optional<std::string> update(const TrackUpdate &track_update);
 

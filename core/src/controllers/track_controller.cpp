@@ -76,8 +76,8 @@ json TrackController::create(const json &params) { // `const json &params` is co
     }
 }
 
-std::optional<Track> TrackController::get(const std::string &uuid) {
-    return DatabaseManager::get_track(uuid);
+std::optional<Track> TrackController::get(const std::string &id) {
+    return DatabaseManager::get_track(id);
 }
 
 std::optional<std::string> TrackController::update(const TrackUpdate &track_update) {
@@ -86,15 +86,15 @@ std::optional<std::string> TrackController::update(const TrackUpdate &track_upda
 
 json TrackController::add_artist(const json &params) {
 
-    auto err = JsonValidator::validate(params, {{"track_uuid", JsonFieldType::String, true, StringFormat::UUID},
-                                                {"artist_uuid", JsonFieldType::String, true, StringFormat::UUID},
+    auto err = JsonValidator::validate(params, {{"track_id", JsonFieldType::String, true, StringFormat::UUID},
+                                                {"artist_id", JsonFieldType::String, true, StringFormat::UUID},
                                                 {"role", JsonFieldType::String, false},
                                                 {"position", JsonFieldType::Number, false}});
     if (err)
         return *err;
 
-    const std::string track_id = params["track_uuid"].get<std::string>();
-    const std::string artist_id = params["artist_uuid"].get<std::string>();
+    const std::string track_id = params["track_id"].get<std::string>();
+    const std::string artist_id = params["artist_id"].get<std::string>();
     const std::optional<std::string> role_str = JsonHelper::get_optional<std::string>(params, "role");
     const std::optional<int> position = JsonHelper::get_optional<int>(params, "position");
 
@@ -131,13 +131,13 @@ json TrackController::add_artist(const json &params) {
 
 json TrackController::remove_artist(const json &params) {
 
-    auto err = JsonValidator::validate(params, {{"track_uuid", JsonFieldType::String, true, StringFormat::UUID},
-                                                {"artist_uuid", JsonFieldType::String, true, StringFormat::UUID}});
+    auto err = JsonValidator::validate(params, {{"track_id", JsonFieldType::String, true, StringFormat::UUID},
+                                                {"artist_id", JsonFieldType::String, true, StringFormat::UUID}});
     if (err)
         return *err;
 
-    const std::string track_id = params["track_uuid"].get<std::string>();
-    const std::string artist_id = params["artist_uuid"].get<std::string>();
+    const std::string track_id = params["track_id"].get<std::string>();
+    const std::string artist_id = params["artist_id"].get<std::string>();
 
     auto db_err = DatabaseManager::remove_track_artist(track_id, artist_id);
 
@@ -153,15 +153,15 @@ json TrackController::remove_artist(const json &params) {
 
 json TrackController::update_artist(const json &params) {
 
-    auto err = JsonValidator::validate(params, {{"track_uuid", JsonFieldType::String, true, StringFormat::UUID},
-                                                {"artist_uuid", JsonFieldType::String, true, StringFormat::UUID},
+    auto err = JsonValidator::validate(params, {{"track_id", JsonFieldType::String, true, StringFormat::UUID},
+                                                {"artist_id", JsonFieldType::String, true, StringFormat::UUID},
                                                 {"role", JsonFieldType::String, false},
                                                 {"position", JsonFieldType::Number, false}});
     if (err)
         return *err;
 
-    const std::string track_id = params["track_uuid"].get<std::string>();
-    const std::string artist_id = params["artist_uuid"].get<std::string>();
+    const std::string track_id = params["track_id"].get<std::string>();
+    const std::string artist_id = params["artist_id"].get<std::string>();
     const std::optional<std::string> role_str = JsonHelper::get_optional<std::string>(params, "role");
     const std::optional<int> position = JsonHelper::get_optional<int>(params, "position");
 
@@ -183,8 +183,8 @@ json TrackController::update_artist(const json &params) {
     if (!db_err) {
         json response;
         response["code"] = 200;
-        response["data"]["track_uuid"] = track_id;
-        response["data"]["artist_uuid"] = artist_id;
+        response["data"]["track_id"] = track_id;
+        response["data"]["artist_id"] = artist_id;
         response["data"]["role"] = ArtistRoleMapper::to_string(final_role);
         if (position) {
             response["data"]["position"] = *position;

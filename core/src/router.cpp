@@ -43,11 +43,11 @@ json Router::route(const json &request) {
         response = TrackController::create(params);
     } else if (command == "GetTrack") {
 
-        auto err = JsonValidator::validate(params, {{"uuid", JsonFieldType::String, true, StringFormat::UUID}});
+        auto err = JsonValidator::validate(params, {{"id", JsonFieldType::String, true, StringFormat::UUID}});
         if (err)
             return *err;
 
-        std::optional<Track> track = TrackController::get(params["uuid"].get<std::string>());
+        std::optional<Track> track = TrackController::get(params["id"].get<std::string>());
 
         if (track.has_value()) {
             response = ApiResponse::success(track.value());
