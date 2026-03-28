@@ -45,6 +45,11 @@ char *lyra_dispatch(const char *json_request) {
         error_res["code"] = 400;
         error_res["error"]["message"] = e.what();
         return strdup(error_res.dump().c_str());
+    } catch (...) {
+        json error_res;
+        error_res["code"] = 500;
+        error_res["error"]["message"] = "UNKNOWN_FATAL_ERROR: An unknown error bypassed all exception handlers.";
+        return strdup(error_res.dump().c_str());
     }
 }
 
