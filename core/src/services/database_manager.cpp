@@ -67,7 +67,7 @@ void DatabaseManager::init_database(const std::string &db_path) {
           musicbrainz_id TEXT NULL DEFAULT NULL,
           ytm_id TEXT NULL DEFAULT NULL,
           spotify_id TEXT NULL DEFAULT NULL,
-          PRIMARY KEY (id, pcm_hash),
+          PRIMARY KEY (id),
           CONSTRAINT fk_Track_Entity
             FOREIGN KEY (id)
             REFERENCES Entity (id)
