@@ -35,7 +35,7 @@ std::optional<json> JsonValidator::validate(const json &params,
             return ApiResponse::error(ErrorType::MissingParameter, "Missing required field: '" + current_path + "'");
         }
 
-        // Check: if field exists, and also if type is correct
+        // Check: if field exists, and also if type is matching to expected_type
         if (exists) {
             bool type_valid = false;
 
@@ -56,6 +56,11 @@ std::optional<json> JsonValidator::validate(const json &params,
                 case JsonFieldType::Object:
                     type_valid = params[rule.key].is_object();
                     break;
+            }
+
+            if (!type_valid) {
+                return ApiResponse::error(ErrorType::InvalidValue,
+                                          "Value of key '" + current_path + "' is not a expected type.");
             }
 
             // If is string, "Check length and uuid format"
@@ -81,11 +86,6 @@ std::optional<json> JsonValidator::validate(const json &params,
                                                   "Value of key '" + current_path + "' is not a vaild UUID.");
                     }
                 }
-            }
-
-            if (!type_valid) {
-                return ApiResponse::error(ErrorType::InvalidValue,
-                                          "Value of key '" + current_path + "' is not a expected type.");
             }
 
             // Check: if string is empty
