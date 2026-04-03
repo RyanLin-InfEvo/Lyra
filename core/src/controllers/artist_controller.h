@@ -6,6 +6,7 @@
 
 #pragma once
 
+#include "../models/artist.h"
 #include <nlohmann/json.hpp>
 
 using json = nlohmann::json;
@@ -13,11 +14,11 @@ using json = nlohmann::json;
 class ArtistController {
   public:
     // Create Artist
-    static json create(const json &params);
+    static std::optional<std::string> create(Artist &artist);
 
     // Get Artist
-    static json get(const json &params);
+    static std::optional<Artist> get(const std::string &id);
 
     // Update Artist
-    static json update(const json &params);
+    static std::optional<std::string> update(const ArtistUpdate &artist_update);
 };

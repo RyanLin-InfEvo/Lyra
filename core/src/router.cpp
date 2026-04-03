@@ -27,7 +27,7 @@ json Router::route(const json &request) {
         return response;
     }
 
-    std::string command = request["command"];
+    const std::string command = request["command"];
 
     // Extract parameters,
     // If NULL, return a empty JSON Object
@@ -35,11 +35,64 @@ json Router::route(const json &request) {
 
     // Distribute to different controllers
     if (command == "CreateArtist") {
-        response = ArtistController::create(params);
+        auto err = JsonValidator::validate(
+            params, {{"name", Type::String, true},
+                     {"musicbrainz_id", Type::String, false},
+                     {"ytm_id", Type::String, false},
+                     {"spotify_id", Type::String, false}});
+
+        if (err)
+            return *err;
+
+        Artist artist = params.get<Artist>();
+        auto db_err = ArtistController::create(artist);
+
+        if (!db_err) {
+            response["code"] = 201; // Created
+            response["data"]["id"] = artist.id;
+            response["data"]["name"] = artist.name;
+            response["message"] = "Create Artist success.";
+        } else {
+            response = ApiResponse::error(ErrorType::DatabaseError, *db_err);
+        }
     } else if (command == "UpdateArtist") {
-        response = ArtistController::update(params);
+        auto err = JsonValidator::validate(
+            params, {{"id", Type::String, true, StringFormat::UUID},
+                     {"name", Type::String, false},
+                     {"musicbrainz_id", Type::String, false},
+                     {"ytm_id", Type::String, false},
+                     {"spotify_id", Type::String, false}});
+
+        if (err)
+            return *err;
+
+        ArtistUpdate update_data = params.get<ArtistUpdate>();
+
+        if (!update_data.has_updates()) {
+            return ApiResponse::error(ErrorType::InvalidValue, "No fields provided to update.");
+        }
+
+        auto db_err = ArtistController::update(update_data);
+
+        if (!db_err) {
+            response["code"] = 200;
+            response["data"]["id"] = update_data.id;
+            response["message"] = "Update Artist success.";
+        } else {
+            response = ApiResponse::error(ErrorType::DatabaseError, *db_err);
+        }
     } else if (command == "GetArtist") {
-        response = ArtistController::get(params);
+        auto err = JsonValidator::validate(params, {{"id", Type::String, true, StringFormat::UUID}});
+        if (err)
+            return *err;
+
+        std::optional<Artist> artist = ArtistController::get(params["id"].get<std::string>());
+
+        if (artist.has_value()) {
+            response = ApiResponse::success(artist.value());
+        } else {
+            response = ApiResponse::error(ErrorType::ArtistNotFound, "Artist not found");
+        }
     } else if (command == "CreateTrack") {
         auto err = JsonValidator::validate(
             params,

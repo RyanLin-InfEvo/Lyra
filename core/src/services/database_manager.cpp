@@ -111,9 +111,22 @@ std::optional<std::string> DatabaseManager::insert_artist(const Artist &artist) 
 
         // insert into Artist table
         SQLite::Statement query2(
-            *db, "INSERT INTO Artist (id, name) VALUES (?, ?)");
+            *db, "INSERT INTO Artist (id, name, musicbrainz_id, spotify_id, ytm_id) VALUES (?, ?, ?, ?, ?)");
+
+        auto bind_opt = [&query2](int index, const auto &val) {
+            if (val) {
+                query2.bind(index, *val);
+            } else {
+                query2.bind(index);
+            }
+        };
+
         query2.bind(1, artist.id);
         query2.bind(2, artist.name);
+        bind_opt(3, artist.musicbrainz_id);
+        bind_opt(4, artist.spotify_id);
+        bind_opt(5, artist.ytm_id);
+
         query2.exec();
 
         transaction.commit();
