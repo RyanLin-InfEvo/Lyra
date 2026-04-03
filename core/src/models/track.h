@@ -10,12 +10,7 @@
 #include <optional>
 #include <string>
 
-namespace utils {
-template <typename... Args>
-[[nodiscard]] constexpr bool any_has_value(const std::optional<Args> &...opts) noexcept {
-    return (... || opts.has_value());
-}
-} // namespace utils
+#include "../utils/optional_helper.h"
 
 struct Track {
     std::string id;
