@@ -16,6 +16,7 @@
 
 using json = nlohmann::json;
 using Type = JsonFieldType;
+using namespace lyra;
 
 json Router::route(const json &request) {
     json response;
@@ -53,7 +54,7 @@ json Router::route(const json &request) {
             response["data"]["name"] = artist.name;
             response["message"] = "Create Artist success.";
         } else {
-            response = ApiResponse::error(ErrorType::DatabaseError, *db_err);
+            response = ApiResponse::error({ErrorType::DatabaseError, *db_err});
         }
     } else if (command == "UpdateArtist") {
         auto err = JsonValidator::validate(
@@ -69,7 +70,7 @@ json Router::route(const json &request) {
         ArtistUpdate update_data = params.get<ArtistUpdate>();
 
         if (!update_data.has_updates()) {
-            return ApiResponse::error(ErrorType::InvalidValue, "No fields provided to update.");
+            return ApiResponse::error({ErrorType::InvalidValue, "No fields provided to update."});
         }
 
         auto db_err = ArtistController::update(update_data);
@@ -79,7 +80,7 @@ json Router::route(const json &request) {
             response["data"]["id"] = update_data.id;
             response["message"] = "Update Artist success.";
         } else {
-            response = ApiResponse::error(ErrorType::DatabaseError, *db_err);
+            response = ApiResponse::error({ErrorType::DatabaseError, *db_err});
         }
     } else if (command == "GetArtist") {
         auto err = JsonValidator::validate(params, {{"id", Type::String, true, StringFormat::UUID}});
@@ -91,7 +92,7 @@ json Router::route(const json &request) {
         if (artist.has_value()) {
             response = ApiResponse::success(artist.value());
         } else {
-            response = ApiResponse::error(ErrorType::ArtistNotFound, "Artist not found");
+            response = ApiResponse::error({ErrorType::ArtistNotFound, "Artist not found"});
         }
     } else if (command == "CreateTrack") {
         auto err = JsonValidator::validate(
@@ -122,7 +123,7 @@ json Router::route(const json &request) {
             response["data"]["title"] = track.title;
             response["message"] = "Create Track success.";
         } else {
-            response = ApiResponse::error(ErrorType::DatabaseError, *db_err);
+            response = ApiResponse::error({ErrorType::DatabaseError, *db_err});
         }
     } else if (command == "GetTrack") {
 
@@ -135,7 +136,7 @@ json Router::route(const json &request) {
         if (track.has_value()) {
             response = ApiResponse::success(track.value());
         } else {
-            response = ApiResponse::error(ErrorType::TrackNotFound, "Track not found");
+            response = ApiResponse::error({ErrorType::TrackNotFound, "Track not found"});
         }
 
     } else if (command == "UpdateTrack") {
@@ -146,7 +147,7 @@ json Router::route(const json &request) {
 
         TrackUpdate update_data = params.get<TrackUpdate>();
         if (!update_data.has_updates()) {
-            response = ApiResponse::error(ErrorType::InvalidValue, "No fields provided to update.");
+            response = ApiResponse::error({ErrorType::InvalidValue, "No fields provided to update."});
             return response;
         }
 
@@ -157,7 +158,7 @@ json Router::route(const json &request) {
             response["message"] = "Update Track success.";
         } else {
             // An error string was returned -> Pass the specific DB error up to the client
-            response = ApiResponse::error(ErrorType::DatabaseError, db_err.value());
+            response = ApiResponse::error({ErrorType::DatabaseError, db_err.value()});
         }
 
     } else if (command == "AddTrackArtist") {

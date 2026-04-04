@@ -12,17 +12,22 @@
 
 using json = nlohmann::json;
 
+namespace lyra {
+
 enum class ErrorType {
     // 404 Series
     ArtistNotFound,
     TrackNotFound,
-
     // 400 Series
     MissingParameter,
     InvalidValue,
-
     // 500 Series
     DatabaseError
+};
+
+struct Error {
+    ErrorType type;
+    std::string message;
 };
 
 class ApiResponse {
@@ -31,9 +36,11 @@ class ApiResponse {
     static json success(const json &data);
 
     // Error return
-    static json error(ErrorType type, const std::string &msg);
+    static json error(const Error &err);
 
   private:
     // Mapping 'Enum' to {code, type}
     static std::pair<int, std::string> getErrorMapping(ErrorType type);
 };
+
+} // namespace lyra

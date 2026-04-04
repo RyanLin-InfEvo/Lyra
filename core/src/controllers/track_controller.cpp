@@ -16,6 +16,7 @@
 #include "track_controller.h"
 
 using json = nlohmann::json;
+using namespace lyra;
 
 std::optional<std::string> TrackController::create(Track &track) {
     // Generate UUID for the new track
@@ -51,7 +52,7 @@ json TrackController::add_artist(const json &params) {
     if (role_str) {
         auto parsed_role = ArtistRoleMapper::from_string(*role_str);
         if (!parsed_role) {
-            return ApiResponse::error(ErrorType::InvalidValue, "Invalid role for Track_Artist.");
+            return ApiResponse::error({ErrorType::InvalidValue, "Invalid role for Track_Artist."});
         }
         final_role = *parsed_role;
     }
@@ -73,7 +74,7 @@ json TrackController::add_artist(const json &params) {
         response["message"] = "Add Track_Artist success.";
         return response;
     } else {
-        return ApiResponse::error(ErrorType::DatabaseError, *db_err);
+        return ApiResponse::error({ErrorType::DatabaseError, *db_err});
     }
 }
 
@@ -95,7 +96,7 @@ json TrackController::remove_artist(const json &params) {
         response["message"] = "Remove Track_Artist success.";
         return response;
     } else {
-        return ApiResponse::error(ErrorType::DatabaseError, *db_err);
+        return ApiResponse::error({ErrorType::DatabaseError, *db_err});
     }
 }
 
@@ -118,7 +119,7 @@ json TrackController::update_artist(const json &params) {
     if (role_str) {
         auto parsed_role = ArtistRoleMapper::from_string(*role_str);
         if (!parsed_role) {
-            return ApiResponse::error(ErrorType::InvalidValue, "Invalid role for Track_Artist.");
+            return ApiResponse::error({ErrorType::InvalidValue, "Invalid role for Track_Artist."});
         }
         final_role = *parsed_role;
     }
@@ -140,6 +141,6 @@ json TrackController::update_artist(const json &params) {
         response["message"] = "Update Track_Artist success.";
         return response;
     } else {
-        return ApiResponse::error(ErrorType::DatabaseError, *db_err);
+        return ApiResponse::error({ErrorType::DatabaseError, *db_err});
     }
 }
