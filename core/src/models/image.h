@@ -7,6 +7,8 @@
 #pragma once
 #include <string>
 
+namespace lyra {
+
 struct Image {
     std::string image_hash;
     std::string file_hash;
@@ -14,3 +16,5 @@ struct Image {
     int height = 0;
     std::string dominant_color = "";
 };
+
+} // namespace lyra

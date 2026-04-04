@@ -15,8 +15,9 @@
 #include "../utils/uuid_generator.h"
 #include "track_controller.h"
 
+namespace lyra {
+
 using json = nlohmann::json;
-using namespace lyra;
 
 std::optional<std::string> TrackController::create(Track &track) {
     // Generate UUID for the new track
@@ -144,3 +145,5 @@ json TrackController::update_artist(const json &params) {
         return ApiResponse::error({ErrorType::DatabaseError, *db_err});
     }
 }
+
+} // namespace lyra

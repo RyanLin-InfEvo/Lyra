@@ -9,6 +9,8 @@
 #include "../models/track.h"
 #include <nlohmann/json.hpp>
 
+namespace lyra {
+
 using json = nlohmann::json;
 
 class TrackController {
@@ -25,3 +27,5 @@ class TrackController {
     static json remove_artist(const json &params);
     static json update_artist(const json &params);
 };
+
+} // namespace lyra

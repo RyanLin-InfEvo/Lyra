@@ -7,8 +7,12 @@
 #pragma once
 #include <string>
 
+namespace lyra {
+
 struct Tag {
     std::string id;
     std::string name = "";
     std::string category = "";
 };
+
+} // namespace lyra

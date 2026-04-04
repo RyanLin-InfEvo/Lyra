@@ -7,9 +7,11 @@
 #pragma once
 #include <optional>
 
+namespace lyra {
 namespace utils {
 template <typename... Args>
 [[nodiscard]] constexpr bool any_has_value(const std::optional<Args> &...opts) noexcept {
     return (... || opts.has_value());
 }
 } // namespace utils
+} // namespace lyra

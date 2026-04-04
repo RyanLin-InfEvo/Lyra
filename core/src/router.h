@@ -8,9 +8,13 @@
 
 #include <nlohmann/json.hpp>
 
+namespace lyra {
+
 using json = nlohmann::json;
 
 class Router {
   public:
     static json route(const json &request);
 };
+
+} // namespace lyra

@@ -7,6 +7,8 @@
 #pragma once
 #include <string>
 
+namespace lyra {
+
 struct Audio {
     std::string pcm_hash;
     std::string parent_hash;
@@ -18,3 +20,5 @@ struct Audio {
     double integrated_loudness = 0.0;
     double true_peak = 0.0;
 };
+
+} // namespace lyra

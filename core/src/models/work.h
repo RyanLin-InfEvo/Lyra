@@ -7,6 +7,8 @@
 #pragma once
 #include <string>
 
+namespace lyra {
+
 struct Work {
     std::string id;
     std::string title;
@@ -16,3 +18,5 @@ struct Work {
     std::string iswc;
     std::string musicbrainz_id;
 };
+
+} // namespace lyra

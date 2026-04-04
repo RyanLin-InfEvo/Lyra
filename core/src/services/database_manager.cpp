@@ -11,6 +11,8 @@
 #include "../models/relation_types.h"
 #include "../utils/sqlite_helper.h"
 #include "database_manager.h"
+namespace lyra {
+
 static std::unique_ptr<SQLite::Database> db;
 
 void DatabaseManager::init_database(const std::string &db_path) {
@@ -512,3 +514,5 @@ std::optional<std::string> DatabaseManager::update_track_artist(const TrackArtis
     }
     return std::nullopt;
 }
+
+} // namespace lyra

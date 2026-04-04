@@ -7,6 +7,8 @@
 #pragma once
 #include <string>
 
+namespace lyra {
+
 struct Text {
     std::string text_hash;
     std::string file_hash;
@@ -14,3 +16,5 @@ struct Text {
     std::string encoding = "utf-8";
     std::string format = "";
 };
+
+} // namespace lyra

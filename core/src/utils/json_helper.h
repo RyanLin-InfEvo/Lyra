@@ -10,6 +10,8 @@
 #include <optional>
 #include <string>
 
+namespace lyra {
+
 using json = nlohmann::json;
 
 namespace JsonHelper {
@@ -30,3 +32,5 @@ inline T get_safe(const json &j, const std::string &key, const T &default_val) {
 }
 
 } // namespace JsonHelper
+
+} // namespace lyra

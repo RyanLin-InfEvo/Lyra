@@ -10,6 +10,8 @@
 #include <string>
 #include <vector>
 
+namespace lyra {
+
 using json = nlohmann::json;
 
 // define json field type
@@ -47,3 +49,5 @@ class JsonValidator {
     // helper function: check if string is valid uuid
     static bool is_valid_uuid(const std::string &str);
 };
+
+} // namespace lyra

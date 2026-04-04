@@ -8,6 +8,8 @@
 #include <optional>
 #include <string_view>
 
+namespace lyra {
+
 enum class ArtistRole {
     Main,
     Featured,
@@ -29,3 +31,5 @@ namespace ArtistRoleMapper {
 std::string_view to_string(ArtistRole role);
 std::optional<ArtistRole> from_string(std::string_view role_str);
 } // namespace ArtistRoleMapper
+
+} // namespace lyra

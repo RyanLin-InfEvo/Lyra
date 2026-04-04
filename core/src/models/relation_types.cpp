@@ -6,6 +6,7 @@
 
 #include "relation_types.h"
 
+namespace lyra {
 namespace ArtistRoleMapper {
 
 // clang-format off
@@ -35,4 +36,5 @@ std::string_view to_string(ArtistRole role) {
 // clang-format on
 
 } // namespace ArtistRoleMapper
+} // namespace lyra
 

@@ -9,6 +9,7 @@
 #include <SQLiteCpp/SQLiteCpp.h>
 #include <optional>
 
+namespace lyra {
 namespace SqliteHelper {
 
 // Safely get SQLite column. If not null, return std::optional, else return std::nullopt
@@ -28,3 +29,4 @@ inline T get_safe(SQLite::Statement &query, const char *column_name, const T &de
 }
 
 } // namespace SqliteHelper
+} // namespace lyra

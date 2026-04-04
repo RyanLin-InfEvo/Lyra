@@ -7,6 +7,8 @@
 #pragma once
 #include <string>
 
+namespace lyra {
+
 struct Album {
     std::string id;
     std::string title;
@@ -14,3 +16,5 @@ struct Album {
     int release_month = 0;
     int release_day = 0;
 };
+
+} // namespace lyra

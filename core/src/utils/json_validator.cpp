@@ -11,8 +11,7 @@
 #include "json_validator.h"
 #include "make_error.h"
 
-using json = nlohmann::json;
-using namespace lyra;
+namespace lyra {
 
 bool JsonValidator::is_valid_uuid(const std::string &str) {
     static const std::regex uuid_regex("^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-"
@@ -112,3 +111,5 @@ std::optional<json> JsonValidator::validate(const json &params,
 
     return std::nullopt;
 }
+
+} // namespace lyra

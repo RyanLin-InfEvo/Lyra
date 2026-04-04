@@ -13,6 +13,8 @@
 #include "../models/relation_types.h"
 #include "../models/track.h"
 
+namespace lyra {
+
 class DatabaseManager {
   public:
     // initialize database
@@ -42,3 +44,5 @@ class DatabaseManager {
 
     static std::optional<std::string> update_track_artist(const TrackArtistParams &params);
 };
+
+} // namespace lyra

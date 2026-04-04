@@ -7,6 +7,8 @@
 
 #include "uuid_generator.h"
 
+namespace lyra {
+
 std::string UuidGenerator::generate_v4() {
     thread_local std::random_device rd;
     thread_local std::mt19937 gen(rd());
@@ -16,3 +18,5 @@ std::string UuidGenerator::generate_v4() {
 
     return uuids::to_string(id);
 }
+
+} // namespace lyra

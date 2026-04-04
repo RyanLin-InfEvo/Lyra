@@ -7,6 +7,8 @@
 #pragma once
 #include <string>
 
+namespace lyra {
+
 struct Asset {
     std::string file_hash;
     std::string mime_type = "";
@@ -14,3 +16,5 @@ struct Asset {
     int file_size = 0;
     std::string created_at = "";
 };
+
+} // namespace lyra

@@ -10,6 +10,8 @@
 #include "../utils/uuid_generator.h"
 #include "artist_controller.h"
 
+namespace lyra {
+
 using json = nlohmann::json;
 
 std::optional<std::string> ArtistController::create(Artist &artist) {
@@ -25,3 +27,5 @@ std::optional<Artist> ArtistController::get(const std::string &id) {
 std::optional<std::string> ArtistController::update(const ArtistUpdate &artist_update) {
     return DatabaseManager::update_artist(artist_update);
 }
+
+} // namespace lyra

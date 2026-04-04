@@ -8,7 +8,11 @@
 
 #include <string>
 
+namespace lyra {
+
 class UuidGenerator {
   public:
     static std::string generate_v4();
 };
+
+} // namespace lyra

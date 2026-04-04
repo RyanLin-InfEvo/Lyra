@@ -7,6 +7,8 @@
 #pragma once
 #include <string>
 
+namespace lyra {
+
 struct SourceData {
     std::string id;
     std::string file_hash;
@@ -15,3 +17,5 @@ struct SourceData {
     std::string created_at = "";
     std::string note = "";
 };
+
+} // namespace lyra

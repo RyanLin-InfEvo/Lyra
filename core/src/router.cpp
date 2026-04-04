@@ -14,9 +14,10 @@
 
 #include "router.h"
 
+namespace lyra {
+
 using json = nlohmann::json;
 using Type = JsonFieldType;
-using namespace lyra;
 
 json Router::route(const json &request) {
     json response;
@@ -172,3 +173,5 @@ json Router::route(const json &request) {
 
     return response;
 }
+
+} // namespace lyra

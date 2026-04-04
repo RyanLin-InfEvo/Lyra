@@ -7,8 +7,12 @@
 #pragma once
 #include <string>
 
+namespace lyra {
+
 struct Playlist {
     std::string id;
     std::string title;
     std::string description;
 };
+
+} // namespace lyra

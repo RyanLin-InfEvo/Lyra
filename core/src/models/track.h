@@ -12,6 +12,8 @@
 
 #include "../utils/optional_helper.h"
 
+namespace lyra {
+
 struct Track {
     std::string id;
     std::string pcm_hash;
@@ -67,3 +69,5 @@ struct TrackArtistInfo {
 
 NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(Track, id, pcm_hash, work_id, title, recording_year, recording_month, recording_day, recording_location, duration, isrc, musicbrainz_id, ytm_id, spotify_id)
 NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(TrackUpdate, id, pcm_hash, work_id, title, recording_year, recording_month, recording_day, recording_location, duration, isrc, musicbrainz_id, ytm_id, spotify_id)
+
+} // namespace lyra

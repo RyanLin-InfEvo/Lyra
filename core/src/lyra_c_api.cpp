@@ -12,6 +12,7 @@
 #include "services/database_manager.h"
 
 using json = nlohmann::json;
+using namespace lyra;
 
 // Lyra core initialization
 int lyra_init(const char *storage_root) {

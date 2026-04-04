@@ -9,6 +9,8 @@
 #include "../models/artist.h"
 #include <nlohmann/json.hpp>
 
+namespace lyra {
+
 using json = nlohmann::json;
 
 class ArtistController {
@@ -22,3 +24,5 @@ class ArtistController {
     // Update Artist
     static std::optional<std::string> update(const ArtistUpdate &artist_update);
 };
+
+} // namespace lyra
