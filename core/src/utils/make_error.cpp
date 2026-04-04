@@ -36,17 +36,21 @@ json ApiResponse::error(const Error &err) {
 // Mapping 'Enum' to {code, type}
 std::pair<int, std::string> ApiResponse::getErrorMapping(ErrorType type) {
     switch (type) {
-        // 400 Series
-        case ErrorType::MissingParameter:
-            return {400, "MissingParameter"};
-        case ErrorType::InvalidValue:
-            return {400, "InvalidValue"};
-
         // 404 Series
         case ErrorType::ArtistNotFound:
             return {404, "ArtistNotFound"};
         case ErrorType::TrackNotFound:
             return {404, "TrackNotFound"};
+        case ErrorType::UnknownCommand:
+            return {404, "UnknownCommand"};
+
+        // 400 Series
+        case ErrorType::MissingParameter:
+            return {400, "MissingParameter"};
+        case ErrorType::InvalidValue:
+            return {400, "InvalidValue"};
+        case ErrorType::InvalidCommandFormat:
+            return {400, "InvalidCommandFormat"};
 
         // 500 Series
         case ErrorType::DatabaseError:

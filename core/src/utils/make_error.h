@@ -18,9 +18,11 @@ enum class ErrorType {
     // 404 Series
     ArtistNotFound,
     TrackNotFound,
+    UnknownCommand,
     // 400 Series
     MissingParameter,
     InvalidValue,
+    InvalidCommandFormat,
     // 500 Series
     DatabaseError
 };
