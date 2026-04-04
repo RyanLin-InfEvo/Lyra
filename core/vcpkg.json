@@ -5,6 +5,7 @@
         "nlohmann-json",
         "fmt",
         "sqlitecpp",
-        "stduuid"
+        "stduuid",
+        "tl-expected"
     ]
 }

@@ -18,6 +18,7 @@ find_package(nlohmann_json CONFIG REQUIRED)
 find_package(fmt CONFIG REQUIRED)
 find_package(SQLiteCpp CONFIG REQUIRED)
 find_package(stduuid CONFIG REQUIRED)
+find_package(tl-expected CONFIG REQUIRED)
 
 set(CPP
     src/lyra_c_api.cpp
@@ -42,4 +43,5 @@ target_link_libraries(lyra_core PRIVATE
     fmt::fmt
     SQLiteCpp
     stduuid
+    tl::expected
 )
