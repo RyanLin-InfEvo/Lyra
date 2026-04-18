@@ -14,3 +14,7 @@ fi
 
 cmake -B build -S . $VCPKG_TOOLCHAIN
 cmake --build build
+
+if [ -f compile_commands.json ] || [ -f build/compile_commands.json ]; then
+    ln -sf build/compile_commands.json compile_commands.json
+fi
