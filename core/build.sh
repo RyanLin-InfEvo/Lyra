@@ -1,6 +1,16 @@
+#!/usr/bin/env bash
 # SPDX-FileCopyrightText: 2026 Tzu-Ting Lin
 #
 # SPDX-License-Identifier: AGPL-3.0-or-later
 
-cmake -B build -S . -DCMAKE_TOOLCHAIN_FILE=~/vcpkg/scripts/buildsystems/vcpkg.cmake
+# If ~/vcpkg exists, use it
+if [ -f "$HOME/vcpkg/scripts/buildsystems/vcpkg.cmake" ]; then
+    VCPKG_TOOLCHAIN="-DCMAKE_TOOLCHAIN_FILE=$HOME/vcpkg/scripts/buildsystems/vcpkg.cmake"
+    echo "Using vcpkg toolchain..."
+else
+    VCPKG_TOOLCHAIN=""
+    echo "vcpkg not found, assuming dependencies are provided by system (Nix/apt/brew)..."
+fi
+
+cmake -B build -S . $VCPKG_TOOLCHAIN
 cmake --build build
