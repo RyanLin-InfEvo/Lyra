@@ -18,8 +18,7 @@ static std::unique_ptr<SQLite::Database> db;
 void DatabaseManager::init_database(const std::string &db_path) {
     // open database file. If lyra.db does not exist, create it automatically
     // (OPEN_CREATE)
-    db = std::make_unique<SQLite::Database>(db_path, SQLite::OPEN_READWRITE |
-                                                         SQLite::OPEN_CREATE);
+    db = std::make_unique<SQLite::Database>(db_path, SQLite::OPEN_READWRITE | SQLite::OPEN_CREATE);
 
     // enable WAL mode and foreign key support
     db->exec("PRAGMA journal_mode=WAL;");
@@ -100,20 +99,22 @@ void DatabaseManager::init_database(const std::string &db_path) {
 }
 
 // Insert artist into database table Artist, Entity
+// Return nullopt or error message(string)
 std::optional<std::string> DatabaseManager::insert_artist(const Artist &artist) {
 
     try {
         SQLite::Transaction transaction(*db);
 
         // insert into Entity table
-        SQLite::Statement query1(
-            *db, "INSERT INTO Entity (id, entity_type, created_at, updated_at) VALUES (?, 'artist', datetime('now'), datetime('now'))");
+        SQLite::Statement query1(*db,
+                                 "INSERT INTO Entity (id, entity_type, created_at, updated_at) "
+                                 "VALUES (?, 'artist', datetime('now'), datetime('now'))");
         query1.bind(1, artist.id);
         query1.exec();
 
         // insert into Artist table
-        SQLite::Statement query2(
-            *db, "INSERT INTO Artist (id, name, musicbrainz_id, spotify_id, ytm_id) VALUES (?, ?, ?, ?, ?)");
+        SQLite::Statement query2(*db, "INSERT INTO Artist (id, name, musicbrainz_id, "
+                                      "spotify_id, ytm_id) VALUES (?, ?, ?, ?, ?)");
 
         auto bind_opt = [&query2](int index, const auto &val) {
             if (val) {
@@ -236,20 +237,24 @@ std::optional<Artist> DatabaseManager::get_artist(const std::string &artist_id) 
 }
 
 // Insert track into database
+// Return nullopt or error message(string)
 std::optional<std::string> DatabaseManager::insert_track(const Track &track) {
     try {
         SQLite::Transaction transaction(*db);
 
         // Insert into Entity table
-        SQLite::Statement query1(*db, "INSERT INTO Entity (id, entity_type, created_at, updated_at) VALUES (?, 'track', datetime('now'), datetime('now'))");
+        SQLite::Statement query1(*db,
+                                 "INSERT INTO Entity (id, entity_type, created_at, updated_at) "
+                                 "VALUES (?, 'track', datetime('now'), datetime('now'))");
         query1.bind(1, track.id);
         query1.exec();
 
         // Insert into Track table
-        SQLite::Statement query2(
-            *db,
-            "INSERT INTO Track (id, work_id, pcm_hash, title, recording_year, recording_month, recording_day, recording_location, duration, isrc, musicbrainz_id, ytm_id, spotify_id) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
+        SQLite::Statement query2(*db,
+                                 "INSERT INTO Track (id, work_id, pcm_hash, title, recording_year, "
+                                 "recording_month, recording_day, recording_location, duration, "
+                                 "isrc, musicbrainz_id, ytm_id, spotify_id) "
+                                 "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
 
         // --- Create Lambda helper function ---
         // Bind optional value (store as NULL if no value)
@@ -303,7 +308,8 @@ std::optional<Track> DatabaseManager::get_track(const std::string &track_id) {
         track.recording_year = SqliteHelper::get_optional<int>(query, "recording_year");
         track.recording_month = SqliteHelper::get_optional<int>(query, "recording_month");
         track.recording_day = SqliteHelper::get_optional<int>(query, "recording_day");
-        track.recording_location = SqliteHelper::get_optional<std::string>(query, "recording_location");
+        track.recording_location =
+            SqliteHelper::get_optional<std::string>(query, "recording_location");
         track.duration = SqliteHelper::get_optional<int>(query, "duration");
         track.isrc = SqliteHelper::get_optional<std::string>(query, "isrc");
         track.musicbrainz_id = SqliteHelper::get_optional<std::string>(query, "musicbrainz_id");
@@ -393,7 +399,8 @@ std::optional<std::string> DatabaseManager::update_track(const TrackUpdate &data
         if (affected_rows == 0)
             return "Track ID not found or no changes made.";
 
-        SQLite::Statement update_entity(*db, "UPDATE Entity SET updated_at = datetime('now') WHERE id = ?");
+        SQLite::Statement update_entity(
+            *db, "UPDATE Entity SET updated_at = datetime('now') WHERE id = ?");
         update_entity.bind(1, data.id);
         update_entity.exec();
 
@@ -427,10 +434,15 @@ std::optional<std::string> DatabaseManager::add_track_artist(const TrackArtistPa
         }
 
         // Insert or Replace (Upsert)
-        SQLite::Statement query(*db, "INSERT OR REPLACE INTO Track_Artist (track_id, artist_id, role, position) VALUES (?, ?, ?, ?)");
+        SQLite::Statement query(*db, "INSERT OR REPLACE INTO Track_Artist (track_id, "
+                                     "artist_id, role, position) VALUES (?, ?, ?, ?)");
         query.bind(1, track_id_str);
         query.bind(2, artist_id_str);
-        query.bind(3, std::string(ArtistRoleMapper::to_string(params.role)));
+        if (params.role) {
+            query.bind(3, std::string(ArtistRoleMapper::to_string(*params.role)));
+        } else {
+            query.bind(3); // Bind NULL
+        }
 
         if (params.position) {
             query.bind(4, *params.position);
@@ -441,7 +453,8 @@ std::optional<std::string> DatabaseManager::add_track_artist(const TrackArtistPa
         query.exec();
 
         // Update Entity timestamp
-        SQLite::Statement update_entity(*db, "UPDATE Entity SET updated_at = datetime('now') WHERE id = ?");
+        SQLite::Statement update_entity(
+            *db, "UPDATE Entity SET updated_at = datetime('now') WHERE id = ?");
         update_entity.bind(1, track_id_str);
         update_entity.exec();
 
@@ -452,14 +465,16 @@ std::optional<std::string> DatabaseManager::add_track_artist(const TrackArtistPa
     return std::nullopt;
 }
 
-std::optional<std::string> DatabaseManager::remove_track_artist(std::string_view track_id, std::string_view artist_id) {
+std::optional<std::string> DatabaseManager::remove_track_artist(std::string_view track_id,
+                                                                std::string_view artist_id) {
     try {
         SQLite::Transaction transaction(*db);
 
         const std::string track_id_str(track_id);
         const std::string artist_id_str(artist_id);
 
-        SQLite::Statement query(*db, "DELETE FROM Track_Artist WHERE track_id = ? AND artist_id = ?");
+        SQLite::Statement query(*db,
+                                "DELETE FROM Track_Artist WHERE track_id = ? AND artist_id = ?");
         query.bind(1, track_id_str);
         query.bind(2, artist_id_str);
 
@@ -469,7 +484,8 @@ std::optional<std::string> DatabaseManager::remove_track_artist(std::string_view
         }
 
         // Update Entity timestamp
-        SQLite::Statement update_entity(*db, "UPDATE Entity SET updated_at = datetime('now') WHERE id = ?");
+        SQLite::Statement update_entity(
+            *db, "UPDATE Entity SET updated_at = datetime('now') WHERE id = ?");
         update_entity.bind(1, track_id_str);
         update_entity.exec();
 
@@ -487,8 +503,15 @@ std::optional<std::string> DatabaseManager::update_track_artist(const TrackArtis
         const std::string track_id_str(params.track_id);
         const std::string artist_id_str(params.artist_id);
 
-        SQLite::Statement query(*db, "UPDATE Track_Artist SET role = ?, position = COALESCE(?, position) WHERE track_id = ? AND artist_id = ?");
-        query.bind(1, std::string(ArtistRoleMapper::to_string(params.role)));
+        SQLite::Statement query(*db, "UPDATE Track_Artist SET role = COALESCE(?, role), "
+                                     "position = COALESCE(?, position) WHERE track_id = ? AND "
+                                     "artist_id = ?");
+
+        if (params.role) {
+            query.bind(1, std::string(ArtistRoleMapper::to_string(*params.role)));
+        } else {
+            query.bind(1);
+        }
 
         if (params.position) {
             query.bind(2, *params.position);
@@ -504,7 +527,8 @@ std::optional<std::string> DatabaseManager::update_track_artist(const TrackArtis
             return "Relation not found. Cannot update.";
         }
 
-        SQLite::Statement update_entity(*db, "UPDATE Entity SET updated_at = datetime('now') WHERE id = ?");
+        SQLite::Statement update_entity(
+            *db, "UPDATE Entity SET updated_at = datetime('now') WHERE id = ?");
         update_entity.bind(1, track_id_str);
         update_entity.exec();
 

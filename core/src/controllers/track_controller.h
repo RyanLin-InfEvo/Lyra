@@ -6,15 +6,13 @@
 
 #pragma once
 
+#include "../models/relation_types.h"
 #include "../models/track.h"
-#include <nlohmann/json.hpp>
 
 namespace lyra {
 
-using json = nlohmann::json;
-
 class TrackController {
-  public:
+public:
     // Create Track
     static std::optional<std::string> create(Track &track);
 
@@ -23,9 +21,9 @@ class TrackController {
 
     static std::optional<std::string> update(const TrackUpdate &track_update);
 
-    static json add_artist(const json &params);
-    static json remove_artist(const json &params);
-    static json update_artist(const json &params);
+    static std::optional<std::string> add_artist(const TrackArtistParams &params);
+    static std::optional<std::string> remove_artist(const TrackArtistParams &params);
+    static std::optional<std::string> update_artist(const TrackArtistParams &params);
 };
 
 } // namespace lyra

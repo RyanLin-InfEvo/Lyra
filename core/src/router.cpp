@@ -24,7 +24,8 @@ json Router::route(const json &request) {
 
     // Syntax Check: If 'command' exist in json request
     if (!request.contains("command") || !request["command"].is_string()) {
-        return ApiResponse::error({ErrorType::InvalidCommandFormat, "Missing or invalid 'command' field"});
+        return ApiResponse::error(
+            {ErrorType::InvalidCommandFormat, "Missing or invalid 'command' field"});
     }
 
     const std::string command = request["command"];
@@ -35,11 +36,10 @@ json Router::route(const json &request) {
 
     // Distribute to different controllers
     if (command == "CreateArtist") {
-        auto err = JsonValidator::validate(
-            params, {{"name", Type::String, true},
-                     {"musicbrainz_id", Type::String, false},
-                     {"ytm_id", Type::String, false},
-                     {"spotify_id", Type::String, false}});
+        auto err = JsonValidator::validate(params, {{"name", Type::String, true},
+                                                    {"musicbrainz_id", Type::String, false},
+                                                    {"ytm_id", Type::String, false},
+                                                    {"spotify_id", Type::String, false}});
 
         if (err)
             return *err;
@@ -55,13 +55,13 @@ json Router::route(const json &request) {
         } else {
             response = ApiResponse::error({ErrorType::DatabaseError, *db_err});
         }
+
     } else if (command == "UpdateArtist") {
-        auto err = JsonValidator::validate(
-            params, {{"id", Type::String, true, StringFormat::UUID},
-                     {"name", Type::String, false},
-                     {"musicbrainz_id", Type::String, false},
-                     {"ytm_id", Type::String, false},
-                     {"spotify_id", Type::String, false}});
+        auto err = JsonValidator::validate(params, {{"id", Type::String, true, StringFormat::UUID},
+                                                    {"name", Type::String, false},
+                                                    {"musicbrainz_id", Type::String, false},
+                                                    {"ytm_id", Type::String, false},
+                                                    {"spotify_id", Type::String, false}});
 
         if (err)
             return *err;
@@ -81,8 +81,10 @@ json Router::route(const json &request) {
         } else {
             response = ApiResponse::error({ErrorType::DatabaseError, *db_err});
         }
-    } else if (command == "GetArtist") {
-        auto err = JsonValidator::validate(params, {{"id", Type::String, true, StringFormat::UUID}});
+
+    } else if (command == "GetArtist") { // ------------ GetArtist ------------
+        auto err =
+            JsonValidator::validate(params, {{"id", Type::String, true, StringFormat::UUID}});
         if (err)
             return *err;
 
@@ -94,20 +96,19 @@ json Router::route(const json &request) {
             response = ApiResponse::error({ErrorType::ArtistNotFound, "Artist not found"});
         }
     } else if (command == "CreateTrack") {
-        auto err = JsonValidator::validate(
-            params,
-            {{"pcm_hash", Type::String, true},
-             {"title", Type::String, false},
-             {"work_id", Type::String, false, StringFormat::UUID},
-             {"recording_year", Type::Number, false},
-             {"recording_month", Type::Number, false},
-             {"recording_day", Type::Number, false},
-             {"recording_location", Type::String, false},
-             {"duration", Type::Number, false},
-             {"isrc", Type::String, false},
-             {"musicbrainz_id", Type::String, false},
-             {"ytm_id", Type::String, false},
-             {"spotify_id", Type::String, false}});
+        auto err =
+            JsonValidator::validate(params, {{"pcm_hash", Type::String, true},
+                                             {"title", Type::String, false},
+                                             {"work_id", Type::String, false, StringFormat::UUID},
+                                             {"recording_year", Type::Number, false},
+                                             {"recording_month", Type::Number, false},
+                                             {"recording_day", Type::Number, false},
+                                             {"recording_location", Type::String, false},
+                                             {"duration", Type::Number, false},
+                                             {"isrc", Type::String, false},
+                                             {"musicbrainz_id", Type::String, false},
+                                             {"ytm_id", Type::String, false},
+                                             {"spotify_id", Type::String, false}});
 
         if (err)
             return *err;
@@ -126,7 +127,8 @@ json Router::route(const json &request) {
         }
     } else if (command == "GetTrack") {
 
-        auto err = JsonValidator::validate(params, {{"id", Type::String, true, StringFormat::UUID}});
+        auto err =
+            JsonValidator::validate(params, {{"id", Type::String, true, StringFormat::UUID}});
         if (err)
             return *err;
 
@@ -140,13 +142,15 @@ json Router::route(const json &request) {
 
     } else if (command == "UpdateTrack") {
 
-        auto err = JsonValidator::validate(params, {{"id", Type::String, true, StringFormat::UUID}});
+        auto err =
+            JsonValidator::validate(params, {{"id", Type::String, true, StringFormat::UUID}});
         if (err)
             return *err;
 
         TrackUpdate update_data = params.get<TrackUpdate>();
         if (!update_data.has_updates()) {
-            response = ApiResponse::error({ErrorType::InvalidValue, "No fields provided to update."});
+            response =
+                ApiResponse::error({ErrorType::InvalidValue, "No fields provided to update."});
             return response;
         }
 
@@ -161,11 +165,75 @@ json Router::route(const json &request) {
         }
 
     } else if (command == "AddTrackArtist") {
-        response = TrackController::add_artist(params);
+        auto err = JsonValidator::validate(
+            params, {{"track_id", Type::String, true, StringFormat::UUID},
+                     {"artist_id", Type::String, true, StringFormat::UUID},
+                     {"role", Type::String, true},
+                     {"position", Type::Number, false}});
+        if (err)
+            return *err;
+
+        TrackArtistParams track_artist = params.get<TrackArtistParams>();
+        auto db_err = TrackController::add_artist(track_artist);
+
+        if (!db_err) {
+            response["code"] = 201;
+            response["data"]["track_id"] = track_artist.track_id;
+            response["data"]["artist_id"] = track_artist.artist_id;
+            if (track_artist.role) {
+                response["data"]["role"] = *track_artist.role;
+            }
+            if (track_artist.position) {
+                response["data"]["position"] = *track_artist.position;
+            }
+            response["message"] = "Add Track_Artist success.";
+        } else {
+            response = ApiResponse::error({ErrorType::DatabaseError, *db_err});
+        }
+
     } else if (command == "RemoveTrackArtist") {
-        response = TrackController::remove_artist(params);
+        auto err = JsonValidator::validate(
+            params, {{"track_id", Type::String, true, StringFormat::UUID},
+                     {"artist_id", Type::String, true, StringFormat::UUID}});
+        if (err)
+            return *err;
+
+        TrackArtistParams track_artist = params.get<TrackArtistParams>();
+        auto db_err = TrackController::remove_artist(track_artist);
+
+        if (!db_err) {
+            response["code"] = 200;
+            response["message"] = "Remove Track_Artist success.";
+        } else {
+            response = ApiResponse::error({ErrorType::DatabaseError, *db_err});
+        }
+
     } else if (command == "UpdateTrackArtist") {
-        response = TrackController::update_artist(params);
+        auto err = JsonValidator::validate(
+            params, {{"track_id", Type::String, true, StringFormat::UUID},
+                     {"artist_id", Type::String, true, StringFormat::UUID},
+                     {"role", Type::String, false},
+                     {"position", Type::Number, false}});
+        if (err)
+            return *err;
+
+        TrackArtistParams track_artist = params.get<TrackArtistParams>();
+        auto db_err = TrackController::update_artist(track_artist);
+
+        if (!db_err) {
+            response["code"] = 200;
+            response["data"]["track_id"] = track_artist.track_id;
+            response["data"]["artist_id"] = track_artist.artist_id;
+            if (track_artist.role) {
+                response["data"]["role"] = *track_artist.role;
+            }
+            if (track_artist.position) {
+                response["data"]["position"] = *track_artist.position;
+            }
+            response["message"] = "Update Track_Artist success.";
+        } else {
+            response = ApiResponse::error({ErrorType::DatabaseError, *db_err});
+        }
     } else {
         // Error: Unknown command
         return ApiResponse::error({ErrorType::UnknownCommand, "Unknown command: " + command});
