@@ -12,6 +12,7 @@ vcpkg_installed/
 *.exe
 *.o
 *.a
+*.gch
 .cache/
 
 # Flutter Build Artifacts
