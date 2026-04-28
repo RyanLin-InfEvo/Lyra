@@ -1,0 +1,9 @@
+version = 1
+SPDX-PackageName = "Lyra"
+SPDX-PackageDownloadLocation = "https://github.com/RyanLin-InfEvo/Lyra"
+
+[[annotations]]
+path = ["core/shell.nix", "core/build.sh", "core/vcpkg.json", ".clang-format", ".editorconfig", ".gitignore"]
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2026 Tzu-Ting Lin"
+SPDX-License-Identifier = "CC0-1.0"

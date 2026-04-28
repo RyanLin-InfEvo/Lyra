@@ -32,8 +32,8 @@ docs/Lyra_Design_Document_AI.md
 *.db-wal
 core/compile_commands.json
 compile_commands.json
-.editorconfig
-.clang-format
+# .editorconfig
+# .clang-format
 Lyra.code-workspace
 
 # Test

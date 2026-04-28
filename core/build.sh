@@ -1,7 +1,4 @@
 #!/usr/bin/env bash
-# SPDX-FileCopyrightText: 2026 Tzu-Ting Lin
-#
-# SPDX-License-Identifier: AGPL-3.0-or-later
 
 # If ~/vcpkg exists, use it
 if [ -f "$HOME/vcpkg/scripts/buildsystems/vcpkg.cmake" ]; then

@@ -1,14 +1,12 @@
 { pkgs ? import <nixpkgs> {} }:
 
 pkgs.mkShell {
-  # 編譯工具
   nativeBuildInputs = with pkgs; [
     cmake
     gnumake
     pkg-config
   ];
 
-  # 程式碼依賴的函式庫
   buildInputs = with pkgs; [
     nlohmann_json
     fmt
