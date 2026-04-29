@@ -43,7 +43,6 @@ std::optional<json> JsonValidator::validate(const json &params,
 
             switch (rule.expected_type) {
                 case JsonFieldType::String:
-                case JsonFieldType::UUID:
                     type_valid = params[rule.key].is_string();
                     break;
                 case JsonFieldType::Number:
@@ -60,32 +59,35 @@ std::optional<json> JsonValidator::validate(const json &params,
                     break;
             }
 
+            // `type_valid` == false, the value of `params[rule.key]` is not matching any expected types
             if (!type_valid) {
                 return ApiResponse::error({ErrorType::InvalidValue,
-                                          "Value of key '" + current_path + "' is not a expected type."});
+                                           "Value of key '" + current_path + "' is not a expected type."});
             }
 
-            // If is string, "Check length and uuid format"
+            // Special check for "String"
             if (rule.expected_type == JsonFieldType::String) {
 
                 // Get string value
                 std::string str_val = params[rule.key].get<std::string>();
 
-                // Check length
+                // Check length if
+                // 1. too short
                 if (rule.min_length.has_value() && str_val.length() < rule.min_length.value()) {
                     return ApiResponse::error({ErrorType::InvalidValue,
-                                              "Value of key '" + current_path + "' is too short. Min length is " + std::to_string(rule.max_length.value())});
+                                               "Value of key '" + current_path + "' is too short. Min length is " + std::to_string(rule.min_length.value())});
                 }
+                // 2. too long
                 if (rule.max_length.has_value() && str_val.length() > rule.max_length.value()) {
                     return ApiResponse::error({ErrorType::InvalidValue,
-                                              "Value of key '" + current_path + "' is too long. Max length is " + std::to_string(rule.max_length.value())});
+                                               "Value of key '" + current_path + "' is too long. Max length is " + std::to_string(rule.max_length.value())});
                 }
 
-                // Check UUID format
+                // Check string format : UUID
                 if (rule.string_format == StringFormat::UUID) {
                     if (!is_valid_uuid(str_val)) {
                         return ApiResponse::error({ErrorType::InvalidValue,
-                                                  "Value of key '" + current_path + "' is not a vaild UUID."});
+                                                   "Value of key '" + current_path + "' is not a vaild UUID."});
                     }
                 }
             }
@@ -93,7 +95,7 @@ std::optional<json> JsonValidator::validate(const json &params,
             // Check: if string is empty
             if (rule.expected_type == JsonFieldType::String && params[rule.key].get<std::string>().empty()) {
                 return ApiResponse::error({ErrorType::InvalidValue,
-                                          "Value of key '" + current_path + "' should not be empty."});
+                                           "Value of key '" + current_path + "' should not be empty."});
             }
 
             // Check: if object is not empty, and also if children is not empty
