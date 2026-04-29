@@ -38,8 +38,8 @@ class TestJsonValidator(BaseLyraTestCase):
 
     def test_string_format_uuid(self):
         """Test invalid UUID format"""
-        # ArtistController::get requires 'uuid' (StringFormat::UUID)
-        res = self.dispatch("GetArtist", {"uuid": "invalid-uuid-format"})
+        # ArtistController::get requires 'id' (StringFormat::UUID)
+        res = self.dispatch("GetArtist", {"id": "invalid-uuid-format"})
         self.assertEqual(res["code"], 400)
         self.assertEqual(res["error"].get("type"), "InvalidValue", f"Unexpected response: {res}")
         # 'vaild' is a typo in the original C++ error message

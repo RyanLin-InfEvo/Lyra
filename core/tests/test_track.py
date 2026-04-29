@@ -42,20 +42,20 @@ class TesttrackController(BaseLyraTestCase):
         res_create = self.dispatch("CreateTrack", {"pcm_hash": pcm_hash, "title": "Get Target Track"})
         self.assertEqual(res_create["code"], 201)
 
-        res_get = self.dispatch("GetTrack", {"uuid": res_create["data"]["id"]})
+        res_get = self.dispatch("GetTrack", {"id": res_create["data"]["id"]})
         self.assertEqual(res_get["code"], 200)
         self.assertEqual(res_get["data"]["id"], res_create["data"]["id"])
         self.assertEqual(res_get["data"]["pcm_hash"], pcm_hash)
 
     def test_track_get_invalid_uuid(self):
         """Test fetching Track with invalid UUID format: Should trigger validation error"""
-        res = self.dispatch("GetTrack", {"uuid": "invalid-uuid"})
+        res = self.dispatch("GetTrack", {"id": "invalid-uuid"})
         self.assertEqual(res["code"], 400)
         self.assertEqual(res["error"]["type"], "InvalidValue")
 
     def test_track_get_not_found(self):
         """Test fetching a non-existent Track: Should return 404 (TrackNotFound)"""
-        res = self.dispatch("GetTrack", {"uuid": str(uuid.uuid4())})
+        res = self.dispatch("GetTrack", {"id": str(uuid.uuid4())})
         self.assertEqual(res["code"], 404)
         self.assertEqual(res["error"]["type"], "TrackNotFound")
 
@@ -73,7 +73,7 @@ class TesttrackController(BaseLyraTestCase):
         res_update = self.dispatch("UpdateTrack", {"id": real_id, "title": updated_title})
         self.assertEqual(res_update["code"], 200)
         
-        res_get = self.dispatch("GetTrack", {"uuid": real_id})
+        res_get = self.dispatch("GetTrack", {"id": real_id})
         self.assertEqual(res_get["data"]["title"], updated_title)
 
     def test_track_update_no_fields(self):
@@ -103,14 +103,14 @@ class TesttrackController(BaseLyraTestCase):
         artist_id = res_artist["data"]["id"]
         
         res_add = self.dispatch("AddTrackArtist", {
-            "track_uuid": track_id, 
-            "artist_uuid": artist_id,
+            "track_id": track_id, 
+            "artist_id": artist_id,
             "role": "main",
             "position": 1
         })
         self.assertEqual(res_add["code"], 201)
-        self.assertEqual(res_add["data"]["track_uuid"], track_id)
-        self.assertEqual(res_add["data"]["artist_uuid"], artist_id)
+        self.assertEqual(res_add["data"]["track_id"], track_id)
+        self.assertEqual(res_add["data"]["artist_id"], artist_id)
         self.assertEqual(res_add["data"]["role"], "main")
         self.assertEqual(res_add["data"]["position"], 1)
 
@@ -122,14 +122,14 @@ class TesttrackController(BaseLyraTestCase):
         artist_id = res_artist["data"]["id"]
         
         self.dispatch("AddTrackArtist", {
-            "track_uuid": track_id, 
-            "artist_uuid": artist_id,
+            "track_id": track_id, 
+            "artist_id": artist_id,
             "role": "featured"
         })
         
         res_remove = self.dispatch("RemoveTrackArtist", {
-            "track_uuid": track_id,
-            "artist_uuid": artist_id
+            "track_id": track_id,
+            "artist_id": artist_id
         })
         self.assertEqual(res_remove["code"], 200)
 
@@ -141,15 +141,15 @@ class TesttrackController(BaseLyraTestCase):
         artist_id = res_artist["data"]["id"]
         
         self.dispatch("AddTrackArtist", {
-            "track_uuid": track_id, 
-            "artist_uuid": artist_id,
+            "track_id": track_id, 
+            "artist_id": artist_id,
             "role": "performer",
             "position": 5
         })
         
         res_update = self.dispatch("UpdateTrackArtist", {
-            "track_uuid": track_id,
-            "artist_uuid": artist_id,
+            "track_id": track_id,
+            "artist_id": artist_id,
             "role": "producer"
         })
         self.assertEqual(res_update["code"], 200)

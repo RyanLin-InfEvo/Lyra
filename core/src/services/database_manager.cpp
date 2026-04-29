@@ -214,7 +214,7 @@ std::optional<std::string> DatabaseManager::update_artist(const ArtistUpdate &da
         int affected_rows = query.exec();
         if (affected_rows == 0) {
             // Rollback is automatic if not committed
-            return "Artist ID not found or no changes made.";
+            return "Artist ID not found.";
         }
 
         // Update successful, sync Entity updated_at
@@ -420,6 +420,20 @@ std::optional<std::string> DatabaseManager::update_track(const TrackUpdate &data
 
         int affected_rows = query.exec();
         if (affected_rows == 0)
+            return "Track ID not found.";
+
+        SQLite::Statement update_entity(
+            *db, "UPDATE Entity SET updated_at = datetime('now') WHERE id = ?");
+        update_entity.bind(1, data.id);
+        update_entity.exec();
+
+        transaction.commit();
+    } catch (const std::exception &e) {
+        return e.what();
+    }
+    return std::nullopt;
+}
+
 // Insert work into database
 std::optional<std::string> DatabaseManager::insert_work(const Work &work) {
     try {
