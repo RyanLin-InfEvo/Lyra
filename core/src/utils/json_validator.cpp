@@ -48,6 +48,10 @@ std::optional<json> JsonValidator::validate(const json &params,
                 case JsonFieldType::Number:
                     type_valid = params[rule.key].is_number();
                     break;
+                case JsonFieldType::Integer:
+                case JsonFieldType::Year:
+                    type_valid = params[rule.key].is_number_integer();
+                    break;
                 case JsonFieldType::Boolean:
                     type_valid = params[rule.key].is_boolean();
                     break;
@@ -90,7 +94,18 @@ std::optional<json> JsonValidator::validate(const json &params,
                                                    "Value of key '" + current_path + "' is not a vaild UUID."});
                     }
                 }
+            } // TODO: If min_length.has_value() or max_length.has_value() but rule.expected_type != JsonFieldType::String, return error
+
+            // Special check for "Year"
+            if (rule.expected_type == JsonFieldType::Year) {
+                int64_t year_val = params[rule.key].get<int64_t>();
+                if (year_val < 1 || year_val > 3000) {
+                    return ApiResponse::error({ErrorType::OutOfRange,
+                                               "Value of key '" + current_path + "' is out of reasonable year range (1-3000)."});
+                }
             }
+
+
 
             // Check: if string is empty
             if (rule.expected_type == JsonFieldType::String && params[rule.key].get<std::string>().empty()) {

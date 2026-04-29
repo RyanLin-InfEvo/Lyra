@@ -24,6 +24,7 @@ enum class ErrorType {
     MissingParameter,
     InvalidValue,
     InvalidCommandFormat,
+    OutOfRange,
     // 500 Series
     DatabaseError
 };

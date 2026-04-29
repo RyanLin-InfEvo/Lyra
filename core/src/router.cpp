@@ -101,11 +101,11 @@ json Router::route(const json &request) {
             JsonValidator::validate(params, {{"pcm_hash", Type::String, true},
                                              {"title", Type::String, false},
                                              {"work_id", Type::String, false, StringFormat::UUID},
-                                             {"recording_year", Type::Number, false},
-                                             {"recording_month", Type::Number, false},
-                                             {"recording_day", Type::Number, false},
+                                             {"recording_year", Type::Year, false},
+                                             {"recording_month", Type::Integer, false},
+                                             {"recording_day", Type::Integer, false},
                                              {"recording_location", Type::String, false},
-                                             {"duration", Type::Number, false},
+                                             {"duration", Type::Integer, false},
                                              {"isrc", Type::String, false},
                                              {"musicbrainz_id", Type::String, false},
                                              {"ytm_id", Type::String, false},
@@ -168,14 +168,22 @@ json Router::route(const json &request) {
     } else if (command == "CreateWork") {
         auto err = JsonValidator::validate(params, {
             {"title", Type::String, true},
-            {"composition_start_year", Type::Number, false},
-            {"composition_end_year", Type::Number, false},
+            {"composition_start_year", Type::Year, false},
+            {"composition_end_year", Type::Year, false},
             {"composition_date_text", Type::String, false},
             {"iswc", Type::String, false},
             {"musicbrainz_id", Type::String, false}
         });
 
         if (err) return *err;
+
+        // Validate composition_start_year <= composition_end_year
+        if (params.contains("composition_start_year") && params["composition_start_year"].is_number() &&
+            params.contains("composition_end_year") && params["composition_end_year"].is_number()) {
+            if (params["composition_start_year"].get<int>() > params["composition_end_year"].get<int>()) {
+                return ApiResponse::error({ErrorType::OutOfRange, "composition_start_year cannot be greater than composition_end_year"});
+            }
+        }
 
         Work work = params.get<Work>();
         auto db_err = WorkController::create(work);
@@ -190,7 +198,8 @@ json Router::route(const json &request) {
 
     } else if (command == "GetWork") {
         auto err = JsonValidator::validate(params, {{"id", Type::String, true, StringFormat::UUID}});
-        if (err) return *err;
+        if (err)
+            return *err;
 
         std::optional<Work> work = WorkController::get(params["id"].get<std::string>());
 
@@ -204,14 +213,22 @@ json Router::route(const json &request) {
         auto err = JsonValidator::validate(params, {
             {"id", Type::String, true, StringFormat::UUID},
             {"title", Type::String, false},
-            {"composition_start_year", Type::Number, false},
-            {"composition_end_year", Type::Number, false},
+            {"composition_start_year", Type::Year, false},
+            {"composition_end_year", Type::Year, false},
             {"composition_date_text", Type::String, false},
             {"iswc", Type::String, false},
             {"musicbrainz_id", Type::String, false}
         });
 
         if (err) return *err;
+
+        // Validate composition_start_year <= composition_end_year
+        if (params.contains("composition_start_year") && params["composition_start_year"].is_number() &&
+            params.contains("composition_end_year") && params["composition_end_year"].is_number()) {
+            if (params["composition_start_year"].get<int>() > params["composition_end_year"].get<int>()) {
+                return ApiResponse::error({ErrorType::OutOfRange, "composition_start_year cannot be greater than composition_end_year"});
+            }
+        }
 
         WorkUpdate update_data = params.get<WorkUpdate>();
 
@@ -233,7 +250,7 @@ json Router::route(const json &request) {
             params, {{"track_id", Type::String, true, StringFormat::UUID},
                      {"artist_id", Type::String, true, StringFormat::UUID},
                      {"role", Type::String, true},
-                     {"position", Type::Number, false}});
+                     {"position", Type::Integer, false}});
         if (err)
             return *err;
 
@@ -277,7 +294,7 @@ json Router::route(const json &request) {
             params, {{"track_id", Type::String, true, StringFormat::UUID},
                      {"artist_id", Type::String, true, StringFormat::UUID},
                      {"role", Type::String, false},
-                     {"position", Type::Number, false}});
+                     {"position", Type::Integer, false}});
         if (err)
             return *err;
 

@@ -17,6 +17,8 @@ using json = nlohmann::json;
 // define json field type
 enum class JsonFieldType { String,
                            Number,
+                           Integer,
+                           Year,
                            Boolean,
                            Array,
                            Object };

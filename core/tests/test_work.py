@@ -43,6 +43,45 @@ class TestWorkController(BaseLyraTestCase):
         self.assertEqual(res["code"], 400)
         self.assertTrue("error" in res)
 
+    def test_work_create_unreasonable_composition_year(self):
+        """Test composition year out of range: Should return 400"""
+        work_title = "Symphony No. 5"
+        work_id = str(uuid.uuid4())
+        res = self.dispatch("CreateWork", {
+            "id": work_id, 
+            "title": work_title,
+            "composition_start_year": 0,
+            "composition_end_year": 6000
+        })
+        self.assertEqual(res["code"], 400)
+        self.assertEqual(res["error"]["type"], "OutOfRange")
+
+    def test_work_create_composition_year_end_earlier_than_start(self):
+        """Test composition year end earlier than start: Should return 400"""
+        work_title = "Symphony No. 5"
+        work_id = str(uuid.uuid4())
+        res = self.dispatch("CreateWork", {
+            "id": work_id, 
+            "title": work_title,
+            "composition_start_year": 1900,
+            "composition_end_year": 1800
+        })
+        self.assertEqual(res["code"], 400)
+        self.assertEqual(res["error"]["type"], "OutOfRange")
+
+    def test_work_create_composition_year_out_of_range(self):
+        """Test composition year out of range: Should return 400"""
+        work_title = "Symphony No. 5"
+        work_id = str(uuid.uuid4())
+        res = self.dispatch("CreateWork", {
+            "id": work_id, 
+            "title": work_title,
+            "composition_start_year": -1,
+            "composition_end_year": 65536
+        })
+        self.assertEqual(res["code"], 400)
+        self.assertEqual(res["error"]["type"], "OutOfRange")
+
     # -----------
     # Get Test
     # -----------
