@@ -8,6 +8,7 @@
 
 #include "controllers/artist_controller.h"
 #include "controllers/track_controller.h"
+#include "controllers/work_controller.h"
 #include "models/track.h"
 #include "utils/json_validator.h"
 #include "utils/make_error.h"
@@ -162,6 +163,69 @@ json Router::route(const json &request) {
         } else {
             // An error string was returned -> Pass the specific DB error up to the client
             response = ApiResponse::error({ErrorType::DatabaseError, db_err.value()});
+        }
+
+    } else if (command == "CreateWork") {
+        auto err = JsonValidator::validate(params, {
+            {"title", Type::String, true},
+            {"composition_start_year", Type::Number, false},
+            {"composition_end_year", Type::Number, false},
+            {"composition_date_text", Type::String, false},
+            {"iswc", Type::String, false},
+            {"musicbrainz_id", Type::String, false}
+        });
+
+        if (err) return *err;
+
+        Work work = params.get<Work>();
+        auto db_err = WorkController::create(work);
+
+        if (!db_err) {
+            response["code"] = 201;
+            response["data"] = work;
+            response["message"] = "Create Work success.";
+        } else {
+            response = ApiResponse::error({ErrorType::DatabaseError, *db_err});
+        }
+
+    } else if (command == "GetWork") {
+        auto err = JsonValidator::validate(params, {{"id", Type::String, true, StringFormat::UUID}});
+        if (err) return *err;
+
+        std::optional<Work> work = WorkController::get(params["id"].get<std::string>());
+
+        if (work.has_value()) {
+            response = ApiResponse::success(work.value());
+        } else {
+            response = ApiResponse::error({ErrorType::WorkNotFound, "Work not found"});
+        }
+
+    } else if (command == "UpdateWork") {
+        auto err = JsonValidator::validate(params, {
+            {"id", Type::String, true, StringFormat::UUID},
+            {"title", Type::String, false},
+            {"composition_start_year", Type::Number, false},
+            {"composition_end_year", Type::Number, false},
+            {"composition_date_text", Type::String, false},
+            {"iswc", Type::String, false},
+            {"musicbrainz_id", Type::String, false}
+        });
+
+        if (err) return *err;
+
+        WorkUpdate update_data = params.get<WorkUpdate>();
+
+        if (!update_data.has_updates()) {
+            return ApiResponse::error({ErrorType::InvalidValue, "No fields provided to update."});
+        }
+
+        auto db_err = WorkController::update(update_data);
+
+        if (!db_err) {
+            response = ApiResponse::success({{"id", update_data.id}});
+            response["message"] = "Update Work success.";
+        } else {
+            response = ApiResponse::error({ErrorType::DatabaseError, *db_err});
         }
 
     } else if (command == "AddTrackArtist") {

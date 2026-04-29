@@ -12,6 +12,7 @@
 #include "../models/artist.h"
 #include "../models/relation_types.h"
 #include "../models/track.h"
+#include "../models/work.h"
 
 namespace lyra {
 
@@ -37,6 +38,15 @@ class DatabaseManager {
 
     // update track
     static std::optional<std::string> update_track(const TrackUpdate &update_data);
+
+    // insert work into database
+    static std::optional<std::string> insert_work(const Work &work);
+
+    // get a work from database
+    static std::optional<Work> get_work(const std::string &work_id);
+
+    // update work
+    static std::optional<std::string> update_work(const WorkUpdate &update_data);
 
     static std::optional<std::string> add_track_artist(const TrackArtistParams &params);
 

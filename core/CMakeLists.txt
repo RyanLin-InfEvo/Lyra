@@ -30,6 +30,7 @@ set(CPP
     src/models/relation_types.cpp
     src/controllers/artist_controller.cpp
     src/controllers/track_controller.cpp
+    src/controllers/work_controller.cpp
 )
 
 add_library(lyra_core SHARED ${CPP})

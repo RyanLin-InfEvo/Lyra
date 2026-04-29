@@ -39,3 +39,4 @@ Lyra.code-workspace
 # Test
 __pycache__/
 core/tests/manual_api_request_test.py
+.directory

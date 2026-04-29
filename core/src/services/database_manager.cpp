@@ -96,6 +96,29 @@ void DatabaseManager::init_database(const std::string &db_path) {
             ON UPDATE CASCADE
         );
     )");
+
+    // create Work table
+    db->exec(R"(
+        CREATE TABLE IF NOT EXISTS Work (
+          id TEXT NOT NULL,
+          title TEXT NOT NULL,
+          composition_start_year INTEGER NULL DEFAULT NULL,
+          composition_end_year INTEGER NULL DEFAULT NULL,
+          composition_date_text TEXT NULL DEFAULT NULL,
+          iswc TEXT NULL DEFAULT NULL UNIQUE,
+          musicbrainz_id TEXT NULL DEFAULT NULL,
+          PRIMARY KEY (id),
+          CONSTRAINT fk_Work_Entity
+            FOREIGN KEY (id)
+            REFERENCES Entity (id)
+            ON DELETE CASCADE
+            ON UPDATE CASCADE,
+          CHECK (composition_start_year <= composition_end_year)
+        );
+    )");
+
+    db->exec("CREATE INDEX IF NOT EXISTS idx_Work_iswc ON Work (iswc);");
+    db->exec("CREATE INDEX IF NOT EXISTS idx_Work_musicbrainz_id ON Work (musicbrainz_id);");
 }
 
 // Insert artist into database table Artist, Entity
@@ -397,7 +420,120 @@ std::optional<std::string> DatabaseManager::update_track(const TrackUpdate &data
 
         int affected_rows = query.exec();
         if (affected_rows == 0)
-            return "Track ID not found or no changes made.";
+// Insert work into database
+std::optional<std::string> DatabaseManager::insert_work(const Work &work) {
+    try {
+        SQLite::Transaction transaction(*db);
+
+        // Insert into Entity table
+        SQLite::Statement query1(*db,
+                                 "INSERT INTO Entity (id, entity_type, created_at, updated_at) "
+                                 "VALUES (?, 'work', datetime('now'), datetime('now'))");
+        query1.bind(1, work.id);
+        query1.exec();
+
+        // Insert into Work table
+        SQLite::Statement query2(*db, "INSERT INTO Work (id, title, composition_start_year, "
+                                      "composition_end_year, composition_date_text, iswc, "
+                                      "musicbrainz_id) VALUES (?, ?, ?, ?, ?, ?, ?)");
+
+        auto bind_opt = [&query2](int index, const auto &val) {
+            if (val) {
+                query2.bind(index, *val);
+            } else {
+                query2.bind(index);
+            }
+        };
+
+        query2.bind(1, work.id);
+        query2.bind(2, work.title);
+        bind_opt(3, work.composition_start_year);
+        bind_opt(4, work.composition_end_year);
+        bind_opt(5, work.composition_date_text);
+        bind_opt(6, work.iswc);
+        bind_opt(7, work.musicbrainz_id);
+
+        query2.exec();
+        transaction.commit();
+    } catch (const std::exception &e) {
+        return e.what();
+    }
+    return std::nullopt;
+}
+
+// Get work from database
+std::optional<Work> DatabaseManager::get_work(const std::string &work_id) {
+    SQLite::Statement query(*db, "SELECT * FROM Work WHERE id = ?");
+    query.bind(1, work_id);
+
+    if (query.executeStep()) {
+        Work work;
+        work.id = query.getColumn("id").getString();
+        work.title = query.getColumn("title").getString();
+        work.composition_start_year =
+            SqliteHelper::get_optional<int>(query, "composition_start_year");
+        work.composition_end_year = SqliteHelper::get_optional<int>(query, "composition_end_year");
+        work.composition_date_text =
+            SqliteHelper::get_optional<std::string>(query, "composition_date_text");
+        work.iswc = SqliteHelper::get_optional<std::string>(query, "iswc");
+        work.musicbrainz_id = SqliteHelper::get_optional<std::string>(query, "musicbrainz_id");
+        return work;
+    }
+    return std::nullopt;
+}
+
+// update work
+std::optional<std::string> DatabaseManager::update_work(const WorkUpdate &data) {
+    try {
+        std::string sql = "UPDATE Work SET ";
+        std::vector<std::string> fields;
+        fields.reserve(6);
+
+        if (data.title)
+            fields.emplace_back("title = ?");
+        if (data.composition_start_year)
+            fields.emplace_back("composition_start_year = ?");
+        if (data.composition_end_year)
+            fields.emplace_back("composition_end_year = ?");
+        if (data.composition_date_text)
+            fields.emplace_back("composition_date_text = ?");
+        if (data.iswc)
+            fields.emplace_back("iswc = ?");
+        if (data.musicbrainz_id)
+            fields.emplace_back("musicbrainz_id = ?");
+
+        if (fields.empty())
+            return std::nullopt;
+
+        for (size_t i = 0; i < fields.size(); ++i) {
+            sql += fields[i];
+            if (i < fields.size() - 1)
+                sql += ", ";
+        }
+        sql += " WHERE id = ?";
+
+        SQLite::Transaction transaction(*db);
+        SQLite::Statement query(*db, sql);
+
+        int bind_idx = 1;
+        if (data.title)
+            query.bind(bind_idx++, *data.title);
+        if (data.composition_start_year)
+            query.bind(bind_idx++, *data.composition_start_year);
+        if (data.composition_end_year)
+            query.bind(bind_idx++, *data.composition_end_year);
+        if (data.composition_date_text)
+            query.bind(bind_idx++, *data.composition_date_text);
+        if (data.iswc)
+            query.bind(bind_idx++, *data.iswc);
+        if (data.musicbrainz_id)
+            query.bind(bind_idx++, *data.musicbrainz_id);
+
+        query.bind(bind_idx, data.id);
+
+        int affected_rows = query.exec();
+        if (affected_rows == 0)
+            return "Work ID not found.";
 
         SQLite::Statement update_entity(
             *db, "UPDATE Entity SET updated_at = datetime('now') WHERE id = ?");
