@@ -28,9 +28,24 @@ int lyra_init(const char *storage_root) {
 
 char *lyra_dispatch(const char *json_request) {
     try {
+        if (json_request == nullptr) {
+            throw std::invalid_argument("JSON request is null");
+        }
 
-        // Parsing JSON strings into JSON objects
-        json request = json::parse(json_request);
+        // Security: Limit JSON length to prevent DoS (10MB)
+        const size_t MAX_JSON_LENGTH = 10 * 1024 * 1024;
+        if (strnlen(json_request, MAX_JSON_LENGTH + 1) > MAX_JSON_LENGTH) {
+            throw std::runtime_error("JSON request exceeds maximum length (10MB)");
+        }
+
+        // Security: Limit JSON depth to prevent stack overflow (max 64 levels)
+        const int MAX_JSON_DEPTH = 64;
+        json request = json::parse(json_request, [](int depth, json::parse_event_t event, json &parsed) {
+            if (depth > MAX_JSON_DEPTH) {
+                throw std::runtime_error("JSON exceeds maximum nesting depth (64)");
+            }
+            return true;
+        });
 
         json response = Router::route(request);
 
