@@ -3,7 +3,15 @@ SPDX-PackageName = "Lyra"
 SPDX-PackageDownloadLocation = "https://github.com/RyanLin-InfEvo/Lyra"
 
 [[annotations]]
-path = ["core/shell.nix", "core/build.sh", "core/vcpkg.json", ".clang-format", ".editorconfig", ".gitignore"]
+path = ["core/shell.nix", 
+"core/build.sh", 
+"core/vcpkg.json", 
+".clang-format", 
+".editorconfig", 
+".gitignore",
+"docs/Database schema_MySQL.mwb",
+"docs/Database schema_MySQL.svg",
+]
 precedence = "aggregate"
 SPDX-FileCopyrightText = "2026 Tzu-Ting Lin"
 SPDX-License-Identifier = "CC0-1.0"

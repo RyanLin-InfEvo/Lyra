@@ -26,7 +26,6 @@ ui/.flutter-plugins-dependencies
 .idea/
 *.DS_Store
 *.mwb.bak
-docs/Lyra_Design_Document_AI.md
 *.db
 *.db-shm
 *.db-wal
