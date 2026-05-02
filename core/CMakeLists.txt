@@ -31,6 +31,7 @@ set(CPP
     src/controllers/artist_controller.cpp
     src/controllers/track_controller.cpp
     src/controllers/work_controller.cpp
+    src/controllers/playlist_controller.cpp
 )
 
 add_library(lyra_core SHARED ${CPP})

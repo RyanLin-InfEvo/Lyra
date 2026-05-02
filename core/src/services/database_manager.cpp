@@ -119,6 +119,41 @@ void DatabaseManager::init_database(const std::string &db_path) {
 
     db->exec("CREATE INDEX IF NOT EXISTS idx_Work_iswc ON Work (iswc);");
     db->exec("CREATE INDEX IF NOT EXISTS idx_Work_musicbrainz_id ON Work (musicbrainz_id);");
+
+    // create Playlist table
+    db->exec(R"(
+        CREATE TABLE IF NOT EXISTS Playlist (
+          id TEXT NOT NULL,
+          title TEXT NOT NULL,
+          description TEXT NULL DEFAULT NULL,
+          PRIMARY KEY (id),
+          CONSTRAINT fk_Playlist_Entity
+            FOREIGN KEY (id)
+            REFERENCES Entity (id)
+            ON DELETE CASCADE
+            ON UPDATE CASCADE
+        );
+    )");
+
+    // create Playlist_Track table
+    db->exec(R"(
+        CREATE TABLE IF NOT EXISTS Playlist_Track (
+          playlist_id TEXT NOT NULL,
+          track_id TEXT NOT NULL,
+          position INTEGER NULL DEFAULT NULL,
+          PRIMARY KEY (playlist_id, track_id),
+          CONSTRAINT fk_PlaylistTrack_Playlist
+            FOREIGN KEY (playlist_id)
+            REFERENCES Playlist (id)
+            ON DELETE CASCADE
+            ON UPDATE CASCADE,
+          CONSTRAINT fk_PlaylistTrack_Track
+            FOREIGN KEY (track_id)
+            REFERENCES Track (id)
+            ON DELETE CASCADE
+            ON UPDATE CASCADE
+        );
+    )");
 }
 
 // Insert artist into database table Artist, Entity
@@ -687,6 +722,182 @@ std::optional<std::string> DatabaseManager::update_track_artist(const TrackArtis
         return e.what();
     }
     return std::nullopt;
+}
+
+std::optional<std::string> DatabaseManager::insert_playlist(const Playlist &playlist) {
+    try {
+        SQLite::Transaction transaction(*db);
+
+        // Insert into Entity table
+        SQLite::Statement query1(*db,
+                                 "INSERT INTO Entity (id, entity_type, created_at, updated_at) "
+                                 "VALUES (?, 'playlist', datetime('now'), datetime('now'))");
+        query1.bind(1, playlist.id);
+        query1.exec();
+
+        // Insert into Playlist table
+        SQLite::Statement query2(*db, "INSERT INTO Playlist (id, title, description) VALUES (?, ?, ?)");
+        query2.bind(1, playlist.id);
+        query2.bind(2, playlist.title);
+        if (playlist.description) {
+            query2.bind(3, *playlist.description);
+        } else {
+            query2.bind(3);
+        }
+
+        query2.exec();
+        transaction.commit();
+    } catch (const std::exception &e) {
+        return e.what();
+    }
+    return std::nullopt;
+}
+
+std::optional<Playlist> DatabaseManager::get_playlist(const std::string &playlist_id) {
+    SQLite::Statement query(*db, "SELECT * FROM Playlist WHERE id = ?");
+    query.bind(1, playlist_id);
+
+    if (query.executeStep()) {
+        Playlist playlist;
+        playlist.id = query.getColumn("id").getString();
+        playlist.title = query.getColumn("title").getString();
+        playlist.description = SqliteHelper::get_optional<std::string>(query, "description");
+        return playlist;
+    }
+    return std::nullopt;
+}
+
+std::optional<std::string> DatabaseManager::update_playlist(const PlaylistUpdate &data) {
+    try {
+        std::string sql = "UPDATE Playlist SET ";
+        std::vector<std::string> fields;
+        fields.reserve(2);
+
+        if (data.title)
+            fields.emplace_back("title = ?");
+        if (data.description)
+            fields.emplace_back("description = ?");
+
+        if (fields.empty())
+            return std::nullopt;
+
+        for (size_t i = 0; i < fields.size(); ++i) {
+            sql += fields[i];
+            if (i < fields.size() - 1)
+                sql += ", ";
+        }
+        sql += " WHERE id = ?";
+
+        SQLite::Transaction transaction(*db);
+        SQLite::Statement query(*db, sql);
+
+        int bind_idx = 1;
+        if (data.title)
+            query.bind(bind_idx++, *data.title);
+        if (data.description)
+            query.bind(bind_idx++, *data.description);
+
+        query.bind(bind_idx, data.id);
+
+        int affected_rows = query.exec();
+        if (affected_rows == 0)
+            return "Playlist ID not found.";
+
+        SQLite::Statement update_entity(
+            *db, "UPDATE Entity SET updated_at = datetime('now') WHERE id = ?");
+        update_entity.bind(1, data.id);
+        update_entity.exec();
+
+        transaction.commit();
+    } catch (const std::exception &e) {
+        return e.what();
+    }
+    return std::nullopt;
+}
+
+std::optional<std::string> DatabaseManager::add_playlist_track(const std::string &playlist_id,
+                                                               const std::string &track_id,
+                                                               std::optional<int> position) {
+    try {
+        SQLite::Transaction transaction(*db);
+
+        // Check if playlist exists
+        SQLite::Statement check_playlist(*db, "SELECT 1 FROM Playlist WHERE id = ?");
+        check_playlist.bind(1, playlist_id);
+        if (!check_playlist.executeStep()) {
+            return "Playlist ID not found.";
+        }
+
+        // Check if track exists
+        SQLite::Statement check_track(*db, "SELECT 1 FROM Track WHERE id = ?");
+        check_track.bind(1, track_id);
+        if (!check_track.executeStep()) {
+            return "Track ID not found.";
+        }
+
+        // Insert or Replace into Playlist_Track
+        SQLite::Statement query(*db, "INSERT OR REPLACE INTO Playlist_Track (playlist_id, track_id, position) VALUES (?, ?, ?)");
+        query.bind(1, playlist_id);
+        query.bind(2, track_id);
+        if (position) {
+            query.bind(3, *position);
+        } else {
+            query.bind(3);
+        }
+
+        query.exec();
+
+        // Update Playlist timestamp
+        SQLite::Statement update_entity(*db, "UPDATE Entity SET updated_at = datetime('now') WHERE id = ?");
+        update_entity.bind(1, playlist_id);
+        update_entity.exec();
+
+        transaction.commit();
+    } catch (const std::exception &e) {
+        return e.what();
+    }
+    return std::nullopt;
+}
+
+std::optional<std::string> DatabaseManager::remove_playlist_track(const std::string &playlist_id,
+                                                                  const std::string &track_id) {
+    try {
+        SQLite::Transaction transaction(*db);
+
+        SQLite::Statement query(*db, "DELETE FROM Playlist_Track WHERE playlist_id = ? AND track_id = ?");
+        query.bind(1, playlist_id);
+        query.bind(2, track_id);
+
+        int affected_rows = query.exec();
+        if (affected_rows == 0) {
+            return "Track not found in playlist.";
+        }
+
+        // Update Playlist timestamp
+        SQLite::Statement update_entity(*db, "UPDATE Entity SET updated_at = datetime('now') WHERE id = ?");
+        update_entity.bind(1, playlist_id);
+        update_entity.exec();
+
+        transaction.commit();
+    } catch (const std::exception &e) {
+        return e.what();
+    }
+    return std::nullopt;
+}
+
+std::vector<std::string> DatabaseManager::get_playlist_tracks(const std::string &playlist_id) {
+    std::vector<std::string> track_ids;
+    try {
+        SQLite::Statement query(*db, "SELECT track_id FROM Playlist_Track WHERE playlist_id = ? ORDER BY position ASC, track_id ASC");
+        query.bind(1, playlist_id);
+
+        while (query.executeStep()) {
+            track_ids.push_back(query.getColumn(0).getString());
+        }
+    } catch (const std::exception &e) {
+        // Log error or handle it as needed
+    }
+    return track_ids;
 }
 
 } // namespace lyra

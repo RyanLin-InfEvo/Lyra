@@ -9,6 +9,7 @@
 #include <unordered_map>
 
 #include "controllers/artist_controller.h"
+#include "controllers/playlist_controller.h"
 #include "controllers/track_controller.h"
 #include "controllers/work_controller.h"
 #include "models/track.h"
@@ -32,7 +33,8 @@ json handleCreateArtist(const json &params) {
                                                 {"ytm_id", Type::String, false},
                                                 {"spotify_id", Type::String, false}});
 
-    if (err) return *err;
+    if (err)
+        return *err;
 
     Artist artist = params.get<Artist>();
     auto db_err = ArtistController::create(artist);
@@ -55,7 +57,8 @@ json handleUpdateArtist(const json &params) {
                                                 {"ytm_id", Type::String, false},
                                                 {"spotify_id", Type::String, false}});
 
-    if (err) return *err;
+    if (err)
+        return *err;
 
     ArtistUpdate update_data = params.get<ArtistUpdate>();
 
@@ -77,7 +80,8 @@ json handleUpdateArtist(const json &params) {
 
 json handleGetArtist(const json &params) {
     auto err = JsonValidator::validate(params, {{"id", Type::String, true, StringFormat::UUID}});
-    if (err) return *err;
+    if (err)
+        return *err;
 
     std::optional<Artist> artist = ArtistController::get(params["id"].get<std::string>());
 
@@ -103,7 +107,8 @@ json handleCreateTrack(const json &params) {
                                                 {"ytm_id", Type::String, false},
                                                 {"spotify_id", Type::String, false}});
 
-    if (err) return *err;
+    if (err)
+        return *err;
 
     Track track = params.get<Track>();
     auto db_err = TrackController::create(track);
@@ -122,7 +127,8 @@ json handleCreateTrack(const json &params) {
 
 json handleGetTrack(const json &params) {
     auto err = JsonValidator::validate(params, {{"id", Type::String, true, StringFormat::UUID}});
-    if (err) return *err;
+    if (err)
+        return *err;
 
     std::optional<Track> track = TrackController::get(params["id"].get<std::string>());
 
@@ -134,7 +140,8 @@ json handleGetTrack(const json &params) {
 
 json handleUpdateTrack(const json &params) {
     auto err = JsonValidator::validate(params, {{"id", Type::String, true, StringFormat::UUID}});
-    if (err) return *err;
+    if (err)
+        return *err;
 
     TrackUpdate update_data = params.get<TrackUpdate>();
     if (!update_data.has_updates()) {
@@ -172,7 +179,8 @@ json handleCreateWork(const json &params) {
                                                 {"iswc", Type::String, false},
                                                 {"musicbrainz_id", Type::String, false}});
 
-    if (err) return *err;
+    if (err)
+        return *err;
 
     if (auto year_err = validateWorkCompositionYears(params)) {
         return *year_err;
@@ -193,7 +201,8 @@ json handleCreateWork(const json &params) {
 
 json handleGetWork(const json &params) {
     auto err = JsonValidator::validate(params, {{"id", Type::String, true, StringFormat::UUID}});
-    if (err) return *err;
+    if (err)
+        return *err;
 
     std::optional<Work> work = WorkController::get(params["id"].get<std::string>());
 
@@ -212,7 +221,8 @@ json handleUpdateWork(const json &params) {
                                                 {"iswc", Type::String, false},
                                                 {"musicbrainz_id", Type::String, false}});
 
-    if (err) return *err;
+    if (err)
+        return *err;
 
     if (auto year_err = validateWorkCompositionYears(params)) {
         return *year_err;
@@ -241,7 +251,8 @@ json handleAddTrackArtist(const json &params) {
                                                 {"artist_id", Type::String, true, StringFormat::UUID},
                                                 {"role", Type::String, true},
                                                 {"position", Type::Integer, false}});
-    if (err) return *err;
+    if (err)
+        return *err;
 
     TrackArtistParams track_artist = params.get<TrackArtistParams>();
     auto db_err = TrackController::add_artist(track_artist);
@@ -266,7 +277,8 @@ json handleAddTrackArtist(const json &params) {
 json handleRemoveTrackArtist(const json &params) {
     auto err = JsonValidator::validate(params, {{"track_id", Type::String, true, StringFormat::UUID},
                                                 {"artist_id", Type::String, true, StringFormat::UUID}});
-    if (err) return *err;
+    if (err)
+        return *err;
 
     TrackArtistParams track_artist = params.get<TrackArtistParams>();
     auto db_err = TrackController::remove_artist(track_artist);
@@ -285,7 +297,8 @@ json handleUpdateTrackArtist(const json &params) {
                                                 {"artist_id", Type::String, true, StringFormat::UUID},
                                                 {"role", Type::String, false},
                                                 {"position", Type::Integer, false}});
-    if (err) return *err;
+    if (err)
+        return *err;
 
     TrackArtistParams track_artist = params.get<TrackArtistParams>();
     auto db_err = TrackController::update_artist(track_artist);
@@ -307,6 +320,108 @@ json handleUpdateTrackArtist(const json &params) {
     return ApiResponse::error({ErrorType::DatabaseError, *db_err});
 }
 
+// --- Playlist Handlers ---
+
+json handleCreatePlaylist(const json &params) {
+    auto err = JsonValidator::validate(params, {{"title", Type::String, true},
+                                                {"description", Type::String, false}});
+    if (err)
+        return *err;
+
+    Playlist playlist = params.get<Playlist>();
+    auto db_err = PlaylistController::create(playlist);
+
+    if (!db_err) {
+        json response;
+        response["code"] = 201;
+        response["data"] = playlist;
+        response["message"] = "Create Playlist success.";
+        return response;
+    }
+    return ApiResponse::error({ErrorType::DatabaseError, *db_err});
+}
+
+json handleGetPlaylist(const json &params) {
+    auto err = JsonValidator::validate(params, {{"id", Type::String, true, StringFormat::UUID}});
+    if (err)
+        return *err;
+
+    std::optional<Playlist> playlist = PlaylistController::get(params["id"].get<std::string>());
+
+    if (playlist.has_value()) {
+        return ApiResponse::success(playlist.value());
+    }
+    return ApiResponse::error({ErrorType::PlaylistNotFound, "Playlist not found"});
+}
+
+json handleUpdatePlaylist(const json &params) {
+    auto err = JsonValidator::validate(params, {{"id", Type::String, true, StringFormat::UUID},
+                                                {"title", Type::String, false},
+                                                {"description", Type::String, false}});
+    if (err)
+        return *err;
+
+    PlaylistUpdate update_data = params.get<PlaylistUpdate>();
+
+    if (!update_data.has_updates()) {
+        return ApiResponse::error({ErrorType::InvalidValue, "No fields provided to update."});
+    }
+
+    auto db_err = PlaylistController::update(update_data);
+
+    if (!db_err) {
+        json response = ApiResponse::success({{"id", update_data.id}});
+        response["message"] = "Update Playlist success.";
+        return response;
+    }
+    return ApiResponse::error({ErrorType::DatabaseError, *db_err});
+}
+
+json handleAddPlaylistTrack(const json &params) {
+    auto err = JsonValidator::validate(params, {{"playlist_id", Type::String, true, StringFormat::UUID},
+                                                {"track_id", Type::String, true, StringFormat::UUID},
+                                                {"position", Type::Integer, false}});
+    if (err)
+        return *err;
+
+    auto db_err = PlaylistController::add_track(params["playlist_id"], params["track_id"],
+                                                params.contains("position") ? std::optional<int>(params["position"].get<int>()) : std::nullopt);
+
+    if (!db_err) {
+        json response;
+        response["code"] = 201;
+        response["message"] = "Add PlaylistTrack success.";
+        return response;
+    }
+    return ApiResponse::error({ErrorType::DatabaseError, *db_err});
+}
+
+json handleRemovePlaylistTrack(const json &params) {
+    auto err = JsonValidator::validate(params, {{"playlist_id", Type::String, true, StringFormat::UUID},
+                                                {"track_id", Type::String, true, StringFormat::UUID}});
+    if (err)
+        return *err;
+
+    auto db_err = PlaylistController::remove_track(params["playlist_id"], params["track_id"]);
+
+    if (!db_err) {
+        json response;
+        response["code"] = 200;
+        response["message"] = "Remove PlaylistTrack success.";
+        return response;
+    }
+    return ApiResponse::error({ErrorType::DatabaseError, *db_err});
+}
+
+json handleGetPlaylistTracks(const json &params) {
+    auto err = JsonValidator::validate(params, {{"id", Type::String, true, StringFormat::UUID}});
+    if (err)
+        return *err;
+
+    std::vector<std::string> tracks = PlaylistController::get_tracks(params["id"].get<std::string>());
+    return ApiResponse::success(tracks);
+}
+
 using Handler = std::function<json(const json &)>;
 
 const std::unordered_map<std::string, Handler> handlers = {
@@ -321,7 +436,13 @@ const std::unordered_map<std::string, Handler> handlers = {
     {"UpdateWork", handleUpdateWork},
     {"AddTrackArtist", handleAddTrackArtist},
     {"RemoveTrackArtist", handleRemoveTrackArtist},
-    {"UpdateTrackArtist", handleUpdateTrackArtist}};
+    {"UpdateTrackArtist", handleUpdateTrackArtist},
+    {"CreatePlaylist", handleCreatePlaylist},
+    {"GetPlaylist", handleGetPlaylist},
+    {"UpdatePlaylist", handleUpdatePlaylist},
+    {"AddPlaylistTrack", handleAddPlaylistTrack},
+    {"RemovePlaylistTrack", handleRemovePlaylistTrack},
+    {"GetPlaylistTracks", handleGetPlaylistTracks}};
 
 } // namespace
 

@@ -10,6 +10,7 @@
 #include <string>
 
 #include "../models/artist.h"
+#include "../models/playlist.h"
 #include "../models/relation_types.h"
 #include "../models/track.h"
 #include "../models/work.h"
@@ -48,11 +49,26 @@ class DatabaseManager {
     // update work
     static std::optional<std::string> update_work(const WorkUpdate &update_data);
 
+    // insert playlist into database
+    static std::optional<std::string> insert_playlist(const Playlist &playlist);
+
+    // get a playlist from database
+    static std::optional<Playlist> get_playlist(const std::string &playlist_id);
+
+    // update playlist
+    static std::optional<std::string> update_playlist(const PlaylistUpdate &update_data);
+
     static std::optional<std::string> add_track_artist(const TrackArtistParams &params);
 
     static std::optional<std::string> remove_track_artist(const std::string_view track_id, const std::string_view artist_id);
 
     static std::optional<std::string> update_track_artist(const TrackArtistParams &params);
+
+    static std::optional<std::string> add_playlist_track(const std::string &playlist_id, const std::string &track_id, std::optional<int> position = std::nullopt);
+
+    static std::optional<std::string> remove_playlist_track(const std::string &playlist_id, const std::string &track_id);
+
+    static std::vector<std::string> get_playlist_tracks(const std::string &playlist_id);
 };
 
 } // namespace lyra
