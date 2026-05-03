@@ -28,6 +28,7 @@ set(CPP
     src/utils/json_validator.cpp
     src/utils/make_error.cpp
     src/models/relation_types.cpp
+    src/controllers/album_controller.cpp
     src/controllers/artist_controller.cpp
     src/controllers/track_controller.cpp
     src/controllers/work_controller.cpp

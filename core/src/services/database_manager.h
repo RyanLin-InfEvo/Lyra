@@ -9,6 +9,7 @@
 #include <optional>
 #include <string>
 
+#include "../models/album.h"
 #include "../models/artist.h"
 #include "../models/playlist.h"
 #include "../models/relation_types.h"
@@ -39,6 +40,15 @@ class DatabaseManager {
 
     // update track
     static std::optional<std::string> update_track(const TrackUpdate &update_data);
+
+    // insert album into database
+    static std::optional<std::string> insert_album(const Album &album);
+
+    // get a album from database
+    static std::optional<Album> get_album(const std::string &album_id);
+
+    // update album
+    static std::optional<std::string> update_album(const AlbumUpdate &update_data);
 
     // insert work into database
     static std::optional<std::string> insert_work(const Work &work);

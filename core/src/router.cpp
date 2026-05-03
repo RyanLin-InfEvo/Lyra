@@ -8,6 +8,7 @@
 #include <string>
 #include <unordered_map>
 
+#include "controllers/album_controller.h"
 #include "controllers/artist_controller.h"
 #include "controllers/playlist_controller.h"
 #include "controllers/track_controller.h"
@@ -152,6 +153,68 @@ json handleUpdateTrack(const json &params) {
     if (!db_err.has_value()) {
         json response = ApiResponse::success({{"id", update_data.id}});
         response["message"] = "Update Track success.";
+        return response;
+    }
+    return ApiResponse::error({ErrorType::DatabaseError, db_err.value()});
+}
+
+// --- Album Handlers ---
+
+json handleCreateAlbum(const json &params) {
+    auto err = JsonValidator::validate(params, {{"title", Type::String, true},
+                                                {"release_year", Type::Year, false},
+                                                {"release_month", Type::Integer, false},
+                                                {"release_day", Type::Integer, false}});
+
+    if (err)
+        return *err;
+
+    Album album = params.get<Album>();
+    auto db_err = AlbumController::create(album);
+
+    if (!db_err) {
+        json response;
+        response["code"] = 201; // Created
+        response["data"]["id"] = album.id;
+        response["data"]["title"] = album.title;
+        response["message"] = "Create Album success.";
+        return response;
+    }
+    return ApiResponse::error({ErrorType::DatabaseError, *db_err});
+}
+
+json handleGetAlbum(const json &params) {
+    auto err = JsonValidator::validate(params, {{"id", Type::String, true, StringFormat::UUID}});
+    if (err)
+        return *err;
+
+    std::optional<Album> album = AlbumController::get(params["id"].get<std::string>());
+
+    if (album.has_value()) {
+        return ApiResponse::success(album.value());
+    }
+    return ApiResponse::error({ErrorType::AlbumNotFound, "Album not found"});
+}
+
+json handleUpdateAlbum(const json &params) {
+    auto err = JsonValidator::validate(params, {{"id", Type::String, true, StringFormat::UUID},
+                                                {"title", Type::String, false},
+                                                {"release_year", Type::Year, false},
+                                                {"release_month", Type::Integer, false},
+                                                {"release_day", Type::Integer, false}});
+
+    if (err)
+        return *err;
+
+    AlbumUpdate update_data = params.get<AlbumUpdate>();
+    if (!update_data.has_updates()) {
+        return ApiResponse::error({ErrorType::InvalidValue, "No fields provided to update."});
+    }
+
+    std::optional<std::string> db_err = AlbumController::update(update_data);
+    if (!db_err.has_value()) {
+        json response = ApiResponse::success({{"id", update_data.id}});
+        response["message"] = "Update Album success.";
         return response;
     }
     return ApiResponse::error({ErrorType::DatabaseError, db_err.value()});
@@ -431,6 +494,9 @@ const std::unordered_map<std::string, Handler> handlers = {
     {"CreateTrack", handleCreateTrack},
     {"GetTrack", handleGetTrack},
     {"UpdateTrack", handleUpdateTrack},
+    {"CreateAlbum", handleCreateAlbum},
+    {"GetAlbum", handleGetAlbum},
+    {"UpdateAlbum", handleUpdateAlbum},
     {"CreateWork", handleCreateWork},
     {"GetWork", handleGetWork},
     {"UpdateWork", handleUpdateWork},
