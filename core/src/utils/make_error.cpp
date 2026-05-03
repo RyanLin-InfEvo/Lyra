@@ -27,7 +27,7 @@ json ApiResponse::error(const Error &err) {
     auto [code, type_str] = getErrorMapping(err.type);
 
     response["code"] = code;
-    response["error"]["type"] = (code == 0) ? json(static_cast<int>(err.type)) : json(type_str); // If type is not found in enum 'ErrorType'
+    response["error"]["type"] = type_str;
     response["error"]["message"] = err.message;
 
     return response;
@@ -63,9 +63,6 @@ std::pair<int, std::string> ApiResponse::getErrorMapping(ErrorType type) {
         // 500 Series
         case ErrorType::DatabaseError:
             return {500, "DatabaseError"};
-
-        default:
-            return {0, ""};
     }
 }
 } // namespace lyra
