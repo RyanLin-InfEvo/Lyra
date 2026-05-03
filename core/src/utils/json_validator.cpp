@@ -24,6 +24,16 @@ std::optional<json> JsonValidator::validate(const json &params,
                                             const std::vector<ValidationRule> &rules,
                                             const std::string &parent_path) {
 
+    // Guard: params must be a JSON object. Non-object types (null, array,
+    // number, string) would cause contains() to silently return false or throw
+    // type_error depending on nlohmann version, producing misleading errors.
+    if (!params.is_object()) {
+        std::string context = parent_path.empty() ? "params" : parent_path;
+        return ApiResponse::error(
+            {ErrorType::InvalidCommandFormat,
+             "'" + context + "' must be a JSON object, got " + params.type_name()});
+    }
+
     for (const auto &rule : rules) {
         // Calculate the full path of the current field (to generate friendly error
         // messages)

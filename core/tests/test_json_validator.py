@@ -64,5 +64,41 @@ class TestJsonValidator(BaseLyraTestCase):
         })
         self.assertEqual(res["code"], 201)
 
+    def assert_structured_error(self, res, msg_context):
+        """Helper: verify the response is a proper structured 400 error, not a catch-all leak."""
+        self.assertEqual(res["code"], 400, f"[{msg_context}] Expected 400, got: {res}")
+        self.assertIn("error", res, f"[{msg_context}] Missing 'error' key: {res}")
+        self.assertIn("type", res["error"], f"[{msg_context}] Missing error.type (catch-all leak): {res}")
+        self.assertEqual(
+            res["error"]["type"], "InvalidCommandFormat",
+            f"[{msg_context}] Expected InvalidCommandFormat, got: {res['error']}"
+        )
+        # Must NOT contain raw C++ exception leak
+        self.assertNotIn(
+            "json.exception", res["error"].get("message", ""),
+            f"[{msg_context}] Raw nlohmann exception leaked: {res['error']['message']}"
+        )
+
+    def test_params_null(self):
+        """params: null → should return structured InvalidCommandFormat error"""
+        res = self.raw_dispatch({"command": "CreateArtist", "params": None})
+        self.assert_structured_error(res, "params=null")
+
+    def test_params_array(self):
+        """params: [] → should return structured InvalidCommandFormat error"""
+        res = self.raw_dispatch({"command": "CreateArtist", "params": []})
+        self.assert_structured_error(res, "params=array")
+
+    def test_params_number(self):
+        """params: 42 → should return structured InvalidCommandFormat error"""
+        res = self.raw_dispatch({"command": "CreateArtist", "params": 42})
+        self.assert_structured_error(res, "params=number")
+
+    def test_params_string(self):
+        """params: 'hello' → should return structured InvalidCommandFormat error"""
+        res = self.raw_dispatch({"command": "CreateArtist", "params": "hello"})
+        self.assert_structured_error(res, "params=string")
+
+
 if __name__ == "__main__":
     unittest.main()
