@@ -4,6 +4,7 @@
 
 #include <SQLiteCpp/SQLiteCpp.h>
 #include <memory>
+#include <mutex>
 #include <optional>
 #include <string>
 #include <vector>
@@ -14,8 +15,10 @@
 namespace lyra {
 
 static std::unique_ptr<SQLite::Database> db;
+static std::mutex db_mutex;
 
 void DatabaseManager::init_database(const std::string &db_path) {
+    std::lock_guard<std::mutex> lock(db_mutex);
     // open database file. If lyra.db does not exist, create it automatically
     // (OPEN_CREATE)
     db = std::make_unique<SQLite::Database>(db_path, SQLite::OPEN_READWRITE | SQLite::OPEN_CREATE);
@@ -176,6 +179,7 @@ void DatabaseManager::init_database(const std::string &db_path) {
 // Insert artist into database table Artist, Entity
 // Return nullopt or error message(string)
 std::optional<std::string> DatabaseManager::insert_artist(const Artist &artist) {
+    std::lock_guard<std::mutex> lock(db_mutex);
 
     try {
         SQLite::Transaction transaction(*db);
@@ -217,6 +221,7 @@ std::optional<std::string> DatabaseManager::insert_artist(const Artist &artist) 
 
 // update artist
 std::optional<std::string> DatabaseManager::update_artist(const ArtistUpdate &data) {
+    std::lock_guard<std::mutex> lock(db_mutex);
     try {
         // Build Dynamic SQL Query
         std::string sql = "UPDATE Artist SET ";
@@ -285,6 +290,7 @@ std::optional<std::string> DatabaseManager::update_artist(const ArtistUpdate &da
 
 // Get artist from database
 std::optional<Artist> DatabaseManager::get_artist(const std::string &artist_id) {
+    std::lock_guard<std::mutex> lock(db_mutex);
 
     SQLite::Statement query(*db, "SELECT * FROM Artist WHERE id = ?");
 
@@ -314,6 +320,7 @@ std::optional<Artist> DatabaseManager::get_artist(const std::string &artist_id) 
 // Insert track into database
 // Return nullopt or error message(string)
 std::optional<std::string> DatabaseManager::insert_track(const Track &track) {
+    std::lock_guard<std::mutex> lock(db_mutex);
     try {
         SQLite::Transaction transaction(*db);
 
@@ -368,6 +375,7 @@ std::optional<std::string> DatabaseManager::insert_track(const Track &track) {
 
 // Get track from database
 std::optional<Track> DatabaseManager::get_track(const std::string &track_id) {
+    std::lock_guard<std::mutex> lock(db_mutex);
     SQLite::Statement query(*db, "SELECT * FROM Track WHERE id = ?");
     query.bind(1, track_id);
 
@@ -399,6 +407,7 @@ std::optional<Track> DatabaseManager::get_track(const std::string &track_id) {
 
 // update track
 std::optional<std::string> DatabaseManager::update_track(const TrackUpdate &data) {
+    std::lock_guard<std::mutex> lock(db_mutex);
     try {
         std::string sql = "UPDATE Track SET ";
         std::vector<std::string> fields;
@@ -488,6 +497,7 @@ std::optional<std::string> DatabaseManager::update_track(const TrackUpdate &data
 
 // Insert album into database
 std::optional<std::string> DatabaseManager::insert_album(const Album &album) {
+    std::lock_guard<std::mutex> lock(db_mutex);
     try {
         SQLite::Transaction transaction(*db);
 
@@ -529,6 +539,7 @@ std::optional<std::string> DatabaseManager::insert_album(const Album &album) {
 
 // Get album from database
 std::optional<Album> DatabaseManager::get_album(const std::string &album_id) {
+    std::lock_guard<std::mutex> lock(db_mutex);
     SQLite::Statement query(*db, "SELECT * FROM Album WHERE id = ?");
     query.bind(1, album_id);
 
@@ -550,6 +561,7 @@ std::optional<Album> DatabaseManager::get_album(const std::string &album_id) {
 
 // update album
 std::optional<std::string> DatabaseManager::update_album(const AlbumUpdate &data) {
+    std::lock_guard<std::mutex> lock(db_mutex);
     try {
         std::string sql = "UPDATE Album SET ";
         std::vector<std::string> fields;
@@ -607,6 +619,7 @@ std::optional<std::string> DatabaseManager::update_album(const AlbumUpdate &data
 
 // Insert work into database
 std::optional<std::string> DatabaseManager::insert_work(const Work &work) {
+    std::lock_guard<std::mutex> lock(db_mutex);
     try {
         SQLite::Transaction transaction(*db);
 
@@ -648,6 +661,7 @@ std::optional<std::string> DatabaseManager::insert_work(const Work &work) {
 
 // Get work from database
 std::optional<Work> DatabaseManager::get_work(const std::string &work_id) {
+    std::lock_guard<std::mutex> lock(db_mutex);
     SQLite::Statement query(*db, "SELECT * FROM Work WHERE id = ?");
     query.bind(1, work_id);
 
@@ -669,6 +683,7 @@ std::optional<Work> DatabaseManager::get_work(const std::string &work_id) {
 
 // update work
 std::optional<std::string> DatabaseManager::update_work(const WorkUpdate &data) {
+    std::lock_guard<std::mutex> lock(db_mutex);
     try {
         std::string sql = "UPDATE Work SET ";
         std::vector<std::string> fields;
@@ -733,6 +748,7 @@ std::optional<std::string> DatabaseManager::update_work(const WorkUpdate &data) 
 }
 
 std::optional<std::string> DatabaseManager::add_track_artist(const TrackArtistParams &params) {
+    std::lock_guard<std::mutex> lock(db_mutex);
     try {
         SQLite::Transaction transaction(*db);
 
@@ -788,6 +804,7 @@ std::optional<std::string> DatabaseManager::add_track_artist(const TrackArtistPa
 
 std::optional<std::string> DatabaseManager::remove_track_artist(std::string_view track_id,
                                                                 std::string_view artist_id) {
+    std::lock_guard<std::mutex> lock(db_mutex);
     try {
         SQLite::Transaction transaction(*db);
 
@@ -818,6 +835,7 @@ std::optional<std::string> DatabaseManager::remove_track_artist(std::string_view
 }
 
 std::optional<std::string> DatabaseManager::update_track_artist(const TrackArtistParams &params) {
+    std::lock_guard<std::mutex> lock(db_mutex);
     try {
         SQLite::Transaction transaction(*db);
 
@@ -861,6 +879,7 @@ std::optional<std::string> DatabaseManager::update_track_artist(const TrackArtis
 }
 
 std::optional<std::string> DatabaseManager::insert_playlist(const Playlist &playlist) {
+    std::lock_guard<std::mutex> lock(db_mutex);
     try {
         SQLite::Transaction transaction(*db);
 
@@ -890,6 +909,7 @@ std::optional<std::string> DatabaseManager::insert_playlist(const Playlist &play
 }
 
 std::optional<Playlist> DatabaseManager::get_playlist(const std::string &playlist_id) {
+    std::lock_guard<std::mutex> lock(db_mutex);
     SQLite::Statement query(*db, "SELECT * FROM Playlist WHERE id = ?");
     query.bind(1, playlist_id);
 
@@ -904,6 +924,7 @@ std::optional<Playlist> DatabaseManager::get_playlist(const std::string &playlis
 }
 
 std::optional<std::string> DatabaseManager::update_playlist(const PlaylistUpdate &data) {
+    std::lock_guard<std::mutex> lock(db_mutex);
     try {
         std::string sql = "UPDATE Playlist SET ";
         std::vector<std::string> fields;
@@ -954,6 +975,7 @@ std::optional<std::string> DatabaseManager::update_playlist(const PlaylistUpdate
 std::optional<std::string> DatabaseManager::add_playlist_track(const std::string &playlist_id,
                                                                const std::string &track_id,
                                                                std::optional<int> position) {
+    std::lock_guard<std::mutex> lock(db_mutex);
     try {
         SQLite::Transaction transaction(*db);
 
@@ -997,6 +1019,7 @@ std::optional<std::string> DatabaseManager::add_playlist_track(const std::string
 
 std::optional<std::string> DatabaseManager::remove_playlist_track(const std::string &playlist_id,
                                                                   const std::string &track_id) {
+    std::lock_guard<std::mutex> lock(db_mutex);
     try {
         SQLite::Transaction transaction(*db);
 
@@ -1022,6 +1045,7 @@ std::optional<std::string> DatabaseManager::remove_playlist_track(const std::str
 }
 
 std::vector<std::string> DatabaseManager::get_playlist_tracks(const std::string &playlist_id) {
+    std::lock_guard<std::mutex> lock(db_mutex);
     std::vector<std::string> track_ids;
     try {
         SQLite::Statement query(*db, "SELECT track_id FROM Playlist_Track WHERE playlist_id = ? ORDER BY position ASC, track_id ASC");
