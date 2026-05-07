@@ -17,6 +17,16 @@ using namespace lyra;
 // Lyra core initialization
 int lyra_init(const char *storage_root) {
     try {
+        if (storage_root == nullptr) {
+            throw std::invalid_argument("storage_root is null");
+        }
+
+        // Security: Limit storage_root length to prevent DoS or path overflow
+        const size_t MAX_PATH_LENGTH = 4096;
+        if (strnlen(storage_root, MAX_PATH_LENGTH + 1) > MAX_PATH_LENGTH) {
+            throw std::length_error("storage_root exceeds maximum length (4096)");
+        }
+
         std::string db_path = std::string(storage_root) + "/lyra.db";
         DatabaseManager::init_database(db_path);
         return 0;

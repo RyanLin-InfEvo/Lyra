@@ -36,6 +36,7 @@ compile_commands.json
 Lyra.code-workspace
 
 # Test
+test_run
 __pycache__/
 core/tests/manual_api_request_test.py
 .directory

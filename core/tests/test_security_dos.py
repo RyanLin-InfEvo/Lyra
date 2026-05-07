@@ -57,5 +57,16 @@ class TestSecurityDoS(BaseLyraTestCase):
         self.assertEqual(response.get("code"), 400)
         self.assertIn("JSON request is null", response["error"].get("message"))
 
+    def test_init_null_storage_root(self):
+        """Test passing a NULL pointer to lyra_init"""
+        result = self.lib.lyra_init(None)
+        self.assertEqual(result, -1, "C++ did not return -1 on NULL storage_root")
+
+    def test_init_long_storage_root(self):
+        """Test passing an excessively long path to lyra_init"""
+        long_path = "x" * 5000
+        result = self.lib.lyra_init(long_path.encode('utf-8'))
+        self.assertEqual(result, -1, "C++ did not return -1 on excessively long storage_root")
+
 if __name__ == "__main__":
     unittest.main()
