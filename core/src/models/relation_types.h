@@ -36,7 +36,7 @@ NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(TrackArtistParams, track_id, art
                                                 position)
 
 namespace ArtistRoleMapper {
-std::string_view to_string(ArtistRole role);
+const char* to_string(ArtistRole role);
 std::optional<ArtistRole> from_string(std::string_view role_str);
 } // namespace ArtistRoleMapper
 

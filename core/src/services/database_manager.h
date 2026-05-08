@@ -70,7 +70,7 @@ class DatabaseManager {
 
     static std::optional<std::string> add_track_artist(const TrackArtistParams &params);
 
-    static std::optional<std::string> remove_track_artist(const std::string_view track_id, const std::string_view artist_id);
+    static std::optional<std::string> remove_track_artist(const std::string& track_id, const std::string& artist_id);
 
     static std::optional<std::string> update_track_artist(const TrackArtistParams &params);
 

@@ -752,20 +752,16 @@ std::optional<std::string> DatabaseManager::add_track_artist(const TrackArtistPa
     try {
         SQLite::Transaction transaction(*db);
 
-        // SQLiteCpp bind must use std::string ensure Null-terminated
-        const std::string track_id_str(params.track_id);
-        const std::string artist_id_str(params.artist_id);
-
         // Poko-Yoke: Check if Track exists
         SQLite::Statement check_track(*db, "SELECT 1 FROM Track WHERE id = ?");
-        check_track.bind(1, track_id_str);
+        check_track.bindNoCopy(1, params.track_id);
         if (!check_track.executeStep()) {
             return "Target Track not found.";
         }
 
         // Poko-Yoke: Check if Artist exists
         SQLite::Statement check_artist(*db, "SELECT 1 FROM Artist WHERE id = ?");
-        check_artist.bind(1, artist_id_str);
+        check_artist.bindNoCopy(1, params.artist_id);
         if (!check_artist.executeStep()) {
             return "Target Artist not found.";
         }
@@ -773,10 +769,10 @@ std::optional<std::string> DatabaseManager::add_track_artist(const TrackArtistPa
         // Insert or Replace (Upsert)
         SQLite::Statement query(*db, "INSERT OR REPLACE INTO Track_Artist (track_id, "
                                      "artist_id, role, position) VALUES (?, ?, ?, ?)");
-        query.bind(1, track_id_str);
-        query.bind(2, artist_id_str);
+        query.bindNoCopy(1, params.track_id);
+        query.bindNoCopy(2, params.artist_id);
         if (params.role) {
-            query.bind(3, std::string(ArtistRoleMapper::to_string(*params.role)));
+            query.bindNoCopy(3, ArtistRoleMapper::to_string(*params.role));
         } else {
             query.bind(3); // Bind NULL
         }
@@ -792,7 +788,7 @@ std::optional<std::string> DatabaseManager::add_track_artist(const TrackArtistPa
         // Update Entity timestamp
         SQLite::Statement update_entity(
             *db, "UPDATE Entity SET updated_at = datetime('now') WHERE id = ?");
-        update_entity.bind(1, track_id_str);
+        update_entity.bindNoCopy(1, params.track_id);
         update_entity.exec();
 
         transaction.commit();
@@ -802,19 +798,16 @@ std::optional<std::string> DatabaseManager::add_track_artist(const TrackArtistPa
     return std::nullopt;
 }
 
-std::optional<std::string> DatabaseManager::remove_track_artist(std::string_view track_id,
-                                                                std::string_view artist_id) {
+std::optional<std::string> DatabaseManager::remove_track_artist(const std::string& track_id,
+                                                                const std::string& artist_id) {
     std::lock_guard<std::mutex> lock(db_mutex);
     try {
         SQLite::Transaction transaction(*db);
 
-        const std::string track_id_str(track_id);
-        const std::string artist_id_str(artist_id);
-
         SQLite::Statement query(*db,
                                 "DELETE FROM Track_Artist WHERE track_id = ? AND artist_id = ?");
-        query.bind(1, track_id_str);
-        query.bind(2, artist_id_str);
+        query.bindNoCopy(1, track_id);
+        query.bindNoCopy(2, artist_id);
 
         int affected_rows = query.exec();
         if (affected_rows == 0) {
@@ -824,7 +817,7 @@ std::optional<std::string> DatabaseManager::remove_track_artist(std::string_view
         // Update Entity timestamp
         SQLite::Statement update_entity(
             *db, "UPDATE Entity SET updated_at = datetime('now') WHERE id = ?");
-        update_entity.bind(1, track_id_str);
+        update_entity.bindNoCopy(1, track_id);
         update_entity.exec();
 
         transaction.commit();
@@ -839,15 +832,12 @@ std::optional<std::string> DatabaseManager::update_track_artist(const TrackArtis
     try {
         SQLite::Transaction transaction(*db);
 
-        const std::string track_id_str(params.track_id);
-        const std::string artist_id_str(params.artist_id);
-
         SQLite::Statement query(*db, "UPDATE Track_Artist SET role = COALESCE(?, role), "
                                      "position = COALESCE(?, position) WHERE track_id = ? AND "
                                      "artist_id = ?");
 
         if (params.role) {
-            query.bind(1, std::string(ArtistRoleMapper::to_string(*params.role)));
+            query.bindNoCopy(1, ArtistRoleMapper::to_string(*params.role));
         } else {
             query.bind(1);
         }
@@ -858,8 +848,8 @@ std::optional<std::string> DatabaseManager::update_track_artist(const TrackArtis
             query.bind(2);
         }
 
-        query.bind(3, track_id_str);
-        query.bind(4, artist_id_str);
+        query.bindNoCopy(3, params.track_id);
+        query.bindNoCopy(4, params.artist_id);
 
         int affected_rows = query.exec();
         if (affected_rows == 0) {
@@ -868,7 +858,7 @@ std::optional<std::string> DatabaseManager::update_track_artist(const TrackArtis
 
         SQLite::Statement update_entity(
             *db, "UPDATE Entity SET updated_at = datetime('now') WHERE id = ?");
-        update_entity.bind(1, track_id_str);
+        update_entity.bindNoCopy(1, params.track_id);
         update_entity.exec();
 
         transaction.commit();

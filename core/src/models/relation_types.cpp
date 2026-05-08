@@ -21,7 +21,7 @@ std::optional<ArtistRole> from_string(std::string_view role_str) {
     return std::nullopt;
 }
 
-std::string_view to_string(ArtistRole role) {
+const char* to_string(ArtistRole role) {
     switch (role) {
         case ArtistRole::Main: return "main";
         case ArtistRole::Featured: return "featured";
