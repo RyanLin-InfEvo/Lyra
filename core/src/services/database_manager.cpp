@@ -3,11 +3,13 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 #include <SQLiteCpp/SQLiteCpp.h>
+#include <chrono>
 #include <condition_variable>
 #include <memory>
 #include <mutex>
 #include <optional>
 #include <queue>
+#include <stdexcept>
 #include <string>
 #include <vector>
 
@@ -36,10 +38,10 @@ class ConnectionPool {
 
     std::unique_ptr<SQLite::Database> acquire() {
         std::unique_lock<std::mutex> lock(mutex);
-        // TODO: In a high-concurrency server environment, consider using wait_for() 
-        // with a timeout to prevent potential deadlocks if the pool is exhausted 
-        // and a thread holds a resource while waiting for another.
-        condition.wait(lock, [this] { return !pool.empty(); });
+        // Poka-Yoke: Use a timeout to prevent indefinite blocking if the pool is exhausted.
+        if (!condition.wait_for(lock, std::chrono::seconds(5), [this] { return !pool.empty(); })) {
+            throw std::runtime_error("Database connection pool exhausted: timeout waiting for connection.");
+        }
         auto conn = std::move(pool.front());
         pool.pop();
         return conn;
@@ -88,6 +90,16 @@ static std::unique_ptr<SQLite::Database> write_db;
 static std::mutex write_mutex;
 
 static std::unique_ptr<ConnectionPool> read_pool;
+
+/**
+ * @brief Internal helper to ensure the database is initialized before any operation.
+ * @throws std::runtime_error if the database is not initialized.
+ */
+static void ensure_initialized() {
+    if (!write_db || !read_pool) {
+        throw std::runtime_error("Database not initialized. Call init_database() first.");
+    }
+}
 
 void DatabaseManager::init_database(const std::string &db_path) {
     std::lock_guard<std::mutex> lock(write_mutex);
@@ -263,6 +275,7 @@ void DatabaseManager::init_database(const std::string &db_path) {
 // Insert artist into database table Artist, Entity
 // Return nullopt or error message(string)
 std::optional<std::string> DatabaseManager::insert_artist(const Artist &artist) {
+    ensure_initialized();
     std::lock_guard<std::mutex> lock(write_mutex);
 
     try {
@@ -305,6 +318,7 @@ std::optional<std::string> DatabaseManager::insert_artist(const Artist &artist) 
 
 // update artist
 std::optional<std::string> DatabaseManager::update_artist(const ArtistUpdate &data) {
+    ensure_initialized();
     std::lock_guard<std::mutex> lock(write_mutex);
     try {
         // Build Dynamic SQL Query
@@ -374,6 +388,7 @@ std::optional<std::string> DatabaseManager::update_artist(const ArtistUpdate &da
 
 // Get artist from database
 std::optional<Artist> DatabaseManager::get_artist(const std::string &artist_id) {
+    ensure_initialized();
     ConnectionGuard guard(*read_pool);
     auto &db = guard.get();
 
@@ -405,6 +420,7 @@ std::optional<Artist> DatabaseManager::get_artist(const std::string &artist_id) 
 // Insert track into database
 // Return nullopt or error message(string)
 std::optional<std::string> DatabaseManager::insert_track(const Track &track) {
+    ensure_initialized();
     std::lock_guard<std::mutex> lock(write_mutex);
     try {
         SQLite::Transaction transaction(*write_db);
@@ -460,6 +476,7 @@ std::optional<std::string> DatabaseManager::insert_track(const Track &track) {
 
 // Get track from database
 std::optional<Track> DatabaseManager::get_track(const std::string &track_id) {
+    ensure_initialized();
     ConnectionGuard guard(*read_pool);
     auto &db = guard.get();
 
@@ -494,6 +511,7 @@ std::optional<Track> DatabaseManager::get_track(const std::string &track_id) {
 
 // update track
 std::optional<std::string> DatabaseManager::update_track(const TrackUpdate &data) {
+    ensure_initialized();
     std::lock_guard<std::mutex> lock(write_mutex);
     try {
         std::string sql = "UPDATE Track SET ";
@@ -584,6 +602,7 @@ std::optional<std::string> DatabaseManager::update_track(const TrackUpdate &data
 
 // Insert album into database
 std::optional<std::string> DatabaseManager::insert_album(const Album &album) {
+    ensure_initialized();
     std::lock_guard<std::mutex> lock(write_mutex);
     try {
         SQLite::Transaction transaction(*write_db);
@@ -626,6 +645,7 @@ std::optional<std::string> DatabaseManager::insert_album(const Album &album) {
 
 // Get album from database
 std::optional<Album> DatabaseManager::get_album(const std::string &album_id) {
+    ensure_initialized();
     ConnectionGuard guard(*read_pool);
     auto &db = guard.get();
 
@@ -650,6 +670,7 @@ std::optional<Album> DatabaseManager::get_album(const std::string &album_id) {
 
 // update album
 std::optional<std::string> DatabaseManager::update_album(const AlbumUpdate &data) {
+    ensure_initialized();
     std::lock_guard<std::mutex> lock(write_mutex);
     try {
         std::string sql = "UPDATE Album SET ";
@@ -708,6 +729,7 @@ std::optional<std::string> DatabaseManager::update_album(const AlbumUpdate &data
 
 // Insert work into database
 std::optional<std::string> DatabaseManager::insert_work(const Work &work) {
+    ensure_initialized();
     std::lock_guard<std::mutex> lock(write_mutex);
     try {
         SQLite::Transaction transaction(*write_db);
@@ -750,6 +772,7 @@ std::optional<std::string> DatabaseManager::insert_work(const Work &work) {
 
 // Get work from database
 std::optional<Work> DatabaseManager::get_work(const std::string &work_id) {
+    ensure_initialized();
     ConnectionGuard guard(*read_pool);
     auto &db = guard.get();
 
@@ -774,6 +797,7 @@ std::optional<Work> DatabaseManager::get_work(const std::string &work_id) {
 
 // update work
 std::optional<std::string> DatabaseManager::update_work(const WorkUpdate &data) {
+    ensure_initialized();
     std::lock_guard<std::mutex> lock(write_mutex);
     try {
         std::string sql = "UPDATE Work SET ";
@@ -839,6 +863,7 @@ std::optional<std::string> DatabaseManager::update_work(const WorkUpdate &data) 
 }
 
 std::optional<std::string> DatabaseManager::add_track_artist(const TrackArtistParams &params) {
+    ensure_initialized();
     std::lock_guard<std::mutex> lock(write_mutex);
     try {
         SQLite::Transaction transaction(*write_db);
@@ -891,6 +916,7 @@ std::optional<std::string> DatabaseManager::add_track_artist(const TrackArtistPa
 
 std::optional<std::string> DatabaseManager::remove_track_artist(const std::string& track_id,
                                                                 const std::string& artist_id) {
+    ensure_initialized();
     std::lock_guard<std::mutex> lock(write_mutex);
     try {
         SQLite::Transaction transaction(*write_db);
@@ -919,6 +945,7 @@ std::optional<std::string> DatabaseManager::remove_track_artist(const std::strin
 }
 
 std::optional<std::string> DatabaseManager::update_track_artist(const TrackArtistParams &params) {
+    ensure_initialized();
     std::lock_guard<std::mutex> lock(write_mutex);
     try {
         SQLite::Transaction transaction(*write_db);
@@ -960,6 +987,7 @@ std::optional<std::string> DatabaseManager::update_track_artist(const TrackArtis
 }
 
 std::optional<std::string> DatabaseManager::insert_playlist(const Playlist &playlist) {
+    ensure_initialized();
     std::lock_guard<std::mutex> lock(write_mutex);
     try {
         SQLite::Transaction transaction(*write_db);
@@ -990,6 +1018,7 @@ std::optional<std::string> DatabaseManager::insert_playlist(const Playlist &play
 }
 
 std::optional<Playlist> DatabaseManager::get_playlist(const std::string &playlist_id) {
+    ensure_initialized();
     ConnectionGuard guard(*read_pool);
     auto &db = guard.get();
 
@@ -1007,6 +1036,7 @@ std::optional<Playlist> DatabaseManager::get_playlist(const std::string &playlis
 }
 
 std::optional<std::string> DatabaseManager::update_playlist(const PlaylistUpdate &data) {
+    ensure_initialized();
     std::lock_guard<std::mutex> lock(write_mutex);
     try {
         std::string sql = "UPDATE Playlist SET ";
@@ -1058,6 +1088,7 @@ std::optional<std::string> DatabaseManager::update_playlist(const PlaylistUpdate
 std::optional<std::string> DatabaseManager::add_playlist_track(const std::string &playlist_id,
                                                                const std::string &track_id,
                                                                std::optional<int> position) {
+    ensure_initialized();
     std::lock_guard<std::mutex> lock(write_mutex);
     try {
         SQLite::Transaction transaction(*write_db);
@@ -1102,6 +1133,7 @@ std::optional<std::string> DatabaseManager::add_playlist_track(const std::string
 
 std::optional<std::string> DatabaseManager::remove_playlist_track(const std::string &playlist_id,
                                                                   const std::string &track_id) {
+    ensure_initialized();
     std::lock_guard<std::mutex> lock(write_mutex);
     try {
         SQLite::Transaction transaction(*write_db);
@@ -1128,6 +1160,7 @@ std::optional<std::string> DatabaseManager::remove_playlist_track(const std::str
 }
 
 std::vector<std::string> DatabaseManager::get_playlist_tracks(const std::string &playlist_id) {
+    ensure_initialized();
     ConnectionGuard guard(*read_pool);
     auto &db = guard.get();
 
