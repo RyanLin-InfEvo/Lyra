@@ -3,32 +3,116 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 #include <SQLiteCpp/SQLiteCpp.h>
+#include <condition_variable>
 #include <memory>
 #include <mutex>
 #include <optional>
+#include <queue>
 #include <string>
 #include <vector>
 
 #include "../models/relation_types.h"
 #include "../utils/sqlite_helper.h"
 #include "database_manager.h"
+
 namespace lyra {
 
-static std::unique_ptr<SQLite::Database> db;
-static std::mutex db_mutex;
+namespace {
+
+/**
+ * @brief A simple thread-safe connection pool for SQLite read-only operations.
+ */
+class ConnectionPool {
+  public:
+    ConnectionPool(const std::string &db_path, size_t pool_size) : path(db_path) {
+        for (size_t i = 0; i < pool_size; ++i) {
+            auto conn = std::make_unique<SQLite::Database>(path, SQLite::OPEN_READONLY);
+            // Optimization: Read-only connections don't strictly need WAL pragma
+            // but foreign keys are good practice.
+            conn->exec("PRAGMA foreign_keys=ON;");
+            pool.push(std::move(conn));
+        }
+    }
+
+    std::unique_ptr<SQLite::Database> acquire() {
+        std::unique_lock<std::mutex> lock(mutex);
+        // TODO: In a high-concurrency server environment, consider using wait_for() 
+        // with a timeout to prevent potential deadlocks if the pool is exhausted 
+        // and a thread holds a resource while waiting for another.
+        condition.wait(lock, [this] { return !pool.empty(); });
+        auto conn = std::move(pool.front());
+        pool.pop();
+        return conn;
+    }
+
+    void release(std::unique_ptr<SQLite::Database> conn) {
+        if (!conn) {
+            return; // Best Practice: Prevent pool contamination with nullptr
+        }
+        std::lock_guard<std::mutex> lock(mutex);
+        pool.push(std::move(conn));
+        condition.notify_one();
+    }
+
+  private:
+    std::string path;
+    std::queue<std::unique_ptr<SQLite::Database>> pool;
+    std::mutex mutex;
+    std::condition_variable condition;
+};
+
+/**
+ * @brief RAII guard to safely acquire and release a connection from the pool.
+ */
+class ConnectionGuard {
+  public:
+    explicit ConnectionGuard(ConnectionPool &p) : pool(p), conn(pool.acquire()) {}
+    ~ConnectionGuard() { pool.release(std::move(conn)); }
+
+    // Best Practice: Explicitly delete copy and move to prevent resource leakage or double release
+    ConnectionGuard(const ConnectionGuard &) = delete;
+    ConnectionGuard &operator=(const ConnectionGuard &) = delete;
+    ConnectionGuard(ConnectionGuard &&) = delete;
+    ConnectionGuard &operator=(ConnectionGuard &&) = delete;
+
+    SQLite::Database &get() { return *conn; }
+
+  private:
+    ConnectionPool &pool;
+    std::unique_ptr<SQLite::Database> conn;
+};
+
+} // namespace
+
+static std::unique_ptr<SQLite::Database> write_db;
+static std::mutex write_mutex;
+
+static std::unique_ptr<ConnectionPool> read_pool;
 
 void DatabaseManager::init_database(const std::string &db_path) {
-    std::lock_guard<std::mutex> lock(db_mutex);
-    // open database file. If lyra.db does not exist, create it automatically
-    // (OPEN_CREATE)
-    db = std::make_unique<SQLite::Database>(db_path, SQLite::OPEN_READWRITE | SQLite::OPEN_CREATE);
+    std::lock_guard<std::mutex> lock(write_mutex);
+
+    // TODO: SQLite fundamentally serializes writes at the database file level.
+    // If high-volume concurrent writes become a bottleneck in the future,
+    // consider migrating to a client-server database like PostgreSQL.
+
+    // open write connection
+    write_db =
+        std::make_unique<SQLite::Database>(db_path, SQLite::OPEN_READWRITE | SQLite::OPEN_CREATE);
 
     // enable WAL mode and foreign key support
-    db->exec("PRAGMA journal_mode=WAL;");
-    db->exec("PRAGMA foreign_keys=ON;");
+    write_db->exec("PRAGMA journal_mode=WAL;");
+    write_db->exec("PRAGMA foreign_keys=ON;");
+
+    // Initialize Read Connection Pool
+    // Best Practice: Use hardware concurrency to adapt to different environments.
+    // Ensure at least 2 connections (one for background tasks if needed).
+    unsigned int n = std::thread::hardware_concurrency();
+    size_t pool_size = (n > 0) ? n : 4;
+    read_pool = std::make_unique<ConnectionPool>(db_path, pool_size);
 
     // create Entity table
-    db->exec(R"(
+    write_db->exec(R"(
         CREATE TABLE IF NOT EXISTS Entity (
           id TEXT NOT NULL,
           entity_type TEXT NULL CHECK( entity_type IN ('track', 'album', 'artist', 'work', 'playlist', 'tag') ),
@@ -39,7 +123,7 @@ void DatabaseManager::init_database(const std::string &db_path) {
     )");
 
     // create Artist table (it is bound to Entity table)
-    db->exec(R"(
+    write_db->exec(R"(
         CREATE TABLE IF NOT EXISTS Artist (
           id TEXT NOT NULL,
           name TEXT NOT NULL,
@@ -56,7 +140,7 @@ void DatabaseManager::init_database(const std::string &db_path) {
     )");
 
     // create Track table
-    db->exec(R"(
+    write_db->exec(R"(
         CREATE TABLE IF NOT EXISTS Track (
           id TEXT NOT NULL UNIQUE,
           work_id TEXT NULL DEFAULT NULL,
@@ -80,7 +164,7 @@ void DatabaseManager::init_database(const std::string &db_path) {
         );
     )");
 
-    db->exec(R"(
+    write_db->exec(R"(
         CREATE TABLE IF NOT EXISTS Track_Artist (
           track_id TEXT NOT NULL,
           artist_id TEXT NOT NULL,
@@ -101,7 +185,7 @@ void DatabaseManager::init_database(const std::string &db_path) {
     )");
 
     // create Album table
-    db->exec(R"(
+    write_db->exec(R"(
         CREATE TABLE IF NOT EXISTS Album (
           id TEXT NOT NULL,
           title TEXT NOT NULL,
@@ -118,7 +202,7 @@ void DatabaseManager::init_database(const std::string &db_path) {
     )");
 
     // create Work table
-    db->exec(R"(
+    write_db->exec(R"(
         CREATE TABLE IF NOT EXISTS Work (
           id TEXT NOT NULL,
           title TEXT NOT NULL,
@@ -137,11 +221,11 @@ void DatabaseManager::init_database(const std::string &db_path) {
         );
     )");
 
-    db->exec("CREATE INDEX IF NOT EXISTS idx_Work_iswc ON Work (iswc);");
-    db->exec("CREATE INDEX IF NOT EXISTS idx_Work_musicbrainz_id ON Work (musicbrainz_id);");
+    write_db->exec("CREATE INDEX IF NOT EXISTS idx_Work_iswc ON Work (iswc);");
+    write_db->exec("CREATE INDEX IF NOT EXISTS idx_Work_musicbrainz_id ON Work (musicbrainz_id);");
 
     // create Playlist table
-    db->exec(R"(
+    write_db->exec(R"(
         CREATE TABLE IF NOT EXISTS Playlist (
           id TEXT NOT NULL,
           title TEXT NOT NULL,
@@ -156,7 +240,7 @@ void DatabaseManager::init_database(const std::string &db_path) {
     )");
 
     // create Playlist_Track table
-    db->exec(R"(
+    write_db->exec(R"(
         CREATE TABLE IF NOT EXISTS Playlist_Track (
           playlist_id TEXT NOT NULL,
           track_id TEXT NOT NULL,
@@ -179,20 +263,20 @@ void DatabaseManager::init_database(const std::string &db_path) {
 // Insert artist into database table Artist, Entity
 // Return nullopt or error message(string)
 std::optional<std::string> DatabaseManager::insert_artist(const Artist &artist) {
-    std::lock_guard<std::mutex> lock(db_mutex);
+    std::lock_guard<std::mutex> lock(write_mutex);
 
     try {
-        SQLite::Transaction transaction(*db);
+        SQLite::Transaction transaction(*write_db);
 
         // insert into Entity table
-        SQLite::Statement query1(*db,
+        SQLite::Statement query1(*write_db,
                                  "INSERT INTO Entity (id, entity_type, created_at, updated_at) "
                                  "VALUES (?, 'artist', datetime('now'), datetime('now'))");
         query1.bind(1, artist.id);
         query1.exec();
 
         // insert into Artist table
-        SQLite::Statement query2(*db, "INSERT INTO Artist (id, name, musicbrainz_id, "
+        SQLite::Statement query2(*write_db, "INSERT INTO Artist (id, name, musicbrainz_id, "
                                       "spotify_id, ytm_id) VALUES (?, ?, ?, ?, ?)");
 
         auto bind_opt = [&query2](int index, const auto &val) {
@@ -221,7 +305,7 @@ std::optional<std::string> DatabaseManager::insert_artist(const Artist &artist) 
 
 // update artist
 std::optional<std::string> DatabaseManager::update_artist(const ArtistUpdate &data) {
-    std::lock_guard<std::mutex> lock(db_mutex);
+    std::lock_guard<std::mutex> lock(write_mutex);
     try {
         // Build Dynamic SQL Query
         std::string sql = "UPDATE Artist SET ";
@@ -251,8 +335,8 @@ std::optional<std::string> DatabaseManager::update_artist(const ArtistUpdate &da
         sql += " WHERE id = ?";
 
         // Execute Transaction
-        SQLite::Transaction transaction(*db);
-        SQLite::Statement query(*db, sql);
+        SQLite::Transaction transaction(*write_db);
+        SQLite::Statement query(*write_db, sql);
 
         // Execute binding
         int bind_idx = 1;
@@ -276,7 +360,7 @@ std::optional<std::string> DatabaseManager::update_artist(const ArtistUpdate &da
 
         // Update successful, sync Entity updated_at
         SQLite::Statement update_entity(
-            *db, "UPDATE Entity SET updated_at = datetime('now') WHERE id = ?");
+            *write_db, "UPDATE Entity SET updated_at = datetime('now') WHERE id = ?");
         update_entity.bind(1, data.id);
         update_entity.exec();
 
@@ -290,9 +374,10 @@ std::optional<std::string> DatabaseManager::update_artist(const ArtistUpdate &da
 
 // Get artist from database
 std::optional<Artist> DatabaseManager::get_artist(const std::string &artist_id) {
-    std::lock_guard<std::mutex> lock(db_mutex);
+    ConnectionGuard guard(*read_pool);
+    auto &db = guard.get();
 
-    SQLite::Statement query(*db, "SELECT * FROM Artist WHERE id = ?");
+    SQLite::Statement query(db, "SELECT * FROM Artist WHERE id = ?");
 
     query.bind(1, artist_id);
 
@@ -320,19 +405,19 @@ std::optional<Artist> DatabaseManager::get_artist(const std::string &artist_id) 
 // Insert track into database
 // Return nullopt or error message(string)
 std::optional<std::string> DatabaseManager::insert_track(const Track &track) {
-    std::lock_guard<std::mutex> lock(db_mutex);
+    std::lock_guard<std::mutex> lock(write_mutex);
     try {
-        SQLite::Transaction transaction(*db);
+        SQLite::Transaction transaction(*write_db);
 
         // Insert into Entity table
-        SQLite::Statement query1(*db,
+        SQLite::Statement query1(*write_db,
                                  "INSERT INTO Entity (id, entity_type, created_at, updated_at) "
                                  "VALUES (?, 'track', datetime('now'), datetime('now'))");
         query1.bind(1, track.id);
         query1.exec();
 
         // Insert into Track table
-        SQLite::Statement query2(*db,
+        SQLite::Statement query2(*write_db,
                                  "INSERT INTO Track (id, work_id, pcm_hash, title, recording_year, "
                                  "recording_month, recording_day, recording_location, duration, "
                                  "isrc, musicbrainz_id, ytm_id, spotify_id) "
@@ -375,8 +460,10 @@ std::optional<std::string> DatabaseManager::insert_track(const Track &track) {
 
 // Get track from database
 std::optional<Track> DatabaseManager::get_track(const std::string &track_id) {
-    std::lock_guard<std::mutex> lock(db_mutex);
-    SQLite::Statement query(*db, "SELECT * FROM Track WHERE id = ?");
+    ConnectionGuard guard(*read_pool);
+    auto &db = guard.get();
+
+    SQLite::Statement query(db, "SELECT * FROM Track WHERE id = ?");
     query.bind(1, track_id);
 
     if (query.executeStep()) {
@@ -407,7 +494,7 @@ std::optional<Track> DatabaseManager::get_track(const std::string &track_id) {
 
 // update track
 std::optional<std::string> DatabaseManager::update_track(const TrackUpdate &data) {
-    std::lock_guard<std::mutex> lock(db_mutex);
+    std::lock_guard<std::mutex> lock(write_mutex);
     try {
         std::string sql = "UPDATE Track SET ";
         std::vector<std::string> fields;
@@ -448,8 +535,8 @@ std::optional<std::string> DatabaseManager::update_track(const TrackUpdate &data
         }
         sql += " WHERE id = ?";
 
-        SQLite::Transaction transaction(*db);
-        SQLite::Statement query(*db, sql);
+        SQLite::Transaction transaction(*write_db);
+        SQLite::Statement query(*write_db, sql);
 
         int bind_idx = 1;
         if (data.work_id)
@@ -484,7 +571,7 @@ std::optional<std::string> DatabaseManager::update_track(const TrackUpdate &data
             return "Track ID not found.";
 
         SQLite::Statement update_entity(
-            *db, "UPDATE Entity SET updated_at = datetime('now') WHERE id = ?");
+            *write_db, "UPDATE Entity SET updated_at = datetime('now') WHERE id = ?");
         update_entity.bind(1, data.id);
         update_entity.exec();
 
@@ -497,19 +584,19 @@ std::optional<std::string> DatabaseManager::update_track(const TrackUpdate &data
 
 // Insert album into database
 std::optional<std::string> DatabaseManager::insert_album(const Album &album) {
-    std::lock_guard<std::mutex> lock(db_mutex);
+    std::lock_guard<std::mutex> lock(write_mutex);
     try {
-        SQLite::Transaction transaction(*db);
+        SQLite::Transaction transaction(*write_db);
 
         // Insert into Entity table
-        SQLite::Statement query1(*db,
+        SQLite::Statement query1(*write_db,
                                  "INSERT INTO Entity (id, entity_type, created_at, updated_at) "
                                  "VALUES (?, 'album', datetime('now'), datetime('now'))");
         query1.bind(1, album.id);
         query1.exec();
 
         // Insert into Album table
-        SQLite::Statement query2(*db,
+        SQLite::Statement query2(*write_db,
                                  "INSERT INTO Album (id, title, release_year, release_month, release_day) "
                                  "VALUES (?, ?, ?, ?, ?)");
 
@@ -539,8 +626,10 @@ std::optional<std::string> DatabaseManager::insert_album(const Album &album) {
 
 // Get album from database
 std::optional<Album> DatabaseManager::get_album(const std::string &album_id) {
-    std::lock_guard<std::mutex> lock(db_mutex);
-    SQLite::Statement query(*db, "SELECT * FROM Album WHERE id = ?");
+    ConnectionGuard guard(*read_pool);
+    auto &db = guard.get();
+
+    SQLite::Statement query(db, "SELECT * FROM Album WHERE id = ?");
     query.bind(1, album_id);
 
     if (query.executeStep()) {
@@ -561,7 +650,7 @@ std::optional<Album> DatabaseManager::get_album(const std::string &album_id) {
 
 // update album
 std::optional<std::string> DatabaseManager::update_album(const AlbumUpdate &data) {
-    std::lock_guard<std::mutex> lock(db_mutex);
+    std::lock_guard<std::mutex> lock(write_mutex);
     try {
         std::string sql = "UPDATE Album SET ";
         std::vector<std::string> fields;
@@ -586,8 +675,8 @@ std::optional<std::string> DatabaseManager::update_album(const AlbumUpdate &data
         }
         sql += " WHERE id = ?";
 
-        SQLite::Transaction transaction(*db);
-        SQLite::Statement query(*db, sql);
+        SQLite::Transaction transaction(*write_db);
+        SQLite::Statement query(*write_db, sql);
 
         int bind_idx = 1;
         if (data.title)
@@ -606,7 +695,7 @@ std::optional<std::string> DatabaseManager::update_album(const AlbumUpdate &data
             return "Album ID not found.";
 
         SQLite::Statement update_entity(
-            *db, "UPDATE Entity SET updated_at = datetime('now') WHERE id = ?");
+            *write_db, "UPDATE Entity SET updated_at = datetime('now') WHERE id = ?");
         update_entity.bind(1, data.id);
         update_entity.exec();
 
@@ -619,19 +708,19 @@ std::optional<std::string> DatabaseManager::update_album(const AlbumUpdate &data
 
 // Insert work into database
 std::optional<std::string> DatabaseManager::insert_work(const Work &work) {
-    std::lock_guard<std::mutex> lock(db_mutex);
+    std::lock_guard<std::mutex> lock(write_mutex);
     try {
-        SQLite::Transaction transaction(*db);
+        SQLite::Transaction transaction(*write_db);
 
         // Insert into Entity table
-        SQLite::Statement query1(*db,
+        SQLite::Statement query1(*write_db,
                                  "INSERT INTO Entity (id, entity_type, created_at, updated_at) "
                                  "VALUES (?, 'work', datetime('now'), datetime('now'))");
         query1.bind(1, work.id);
         query1.exec();
 
         // Insert into Work table
-        SQLite::Statement query2(*db, "INSERT INTO Work (id, title, composition_start_year, "
+        SQLite::Statement query2(*write_db, "INSERT INTO Work (id, title, composition_start_year, "
                                       "composition_end_year, composition_date_text, iswc, "
                                       "musicbrainz_id) VALUES (?, ?, ?, ?, ?, ?, ?)");
 
@@ -661,8 +750,10 @@ std::optional<std::string> DatabaseManager::insert_work(const Work &work) {
 
 // Get work from database
 std::optional<Work> DatabaseManager::get_work(const std::string &work_id) {
-    std::lock_guard<std::mutex> lock(db_mutex);
-    SQLite::Statement query(*db, "SELECT * FROM Work WHERE id = ?");
+    ConnectionGuard guard(*read_pool);
+    auto &db = guard.get();
+
+    SQLite::Statement query(db, "SELECT * FROM Work WHERE id = ?");
     query.bind(1, work_id);
 
     if (query.executeStep()) {
@@ -683,7 +774,7 @@ std::optional<Work> DatabaseManager::get_work(const std::string &work_id) {
 
 // update work
 std::optional<std::string> DatabaseManager::update_work(const WorkUpdate &data) {
-    std::lock_guard<std::mutex> lock(db_mutex);
+    std::lock_guard<std::mutex> lock(write_mutex);
     try {
         std::string sql = "UPDATE Work SET ";
         std::vector<std::string> fields;
@@ -712,8 +803,8 @@ std::optional<std::string> DatabaseManager::update_work(const WorkUpdate &data) 
         }
         sql += " WHERE id = ?";
 
-        SQLite::Transaction transaction(*db);
-        SQLite::Statement query(*db, sql);
+        SQLite::Transaction transaction(*write_db);
+        SQLite::Statement query(*write_db, sql);
 
         int bind_idx = 1;
         if (data.title)
@@ -736,7 +827,7 @@ std::optional<std::string> DatabaseManager::update_work(const WorkUpdate &data) 
             return "Work ID not found.";
 
         SQLite::Statement update_entity(
-            *db, "UPDATE Entity SET updated_at = datetime('now') WHERE id = ?");
+            *write_db, "UPDATE Entity SET updated_at = datetime('now') WHERE id = ?");
         update_entity.bind(1, data.id);
         update_entity.exec();
 
@@ -748,26 +839,26 @@ std::optional<std::string> DatabaseManager::update_work(const WorkUpdate &data) 
 }
 
 std::optional<std::string> DatabaseManager::add_track_artist(const TrackArtistParams &params) {
-    std::lock_guard<std::mutex> lock(db_mutex);
+    std::lock_guard<std::mutex> lock(write_mutex);
     try {
-        SQLite::Transaction transaction(*db);
+        SQLite::Transaction transaction(*write_db);
 
         // Poko-Yoke: Check if Track exists
-        SQLite::Statement check_track(*db, "SELECT 1 FROM Track WHERE id = ?");
+        SQLite::Statement check_track(*write_db, "SELECT 1 FROM Track WHERE id = ?");
         check_track.bindNoCopy(1, params.track_id);
         if (!check_track.executeStep()) {
             return "Target Track not found.";
         }
 
         // Poko-Yoke: Check if Artist exists
-        SQLite::Statement check_artist(*db, "SELECT 1 FROM Artist WHERE id = ?");
+        SQLite::Statement check_artist(*write_db, "SELECT 1 FROM Artist WHERE id = ?");
         check_artist.bindNoCopy(1, params.artist_id);
         if (!check_artist.executeStep()) {
             return "Target Artist not found.";
         }
 
         // Insert or Replace (Upsert)
-        SQLite::Statement query(*db, "INSERT OR REPLACE INTO Track_Artist (track_id, "
+        SQLite::Statement query(*write_db, "INSERT OR REPLACE INTO Track_Artist (track_id, "
                                      "artist_id, role, position) VALUES (?, ?, ?, ?)");
         query.bindNoCopy(1, params.track_id);
         query.bindNoCopy(2, params.artist_id);
@@ -787,7 +878,7 @@ std::optional<std::string> DatabaseManager::add_track_artist(const TrackArtistPa
 
         // Update Entity timestamp
         SQLite::Statement update_entity(
-            *db, "UPDATE Entity SET updated_at = datetime('now') WHERE id = ?");
+            *write_db, "UPDATE Entity SET updated_at = datetime('now') WHERE id = ?");
         update_entity.bindNoCopy(1, params.track_id);
         update_entity.exec();
 
@@ -800,11 +891,11 @@ std::optional<std::string> DatabaseManager::add_track_artist(const TrackArtistPa
 
 std::optional<std::string> DatabaseManager::remove_track_artist(const std::string& track_id,
                                                                 const std::string& artist_id) {
-    std::lock_guard<std::mutex> lock(db_mutex);
+    std::lock_guard<std::mutex> lock(write_mutex);
     try {
-        SQLite::Transaction transaction(*db);
+        SQLite::Transaction transaction(*write_db);
 
-        SQLite::Statement query(*db,
+        SQLite::Statement query(*write_db,
                                 "DELETE FROM Track_Artist WHERE track_id = ? AND artist_id = ?");
         query.bindNoCopy(1, track_id);
         query.bindNoCopy(2, artist_id);
@@ -816,7 +907,7 @@ std::optional<std::string> DatabaseManager::remove_track_artist(const std::strin
 
         // Update Entity timestamp
         SQLite::Statement update_entity(
-            *db, "UPDATE Entity SET updated_at = datetime('now') WHERE id = ?");
+            *write_db, "UPDATE Entity SET updated_at = datetime('now') WHERE id = ?");
         update_entity.bindNoCopy(1, track_id);
         update_entity.exec();
 
@@ -828,11 +919,11 @@ std::optional<std::string> DatabaseManager::remove_track_artist(const std::strin
 }
 
 std::optional<std::string> DatabaseManager::update_track_artist(const TrackArtistParams &params) {
-    std::lock_guard<std::mutex> lock(db_mutex);
+    std::lock_guard<std::mutex> lock(write_mutex);
     try {
-        SQLite::Transaction transaction(*db);
+        SQLite::Transaction transaction(*write_db);
 
-        SQLite::Statement query(*db, "UPDATE Track_Artist SET role = COALESCE(?, role), "
+        SQLite::Statement query(*write_db, "UPDATE Track_Artist SET role = COALESCE(?, role), "
                                      "position = COALESCE(?, position) WHERE track_id = ? AND "
                                      "artist_id = ?");
 
@@ -857,7 +948,7 @@ std::optional<std::string> DatabaseManager::update_track_artist(const TrackArtis
         }
 
         SQLite::Statement update_entity(
-            *db, "UPDATE Entity SET updated_at = datetime('now') WHERE id = ?");
+            *write_db, "UPDATE Entity SET updated_at = datetime('now') WHERE id = ?");
         update_entity.bindNoCopy(1, params.track_id);
         update_entity.exec();
 
@@ -869,19 +960,19 @@ std::optional<std::string> DatabaseManager::update_track_artist(const TrackArtis
 }
 
 std::optional<std::string> DatabaseManager::insert_playlist(const Playlist &playlist) {
-    std::lock_guard<std::mutex> lock(db_mutex);
+    std::lock_guard<std::mutex> lock(write_mutex);
     try {
-        SQLite::Transaction transaction(*db);
+        SQLite::Transaction transaction(*write_db);
 
         // Insert into Entity table
-        SQLite::Statement query1(*db,
+        SQLite::Statement query1(*write_db,
                                  "INSERT INTO Entity (id, entity_type, created_at, updated_at) "
                                  "VALUES (?, 'playlist', datetime('now'), datetime('now'))");
         query1.bind(1, playlist.id);
         query1.exec();
 
         // Insert into Playlist table
-        SQLite::Statement query2(*db, "INSERT INTO Playlist (id, title, description) VALUES (?, ?, ?)");
+        SQLite::Statement query2(*write_db, "INSERT INTO Playlist (id, title, description) VALUES (?, ?, ?)");
         query2.bind(1, playlist.id);
         query2.bind(2, playlist.title);
         if (playlist.description) {
@@ -899,8 +990,10 @@ std::optional<std::string> DatabaseManager::insert_playlist(const Playlist &play
 }
 
 std::optional<Playlist> DatabaseManager::get_playlist(const std::string &playlist_id) {
-    std::lock_guard<std::mutex> lock(db_mutex);
-    SQLite::Statement query(*db, "SELECT * FROM Playlist WHERE id = ?");
+    ConnectionGuard guard(*read_pool);
+    auto &db = guard.get();
+
+    SQLite::Statement query(db, "SELECT * FROM Playlist WHERE id = ?");
     query.bind(1, playlist_id);
 
     if (query.executeStep()) {
@@ -914,7 +1007,7 @@ std::optional<Playlist> DatabaseManager::get_playlist(const std::string &playlis
 }
 
 std::optional<std::string> DatabaseManager::update_playlist(const PlaylistUpdate &data) {
-    std::lock_guard<std::mutex> lock(db_mutex);
+    std::lock_guard<std::mutex> lock(write_mutex);
     try {
         std::string sql = "UPDATE Playlist SET ";
         std::vector<std::string> fields;
@@ -935,8 +1028,8 @@ std::optional<std::string> DatabaseManager::update_playlist(const PlaylistUpdate
         }
         sql += " WHERE id = ?";
 
-        SQLite::Transaction transaction(*db);
-        SQLite::Statement query(*db, sql);
+        SQLite::Transaction transaction(*write_db);
+        SQLite::Statement query(*write_db, sql);
 
         int bind_idx = 1;
         if (data.title)
@@ -951,7 +1044,7 @@ std::optional<std::string> DatabaseManager::update_playlist(const PlaylistUpdate
             return "Playlist ID not found.";
 
         SQLite::Statement update_entity(
-            *db, "UPDATE Entity SET updated_at = datetime('now') WHERE id = ?");
+            *write_db, "UPDATE Entity SET updated_at = datetime('now') WHERE id = ?");
         update_entity.bind(1, data.id);
         update_entity.exec();
 
@@ -965,26 +1058,26 @@ std::optional<std::string> DatabaseManager::update_playlist(const PlaylistUpdate
 std::optional<std::string> DatabaseManager::add_playlist_track(const std::string &playlist_id,
                                                                const std::string &track_id,
                                                                std::optional<int> position) {
-    std::lock_guard<std::mutex> lock(db_mutex);
+    std::lock_guard<std::mutex> lock(write_mutex);
     try {
-        SQLite::Transaction transaction(*db);
+        SQLite::Transaction transaction(*write_db);
 
         // Check if playlist exists
-        SQLite::Statement check_playlist(*db, "SELECT 1 FROM Playlist WHERE id = ?");
+        SQLite::Statement check_playlist(*write_db, "SELECT 1 FROM Playlist WHERE id = ?");
         check_playlist.bind(1, playlist_id);
         if (!check_playlist.executeStep()) {
             return "Playlist ID not found.";
         }
 
         // Check if track exists
-        SQLite::Statement check_track(*db, "SELECT 1 FROM Track WHERE id = ?");
+        SQLite::Statement check_track(*write_db, "SELECT 1 FROM Track WHERE id = ?");
         check_track.bind(1, track_id);
         if (!check_track.executeStep()) {
             return "Track ID not found.";
         }
 
         // Insert or Replace into Playlist_Track
-        SQLite::Statement query(*db, "INSERT OR REPLACE INTO Playlist_Track (playlist_id, track_id, position) VALUES (?, ?, ?)");
+        SQLite::Statement query(*write_db, "INSERT OR REPLACE INTO Playlist_Track (playlist_id, track_id, position) VALUES (?, ?, ?)");
         query.bind(1, playlist_id);
         query.bind(2, track_id);
         if (position) {
@@ -996,7 +1089,7 @@ std::optional<std::string> DatabaseManager::add_playlist_track(const std::string
         query.exec();
 
         // Update Playlist timestamp
-        SQLite::Statement update_entity(*db, "UPDATE Entity SET updated_at = datetime('now') WHERE id = ?");
+        SQLite::Statement update_entity(*write_db, "UPDATE Entity SET updated_at = datetime('now') WHERE id = ?");
         update_entity.bind(1, playlist_id);
         update_entity.exec();
 
@@ -1009,11 +1102,11 @@ std::optional<std::string> DatabaseManager::add_playlist_track(const std::string
 
 std::optional<std::string> DatabaseManager::remove_playlist_track(const std::string &playlist_id,
                                                                   const std::string &track_id) {
-    std::lock_guard<std::mutex> lock(db_mutex);
+    std::lock_guard<std::mutex> lock(write_mutex);
     try {
-        SQLite::Transaction transaction(*db);
+        SQLite::Transaction transaction(*write_db);
 
-        SQLite::Statement query(*db, "DELETE FROM Playlist_Track WHERE playlist_id = ? AND track_id = ?");
+        SQLite::Statement query(*write_db, "DELETE FROM Playlist_Track WHERE playlist_id = ? AND track_id = ?");
         query.bind(1, playlist_id);
         query.bind(2, track_id);
 
@@ -1023,7 +1116,7 @@ std::optional<std::string> DatabaseManager::remove_playlist_track(const std::str
         }
 
         // Update Playlist timestamp
-        SQLite::Statement update_entity(*db, "UPDATE Entity SET updated_at = datetime('now') WHERE id = ?");
+        SQLite::Statement update_entity(*write_db, "UPDATE Entity SET updated_at = datetime('now') WHERE id = ?");
         update_entity.bind(1, playlist_id);
         update_entity.exec();
 
@@ -1035,10 +1128,12 @@ std::optional<std::string> DatabaseManager::remove_playlist_track(const std::str
 }
 
 std::vector<std::string> DatabaseManager::get_playlist_tracks(const std::string &playlist_id) {
-    std::lock_guard<std::mutex> lock(db_mutex);
+    ConnectionGuard guard(*read_pool);
+    auto &db = guard.get();
+
     std::vector<std::string> track_ids;
     try {
-        SQLite::Statement query(*db, "SELECT track_id FROM Playlist_Track WHERE playlist_id = ? ORDER BY position ASC, track_id ASC");
+        SQLite::Statement query(db, "SELECT track_id FROM Playlist_Track WHERE playlist_id = ? ORDER BY position ASC, track_id ASC");
         query.bind(1, playlist_id);
 
         while (query.executeStep()) {
