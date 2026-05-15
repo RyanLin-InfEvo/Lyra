@@ -23,7 +23,8 @@ ui/.flutter-plugins-dependencies
 
 # IDE Settings 
 .vscode/
-.idea/
+docs/
+.worktrees/
 *.DS_Store
 *.mwb.bak
 *.db
