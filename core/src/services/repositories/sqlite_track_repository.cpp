@@ -1,0 +1,227 @@
+// SPDX-FileCopyrightText: 2026 Tzu-Ting Lin
+//
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
+#include <SQLiteCpp/SQLiteCpp.h>
+#include <vector>
+
+#include "../../utils/sqlite_helper.h"
+#include "sqlite_track_repository.h"
+
+namespace lyra {
+
+SqliteTrackRepository::SqliteTrackRepository(IDatabaseContext &context)
+    : m_context(context) {}
+
+tl::expected<void, std::string> SqliteTrackRepository::insert(const Track &track) {
+    try {
+        auto transaction = m_context.begin_transaction();
+        auto &db = m_context.get_db();
+
+        SQLite::Statement query1(db,
+                                 "INSERT INTO Entity (id, entity_type, created_at, updated_at) "
+                                 "VALUES (?, 'track', datetime('now'), datetime('now'))");
+        query1.bind(1, track.id);
+        query1.exec();
+
+        SQLite::Statement query2(db,
+                                 "INSERT INTO Track (id, work_id, pcm_hash, title, recording_year, "
+                                 "recording_month, recording_day, recording_location, duration, "
+                                 "isrc, musicbrainz_id, ytm_id, spotify_id) "
+                                 "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
+
+        auto bind_opt = [&query2](int index, const auto &val) {
+            if (val) query2.bind(index, *val);
+            else query2.bind(index);
+        };
+
+        query2.bind(1, track.id);
+        bind_opt(2, track.work_id);
+        query2.bind(3, track.pcm_hash);
+        bind_opt(4, track.title);
+        bind_opt(5, track.recording_year);
+        bind_opt(6, track.recording_month);
+        bind_opt(7, track.recording_day);
+        bind_opt(8, track.recording_location);
+        bind_opt(9, track.duration);
+        bind_opt(10, track.isrc);
+        bind_opt(11, track.musicbrainz_id);
+        bind_opt(12, track.ytm_id);
+        bind_opt(13, track.spotify_id);
+
+        query2.exec();
+        transaction->commit();
+    } catch (const std::exception &e) {
+        return tl::unexpected(e.what());
+    }
+    return {};
+}
+
+tl::expected<Track, std::string> SqliteTrackRepository::get(const std::string &track_id) {
+
+    auto &db = m_context.get_db();
+
+    SQLite::Statement query(db, "SELECT * FROM Track WHERE id = ?");
+    query.bind(1, track_id);
+
+    if (query.executeStep()) {
+        Track track;
+        track.id = query.getColumn("id").getString();
+        track.pcm_hash = query.getColumn("pcm_hash").getString();
+        track.work_id = SqliteHelper::get_optional<std::string>(query, "work_id");
+        track.title = SqliteHelper::get_optional<std::string>(query, "title");
+        track.recording_year = SqliteHelper::get_optional<int>(query, "recording_year");
+        track.recording_month = SqliteHelper::get_optional<int>(query, "recording_month");
+        track.recording_day = SqliteHelper::get_optional<int>(query, "recording_day");
+        track.recording_location = SqliteHelper::get_optional<std::string>(query, "recording_location");
+        track.duration = SqliteHelper::get_optional<int>(query, "duration");
+        track.isrc = SqliteHelper::get_optional<std::string>(query, "isrc");
+        track.musicbrainz_id = SqliteHelper::get_optional<std::string>(query, "musicbrainz_id");
+        track.ytm_id = SqliteHelper::get_optional<std::string>(query, "ytm_id");
+        track.spotify_id = SqliteHelper::get_optional<std::string>(query, "spotify_id");
+        return track;
+    }
+    return tl::unexpected("Track not found.");
+}
+
+tl::expected<void, std::string> SqliteTrackRepository::update(const TrackUpdate &data) {
+    try {
+        auto transaction = m_context.begin_transaction();
+        auto &db = m_context.get_db();
+
+        std::string sql = "UPDATE Track SET ";
+        std::vector<std::string> fields;
+        if (data.work_id) fields.emplace_back("work_id = ?");
+        if (data.pcm_hash) fields.emplace_back("pcm_hash = ?");
+        if (data.title) fields.emplace_back("title = ?");
+        if (data.recording_year) fields.emplace_back("recording_year = ?");
+        if (data.recording_month) fields.emplace_back("recording_month = ?");
+        if (data.recording_day) fields.emplace_back("recording_day = ?");
+        if (data.recording_location) fields.emplace_back("recording_location = ?");
+        if (data.duration) fields.emplace_back("duration = ?");
+        if (data.isrc) fields.emplace_back("isrc = ?");
+        if (data.musicbrainz_id) fields.emplace_back("musicbrainz_id = ?");
+        if (data.ytm_id) fields.emplace_back("ytm_id = ?");
+        if (data.spotify_id) fields.emplace_back("spotify_id = ?");
+
+        if (fields.empty()) return {};
+
+        for (size_t i = 0; i < fields.size(); ++i) {
+            sql += fields[i];
+            if (i < fields.size() - 1) sql += ", ";
+        }
+        sql += " WHERE id = ?";
+
+        SQLite::Statement query(db, sql);
+        int bind_idx = 1;
+        if (data.work_id) query.bind(bind_idx++, *data.work_id);
+        if (data.pcm_hash) query.bind(bind_idx++, *data.pcm_hash);
+        if (data.title) query.bind(bind_idx++, *data.title);
+        if (data.recording_year) query.bind(bind_idx++, *data.recording_year);
+        if (data.recording_month) query.bind(bind_idx++, *data.recording_month);
+        if (data.recording_day) query.bind(bind_idx++, *data.recording_day);
+        if (data.recording_location) query.bind(bind_idx++, *data.recording_location);
+        if (data.duration) query.bind(bind_idx++, *data.duration);
+        if (data.isrc) query.bind(bind_idx++, *data.isrc);
+        if (data.musicbrainz_id) query.bind(bind_idx++, *data.musicbrainz_id);
+        if (data.ytm_id) query.bind(bind_idx++, *data.ytm_id);
+        if (data.spotify_id) query.bind(bind_idx++, *data.spotify_id);
+        query.bind(bind_idx, data.id);
+
+        if (query.exec() == 0) return tl::unexpected("Track ID not found.");
+
+        SQLite::Statement update_entity(db, "UPDATE Entity SET updated_at = datetime('now') WHERE id = ?");
+        update_entity.bind(1, data.id);
+        update_entity.exec();
+
+        transaction->commit();
+    } catch (const std::exception &e) {
+        return tl::unexpected(e.what());
+    }
+    return {};
+}
+
+tl::expected<void, std::string> SqliteTrackRepository::add_artist(const TrackArtistParams &params) {
+    try {
+        auto transaction = m_context.begin_transaction();
+        auto &db = m_context.get_db();
+
+        SQLite::Statement check_track(db, "SELECT 1 FROM Track WHERE id = ?");
+        check_track.bind(1, params.track_id);
+        if (!check_track.executeStep()) return tl::unexpected("Target Track not found.");
+
+        SQLite::Statement check_artist(db, "SELECT 1 FROM Artist WHERE id = ?");
+        check_artist.bind(1, params.artist_id);
+        if (!check_artist.executeStep()) return tl::unexpected("Target Artist not found.");
+
+        SQLite::Statement query(db, "INSERT OR REPLACE INTO Track_Artist (track_id, artist_id, role, position) VALUES (?, ?, ?, ?)");
+        query.bind(1, params.track_id);
+        query.bind(2, params.artist_id);
+        if (params.role) query.bind(3, ArtistRoleMapper::to_string(*params.role));
+        else query.bind(3);
+        if (params.position) query.bind(4, *params.position);
+        else query.bind(4);
+
+        query.exec();
+        SQLite::Statement update_entity(db, "UPDATE Entity SET updated_at = datetime('now') WHERE id = ?");
+        update_entity.bind(1, params.track_id);
+        update_entity.exec();
+
+        transaction->commit();
+    } catch (const std::exception &e) {
+        return tl::unexpected(e.what());
+    }
+    return {};
+}
+
+tl::expected<void, std::string> SqliteTrackRepository::remove_artist(const std::string& track_id, const std::string& artist_id) {
+    try {
+        auto transaction = m_context.begin_transaction();
+        auto &db = m_context.get_db();
+
+        SQLite::Statement query(db, "DELETE FROM Track_Artist WHERE track_id = ? AND artist_id = ?");
+        query.bind(1, track_id);
+        query.bind(2, artist_id);
+
+        if (query.exec() == 0) return tl::unexpected("Relation not found or already removed.");
+
+        SQLite::Statement update_entity(db, "UPDATE Entity SET updated_at = datetime('now') WHERE id = ?");
+        update_entity.bind(1, track_id);
+        update_entity.exec();
+
+        transaction->commit();
+    } catch (const std::exception &e) {
+        return tl::unexpected(e.what());
+    }
+    return {};
+}
+
+tl::expected<void, std::string> SqliteTrackRepository::update_artist(const TrackArtistParams &params) {
+    try {
+        auto transaction = m_context.begin_transaction();
+        auto &db = m_context.get_db();
+
+        SQLite::Statement query(db, "UPDATE Track_Artist SET role = COALESCE(?, role), "
+                                     "position = COALESCE(?, position) WHERE track_id = ? AND "
+                                     "artist_id = ?");
+        if (params.role) query.bind(1, ArtistRoleMapper::to_string(*params.role));
+        else query.bind(1);
+        if (params.position) query.bind(2, *params.position);
+        else query.bind(2);
+        query.bind(3, params.track_id);
+        query.bind(4, params.artist_id);
+
+        if (query.exec() == 0) return tl::unexpected("Relation not found. Cannot update.");
+
+        SQLite::Statement update_entity(db, "UPDATE Entity SET updated_at = datetime('now') WHERE id = ?");
+        update_entity.bind(1, params.track_id);
+        update_entity.exec();
+
+        transaction->commit();
+    } catch (const std::exception &e) {
+        return tl::unexpected(e.what());
+    }
+    return {};
+}
+
+} // namespace lyra
