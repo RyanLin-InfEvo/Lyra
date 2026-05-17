@@ -6,12 +6,12 @@
 
 namespace lyra {
 
-SqliteDatabaseContext::SqliteDatabaseContext(const std::string &db_path) 
+SqliteDatabaseContext::SqliteDatabaseContext(const std::string &db_path)
     : m_db_path(db_path) {
     init_schema();
 }
 
-SQLite::Database& SqliteDatabaseContext::get_db() {
+SQLite::Database &SqliteDatabaseContext::get_db() {
     struct ThreadConnection {
         std::string path;
         std::unique_ptr<SQLite::Database> db;
@@ -29,7 +29,7 @@ SQLite::Database& SqliteDatabaseContext::get_db() {
 }
 
 void SqliteDatabaseContext::init_schema() {
-    auto& m_db = get_db();
+    auto &m_db = get_db();
 
     m_db.exec(R"(
         CREATE TABLE IF NOT EXISTS Entity (

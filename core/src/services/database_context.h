@@ -35,7 +35,7 @@ class IDatabaseContext {
     /**
      * @brief Provides direct access to the database for repository operations.
      */
-    virtual SQLite::Database& get_db() = 0;
+    virtual SQLite::Database &get_db() = 0;
 };
 
 class SqliteDatabaseContext : public IDatabaseContext {
@@ -43,7 +43,7 @@ class SqliteDatabaseContext : public IDatabaseContext {
     explicit SqliteDatabaseContext(const std::string &db_path);
 
     std::unique_ptr<ITransaction> begin_transaction() override;
-    SQLite::Database& get_db() override;
+    SQLite::Database &get_db() override;
 
   private:
     std::string m_db_path;
@@ -53,7 +53,7 @@ class SqliteDatabaseContext : public IDatabaseContext {
     // Internal implementation of the transaction guard
     class SqliteTransaction : public ITransaction {
       public:
-        SqliteTransaction(SQLite::Database& db, int& depth)
+        SqliteTransaction(SQLite::Database &db, int &depth)
             : m_db(db), m_depth(depth) {
             if (m_depth == 0) {
                 m_transaction = std::make_unique<SQLite::Transaction>(m_db);
@@ -88,8 +88,8 @@ class SqliteDatabaseContext : public IDatabaseContext {
         }
 
       private:
-        SQLite::Database& m_db;
-        int& m_depth;
+        SQLite::Database &m_db;
+        int &m_depth;
         std::unique_ptr<SQLite::Transaction> m_transaction;
         std::string m_savepoint_name;
         bool m_committed = false;

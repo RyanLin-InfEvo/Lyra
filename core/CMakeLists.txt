@@ -24,6 +24,7 @@ set(CPP
     src/lyra_c_api.cpp
     src/router.cpp
     src/services/database_manager.cpp
+    src/services/database_context.cpp
     src/utils/uuid_generator.cpp
     src/utils/json_validator.cpp
     src/utils/make_error.cpp
