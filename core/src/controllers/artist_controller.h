@@ -7,7 +7,10 @@
 #pragma once
 
 #include "../models/artist.h"
+#include "../services/repositories/i_artist_repository.h"
 #include <nlohmann/json.hpp>
+#include <memory>
+#include <tl/expected.hpp>
 
 namespace lyra {
 
@@ -15,14 +18,19 @@ using json = nlohmann::json;
 
 class ArtistController {
   public:
+    explicit ArtistController(IArtistRepository &repo);
+
     // Create Artist
-    static std::optional<std::string> create(Artist &artist);
+    tl::expected<void, std::string> create(Artist &artist);
 
     // Get Artist
-    static std::optional<Artist> get(const std::string &id);
+    tl::expected<Artist, std::string> get(const std::string &id);
 
     // Update Artist
-    static std::optional<std::string> update(const ArtistUpdate &artist_update);
+    tl::expected<void, std::string> update(const ArtistUpdate &artist_update);
+
+  private:
+    IArtistRepository &m_repo;
 };
 
 } // namespace lyra

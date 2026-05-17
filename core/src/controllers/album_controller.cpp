@@ -3,11 +3,9 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 #include <nlohmann/json.hpp>
-#include <optional>
 #include <string>
 
 #include "../models/album.h"
-#include "../services/database_manager.h"
 #include "../utils/uuid_generator.h"
 #include "album_controller.h"
 
@@ -15,18 +13,20 @@ namespace lyra {
 
 using json = nlohmann::json;
 
-std::optional<std::string> AlbumController::create(Album &album) {
+AlbumController::AlbumController(IAlbumRepository &repo)
+    : m_repo(repo) {}
+
+tl::expected<void, std::string> AlbumController::create(Album &album) {
     album.id = UuidGenerator::generate_v4();
-
-    return DatabaseManager::insert_album(album);
+    return m_repo.insert(album);
 }
 
-std::optional<Album> AlbumController::get(const std::string &id) {
-    return DatabaseManager::get_album(id);
+tl::expected<Album, std::string> AlbumController::get(const std::string &id) {
+    return m_repo.get(id);
 }
 
-std::optional<std::string> AlbumController::update(const AlbumUpdate &album_update) {
-    return DatabaseManager::update_album(album_update);
+tl::expected<void, std::string> AlbumController::update(const AlbumUpdate &album_update) {
+    return m_repo.update(album_update);
 }
 
 } // namespace lyra

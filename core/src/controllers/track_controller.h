@@ -1,29 +1,31 @@
-/*
- * SPDX-FileCopyrightText: 2026 Tzu-Ting Lin
- *
- * SPDX-License-Identifier: AGPL-3.0-or-later
- */
+// SPDX-FileCopyrightText: 2026 Tzu-Ting Lin
+//
+// SPDX-License-Identifier: AGPL-3.0-or-later
 
 #pragma once
 
-#include "../models/relation_types.h"
 #include "../models/track.h"
+#include "../services/repositories/i_track_repository.h"
+#include <nlohmann/json.hpp>
+#include <tl/expected.hpp>
 
 namespace lyra {
 
+using json = nlohmann::json;
+
 class TrackController {
-public:
-    // Create Track
-    static std::optional<std::string> create(Track &track);
+  public:
+    explicit TrackController(ITrackRepository &repo);
 
-    // Get Track
-    static std::optional<Track> get(const std::string &id);
+    tl::expected<void, std::string> create(Track &track);
+    tl::expected<Track, std::string> get(const std::string &id);
+    tl::expected<void, std::string> update(const TrackUpdate &track_update);
+    tl::expected<void, std::string> add_artist(const TrackArtistParams &params);
+    tl::expected<void, std::string> remove_artist(const TrackArtistParams &params);
+    tl::expected<void, std::string> update_artist(const TrackArtistParams &params);
 
-    static std::optional<std::string> update(const TrackUpdate &track_update);
-
-    static std::optional<std::string> add_artist(const TrackArtistParams &params);
-    static std::optional<std::string> remove_artist(const TrackArtistParams &params);
-    static std::optional<std::string> update_artist(const TrackArtistParams &params);
+  private:
+    ITrackRepository &m_repo;
 };
 
 } // namespace lyra

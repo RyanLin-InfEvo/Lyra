@@ -1,15 +1,13 @@
-/*
- * SPDX-FileCopyrightText: 2026 Tzu-Ting Lin
- *
- * SPDX-License-Identifier: AGPL-3.0-or-later
- */
+// SPDX-FileCopyrightText: 2026 Tzu-Ting Lin
+//
+// SPDX-License-Identifier: AGPL-3.0-or-later
 
 #pragma once
 
 #include "../models/album.h"
+#include "../services/repositories/i_album_repository.h"
 #include <nlohmann/json.hpp>
-#include <optional>
-#include <string>
+#include <tl/expected.hpp>
 
 namespace lyra {
 
@@ -17,14 +15,14 @@ using json = nlohmann::json;
 
 class AlbumController {
   public:
-    // Create Album
-    static std::optional<std::string> create(Album &album);
+    explicit AlbumController(IAlbumRepository &repo);
 
-    // Get Album
-    static std::optional<Album> get(const std::string &id);
+    tl::expected<void, std::string> create(Album &album);
+    tl::expected<Album, std::string> get(const std::string &id);
+    tl::expected<void, std::string> update(const AlbumUpdate &album_update);
 
-    // Update Album
-    static std::optional<std::string> update(const AlbumUpdate &album_update);
+  private:
+    IAlbumRepository &m_repo;
 };
 
 } // namespace lyra

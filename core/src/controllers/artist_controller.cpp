@@ -6,7 +6,6 @@
 #include <string>
 
 #include "../models/artist.h"
-#include "../services/database_manager.h"
 #include "../utils/uuid_generator.h"
 #include "artist_controller.h"
 
@@ -14,18 +13,21 @@ namespace lyra {
 
 using json = nlohmann::json;
 
-std::optional<std::string> ArtistController::create(Artist &artist) {
+ArtistController::ArtistController(IArtistRepository &repo)
+    : m_repo(repo) {}
+
+tl::expected<void, std::string> ArtistController::create(Artist &artist) {
     artist.id = UuidGenerator::generate_v4();
 
-    return DatabaseManager::insert_artist(artist);
+    return m_repo.insert(artist);
 }
 
-std::optional<Artist> ArtistController::get(const std::string &id) {
-    return DatabaseManager::get_artist(id);
+tl::expected<Artist, std::string> ArtistController::get(const std::string &id) {
+    return m_repo.get(id);
 }
 
-std::optional<std::string> ArtistController::update(const ArtistUpdate &artist_update) {
-    return DatabaseManager::update_artist(artist_update);
+tl::expected<void, std::string> ArtistController::update(const ArtistUpdate &artist_update) {
+    return m_repo.update(artist_update);
 }
 
 } // namespace lyra

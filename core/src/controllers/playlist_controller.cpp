@@ -2,42 +2,46 @@
 //
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+#include <nlohmann/json.hpp>
 #include <string>
-#include <vector>
 
 #include "../models/playlist.h"
-#include "../services/database_manager.h"
 #include "../utils/uuid_generator.h"
 #include "playlist_controller.h"
 
 namespace lyra {
 
-std::optional<std::string> PlaylistController::create(Playlist &playlist) {
+using json = nlohmann::json;
+
+PlaylistController::PlaylistController(IPlaylistRepository &repo)
+    : m_repo(repo) {}
+
+tl::expected<void, std::string> PlaylistController::create(Playlist &playlist) {
     playlist.id = UuidGenerator::generate_v4();
-    return DatabaseManager::insert_playlist(playlist);
+    return m_repo.insert(playlist);
 }
 
-std::optional<Playlist> PlaylistController::get(const std::string &id) {
-    return DatabaseManager::get_playlist(id);
+tl::expected<Playlist, std::string> PlaylistController::get(const std::string &id) {
+    return m_repo.get(id);
 }
 
-std::optional<std::string> PlaylistController::update(const PlaylistUpdate &playlist_update) {
-    return DatabaseManager::update_playlist(playlist_update);
+tl::expected<void, std::string> PlaylistController::update(const PlaylistUpdate &playlist_update) {
+    return m_repo.update(playlist_update);
 }
 
-std::optional<std::string> PlaylistController::add_track(const std::string &playlist_id,
-                                                         const std::string &track_id,
-                                                         std::optional<int> position) {
-    return DatabaseManager::add_playlist_track(playlist_id, track_id, position);
+tl::expected<void, std::string> PlaylistController::add_track(const std::string &playlist_id,
+                                                        const std::string &track_id,
+                                                        std::optional<int> position) {
+    return m_repo.add_track(playlist_id, track_id, position);
 }
 
-std::optional<std::string> PlaylistController::remove_track(const std::string &playlist_id,
-                                                            const std::string &track_id) {
-    return DatabaseManager::remove_playlist_track(playlist_id, track_id);
+tl::expected<void, std::string> PlaylistController::remove_track(const std::string &playlist_id,
+                                                           const std::string &track_id) {
+    return m_repo.remove_track(playlist_id, track_id);
 }
 
 std::vector<std::string> PlaylistController::get_tracks(const std::string &playlist_id) {
-    return DatabaseManager::get_playlist_tracks(playlist_id);
+    return m_repo.get_tracks(playlist_id);
 }
 
 } // namespace lyra
