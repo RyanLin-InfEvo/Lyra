@@ -4,15 +4,19 @@
 
 #include <cstring>
 #include <fmt/core.h>
+#include <memory>
 #include <nlohmann/json.hpp>
 #include <string>
 
 #include "lyra_c_api.h"
 #include "router.h"
-#include "services/database_manager.h"
 
 using json = nlohmann::json;
 using namespace lyra;
+
+namespace {
+std::unique_ptr<Router> g_router;
+}
 
 // Lyra core initialization
 int lyra_init(const char *storage_root) {
@@ -28,7 +32,7 @@ int lyra_init(const char *storage_root) {
         }
 
         std::string db_path = std::string(storage_root) + "/lyra.db";
-        DatabaseManager::init_database(db_path);
+        g_router = std::make_unique<Router>(db_path);
         return 0;
 
     } catch (const std::exception &e) {
@@ -40,6 +44,10 @@ char *lyra_dispatch(const char *json_request) {
     try {
         if (json_request == nullptr) {
             throw std::invalid_argument("JSON request is null");
+        }
+
+        if (!g_router) {
+            throw std::runtime_error("Lyra not initialized. Call lyra_init first.");
         }
 
         // Security: Limit JSON length to prevent DoS (10MB)
@@ -57,7 +65,7 @@ char *lyra_dispatch(const char *json_request) {
             return true;
         });
 
-        json response = Router::route(request);
+        json response = g_router->route(request);
 
         // Convert JSON object to string
         std::string response_str = response.dump();
