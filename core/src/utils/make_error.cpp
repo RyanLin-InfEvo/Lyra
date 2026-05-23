@@ -59,6 +59,8 @@ std::pair<int, std::string> ApiResponse::getErrorMapping(ErrorType type) {
             return {400, "InvalidCommandFormat"};
         case ErrorType::OutOfRange:
             return {400, "OutOfRange"};
+        case ErrorType::Conflict:
+            return {409, "Conflict"};
 
         // 500 Series
         case ErrorType::DatabaseError:

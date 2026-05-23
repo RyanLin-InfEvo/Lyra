@@ -289,6 +289,9 @@ json Router::handleCreateWork(const json &params) {
         response["message"] = "Create Work success.";
         return response;
     }
+    if (res.error().find("UNIQUE constraint failed: Work.iswc") != std::string::npos) {
+        return ApiResponse::error({ErrorType::Conflict, res.error()});
+    }
     return ApiResponse::error({ErrorType::DatabaseError, res.error()});
 }
 
@@ -325,6 +328,9 @@ json Router::handleUpdateWork(const json &params) {
         json response = ApiResponse::success({{"id", update_data.id}});
         response["message"] = "Update Work success.";
         return response;
+    }
+    if (res.error().find("UNIQUE constraint failed: Work.iswc") != std::string::npos) {
+        return ApiResponse::error({ErrorType::Conflict, res.error()});
     }
     return ApiResponse::error({ErrorType::DatabaseError, res.error()});
 }

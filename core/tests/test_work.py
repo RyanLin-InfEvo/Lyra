@@ -163,3 +163,50 @@ class TestWorkController(BaseLyraTestCase):
         # In SQLite, matched rows are returned even if values don't change.
         # This test verifies that DatabaseManager doesn't return 0 (and thus doesn't return error).
         self.assertEqual(res_update["code"], 200)
+
+    def test_work_create_duplicate_iswc(self):
+        """Test creating a work with a duplicate ISWC: Should return 409 Conflict"""
+        iswc = "T-999.999.999-A"
+        res_create1 = self.dispatch("CreateWork", {
+            "id": str(uuid.uuid4()),
+            "title": "Work 1",
+            "iswc": iswc
+        })
+        self.assertEqual(res_create1["code"], 201)
+
+        res_create2 = self.dispatch("CreateWork", {
+            "id": str(uuid.uuid4()),
+            "title": "Work 2",
+            "iswc": iswc
+        })
+        self.assertEqual(res_create2["code"], 409)
+        self.assertEqual(res_create2["error"]["type"], "Conflict")
+
+    def test_work_update_duplicate_iswc(self):
+        """Test updating a work to an ISWC that is already used by another work: Should return 409 Conflict"""
+        iswc1 = "T-999.999.999-B"
+        iswc2 = "T-999.999.999-C"
+        
+        res_create1 = self.dispatch("CreateWork", {
+            "id": str(uuid.uuid4()),
+            "title": "Work A",
+            "iswc": iswc1
+        })
+        self.assertEqual(res_create1["code"], 201)
+
+        res_create2 = self.dispatch("CreateWork", {
+            "id": str(uuid.uuid4()),
+            "title": "Work B",
+            "iswc": iswc2
+        })
+        self.assertEqual(res_create2["code"], 201)
+
+        real_id_2 = res_create2["data"]["id"]
+        # Update work B to use work A's ISWC (iswc1)
+        res_update = self.dispatch("UpdateWork", {
+            "id": real_id_2,
+            "iswc": iswc1
+        })
+        self.assertEqual(res_update["code"], 409)
+        self.assertEqual(res_update["error"]["type"], "Conflict")
+
