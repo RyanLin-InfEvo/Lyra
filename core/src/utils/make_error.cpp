@@ -68,5 +68,6 @@ std::pair<int, std::string> ApiResponse::getErrorMapping(ErrorType type) {
         case ErrorType::DatabaseError:
             return {500, "DatabaseError"};
     }
+    return {500, "UnknownError"};
 }
 } // namespace lyra
