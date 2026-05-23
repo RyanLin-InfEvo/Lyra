@@ -210,3 +210,42 @@ class TestWorkController(BaseLyraTestCase):
         self.assertEqual(res_update["code"], 409)
         self.assertEqual(res_update["error"]["type"], "Conflict")
 
+    def test_work_update_start_greater_than_existing_end(self):
+        """Test updating start year to be greater than the existing end year: Should return 400 OutOfRange"""
+        work_id = str(uuid.uuid4())
+        res_create = self.dispatch("CreateWork", {
+            "id": work_id, 
+            "title": "Symphony No. 5",
+            "composition_start_year": 1804,
+            "composition_end_year": 1808
+        })
+        self.assertEqual(res_create["code"], 201)
+
+        # Update only start year to 1809 (which is > 1808)
+        real_id = res_create["data"]["id"]
+        res_update = self.dispatch("UpdateWork", {
+            "id": real_id, 
+            "composition_start_year": 1809
+        })
+        self.assertEqual(res_update["code"], 400)
+        self.assertEqual(res_update["error"]["type"], "OutOfRange")
+
+    def test_work_update_end_less_than_existing_start(self):
+        """Test updating end year to be less than the existing start year: Should return 400 OutOfRange"""
+        work_id = str(uuid.uuid4())
+        res_create = self.dispatch("CreateWork", {
+            "id": work_id, 
+            "title": "Symphony No. 5",
+            "composition_start_year": 1804,
+            "composition_end_year": 1808
+        })
+        self.assertEqual(res_create["code"], 201)
+
+        # Update only end year to 1803 (which is < 1804)
+        real_id = res_create["data"]["id"]
+        res_update = self.dispatch("UpdateWork", {
+            "id": real_id, 
+            "composition_end_year": 1803
+        })
+        self.assertEqual(res_update["code"], 400)
+        self.assertEqual(res_update["error"]["type"], "OutOfRange")

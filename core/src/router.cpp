@@ -318,6 +318,30 @@ json Router::handleUpdateWork(const json &params) {
 
     if (auto year_err = validateWorkCompositionYears(params)) return *year_err;
 
+    bool has_start = params.contains("composition_start_year") && !params["composition_start_year"].is_null();
+    bool has_end = params.contains("composition_end_year") && !params["composition_end_year"].is_null();
+    if ((has_start && !has_end) || (!has_start && has_end)) {
+        auto get_res = m_work_controller->get(params["id"].get<std::string>());
+        if (!get_res) {
+            return ApiResponse::error({ErrorType::WorkNotFound, get_res.error()});
+        }
+        const auto &existing_work = get_res.value();
+        if (has_start && existing_work.composition_end_year.has_value()) {
+            if (params["composition_start_year"].get<uint16_t>() > *existing_work.composition_end_year) {
+                return ApiResponse::error(
+                    {ErrorType::OutOfRange,
+                     "composition_start_year cannot be greater than composition_end_year"});
+            }
+        }
+        if (has_end && existing_work.composition_start_year.has_value()) {
+            if (*existing_work.composition_start_year > params["composition_end_year"].get<uint16_t>()) {
+                return ApiResponse::error(
+                    {ErrorType::OutOfRange,
+                     "composition_start_year cannot be greater than composition_end_year"});
+            }
+        }
+    }
+
     WorkUpdate update_data = params.get<WorkUpdate>();
     if (!update_data.has_updates()) {
         return ApiResponse::error({ErrorType::InvalidValue, "No fields provided to update."});
