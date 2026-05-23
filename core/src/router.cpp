@@ -13,6 +13,7 @@
 #include "controllers/playlist_controller.h"
 #include "controllers/track_controller.h"
 #include "controllers/work_controller.h"
+#include "models/relation_types.h"
 #include "models/track.h"
 #include "services/database_context.h"
 #include "services/repositories/sqlite_album_repository.h"
@@ -368,6 +369,11 @@ json Router::handleAddTrackArtist(const json &params) {
                                                 {"position", Type::Integer, false}});
     if (err) return *err;
 
+    std::string role_str = params["role"].get<std::string>();
+    if (!ArtistRoleMapper::from_string(role_str)) {
+        return ApiResponse::error({ErrorType::InvalidValue, "Invalid artist role: " + role_str});
+    }
+
     TrackArtistParams track_artist = params.get<TrackArtistParams>();
     auto res = m_track_controller->add_artist(track_artist);
     if (res) {
@@ -405,6 +411,13 @@ json Router::handleUpdateTrackArtist(const json &params) {
                                                 {"role", Type::String, false},
                                                 {"position", Type::Integer, false}});
     if (err) return *err;
+
+    if (params.contains("role")) {
+        std::string role_str = params["role"].get<std::string>();
+        if (!ArtistRoleMapper::from_string(role_str)) {
+            return ApiResponse::error({ErrorType::InvalidValue, "Invalid artist role: " + role_str});
+        }
+    }
 
     TrackArtistParams track_artist = params.get<TrackArtistParams>();
     auto res = m_track_controller->update_artist(track_artist);

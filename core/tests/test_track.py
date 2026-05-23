@@ -154,3 +154,41 @@ class TesttrackController(BaseLyraTestCase):
         })
         self.assertEqual(res_update["code"], 200)
         self.assertEqual(res_update["data"]["role"], "producer")
+
+    def test_add_track_artist_invalid_role(self):
+        """Test adding track artist with invalid role (e.g. vocalist): Should return 400 InvalidValue"""
+        res_track = self.dispatch("CreateTrack", {"pcm_hash": "Hash TA 4", "title": "Track TA 4"})
+        res_artist = self.dispatch("CreateArtist", {"name": "Artist 4"})
+        track_id = res_track["data"]["id"]
+        artist_id = res_artist["data"]["id"]
+
+        res_add = self.dispatch("AddTrackArtist", {
+            "track_id": track_id,
+            "artist_id": artist_id,
+            "role": "vocalist",
+            "position": 1
+        })
+        self.assertEqual(res_add["code"], 400)
+        self.assertEqual(res_add["error"]["type"], "InvalidValue")
+
+    def test_update_track_artist_invalid_role(self):
+        """Test updating track artist with invalid role (e.g. vocalist): Should return 400 InvalidValue"""
+        res_track = self.dispatch("CreateTrack", {"pcm_hash": "Hash TA 5", "title": "Track TA 5"})
+        res_artist = self.dispatch("CreateArtist", {"name": "Artist 5"})
+        track_id = res_track["data"]["id"]
+        artist_id = res_artist["data"]["id"]
+
+        self.dispatch("AddTrackArtist", {
+            "track_id": track_id,
+            "artist_id": artist_id,
+            "role": "main",
+            "position": 1
+        })
+
+        res_update = self.dispatch("UpdateTrackArtist", {
+            "track_id": track_id,
+            "artist_id": artist_id,
+            "role": "vocalist"
+        })
+        self.assertEqual(res_update["code"], 400)
+        self.assertEqual(res_update["error"]["type"], "InvalidValue")
