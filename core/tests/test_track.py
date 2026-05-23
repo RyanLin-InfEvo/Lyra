@@ -192,3 +192,62 @@ class TesttrackController(BaseLyraTestCase):
         })
         self.assertEqual(res_update["code"], 400)
         self.assertEqual(res_update["error"]["type"], "InvalidValue")
+
+    def test_add_track_artist_track_not_found(self):
+        """Test AddTrackArtist with non-existent track ID: Should return 404 (TrackNotFound)"""
+        res_artist = self.dispatch("CreateArtist", {"name": "Artist For Track NF"})
+        artist_id = res_artist["data"]["id"]
+        non_existent_track_id = str(uuid.uuid4())
+        
+        res = self.dispatch("AddTrackArtist", {
+            "track_id": non_existent_track_id,
+            "artist_id": artist_id,
+            "role": "main"
+        })
+        self.assertEqual(res["code"], 404)
+        self.assertEqual(res["error"]["type"], "TrackNotFound")
+
+    def test_add_track_artist_artist_not_found(self):
+        """Test AddTrackArtist with non-existent artist ID: Should return 404 (ArtistNotFound)"""
+        res_track = self.dispatch("CreateTrack", {"pcm_hash": "Hash TA NF 1", "title": "Track For Artist NF"})
+        track_id = res_track["data"]["id"]
+        non_existent_artist_id = str(uuid.uuid4())
+        
+        res = self.dispatch("AddTrackArtist", {
+            "track_id": track_id,
+            "artist_id": non_existent_artist_id,
+            "role": "main"
+        })
+        self.assertEqual(res["code"], 404)
+        self.assertEqual(res["error"]["type"], "ArtistNotFound")
+
+    def test_update_track_artist_relation_not_found(self):
+        """Test UpdateTrackArtist with non-existent relation: Should return 404 (RelationNotFound)"""
+        res_track = self.dispatch("CreateTrack", {"pcm_hash": "Hash TA NF 2", "title": "Track For Relation NF"})
+        res_artist = self.dispatch("CreateArtist", {"name": "Artist For Relation NF"})
+        track_id = res_track["data"]["id"]
+        artist_id = res_artist["data"]["id"]
+        
+        res = self.dispatch("UpdateTrackArtist", {
+            "track_id": track_id,
+            "artist_id": artist_id,
+            "role": "producer"
+        })
+        self.assertEqual(res["code"], 404)
+        self.assertEqual(res["error"]["type"], "RelationNotFound")
+        self.assertEqual(res["error"]["message"], "Relation between Track and Artist not found.")
+
+    def test_remove_track_artist_relation_not_found(self):
+        """Test RemoveTrackArtist with non-existent relation: Should return 404 (RelationNotFound)"""
+        res_track = self.dispatch("CreateTrack", {"pcm_hash": "Hash TA NF 3", "title": "Track For Relation NF 2"})
+        res_artist = self.dispatch("CreateArtist", {"name": "Artist For Relation NF 2"})
+        track_id = res_track["data"]["id"]
+        artist_id = res_artist["data"]["id"]
+        
+        res = self.dispatch("RemoveTrackArtist", {
+            "track_id": track_id,
+            "artist_id": artist_id
+        })
+        self.assertEqual(res["code"], 404)
+        self.assertEqual(res["error"]["type"], "RelationNotFound")
+        self.assertEqual(res["error"]["message"], "Relation between Track and Artist not found.")

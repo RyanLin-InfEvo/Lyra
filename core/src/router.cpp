@@ -386,7 +386,13 @@ json Router::handleAddTrackArtist(const json &params) {
         response["message"] = "Add Track_Artist success.";
         return response;
     }
-    return ApiResponse::error({ErrorType::DatabaseError, res.error()});
+    std::string err_msg = res.error();
+    if (err_msg.find("Track not found") != std::string::npos) {
+        return ApiResponse::error({ErrorType::TrackNotFound, err_msg});
+    } else if (err_msg.find("Artist not found") != std::string::npos) {
+        return ApiResponse::error({ErrorType::ArtistNotFound, err_msg});
+    }
+    return ApiResponse::error({ErrorType::DatabaseError, err_msg});
 }
 
 json Router::handleRemoveTrackArtist(const json &params) {
@@ -402,7 +408,11 @@ json Router::handleRemoveTrackArtist(const json &params) {
         response["message"] = "Remove Track_Artist success.";
         return response;
     }
-    return ApiResponse::error({ErrorType::DatabaseError, res.error()});
+    std::string err_msg = res.error();
+    if (err_msg.find("Relation not found") != std::string::npos) {
+        return ApiResponse::error({ErrorType::RelationNotFound, "Relation between Track and Artist not found."});
+    }
+    return ApiResponse::error({ErrorType::DatabaseError, err_msg});
 }
 
 json Router::handleUpdateTrackArtist(const json &params) {
@@ -431,7 +441,11 @@ json Router::handleUpdateTrackArtist(const json &params) {
         response["message"] = "Update Track_Artist success.";
         return response;
     }
-    return ApiResponse::error({ErrorType::DatabaseError, res.error()});
+    std::string err_msg = res.error();
+    if (err_msg.find("Relation not found") != std::string::npos) {
+        return ApiResponse::error({ErrorType::RelationNotFound, "Relation between Track and Artist not found."});
+    }
+    return ApiResponse::error({ErrorType::DatabaseError, err_msg});
 }
 
 // --- Playlist Handlers ---
@@ -498,7 +512,13 @@ json Router::handleAddPlaylistTrack(const json &params) {
         response["message"] = "Add PlaylistTrack success.";
         return response;
     }
-    return ApiResponse::error({ErrorType::DatabaseError, res.error()});
+    std::string err_msg = res.error();
+    if (err_msg.find("Playlist ID not found") != std::string::npos || err_msg.find("Playlist not found") != std::string::npos) {
+        return ApiResponse::error({ErrorType::PlaylistNotFound, err_msg});
+    } else if (err_msg.find("Track ID not found") != std::string::npos || err_msg.find("Track not found") != std::string::npos) {
+        return ApiResponse::error({ErrorType::TrackNotFound, err_msg});
+    }
+    return ApiResponse::error({ErrorType::DatabaseError, err_msg});
 }
 
 json Router::handleRemovePlaylistTrack(const json &params) {
@@ -513,7 +533,11 @@ json Router::handleRemovePlaylistTrack(const json &params) {
         response["message"] = "Remove PlaylistTrack success.";
         return response;
     }
-    return ApiResponse::error({ErrorType::DatabaseError, res.error()});
+    std::string err_msg = res.error();
+    if (err_msg.find("Track not found in playlist") != std::string::npos) {
+        return ApiResponse::error({ErrorType::RelationNotFound, "Track not found in playlist."});
+    }
+    return ApiResponse::error({ErrorType::DatabaseError, err_msg});
 }
 
 json Router::handleGetPlaylistTracks(const json &params) {

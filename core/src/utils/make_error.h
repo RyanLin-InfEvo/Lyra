@@ -22,6 +22,7 @@ enum class ErrorType {
     WorkNotFound,
     PlaylistNotFound,
     UnknownCommand,
+    RelationNotFound,
     // 400 Series
     MissingParameter,
     InvalidValue,

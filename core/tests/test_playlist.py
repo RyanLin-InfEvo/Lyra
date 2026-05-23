@@ -121,3 +121,44 @@ class TestPlaylistController(BaseLyraTestCase):
         
         res_get = self.dispatch("GetPlaylistTracks", {"id": playlist_id})
         self.assertEqual(len(res_get["data"]), 0)
+
+    def test_add_playlist_track_playlist_not_found(self):
+        """Test AddPlaylistTrack with non-existent playlist ID: Should return 404 (PlaylistNotFound)"""
+        res_track = self.dispatch("CreateTrack", {"pcm_hash": "Hash PT NF 1", "title": "Track For Playlist NF"})
+        track_id = res_track["data"]["id"]
+        non_existent_playlist_id = str(uuid.uuid4())
+        
+        res = self.dispatch("AddPlaylistTrack", {
+            "playlist_id": non_existent_playlist_id,
+            "track_id": track_id
+        })
+        self.assertEqual(res["code"], 404)
+        self.assertEqual(res["error"]["type"], "PlaylistNotFound")
+
+    def test_add_playlist_track_track_not_found(self):
+        """Test AddPlaylistTrack with non-existent track ID: Should return 404 (TrackNotFound)"""
+        res_playlist = self.dispatch("CreatePlaylist", {"title": "Playlist For Track NF"})
+        playlist_id = res_playlist["data"]["id"]
+        non_existent_track_id = str(uuid.uuid4())
+        
+        res = self.dispatch("AddPlaylistTrack", {
+            "playlist_id": playlist_id,
+            "track_id": non_existent_track_id
+        })
+        self.assertEqual(res["code"], 404)
+        self.assertEqual(res["error"]["type"], "TrackNotFound")
+
+    def test_remove_playlist_track_relation_not_found(self):
+        """Test RemovePlaylistTrack with non-existent relation: Should return 404 (RelationNotFound)"""
+        res_playlist = self.dispatch("CreatePlaylist", {"title": "Playlist For Relation NF"})
+        res_track = self.dispatch("CreateTrack", {"pcm_hash": "Hash PT NF 2", "title": "Track For Relation NF"})
+        playlist_id = res_playlist["data"]["id"]
+        track_id = res_track["data"]["id"]
+        
+        res = self.dispatch("RemovePlaylistTrack", {
+            "playlist_id": playlist_id,
+            "track_id": track_id
+        })
+        self.assertEqual(res["code"], 404)
+        self.assertEqual(res["error"]["type"], "RelationNotFound")
+        self.assertEqual(res["error"]["message"], "Track not found in playlist.")
