@@ -1,0 +1,10 @@
+#!/usr/bin/env bash
+# SPDX-FileCopyrightText: 2026 Tzu-Ting Lin
+#
+# SPDX-License-Identifier: AGPL-3.0-or-later
+
+# Determine the absolute directory of this script
+DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )"
+
+# Run lyra-cli inside nix-shell preserving arguments and spaces
+exec nix-shell "$DIR/core/shell.nix" --run "$DIR/core/build/lyra-cli $(printf '%q ' "$@")"

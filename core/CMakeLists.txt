@@ -53,3 +53,7 @@ target_link_libraries(lyra_core PRIVATE
     stduuid
     tl::expected
 )
+
+add_executable(lyra-cli src/cli/main.cpp)
+target_link_libraries(lyra-cli PRIVATE lyra_core nlohmann_json::nlohmann_json fmt::fmt)
+target_include_directories(lyra-cli PRIVATE include)
