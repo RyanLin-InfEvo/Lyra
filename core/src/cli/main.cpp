@@ -150,18 +150,23 @@ void print_help() {
               << "  artist create --name <name> [options]\n"
               << "  artist update <id> [options]\n"
               << "  artist get <id>\n"
+              << "  artist list [--offset <offset>] [--limit <limit>] [--search <query>]\n"
               << "  track create --pcm-hash <hash> [options]\n"
               << "  track update <id> [options]\n"
               << "  track get <id>\n"
+              << "  track list [--offset <offset>] [--limit <limit>] [--search <query>]\n"
               << "  album create --title <title> [options]\n"
               << "  album update <id> [options]\n"
               << "  album get <id>\n"
+              << "  album list [--offset <offset>] [--limit <limit>] [--search <query>]\n"
               << "  work create --title <title> [options]\n"
               << "  work update <id> [options]\n"
               << "  work get <id>\n"
+              << "  work list [--offset <offset>] [--limit <limit>] [--search <query>]\n"
               << "  playlist create --title <title> [options]\n"
               << "  playlist update <id> [options]\n"
               << "  playlist get <id>\n"
+              << "  playlist list [--offset <offset>] [--limit <limit>] [--search <query>]\n"
               << "  playlist add-track --playlist-id <pid> --track-id <tid> [--position <pos>]\n"
               << "  playlist remove-track --playlist-id <pid> --track-id <tid>\n"
               << "  playlist get-tracks <id>\n"
@@ -313,7 +318,7 @@ std::optional<std::string> parse_args_to_json(const std::vector<std::string>& cm
     
     if (cmd == "artist") {
         if (cmd_args.size() < 2) {
-            std::cerr << "Error: artist command requires a subcommand (create, update, get)\n";
+            std::cerr << "Error: artist command requires a subcommand (create, update, get, list)\n";
             return std::nullopt;
         }
         std::string sub = cmd_args[1];
@@ -338,6 +343,11 @@ std::optional<std::string> parse_args_to_json(const std::vector<std::string>& cm
             add_param(params, cmd_args, "musicbrainz_id", {"--musicbrainz-id"});
             add_param(params, cmd_args, "ytm_id", {"--ytm-id"});
             add_param(params, cmd_args, "spotify_id", {"--spotify-id"});
+        } else if (sub == "list") {
+            action = "ListArtists";
+            add_param(params, cmd_args, "offset", {"--offset"}, true);
+            add_param(params, cmd_args, "limit", {"--limit"}, true);
+            add_param(params, cmd_args, "search", {"--search", "-s"});
         } else {
             std::cerr << "Error: Unknown artist subcommand: " << sub << "\n";
             return std::nullopt;
@@ -347,7 +357,7 @@ std::optional<std::string> parse_args_to_json(const std::vector<std::string>& cm
     
     if (cmd == "track") {
         if (cmd_args.size() < 2) {
-            std::cerr << "Error: track command requires a subcommand (create, update, get)\n";
+            std::cerr << "Error: track command requires a subcommand (create, update, get, list)\n";
             return std::nullopt;
         }
         std::string sub = cmd_args[1];
@@ -356,6 +366,8 @@ std::optional<std::string> parse_args_to_json(const std::vector<std::string>& cm
         
         if (sub == "create") {
             action = "CreateTrack";
+            // TODO: Once audio file upload or decoding is implemented, pcm_hash should be computed
+            // on the server side; the client will upload the file instead of providing --pcm-hash directly.
             add_param(params, cmd_args, "pcm_hash", {"--pcm-hash"});
             add_param(params, cmd_args, "title", {"--title", "--name", "-t", "-n"});
             add_param(params, cmd_args, "work_id", {"--work-id"});
@@ -387,6 +399,11 @@ std::optional<std::string> parse_args_to_json(const std::vector<std::string>& cm
             add_param(params, cmd_args, "musicbrainz_id", {"--musicbrainz-id"});
             add_param(params, cmd_args, "ytm_id", {"--ytm-id"});
             add_param(params, cmd_args, "spotify_id", {"--spotify-id"});
+        } else if (sub == "list") {
+            action = "ListTracks";
+            add_param(params, cmd_args, "offset", {"--offset"}, true);
+            add_param(params, cmd_args, "limit", {"--limit"}, true);
+            add_param(params, cmd_args, "search", {"--search", "-s"});
         } else {
             std::cerr << "Error: Unknown track subcommand: " << sub << "\n";
             return std::nullopt;
@@ -396,7 +413,7 @@ std::optional<std::string> parse_args_to_json(const std::vector<std::string>& cm
     
     if (cmd == "album") {
         if (cmd_args.size() < 2) {
-            std::cerr << "Error: album command requires a subcommand (create, update, get)\n";
+            std::cerr << "Error: album command requires a subcommand (create, update, get, list)\n";
             return std::nullopt;
         }
         std::string sub = cmd_args[1];
@@ -421,6 +438,11 @@ std::optional<std::string> parse_args_to_json(const std::vector<std::string>& cm
             add_param(params, cmd_args, "release_year", {"--release-year"}, true);
             add_param(params, cmd_args, "release_month", {"--release-month"}, true);
             add_param(params, cmd_args, "release_day", {"--release-day"}, true);
+        } else if (sub == "list") {
+            action = "ListAlbums";
+            add_param(params, cmd_args, "offset", {"--offset"}, true);
+            add_param(params, cmd_args, "limit", {"--limit"}, true);
+            add_param(params, cmd_args, "search", {"--search", "-s"});
         } else {
             std::cerr << "Error: Unknown album subcommand: " << sub << "\n";
             return std::nullopt;
@@ -430,7 +452,7 @@ std::optional<std::string> parse_args_to_json(const std::vector<std::string>& cm
     
     if (cmd == "work") {
         if (cmd_args.size() < 2) {
-            std::cerr << "Error: work command requires a subcommand (create, update, get)\n";
+            std::cerr << "Error: work command requires a subcommand (create, update, get, list)\n";
             return std::nullopt;
         }
         std::string sub = cmd_args[1];
@@ -459,6 +481,11 @@ std::optional<std::string> parse_args_to_json(const std::vector<std::string>& cm
             add_param(params, cmd_args, "composition_date_text", {"--composition-date-text"});
             add_param(params, cmd_args, "iswc", {"--iswc"});
             add_param(params, cmd_args, "musicbrainz_id", {"--musicbrainz-id"});
+        } else if (sub == "list") {
+            action = "ListWorks";
+            add_param(params, cmd_args, "offset", {"--offset"}, true);
+            add_param(params, cmd_args, "limit", {"--limit"}, true);
+            add_param(params, cmd_args, "search", {"--search", "-s"});
         } else {
             std::cerr << "Error: Unknown work subcommand: " << sub << "\n";
             return std::nullopt;
@@ -468,7 +495,7 @@ std::optional<std::string> parse_args_to_json(const std::vector<std::string>& cm
     
     if (cmd == "playlist") {
         if (cmd_args.size() < 2) {
-            std::cerr << "Error: playlist command requires a subcommand (create, update, get, add-track, remove-track, get-tracks)\n";
+            std::cerr << "Error: playlist command requires a subcommand (create, update, get, list, add-track, remove-track, get-tracks)\n";
             return std::nullopt;
         }
         std::string sub = cmd_args[1];
@@ -489,6 +516,11 @@ std::optional<std::string> parse_args_to_json(const std::vector<std::string>& cm
             params["id"] = cmd_args[2];
             add_param(params, cmd_args, "title", {"--title", "--name", "-t", "-n"});
             add_param(params, cmd_args, "description", {"--description", "-d"});
+        } else if (sub == "list") {
+            action = "ListPlaylists";
+            add_param(params, cmd_args, "offset", {"--offset"}, true);
+            add_param(params, cmd_args, "limit", {"--limit"}, true);
+            add_param(params, cmd_args, "search", {"--search", "-s"});
         } else if (sub == "add-track") {
             action = "AddPlaylistTrack";
             add_param(params, cmd_args, "playlist_id", {"--playlist-id"});

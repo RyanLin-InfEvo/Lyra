@@ -161,4 +161,63 @@ std::vector<std::string> SqlitePlaylistRepository::get_tracks(const std::string 
     return track_ids;
 }
 
+tl::expected<PaginatedResult<Playlist>, std::string> SqlitePlaylistRepository::list(
+    int offset, int limit, const std::optional<std::string> &search) {
+    try {
+        auto &db = m_context.get_db();
+        std::string count_sql = "SELECT COUNT(*) FROM Playlist";
+        std::string select_sql = "SELECT * FROM Playlist";
+        
+        if (search.has_value()) {
+            count_sql += R"( WHERE title LIKE ? ESCAPE '\' )";
+            select_sql += R"( WHERE title LIKE ? ESCAPE '\' )";
+        }
+        
+        select_sql += " ORDER BY title ASC, id ASC LIMIT ? OFFSET ?";
+        
+        int total = 0;
+        {
+            SQLite::Statement count_query(db, count_sql);
+            if (search.has_value()) {
+                std::string query_param = "%" + SqliteHelper::escape_like(search.value(), '\\') + "%";
+                count_query.bind(1, query_param);
+            }
+            if (!count_query.executeStep()) {
+                return tl::unexpected("Failed to get total count.");
+            }
+            total = count_query.getColumn(0).getInt();
+        }
+        
+        std::vector<Playlist> items;
+        items.reserve(limit);
+        {
+            SQLite::Statement select_query(db, select_sql);
+            int bind_idx = 1;
+            if (search.has_value()) {
+                std::string query_param = "%" + SqliteHelper::escape_like(search.value(), '\\') + "%";
+                select_query.bind(bind_idx++, query_param);
+            }
+            select_query.bind(bind_idx++, limit);
+            select_query.bind(bind_idx++, offset);
+            
+            while (select_query.executeStep()) {
+                Playlist playlist;
+                playlist.id = select_query.getColumn("id").getString();
+                playlist.title = select_query.getColumn("title").getString();
+                playlist.description = SqliteHelper::get_optional<std::string>(select_query, "description");
+                items.push_back(playlist);
+            }
+        }
+        
+        return PaginatedResult<Playlist>{
+            .items = std::move(items),
+            .total = total,
+            .offset = offset,
+            .limit = limit
+        };
+    } catch (const std::exception &e) {
+        return tl::unexpected(e.what());
+    }
+}
+
 } // namespace lyra

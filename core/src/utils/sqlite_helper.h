@@ -28,5 +28,7 @@ inline T get_safe(SQLite::Statement &query, const char *column_name, const T &de
     return get_optional<T>(query, column_name).value_or(default_val);
 }
 
+std::string escape_like(const std::string& input, char escape_char = '\\');
+
 } // namespace SqliteHelper
 } // namespace lyra

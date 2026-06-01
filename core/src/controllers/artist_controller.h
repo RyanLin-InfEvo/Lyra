@@ -29,6 +29,9 @@ class ArtistController {
     // Update Artist
     tl::expected<void, std::string> update(const ArtistUpdate &artist_update);
 
+    tl::expected<PaginatedResult<Artist>, std::string> list(
+        int offset, int limit, const std::optional<std::string> &search);
+
   private:
     IArtistRepository &m_repo;
 };

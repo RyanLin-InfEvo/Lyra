@@ -43,18 +43,22 @@ class Router {
     json handleCreateArtist(const json &p);
     json handleUpdateArtist(const json &p);
     json handleGetArtist(const json &p);
+    json handleListArtists(const json &p);
 
     json handleCreateTrack(const json &p);
     json handleUpdateTrack(const json &p);
     json handleGetTrack(const json &p);
+    json handleListTracks(const json &p);
 
     json handleCreateAlbum(const json &p);
     json handleUpdateAlbum(const json &p);
     json handleGetAlbum(const json &p);
+    json handleListAlbums(const json &p);
 
     json handleCreateWork(const json &p);
     json handleUpdateWork(const json &p);
     json handleGetWork(const json &p);
+    json handleListWorks(const json &p);
 
     json handleAddTrackArtist(const json &p);
     json handleRemoveTrackArtist(const json &p);
@@ -63,6 +67,7 @@ class Router {
     json handleCreatePlaylist(const json &p);
     json handleUpdatePlaylist(const json &p);
     json handleGetPlaylist(const json &p);
+    json handleListPlaylists(const json &p);
     json handleAddPlaylistTrack(const json &p);
     json handleRemovePlaylistTrack(const json &p);
     json handleGetPlaylistTracks(const json &p);

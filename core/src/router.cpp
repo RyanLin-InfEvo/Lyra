@@ -21,6 +21,7 @@
 #include "services/repositories/sqlite_playlist_repository.h"
 #include "services/repositories/sqlite_track_repository.h"
 #include "services/repositories/sqlite_work_repository.h"
+#include "utils/json_helper.h"
 #include "utils/json_validator.h"
 #include "utils/make_error.h"
 
@@ -52,29 +53,42 @@ Router::Router(const std::string &db_path) {
 Router::~Router() = default;
 
 void Router::init_handlers() {
+    // Artist
     m_handlers["CreateArtist"] = [this](const json &p) { return handleCreateArtist(p); };
     m_handlers["UpdateArtist"] = [this](const json &p) { return handleUpdateArtist(p); };
     m_handlers["GetArtist"] = [this](const json &p) { return handleGetArtist(p); };
+    m_handlers["ListArtists"] = [this](const json &p) { return handleListArtists(p); };
 
+    // Track
     m_handlers["CreateTrack"] = [this](const json &p) { return handleCreateTrack(p); };
     m_handlers["UpdateTrack"] = [this](const json &p) { return handleUpdateTrack(p); };
     m_handlers["GetTrack"] = [this](const json &p) { return handleGetTrack(p); };
+    m_handlers["ListTracks"] = [this](const json &p) { return handleListTracks(p); };
 
+    // Album
     m_handlers["CreateAlbum"] = [this](const json &p) { return handleCreateAlbum(p); };
     m_handlers["UpdateAlbum"] = [this](const json &p) { return handleUpdateAlbum(p); };
     m_handlers["GetAlbum"] = [this](const json &p) { return handleGetAlbum(p); };
+    m_handlers["ListAlbums"] = [this](const json &p) { return handleListAlbums(p); };
 
+    // Work
     m_handlers["CreateWork"] = [this](const json &p) { return handleCreateWork(p); };
     m_handlers["UpdateWork"] = [this](const json &p) { return handleUpdateWork(p); };
     m_handlers["GetWork"] = [this](const json &p) { return handleGetWork(p); };
+    m_handlers["ListWorks"] = [this](const json &p) { return handleListWorks(p); };
 
+    // Track-Artist
     m_handlers["AddTrackArtist"] = [this](const json &p) { return handleAddTrackArtist(p); };
     m_handlers["RemoveTrackArtist"] = [this](const json &p) { return handleRemoveTrackArtist(p); };
     m_handlers["UpdateTrackArtist"] = [this](const json &p) { return handleUpdateTrackArtist(p); };
 
+    // Playlist
     m_handlers["CreatePlaylist"] = [this](const json &p) { return handleCreatePlaylist(p); };
     m_handlers["UpdatePlaylist"] = [this](const json &p) { return handleUpdatePlaylist(p); };
     m_handlers["GetPlaylist"] = [this](const json &p) { return handleGetPlaylist(p); };
+    m_handlers["ListPlaylists"] = [this](const json &p) { return handleListPlaylists(p); };
+
+    // Playlist-Track
     m_handlers["AddPlaylistTrack"] = [this](const json &p) { return handleAddPlaylistTrack(p); };
     m_handlers["RemovePlaylistTrack"] = [this](const json &p) { return handleRemovePlaylistTrack(p); };
     m_handlers["GetPlaylistTracks"] = [this](const json &p) { return handleGetPlaylistTracks(p); };
@@ -94,6 +108,45 @@ std::optional<json> validateWorkCompositionYears(const json &params) {
     return std::nullopt;
 }
 
+struct PaginationParams {
+    int offset = 0;
+    int limit = 20;
+    std::optional<std::string> search = std::nullopt;
+};
+
+tl::expected<PaginationParams, json> parse_pagination(const json &params) {
+    auto err = JsonValidator::validate(params, {{"offset", Type::Integer, false},
+                                                {"limit", Type::Integer, false},
+                                                {"search", Type::String, false}});
+    if (err) {
+        return tl::unexpected(*err);
+    }
+
+    int offset = JsonHelper::get_safe<int>(params, "offset", 0);
+    int limit = JsonHelper::get_safe<int>(params, "limit", 20);
+
+    if (offset < 0) {
+        return tl::unexpected(ApiResponse::error({ErrorType::OutOfRange, "offset cannot be negative"}));
+    }
+    if (limit <= 0) {
+        return tl::unexpected(ApiResponse::error({ErrorType::OutOfRange, "limit must be greater than 0"}));
+    }
+    if (limit > 100) {
+        return tl::unexpected(ApiResponse::error({ErrorType::OutOfRange, "limit cannot exceed 100"}));
+    }
+
+    std::optional<std::string> search = std::nullopt;
+    if (auto opt_s = JsonHelper::get_optional<std::string>(params, "search")) {
+        size_t start = opt_s->find_first_not_of(" \t\r\n");
+        if (start != std::string::npos) {
+            size_t end = opt_s->find_last_not_of(" \t\r\n");
+            search = opt_s->substr(start, end - start + 1);
+        }
+    }
+
+    return PaginationParams{offset, limit, search};
+}
+
 } // namespace
 
 // --- Artist Handlers ---
@@ -103,7 +156,8 @@ json Router::handleCreateArtist(const json &params) {
                                                 {"musicbrainz_id", Type::String, false},
                                                 {"ytm_id", Type::String, false},
                                                 {"spotify_id", Type::String, false}});
-    if (err) return *err;
+    if (err)
+        return *err;
 
     Artist artist = params.get<Artist>();
     auto res = m_artist_controller->create(artist);
@@ -124,7 +178,8 @@ json Router::handleUpdateArtist(const json &params) {
                                                 {"musicbrainz_id", Type::String, false},
                                                 {"ytm_id", Type::String, false},
                                                 {"spotify_id", Type::String, false}});
-    if (err) return *err;
+    if (err)
+        return *err;
 
     ArtistUpdate update_data = params.get<ArtistUpdate>();
     if (!update_data.has_updates()) {
@@ -144,7 +199,8 @@ json Router::handleUpdateArtist(const json &params) {
 
 json Router::handleGetArtist(const json &params) {
     auto err = JsonValidator::validate(params, {{"id", Type::String, true, StringFormat::UUID}});
-    if (err) return *err;
+    if (err)
+        return *err;
 
     auto res = m_artist_controller->get(params["id"].get<std::string>());
     if (res) {
@@ -153,9 +209,24 @@ json Router::handleGetArtist(const json &params) {
     return ApiResponse::error({ErrorType::ArtistNotFound, res.error()});
 }
 
+json Router::handleListArtists(const json &params) {
+    auto parse_res = parse_pagination(params);
+    if (!parse_res) {
+        return parse_res.error();
+    }
+    const auto &p = parse_res.value();
+    auto res = m_artist_controller->list(p.offset, p.limit, p.search);
+    if (res) {
+        return ApiResponse::success(res.value());
+    }
+    return ApiResponse::error({ErrorType::DatabaseError, res.error()});
+}
+
 // --- Track Handlers ---
 
 json Router::handleCreateTrack(const json &params) {
+    // TODO: Once audio file upload or decoding is implemented, calculate pcm_hash
+    // on the server side from the audio payload to prevent client-side manipulation/attacks.
     auto err = JsonValidator::validate(params, {{"pcm_hash", Type::String, true},
                                                 {"title", Type::String, false},
                                                 {"work_id", Type::String, false, StringFormat::UUID},
@@ -168,7 +239,8 @@ json Router::handleCreateTrack(const json &params) {
                                                 {"musicbrainz_id", Type::String, false},
                                                 {"ytm_id", Type::String, false},
                                                 {"spotify_id", Type::String, false}});
-    if (err) return *err;
+    if (err)
+        return *err;
 
     Track track = params.get<Track>();
     auto res = m_track_controller->create(track);
@@ -186,7 +258,8 @@ json Router::handleCreateTrack(const json &params) {
 
 json Router::handleGetTrack(const json &params) {
     auto err = JsonValidator::validate(params, {{"id", Type::String, true, StringFormat::UUID}});
-    if (err) return *err;
+    if (err)
+        return *err;
 
     auto res = m_track_controller->get(params["id"].get<std::string>());
     if (res) {
@@ -197,7 +270,8 @@ json Router::handleGetTrack(const json &params) {
 
 json Router::handleUpdateTrack(const json &params) {
     auto err = JsonValidator::validate(params, {{"id", Type::String, true, StringFormat::UUID}});
-    if (err) return *err;
+    if (err)
+        return *err;
 
     TrackUpdate update_data = params.get<TrackUpdate>();
     if (!update_data.has_updates()) {
@@ -213,6 +287,19 @@ json Router::handleUpdateTrack(const json &params) {
     return ApiResponse::error({ErrorType::DatabaseError, res.error()});
 }
 
+json Router::handleListTracks(const json &params) {
+    auto parse_res = parse_pagination(params);
+    if (!parse_res) {
+        return parse_res.error();
+    }
+    const auto &p = parse_res.value();
+    auto res = m_track_controller->list(p.offset, p.limit, p.search);
+    if (res) {
+        return ApiResponse::success(res.value());
+    }
+    return ApiResponse::error({ErrorType::DatabaseError, res.error()});
+}
+
 // --- Album Handlers ---
 
 json Router::handleCreateAlbum(const json &params) {
@@ -220,7 +307,8 @@ json Router::handleCreateAlbum(const json &params) {
                                                 {"release_year", Type::Year, false},
                                                 {"release_month", Type::Integer, false},
                                                 {"release_day", Type::Integer, false}});
-    if (err) return *err;
+    if (err)
+        return *err;
 
     Album album = params.get<Album>();
     auto res = m_album_controller->create(album);
@@ -237,7 +325,8 @@ json Router::handleCreateAlbum(const json &params) {
 
 json Router::handleGetAlbum(const json &params) {
     auto err = JsonValidator::validate(params, {{"id", Type::String, true, StringFormat::UUID}});
-    if (err) return *err;
+    if (err)
+        return *err;
 
     auto res = m_album_controller->get(params["id"].get<std::string>());
     if (res) {
@@ -252,7 +341,8 @@ json Router::handleUpdateAlbum(const json &params) {
                                                 {"release_year", Type::Year, false},
                                                 {"release_month", Type::Integer, false},
                                                 {"release_day", Type::Integer, false}});
-    if (err) return *err;
+    if (err)
+        return *err;
 
     AlbumUpdate update_data = params.get<AlbumUpdate>();
     if (!update_data.has_updates()) {
@@ -268,6 +358,19 @@ json Router::handleUpdateAlbum(const json &params) {
     return ApiResponse::error({ErrorType::DatabaseError, res.error()});
 }
 
+json Router::handleListAlbums(const json &params) {
+    auto parse_res = parse_pagination(params);
+    if (!parse_res) {
+        return parse_res.error();
+    }
+    const auto &p = parse_res.value();
+    auto res = m_album_controller->list(p.offset, p.limit, p.search);
+    if (res) {
+        return ApiResponse::success(res.value());
+    }
+    return ApiResponse::error({ErrorType::DatabaseError, res.error()});
+}
+
 // --- Work Handlers ---
 
 json Router::handleCreateWork(const json &params) {
@@ -277,9 +380,11 @@ json Router::handleCreateWork(const json &params) {
                                                 {"composition_date_text", Type::String, false},
                                                 {"iswc", Type::String, false},
                                                 {"musicbrainz_id", Type::String, false}});
-    if (err) return *err;
+    if (err)
+        return *err;
 
-    if (auto year_err = validateWorkCompositionYears(params)) return *year_err;
+    if (auto year_err = validateWorkCompositionYears(params))
+        return *year_err;
 
     Work work = params.get<Work>();
     auto res = m_work_controller->create(work);
@@ -298,7 +403,8 @@ json Router::handleCreateWork(const json &params) {
 
 json Router::handleGetWork(const json &params) {
     auto err = JsonValidator::validate(params, {{"id", Type::String, true, StringFormat::UUID}});
-    if (err) return *err;
+    if (err)
+        return *err;
 
     auto res = m_work_controller->get(params["id"].get<std::string>());
     if (res) {
@@ -315,9 +421,11 @@ json Router::handleUpdateWork(const json &params) {
                                                 {"composition_date_text", Type::String, false},
                                                 {"iswc", Type::String, false},
                                                 {"musicbrainz_id", Type::String, false}});
-    if (err) return *err;
+    if (err)
+        return *err;
 
-    if (auto year_err = validateWorkCompositionYears(params)) return *year_err;
+    if (auto year_err = validateWorkCompositionYears(params))
+        return *year_err;
 
     bool has_start = params.contains("composition_start_year") && !params["composition_start_year"].is_null();
     bool has_end = params.contains("composition_end_year") && !params["composition_end_year"].is_null();
@@ -360,6 +468,19 @@ json Router::handleUpdateWork(const json &params) {
     return ApiResponse::error({ErrorType::DatabaseError, res.error()});
 }
 
+json Router::handleListWorks(const json &params) {
+    auto parse_res = parse_pagination(params);
+    if (!parse_res) {
+        return parse_res.error();
+    }
+    const auto &p = parse_res.value();
+    auto res = m_work_controller->list(p.offset, p.limit, p.search);
+    if (res) {
+        return ApiResponse::success(res.value());
+    }
+    return ApiResponse::error({ErrorType::DatabaseError, res.error()});
+}
+
 // --- Track-Artist Relation Handlers ---
 
 json Router::handleAddTrackArtist(const json &params) {
@@ -367,7 +488,8 @@ json Router::handleAddTrackArtist(const json &params) {
                                                 {"artist_id", Type::String, true, StringFormat::UUID},
                                                 {"role", Type::String, true},
                                                 {"position", Type::Integer, false}});
-    if (err) return *err;
+    if (err)
+        return *err;
 
     std::string role_str = params["role"].get<std::string>();
     if (!ArtistRoleMapper::from_string(role_str)) {
@@ -381,8 +503,10 @@ json Router::handleAddTrackArtist(const json &params) {
         response["code"] = 201;
         response["data"]["track_id"] = track_artist.track_id;
         response["data"]["artist_id"] = track_artist.artist_id;
-        if (track_artist.role) response["data"]["role"] = *track_artist.role;
-        if (track_artist.position) response["data"]["position"] = *track_artist.position;
+        if (track_artist.role)
+            response["data"]["role"] = *track_artist.role;
+        if (track_artist.position)
+            response["data"]["position"] = *track_artist.position;
         response["message"] = "Add Track_Artist success.";
         return response;
     }
@@ -398,7 +522,8 @@ json Router::handleAddTrackArtist(const json &params) {
 json Router::handleRemoveTrackArtist(const json &params) {
     auto err = JsonValidator::validate(params, {{"track_id", Type::String, true, StringFormat::UUID},
                                                 {"artist_id", Type::String, true, StringFormat::UUID}});
-    if (err) return *err;
+    if (err)
+        return *err;
 
     TrackArtistParams track_artist = params.get<TrackArtistParams>();
     auto res = m_track_controller->remove_artist(track_artist);
@@ -420,7 +545,8 @@ json Router::handleUpdateTrackArtist(const json &params) {
                                                 {"artist_id", Type::String, true, StringFormat::UUID},
                                                 {"role", Type::String, false},
                                                 {"position", Type::Integer, false}});
-    if (err) return *err;
+    if (err)
+        return *err;
 
     if (params.contains("role")) {
         std::string role_str = params["role"].get<std::string>();
@@ -436,8 +562,10 @@ json Router::handleUpdateTrackArtist(const json &params) {
         response["code"] = 200;
         response["data"]["track_id"] = track_artist.track_id;
         response["data"]["artist_id"] = track_artist.artist_id;
-        if (track_artist.role) response["data"]["role"] = *track_artist.role;
-        if (track_artist.position) response["data"]["position"] = *track_artist.position;
+        if (track_artist.role)
+            response["data"]["role"] = *track_artist.role;
+        if (track_artist.position)
+            response["data"]["position"] = *track_artist.position;
         response["message"] = "Update Track_Artist success.";
         return response;
     }
@@ -453,7 +581,8 @@ json Router::handleUpdateTrackArtist(const json &params) {
 json Router::handleCreatePlaylist(const json &params) {
     auto err = JsonValidator::validate(params, {{"title", Type::String, true},
                                                 {"description", Type::String, false}});
-    if (err) return *err;
+    if (err)
+        return *err;
 
     Playlist playlist = params.get<Playlist>();
     auto res = m_playlist_controller->create(playlist);
@@ -469,7 +598,8 @@ json Router::handleCreatePlaylist(const json &params) {
 
 json Router::handleGetPlaylist(const json &params) {
     auto err = JsonValidator::validate(params, {{"id", Type::String, true, StringFormat::UUID}});
-    if (err) return *err;
+    if (err)
+        return *err;
 
     auto res = m_playlist_controller->get(params["id"].get<std::string>());
     if (res) {
@@ -482,7 +612,8 @@ json Router::handleUpdatePlaylist(const json &params) {
     auto err = JsonValidator::validate(params, {{"id", Type::String, true, StringFormat::UUID},
                                                 {"title", Type::String, false},
                                                 {"description", Type::String, false}});
-    if (err) return *err;
+    if (err)
+        return *err;
 
     PlaylistUpdate update_data = params.get<PlaylistUpdate>();
     if (!update_data.has_updates()) {
@@ -498,11 +629,25 @@ json Router::handleUpdatePlaylist(const json &params) {
     return ApiResponse::error({ErrorType::DatabaseError, res.error()});
 }
 
+json Router::handleListPlaylists(const json &params) {
+    auto parse_res = parse_pagination(params);
+    if (!parse_res) {
+        return parse_res.error();
+    }
+    const auto &p = parse_res.value();
+    auto res = m_playlist_controller->list(p.offset, p.limit, p.search);
+    if (res) {
+        return ApiResponse::success(res.value());
+    }
+    return ApiResponse::error({ErrorType::DatabaseError, res.error()});
+}
+
 json Router::handleAddPlaylistTrack(const json &params) {
     auto err = JsonValidator::validate(params, {{"playlist_id", Type::String, true, StringFormat::UUID},
                                                 {"track_id", Type::String, true, StringFormat::UUID},
                                                 {"position", Type::Integer, false}});
-    if (err) return *err;
+    if (err)
+        return *err;
 
     auto res = m_playlist_controller->add_track(params["playlist_id"], params["track_id"],
                                                 params.contains("position") ? std::optional<int>(params["position"].get<int>()) : std::nullopt);
@@ -524,7 +669,8 @@ json Router::handleAddPlaylistTrack(const json &params) {
 json Router::handleRemovePlaylistTrack(const json &params) {
     auto err = JsonValidator::validate(params, {{"playlist_id", Type::String, true, StringFormat::UUID},
                                                 {"track_id", Type::String, true, StringFormat::UUID}});
-    if (err) return *err;
+    if (err)
+        return *err;
 
     auto res = m_playlist_controller->remove_track(params["playlist_id"], params["track_id"]);
     if (res) {
@@ -542,7 +688,8 @@ json Router::handleRemovePlaylistTrack(const json &params) {
 
 json Router::handleGetPlaylistTracks(const json &params) {
     auto err = JsonValidator::validate(params, {{"id", Type::String, true, StringFormat::UUID}});
-    if (err) return *err;
+    if (err)
+        return *err;
 
     std::vector<std::string> tracks = m_playlist_controller->get_tracks(params["id"].get<std::string>());
     return ApiResponse::success(tracks);

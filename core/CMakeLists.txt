@@ -31,6 +31,7 @@ set(CPP
     src/services/repositories/sqlite_work_repository.cpp
     src/utils/uuid_generator.cpp
     src/utils/json_validator.cpp
+    src/utils/sqlite_helper.cpp
     src/utils/make_error.cpp
     src/models/relation_types.cpp
     src/controllers/album_controller.cpp

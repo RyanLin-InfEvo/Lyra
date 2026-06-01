@@ -20,6 +20,8 @@ class TrackController {
     tl::expected<void, std::string> create(Track &track);
     tl::expected<Track, std::string> get(const std::string &id);
     tl::expected<void, std::string> update(const TrackUpdate &track_update);
+    tl::expected<PaginatedResult<Track>, std::string> list(
+        int offset, int limit, const std::optional<std::string> &search);
     tl::expected<void, std::string> add_artist(const TrackArtistParams &params);
     tl::expected<void, std::string> remove_artist(const TrackArtistParams &params);
     tl::expected<void, std::string> update_artist(const TrackArtistParams &params);

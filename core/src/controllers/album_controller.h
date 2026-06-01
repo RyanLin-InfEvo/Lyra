@@ -20,6 +20,8 @@ class AlbumController {
     tl::expected<void, std::string> create(Album &album);
     tl::expected<Album, std::string> get(const std::string &id);
     tl::expected<void, std::string> update(const AlbumUpdate &album_update);
+    tl::expected<PaginatedResult<Album>, std::string> list(
+        int offset, int limit, const std::optional<std::string> &search);
 
   private:
     IAlbumRepository &m_repo;

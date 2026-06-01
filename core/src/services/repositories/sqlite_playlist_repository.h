@@ -16,6 +16,8 @@ class SqlitePlaylistRepository : public IPlaylistRepository {
     tl::expected<void, std::string> insert(const Playlist &playlist) override;
     tl::expected<void, std::string> update(const PlaylistUpdate &update_data) override;
     tl::expected<Playlist, std::string> get(const std::string &playlist_id) override;
+    tl::expected<PaginatedResult<Playlist>, std::string> list(
+        int offset, int limit, const std::optional<std::string> &search) override;
 
     tl::expected<void, std::string> add_track(const std::string &playlist_id, const std::string &track_id, std::optional<int> position) override;
     tl::expected<void, std::string> remove_track(const std::string &playlist_id, const std::string &track_id) override;

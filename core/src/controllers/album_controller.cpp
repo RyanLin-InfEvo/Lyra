@@ -29,4 +29,9 @@ tl::expected<void, std::string> AlbumController::update(const AlbumUpdate &album
     return m_repo.update(album_update);
 }
 
+tl::expected<PaginatedResult<Album>, std::string> AlbumController::list(
+    int offset, int limit, const std::optional<std::string> &search) {
+    return m_repo.list(offset, limit, search);
+}
+
 } // namespace lyra

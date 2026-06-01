@@ -16,6 +16,8 @@ class SqliteTrackRepository : public ITrackRepository {
     tl::expected<void, std::string> insert(const Track &track) override;
     tl::expected<void, std::string> update(const TrackUpdate &update_data) override;
     tl::expected<Track, std::string> get(const std::string &track_id) override;
+    tl::expected<PaginatedResult<Track>, std::string> list(
+        int offset, int limit, const std::optional<std::string> &search) override;
 
     tl::expected<void, std::string> add_artist(const TrackArtistParams &params) override;
     tl::expected<void, std::string> remove_artist(const std::string& track_id, const std::string& artist_id) override;

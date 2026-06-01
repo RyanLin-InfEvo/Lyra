@@ -41,4 +41,9 @@ tl::expected<void, std::string> TrackController::update_artist(const TrackArtist
     return m_repo.update_artist(params);
 }
 
+tl::expected<PaginatedResult<Track>, std::string> TrackController::list(
+    int offset, int limit, const std::optional<std::string> &search) {
+    return m_repo.list(offset, limit, search);
+}
+
 } // namespace lyra

@@ -176,9 +176,18 @@ void SqliteDatabaseContext::init_schema() {
             ON UPDATE CASCADE
         );
     )");
+
+    m_db.exec("CREATE INDEX IF NOT EXISTS idx_Artist_name ON Artist (name);");
+    m_db.exec("CREATE INDEX IF NOT EXISTS idx_Album_title ON Album (title);");
+    m_db.exec("CREATE INDEX IF NOT EXISTS idx_Playlist_title ON Playlist (title);");
+    m_db.exec("CREATE INDEX IF NOT EXISTS idx_Track_title ON Track (title);");
+    m_db.exec("CREATE INDEX IF NOT EXISTS idx_Work_title ON Work (title);");
 }
 
 std::unique_ptr<ITransaction> SqliteDatabaseContext::begin_transaction() {
+    // TODO: design risk - function-static thread_local is shared across all
+    // SqliteDatabaseContext instances on the same thread, causing potential
+    // incorrect shared transaction depth if multiple context instances are opened.
     thread_local int tl_depth = 0;
     return std::make_unique<SqliteTransaction>(get_db(), tl_depth);
 }

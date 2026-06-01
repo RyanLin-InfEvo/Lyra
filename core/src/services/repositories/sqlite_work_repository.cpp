@@ -113,4 +113,67 @@ tl::expected<void, std::string> SqliteWorkRepository::update(const WorkUpdate &d
     return {};
 }
 
+tl::expected<PaginatedResult<Work>, std::string> SqliteWorkRepository::list(
+    int offset, int limit, const std::optional<std::string> &search) {
+    try {
+        auto &db = m_context.get_db();
+        std::string count_sql = "SELECT COUNT(*) FROM Work";
+        std::string select_sql = "SELECT * FROM Work";
+        
+        if (search.has_value()) {
+            count_sql += R"( WHERE title LIKE ? ESCAPE '\' )";
+            select_sql += R"( WHERE title LIKE ? ESCAPE '\' )";
+        }
+        
+        select_sql += " ORDER BY title ASC, id ASC LIMIT ? OFFSET ?";
+        
+        int total = 0;
+        {
+            SQLite::Statement count_query(db, count_sql);
+            if (search.has_value()) {
+                std::string query_param = "%" + SqliteHelper::escape_like(search.value(), '\\') + "%";
+                count_query.bind(1, query_param);
+            }
+            if (!count_query.executeStep()) {
+                return tl::unexpected("Failed to get total count.");
+            }
+            total = count_query.getColumn(0).getInt();
+        }
+        
+        std::vector<Work> items;
+        items.reserve(limit);
+        {
+            SQLite::Statement select_query(db, select_sql);
+            int bind_idx = 1;
+            if (search.has_value()) {
+                std::string query_param = "%" + SqliteHelper::escape_like(search.value(), '\\') + "%";
+                select_query.bind(bind_idx++, query_param);
+            }
+            select_query.bind(bind_idx++, limit);
+            select_query.bind(bind_idx++, offset);
+            
+            while (select_query.executeStep()) {
+                Work work;
+                work.id = select_query.getColumn("id").getString();
+                work.title = select_query.getColumn("title").getString();
+                work.composition_start_year = SqliteHelper::get_optional<int>(select_query, "composition_start_year");
+                work.composition_end_year = SqliteHelper::get_optional<int>(select_query, "composition_end_year");
+                work.composition_date_text = SqliteHelper::get_optional<std::string>(select_query, "composition_date_text");
+                work.iswc = SqliteHelper::get_optional<std::string>(select_query, "iswc");
+                work.musicbrainz_id = SqliteHelper::get_optional<std::string>(select_query, "musicbrainz_id");
+                items.push_back(work);
+            }
+        }
+        
+        return PaginatedResult<Work>{
+            .items = std::move(items),
+            .total = total,
+            .offset = offset,
+            .limit = limit
+        };
+    } catch (const std::exception &e) {
+        return tl::unexpected(e.what());
+    }
+}
+
 } // namespace lyra

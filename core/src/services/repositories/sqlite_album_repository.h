@@ -16,6 +16,8 @@ class SqliteAlbumRepository : public IAlbumRepository {
     tl::expected<void, std::string> insert(const Album &album) override;
     tl::expected<void, std::string> update(const AlbumUpdate &update_data) override;
     tl::expected<Album, std::string> get(const std::string &album_id) override;
+    tl::expected<PaginatedResult<Album>, std::string> list(
+        int offset, int limit, const std::optional<std::string> &search) override;
 
   private:
     IDatabaseContext &m_context;

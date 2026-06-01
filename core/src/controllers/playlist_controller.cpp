@@ -44,4 +44,9 @@ std::vector<std::string> PlaylistController::get_tracks(const std::string &playl
     return m_repo.get_tracks(playlist_id);
 }
 
+tl::expected<PaginatedResult<Playlist>, std::string> PlaylistController::list(
+    int offset, int limit, const std::optional<std::string> &search) {
+    return m_repo.list(offset, limit, search);
+}
+
 } // namespace lyra

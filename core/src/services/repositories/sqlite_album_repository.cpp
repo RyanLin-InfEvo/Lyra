@@ -105,4 +105,65 @@ tl::expected<void, std::string> SqliteAlbumRepository::update(const AlbumUpdate 
     return {};
 }
 
+tl::expected<PaginatedResult<Album>, std::string> SqliteAlbumRepository::list(
+    int offset, int limit, const std::optional<std::string> &search) {
+    try {
+        auto &db = m_context.get_db();
+        std::string count_sql = "SELECT COUNT(*) FROM Album";
+        std::string select_sql = "SELECT * FROM Album";
+        
+        if (search.has_value()) {
+            count_sql += R"( WHERE title LIKE ? ESCAPE '\' )";
+            select_sql += R"( WHERE title LIKE ? ESCAPE '\' )";
+        }
+        
+        select_sql += " ORDER BY title ASC, id ASC LIMIT ? OFFSET ?";
+        
+        int total = 0;
+        {
+            SQLite::Statement count_query(db, count_sql);
+            if (search.has_value()) {
+                std::string query_param = "%" + SqliteHelper::escape_like(search.value(), '\\') + "%";
+                count_query.bind(1, query_param);
+            }
+            if (!count_query.executeStep()) {
+                return tl::unexpected("Failed to get total count.");
+            }
+            total = count_query.getColumn(0).getInt();
+        }
+        
+        std::vector<Album> items;
+        items.reserve(limit);
+        {
+            SQLite::Statement select_query(db, select_sql);
+            int bind_idx = 1;
+            if (search.has_value()) {
+                std::string query_param = "%" + SqliteHelper::escape_like(search.value(), '\\') + "%";
+                select_query.bind(bind_idx++, query_param);
+            }
+            select_query.bind(bind_idx++, limit);
+            select_query.bind(bind_idx++, offset);
+            
+            while (select_query.executeStep()) {
+                Album album;
+                album.id = select_query.getColumn("id").getString();
+                album.title = select_query.getColumn("title").getString();
+                album.release_year = SqliteHelper::get_optional<int>(select_query, "release_year");
+                album.release_month = SqliteHelper::get_optional<int>(select_query, "release_month");
+                album.release_day = SqliteHelper::get_optional<int>(select_query, "release_day");
+                items.push_back(album);
+            }
+        }
+        
+        return PaginatedResult<Album>{
+            .items = std::move(items),
+            .total = total,
+            .offset = offset,
+            .limit = limit
+        };
+    } catch (const std::exception &e) {
+        return tl::unexpected(e.what());
+    }
+}
+
 } // namespace lyra

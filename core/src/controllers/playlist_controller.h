@@ -21,6 +21,8 @@ class PlaylistController {
     tl::expected<void, std::string> create(Playlist &playlist);
     tl::expected<Playlist, std::string> get(const std::string &id);
     tl::expected<void, std::string> update(const PlaylistUpdate &playlist_update);
+    tl::expected<PaginatedResult<Playlist>, std::string> list(
+        int offset, int limit, const std::optional<std::string> &search);
     tl::expected<void, std::string> add_track(const std::string &playlist_id, const std::string &track_id, std::optional<int> position);
     tl::expected<void, std::string> remove_track(const std::string &playlist_id, const std::string &track_id);
     std::vector<std::string> get_tracks(const std::string &playlist_id);

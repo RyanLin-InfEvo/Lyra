@@ -29,4 +29,9 @@ tl::expected<void, std::string> WorkController::update(const WorkUpdate &work_up
     return m_repo.update(work_update);
 }
 
+tl::expected<PaginatedResult<Work>, std::string> WorkController::list(
+    int offset, int limit, const std::optional<std::string> &search) {
+    return m_repo.list(offset, limit, search);
+}
+
 } // namespace lyra

@@ -7,8 +7,10 @@
 #include <string>
 #include <tl/expected.hpp>
 #include <vector>
+#include <optional>
 #include "../../models/track.h"
 #include "../../models/relation_types.h"
+#include "../../utils/paginated_result.h"
 
 namespace lyra {
 
@@ -19,6 +21,8 @@ class ITrackRepository {
     virtual tl::expected<void, std::string> insert(const Track &track) = 0;
     virtual tl::expected<void, std::string> update(const TrackUpdate &update_data) = 0;
     virtual tl::expected<Track, std::string> get(const std::string &track_id) = 0;
+    virtual tl::expected<PaginatedResult<Track>, std::string> list(
+        int offset, int limit, const std::optional<std::string> &search) = 0;
 
     // Track-Artist relations
     virtual tl::expected<void, std::string> add_artist(const TrackArtistParams &params) = 0;

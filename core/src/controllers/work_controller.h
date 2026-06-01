@@ -20,6 +20,8 @@ class WorkController {
     tl::expected<void, std::string> create(Work &work);
     tl::expected<Work, std::string> get(const std::string &id);
     tl::expected<void, std::string> update(const WorkUpdate &work_update);
+    tl::expected<PaginatedResult<Work>, std::string> list(
+        int offset, int limit, const std::optional<std::string> &search);
 
   private:
     IWorkRepository &m_repo;
