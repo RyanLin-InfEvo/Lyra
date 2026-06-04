@@ -32,6 +32,37 @@ void SqliteDatabaseContext::init_schema() {
     auto &m_db = get_db();
 
     m_db.exec(R"(
+        CREATE TABLE IF NOT EXISTS Asset (
+          file_hash TEXT NOT NULL,
+          mime_type TEXT NULL DEFAULT NULL,
+          asset_type TEXT NULL DEFAULT NULL,
+          file_size INTEGER NULL DEFAULT NULL,
+          created_at TEXT DEFAULT (datetime('now')),
+          PRIMARY KEY (file_hash)
+        );
+    )");
+
+    m_db.exec(R"(
+        CREATE TABLE IF NOT EXISTS Audio (
+          pcm_hash TEXT NOT NULL,
+          parent_hash TEXT NULL DEFAULT NULL,
+          quality_score INTEGER NULL DEFAULT NULL,
+          bit_depth INTEGER NULL DEFAULT NULL,
+          sample_rate INTEGER NULL DEFAULT NULL,
+          channels INTEGER NULL DEFAULT NULL,
+          duration REAL NULL DEFAULT NULL,
+          integrated_loudness REAL NULL DEFAULT NULL,
+          true_peak REAL NULL DEFAULT NULL,
+          PRIMARY KEY (pcm_hash),
+          CONSTRAINT fk_Audio_Parent
+            FOREIGN KEY (parent_hash)
+            REFERENCES Audio (pcm_hash)
+            ON DELETE SET NULL
+            ON UPDATE CASCADE
+        );
+    )");
+
+    m_db.exec(R"(
         CREATE TABLE IF NOT EXISTS Entity (
           id TEXT NOT NULL,
           entity_type TEXT NULL CHECK( entity_type IN ('track', 'album', 'artist', 'work', 'playlist', 'tag') ),
@@ -182,6 +213,8 @@ void SqliteDatabaseContext::init_schema() {
     m_db.exec("CREATE INDEX IF NOT EXISTS idx_Playlist_title ON Playlist (title);");
     m_db.exec("CREATE INDEX IF NOT EXISTS idx_Track_title ON Track (title);");
     m_db.exec("CREATE INDEX IF NOT EXISTS idx_Work_title ON Work (title);");
+    m_db.exec("CREATE INDEX IF NOT EXISTS idx_Audio_parent_hash ON Audio (parent_hash);");
+    m_db.exec("CREATE INDEX IF NOT EXISTS idx_Asset_asset_type ON Asset (asset_type);");
 }
 
 std::unique_ptr<ITransaction> SqliteDatabaseContext::begin_transaction() {

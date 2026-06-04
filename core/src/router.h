@@ -19,12 +19,16 @@ using json = nlohmann::json;
 class IDatabaseContext;
 class IAlbumRepository;
 class IArtistRepository;
+class IAssetRepository;
+class IAudioRepository;
 class IPlaylistRepository;
 class ITrackRepository;
 class IWorkRepository;
 
 class AlbumController;
 class ArtistController;
+class AssetController;
+class AudioController;
 class PlaylistController;
 class TrackController;
 class WorkController;
@@ -55,6 +59,16 @@ class Router {
     json handleGetAlbum(const json &p);
     json handleListAlbums(const json &p);
 
+    json handleCreateAsset(const json &p);
+    json handleUpdateAsset(const json &p);
+    json handleGetAsset(const json &p);
+    json handleListAssets(const json &p);
+
+    json handleCreateAudio(const json &p);
+    json handleUpdateAudio(const json &p);
+    json handleGetAudio(const json &p);
+    json handleListAudio(const json &p);
+
     json handleCreateWork(const json &p);
     json handleUpdateWork(const json &p);
     json handleGetWork(const json &p);
@@ -77,12 +91,16 @@ class Router {
 
     std::unique_ptr<IAlbumRepository> m_album_repo;
     std::unique_ptr<IArtistRepository> m_artist_repo;
+    std::unique_ptr<IAssetRepository> m_asset_repo;
+    std::unique_ptr<IAudioRepository> m_audio_repo;
     std::unique_ptr<IPlaylistRepository> m_playlist_repo;
     std::unique_ptr<ITrackRepository> m_track_repo;
     std::unique_ptr<IWorkRepository> m_work_repo;
 
     std::unique_ptr<AlbumController> m_album_controller;
     std::unique_ptr<ArtistController> m_artist_controller;
+    std::unique_ptr<AssetController> m_asset_controller;
+    std::unique_ptr<AudioController> m_audio_controller;
     std::unique_ptr<PlaylistController> m_playlist_controller;
     std::unique_ptr<TrackController> m_track_controller;
     std::unique_ptr<WorkController> m_work_controller;

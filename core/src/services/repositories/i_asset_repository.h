@@ -1,0 +1,26 @@
+// SPDX-FileCopyrightText: 2026 Tzu-Ting Lin
+//
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
+#pragma once
+
+#include <string>
+#include <tl/expected.hpp>
+#include <optional>
+#include "../../models/asset.h"
+#include "../../utils/paginated_result.h"
+
+namespace lyra {
+
+class IAssetRepository {
+  public:
+    virtual ~IAssetRepository() = default;
+
+    virtual tl::expected<void, std::string> insert(const Asset &asset) = 0;
+    virtual tl::expected<void, std::string> update(const AssetUpdate &update_data) = 0;
+    virtual tl::expected<Asset, std::string> get(const std::string &file_hash) = 0;
+    virtual tl::expected<PaginatedResult<Asset>, std::string> list(
+        int offset, int limit, const std::optional<std::string> &search) = 0;
+};
+
+} // namespace lyra

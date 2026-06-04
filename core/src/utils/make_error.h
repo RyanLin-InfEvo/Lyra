@@ -21,6 +21,8 @@ enum class ErrorType {
     AlbumNotFound,
     WorkNotFound,
     PlaylistNotFound,
+    AssetNotFound,
+    AudioNotFound,
     UnknownCommand,
     RelationNotFound,
     // 400 Series

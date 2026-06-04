@@ -26,6 +26,8 @@ set(CPP
     src/services/database_context.cpp
     src/services/repositories/sqlite_album_repository.cpp
     src/services/repositories/sqlite_artist_repository.cpp
+    src/services/repositories/sqlite_asset_repository.cpp
+    src/services/repositories/sqlite_audio_repository.cpp
     src/services/repositories/sqlite_playlist_repository.cpp
     src/services/repositories/sqlite_track_repository.cpp
     src/services/repositories/sqlite_work_repository.cpp
@@ -36,6 +38,8 @@ set(CPP
     src/models/relation_types.cpp
     src/controllers/album_controller.cpp
     src/controllers/artist_controller.cpp
+    src/controllers/asset_controller.cpp
+    src/controllers/audio_controller.cpp
     src/controllers/track_controller.cpp
     src/controllers/work_controller.cpp
     src/controllers/playlist_controller.cpp

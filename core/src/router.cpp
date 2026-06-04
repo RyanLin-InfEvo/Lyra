@@ -10,6 +10,8 @@
 
 #include "controllers/album_controller.h"
 #include "controllers/artist_controller.h"
+#include "controllers/asset_controller.h"
+#include "controllers/audio_controller.h"
 #include "controllers/playlist_controller.h"
 #include "controllers/track_controller.h"
 #include "controllers/work_controller.h"
@@ -18,6 +20,8 @@
 #include "services/database_context.h"
 #include "services/repositories/sqlite_album_repository.h"
 #include "services/repositories/sqlite_artist_repository.h"
+#include "services/repositories/sqlite_asset_repository.h"
+#include "services/repositories/sqlite_audio_repository.h"
 #include "services/repositories/sqlite_playlist_repository.h"
 #include "services/repositories/sqlite_track_repository.h"
 #include "services/repositories/sqlite_work_repository.h"
@@ -37,12 +41,16 @@ Router::Router(const std::string &db_path) {
 
     m_album_repo = std::make_unique<SqliteAlbumRepository>(*m_db_context);
     m_artist_repo = std::make_unique<SqliteArtistRepository>(*m_db_context);
+    m_asset_repo = std::make_unique<SqliteAssetRepository>(*m_db_context);
+    m_audio_repo = std::make_unique<SqliteAudioRepository>(*m_db_context);
     m_playlist_repo = std::make_unique<SqlitePlaylistRepository>(*m_db_context);
     m_track_repo = std::make_unique<SqliteTrackRepository>(*m_db_context);
     m_work_repo = std::make_unique<SqliteWorkRepository>(*m_db_context);
 
     m_album_controller = std::make_unique<AlbumController>(*m_album_repo);
     m_artist_controller = std::make_unique<ArtistController>(*m_artist_repo);
+    m_asset_controller = std::make_unique<AssetController>(*m_asset_repo);
+    m_audio_controller = std::make_unique<AudioController>(*m_audio_repo);
     m_playlist_controller = std::make_unique<PlaylistController>(*m_playlist_repo);
     m_track_controller = std::make_unique<TrackController>(*m_track_repo);
     m_work_controller = std::make_unique<WorkController>(*m_work_repo);
@@ -70,6 +78,18 @@ void Router::init_handlers() {
     m_handlers["UpdateAlbum"] = [this](const json &p) { return handleUpdateAlbum(p); };
     m_handlers["GetAlbum"] = [this](const json &p) { return handleGetAlbum(p); };
     m_handlers["ListAlbums"] = [this](const json &p) { return handleListAlbums(p); };
+
+    // Asset
+    m_handlers["CreateAsset"] = [this](const json &p) { return handleCreateAsset(p); };
+    m_handlers["UpdateAsset"] = [this](const json &p) { return handleUpdateAsset(p); };
+    m_handlers["GetAsset"] = [this](const json &p) { return handleGetAsset(p); };
+    m_handlers["ListAssets"] = [this](const json &p) { return handleListAssets(p); };
+
+    // Audio
+    m_handlers["CreateAudio"] = [this](const json &p) { return handleCreateAudio(p); };
+    m_handlers["UpdateAudio"] = [this](const json &p) { return handleUpdateAudio(p); };
+    m_handlers["GetAudio"] = [this](const json &p) { return handleGetAudio(p); };
+    m_handlers["ListAudio"] = [this](const json &p) { return handleListAudio(p); };
 
     // Work
     m_handlers["CreateWork"] = [this](const json &p) { return handleCreateWork(p); };
@@ -365,6 +385,154 @@ json Router::handleListAlbums(const json &params) {
     }
     const auto &p = parse_res.value();
     auto res = m_album_controller->list(p.offset, p.limit, p.search);
+    if (res) {
+        return ApiResponse::success(res.value());
+    }
+    return ApiResponse::error({ErrorType::DatabaseError, res.error()});
+}
+
+// --- Asset Handlers ---
+
+json Router::handleCreateAsset(const json &params) {
+    auto err = JsonValidator::validate(params, {{"file_hash", Type::String, true},
+                                                {"mime_type", Type::String, false},
+                                                {"asset_type", Type::String, false},
+                                                {"file_size", Type::Integer, false}});
+    if (err)
+        return *err;
+
+    Asset asset = params.get<Asset>();
+    auto res = m_asset_controller->create(asset);
+    if (res) {
+        json response;
+        response["code"] = 201;
+        response["data"]["file_hash"] = asset.file_hash;
+        response["message"] = "Create Asset success.";
+        return response;
+    }
+    return ApiResponse::error({ErrorType::DatabaseError, res.error()});
+}
+
+json Router::handleGetAsset(const json &params) {
+    auto err = JsonValidator::validate(params, {{"file_hash", Type::String, true}});
+    if (err)
+        return *err;
+
+    auto res = m_asset_controller->get(params["file_hash"].get<std::string>());
+    if (res) {
+        return ApiResponse::success(res.value());
+    }
+    return ApiResponse::error({ErrorType::AssetNotFound, res.error()});
+}
+
+json Router::handleUpdateAsset(const json &params) {
+    auto err = JsonValidator::validate(params, {{"file_hash", Type::String, true},
+                                                {"mime_type", Type::String, false},
+                                                {"asset_type", Type::String, false},
+                                                {"file_size", Type::Integer, false}});
+    if (err)
+        return *err;
+
+    AssetUpdate update_data = params.get<AssetUpdate>();
+    if (!update_data.has_updates()) {
+        return ApiResponse::error({ErrorType::InvalidValue, "No fields provided to update."});
+    }
+
+    auto res = m_asset_controller->update(update_data);
+    if (res) {
+        json response = ApiResponse::success({{"file_hash", update_data.file_hash}});
+        response["message"] = "Update Asset success.";
+        return response;
+    }
+    return ApiResponse::error({ErrorType::DatabaseError, res.error()});
+}
+
+json Router::handleListAssets(const json &params) {
+    auto parse_res = parse_pagination(params);
+    if (!parse_res) {
+        return parse_res.error();
+    }
+    const auto &p = parse_res.value();
+    auto res = m_asset_controller->list(p.offset, p.limit, p.search);
+    if (res) {
+        return ApiResponse::success(res.value());
+    }
+    return ApiResponse::error({ErrorType::DatabaseError, res.error()});
+}
+
+// --- Audio Handlers ---
+
+json Router::handleCreateAudio(const json &params) {
+    auto err = JsonValidator::validate(params, {{"pcm_hash", Type::String, true},
+                                                {"parent_hash", Type::String, false},
+                                                {"quality_score", Type::Integer, false},
+                                                {"bit_depth", Type::Integer, false},
+                                                {"sample_rate", Type::Integer, false},
+                                                {"channels", Type::Integer, false},
+                                                {"duration", Type::Number, false},
+                                                {"integrated_loudness", Type::Number, false},
+                                                {"true_peak", Type::Number, false}});
+    if (err)
+        return *err;
+
+    Audio audio = params.get<Audio>();
+    auto res = m_audio_controller->create(audio);
+    if (res) {
+        json response;
+        response["code"] = 201;
+        response["data"]["pcm_hash"] = audio.pcm_hash;
+        response["message"] = "Create Audio success.";
+        return response;
+    }
+    return ApiResponse::error({ErrorType::DatabaseError, res.error()});
+}
+
+json Router::handleGetAudio(const json &params) {
+    auto err = JsonValidator::validate(params, {{"pcm_hash", Type::String, true}});
+    if (err)
+        return *err;
+
+    auto res = m_audio_controller->get(params["pcm_hash"].get<std::string>());
+    if (res) {
+        return ApiResponse::success(res.value());
+    }
+    return ApiResponse::error({ErrorType::AudioNotFound, res.error()});
+}
+
+json Router::handleUpdateAudio(const json &params) {
+    auto err = JsonValidator::validate(params, {{"pcm_hash", Type::String, true},
+                                                {"parent_hash", Type::String, false},
+                                                {"quality_score", Type::Integer, false},
+                                                {"bit_depth", Type::Integer, false},
+                                                {"sample_rate", Type::Integer, false},
+                                                {"channels", Type::Integer, false},
+                                                {"duration", Type::Number, false},
+                                                {"integrated_loudness", Type::Number, false},
+                                                {"true_peak", Type::Number, false}});
+    if (err)
+        return *err;
+
+    AudioUpdate update_data = params.get<AudioUpdate>();
+    if (!update_data.has_updates()) {
+        return ApiResponse::error({ErrorType::InvalidValue, "No fields provided to update."});
+    }
+
+    auto res = m_audio_controller->update(update_data);
+    if (res) {
+        json response = ApiResponse::success({{"pcm_hash", update_data.pcm_hash}});
+        response["message"] = "Update Audio success.";
+        return response;
+    }
+    return ApiResponse::error({ErrorType::DatabaseError, res.error()});
+}
+
+json Router::handleListAudio(const json &params) {
+    auto parse_res = parse_pagination(params);
+    if (!parse_res) {
+        return parse_res.error();
+    }
+    const auto &p = parse_res.value();
+    auto res = m_audio_controller->list(p.offset, p.limit, p.search);
     if (res) {
         return ApiResponse::success(res.value());
     }
