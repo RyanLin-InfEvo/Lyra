@@ -3,6 +3,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 #include "database_context.h"
+#include <unordered_map>
 
 namespace lyra {
 
@@ -12,20 +13,16 @@ SqliteDatabaseContext::SqliteDatabaseContext(const std::string &db_path)
 }
 
 SQLite::Database &SqliteDatabaseContext::get_db() {
-    struct ThreadConnection {
-        std::string path;
-        std::unique_ptr<SQLite::Database> db;
-    };
-    thread_local ThreadConnection tl_conn;
+    thread_local std::unordered_map<std::string, std::unique_ptr<SQLite::Database>> tl_conns;
+    auto &db_ptr = tl_conns[m_db_path];
 
-    if (tl_conn.path != m_db_path || !tl_conn.db) {
-        tl_conn.db = std::make_unique<SQLite::Database>(m_db_path, SQLite::OPEN_READWRITE | SQLite::OPEN_CREATE);
-        tl_conn.db->exec("PRAGMA journal_mode=WAL;");
-        tl_conn.db->exec("PRAGMA foreign_keys=ON;");
-        tl_conn.db->setBusyTimeout(5000);
-        tl_conn.path = m_db_path;
+    if (!db_ptr) {
+        db_ptr = std::make_unique<SQLite::Database>(m_db_path, SQLite::OPEN_READWRITE | SQLite::OPEN_CREATE);
+        db_ptr->exec("PRAGMA journal_mode=WAL;");
+        db_ptr->exec("PRAGMA foreign_keys=ON;");
+        db_ptr->setBusyTimeout(5000);
     }
-    return *tl_conn.db;
+    return *db_ptr;
 }
 
 void SqliteDatabaseContext::init_schema() {
@@ -218,11 +215,9 @@ void SqliteDatabaseContext::init_schema() {
 }
 
 std::unique_ptr<ITransaction> SqliteDatabaseContext::begin_transaction() {
-    // TODO: design risk - function-static thread_local is shared across all
-    // SqliteDatabaseContext instances on the same thread, causing potential
-    // incorrect shared transaction depth if multiple context instances are opened.
-    thread_local int tl_depth = 0;
-    return std::make_unique<SqliteTransaction>(get_db(), tl_depth);
+    thread_local std::unordered_map<std::string, int> tl_depths;
+    int &depth = tl_depths[m_db_path];
+    return std::make_unique<SqliteTransaction>(get_db(), depth);
 }
 
 } // namespace lyra

@@ -10,6 +10,8 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
+option(BUILD_TESTING "Build the testing suite" ON)
+
 # load FetchContent module
 include(FetchContent)
 
@@ -62,3 +64,9 @@ target_link_libraries(lyra_core PRIVATE
 add_executable(lyra-cli src/cli/main.cpp)
 target_link_libraries(lyra-cli PRIVATE lyra_core nlohmann_json::nlohmann_json fmt::fmt)
 target_include_directories(lyra-cli PRIVATE include)
+
+if(BUILD_TESTING)
+    add_executable(database_context_test tests/database_context_test.cpp)
+    target_link_libraries(database_context_test PRIVATE lyra_core nlohmann_json::nlohmann_json fmt::fmt SQLiteCpp)
+    target_include_directories(database_context_test PRIVATE include src)
+endif()
