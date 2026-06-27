@@ -35,6 +35,7 @@ set(CPP
     src/services/repositories/sqlite_work_repository.cpp
     src/utils/uuid_generator.cpp
     src/utils/json_validator.cpp
+    src/utils/sha256.cpp
     src/utils/sqlite_helper.cpp
     src/utils/make_error.cpp
     src/models/relation_types.cpp
@@ -69,4 +70,8 @@ if(BUILD_TESTING)
     add_executable(database_context_test tests/database_context_test.cpp)
     target_link_libraries(database_context_test PRIVATE lyra_core nlohmann_json::nlohmann_json fmt::fmt SQLiteCpp)
     target_include_directories(database_context_test PRIVATE include src)
+
+    add_executable(sha256_test tests/sha256_test.cpp)
+    target_link_libraries(sha256_test PRIVATE lyra_core nlohmann_json::nlohmann_json fmt::fmt)
+    target_include_directories(sha256_test PRIVATE include src)
 endif()
