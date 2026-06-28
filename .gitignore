@@ -32,6 +32,7 @@ docs/
 *.db-wal
 core/compile_commands.json
 compile_commands.json
+.clangd
 # .editorconfig
 # .clang-format
 Lyra.code-workspace
