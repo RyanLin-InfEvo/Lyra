@@ -38,6 +38,7 @@ set(CPP
     src/utils/sha256.cpp
     src/utils/sqlite_helper.cpp
     src/utils/make_error.cpp
+    src/utils/process_runner.cpp
     src/models/relation_types.cpp
     src/controllers/album_controller.cpp
     src/controllers/artist_controller.cpp
@@ -74,4 +75,8 @@ if(BUILD_TESTING)
     add_executable(sha256_test tests/sha256_test.cpp)
     target_link_libraries(sha256_test PRIVATE lyra_core nlohmann_json::nlohmann_json fmt::fmt)
     target_include_directories(sha256_test PRIVATE include src)
+
+    add_executable(process_runner_test tests/process_runner_test.cpp)
+    target_link_libraries(process_runner_test PRIVATE lyra_core nlohmann_json::nlohmann_json fmt::fmt)
+    target_include_directories(process_runner_test PRIVATE include src)
 endif()
