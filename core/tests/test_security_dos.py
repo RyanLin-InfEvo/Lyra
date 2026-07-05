@@ -26,7 +26,7 @@ class TestSecurityDoS(BaseLyraTestCase):
         response = json.loads(res_str)
         self.lib.lyra_free_string(res_ptr)
 
-        self.assertEqual(response.get("code"), 400)
+        self.assertResponseCode(response, 400)
         self.assertIn("exceeds maximum nesting depth", response["error"].get("message"))
 
     def test_extremely_large_json(self):
@@ -42,7 +42,7 @@ class TestSecurityDoS(BaseLyraTestCase):
         response = json.loads(res_str)
         self.lib.lyra_free_string(res_ptr)
 
-        self.assertEqual(response.get("code"), 400)
+        self.assertResponseCode(response, 400)
         self.assertIn("exceeds maximum length", response["error"].get("message"))
 
     def test_null_json_input(self):
@@ -54,7 +54,7 @@ class TestSecurityDoS(BaseLyraTestCase):
         response = json.loads(res_str)
         self.lib.lyra_free_string(res_ptr)
 
-        self.assertEqual(response.get("code"), 400)
+        self.assertResponseCode(response, 400)
         self.assertIn("JSON request is null", response["error"].get("message"))
 
     def test_init_null_storage_root(self):

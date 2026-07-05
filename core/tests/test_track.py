@@ -16,21 +16,19 @@ class TesttrackController(BaseLyraTestCase):
         title = "Automated Test Track"
         res = self.dispatch("CreateTrack", {"pcm_hash": pcm_hash, "title": title, "duration": 180})
         
-        self.assertEqual(res["code"], 201)
+        self.assertResponseCode(res, 201)
         self.assertEqual(res["data"]["pcm_hash"], pcm_hash)
         self.assertEqual(res["data"]["title"], title)
 
     def test_track_create_missing_required(self):
         """Test missing required Track fields (pcm_hash): Should return 400 (MissingParameter)"""
         res = self.dispatch("CreateTrack", {"title": "Missing Hash Track"})
-        self.assertEqual(res["code"], 400)
-        self.assertEqual(res["error"]["type"], "MissingParameter")
+        self.assertValidationError(res, expected_type="MissingParameter")
 
     def test_track_create_type_mismatch(self):
         """Test Track creation with invalid parameter types (e.g., duration as string): Should return 400"""
         res = self.dispatch("CreateTrack", {"pcm_hash": "hash_456", "duration": "invalid_type_str"})
-        self.assertEqual(res["code"], 400)
-        self.assertEqual(res["error"]["type"], "InvalidValue")
+        self.assertValidationError(res, expected_type="InvalidValue")
 
     # --------
     # Get Test
@@ -40,23 +38,22 @@ class TesttrackController(BaseLyraTestCase):
         """Test successful retrieval of an existing Track"""
         pcm_hash = "fake_pcm_hash_get"
         res_create = self.dispatch("CreateTrack", {"pcm_hash": pcm_hash, "title": "Get Target Track"})
-        self.assertEqual(res_create["code"], 201)
+        self.assertResponseCode(res_create, 201)
 
         res_get = self.dispatch("GetTrack", {"id": res_create["data"]["id"]})
-        self.assertEqual(res_get["code"], 200)
+        self.assertResponseCode(res_get, 200)
         self.assertEqual(res_get["data"]["id"], res_create["data"]["id"])
         self.assertEqual(res_get["data"]["pcm_hash"], pcm_hash)
 
     def test_track_get_invalid_uuid(self):
         """Test fetching Track with invalid UUID format: Should trigger validation error"""
         res = self.dispatch("GetTrack", {"id": "invalid-uuid"})
-        self.assertEqual(res["code"], 400)
-        self.assertEqual(res["error"]["type"], "InvalidValue")
+        self.assertValidationError(res, expected_type="InvalidValue")
 
     def test_track_get_not_found(self):
         """Test fetching a non-existent Track: Should return 404 (TrackNotFound)"""
         res = self.dispatch("GetTrack", {"id": str(uuid.uuid4())})
-        self.assertEqual(res["code"], 404)
+        self.assertResponseCode(res, 404)
         self.assertEqual(res["error"]["type"], "TrackNotFound")
 
     # -----------
@@ -66,12 +63,12 @@ class TesttrackController(BaseLyraTestCase):
     def test_track_update_success(self):
         """Test successful update of an existing track"""
         res_create = self.dispatch("CreateTrack", {"pcm_hash": "PCM Hash Update", "title": "Track Title"})
-        self.assertEqual(res_create["code"], 201)
+        self.assertResponseCode(res_create, 201)
 
         updated_title = "Updated Track Name"
         real_id = res_create["data"]["id"]
         res_update = self.dispatch("UpdateTrack", {"id": real_id, "title": updated_title})
-        self.assertEqual(res_update["code"], 200)
+        self.assertResponseCode(res_update, 200)
         
         res_get = self.dispatch("GetTrack", {"id": real_id})
         self.assertEqual(res_get["data"]["title"], updated_title)
@@ -80,15 +77,14 @@ class TesttrackController(BaseLyraTestCase):
         """Test track update with valid ID but no update fields: Should return 400"""
         real_id = str(uuid.uuid4())
         res = self.dispatch("UpdateTrack", {"id": real_id, "invalid_field": "A value"})
-        self.assertEqual(res["code"], 400)
-        self.assertTrue("error" in res)
+        self.assertValidationError(res, expected_type="InvalidValue")
 
     def test_track_update_not_exist_uuid(self):
         """Test an not-exist uuid"""
         updated_title = "Updated Title"
         unexist_id = str(uuid.uuid4())
         res_update = self.dispatch("UpdateTrack", {"id": unexist_id, "title": updated_title})
-        self.assertEqual(res_update["code"], 500)
+        self.assertResponseCode(res_update, 500)
         self.assertTrue("error" in res_update)
 
     # ------------------
@@ -108,7 +104,7 @@ class TesttrackController(BaseLyraTestCase):
             "role": "main",
             "position": 1
         })
-        self.assertEqual(res_add["code"], 201)
+        self.assertResponseCode(res_add, 201)
         self.assertEqual(res_add["data"]["track_id"], track_id)
         self.assertEqual(res_add["data"]["artist_id"], artist_id)
         self.assertEqual(res_add["data"]["role"], "main")
@@ -131,7 +127,7 @@ class TesttrackController(BaseLyraTestCase):
             "track_id": track_id,
             "artist_id": artist_id
         })
-        self.assertEqual(res_remove["code"], 200)
+        self.assertResponseCode(res_remove, 200)
 
     def test_update_track_artist_success(self):
         """Test successful update of a track-artist relation"""
@@ -152,7 +148,7 @@ class TesttrackController(BaseLyraTestCase):
             "artist_id": artist_id,
             "role": "producer"
         })
-        self.assertEqual(res_update["code"], 200)
+        self.assertResponseCode(res_update, 200)
         self.assertEqual(res_update["data"]["role"], "producer")
 
     def test_add_track_artist_invalid_role(self):
@@ -168,8 +164,7 @@ class TesttrackController(BaseLyraTestCase):
             "role": "vocalist",
             "position": 1
         })
-        self.assertEqual(res_add["code"], 400)
-        self.assertEqual(res_add["error"]["type"], "InvalidValue")
+        self.assertValidationError(res_add, expected_type="InvalidValue")
 
     def test_update_track_artist_invalid_role(self):
         """Test updating track artist with invalid role (e.g. vocalist): Should return 400 InvalidValue"""
@@ -190,8 +185,7 @@ class TesttrackController(BaseLyraTestCase):
             "artist_id": artist_id,
             "role": "vocalist"
         })
-        self.assertEqual(res_update["code"], 400)
-        self.assertEqual(res_update["error"]["type"], "InvalidValue")
+        self.assertValidationError(res_update, expected_type="InvalidValue")
 
     def test_add_track_artist_track_not_found(self):
         """Test AddTrackArtist with non-existent track ID: Should return 404 (TrackNotFound)"""
@@ -204,7 +198,7 @@ class TesttrackController(BaseLyraTestCase):
             "artist_id": artist_id,
             "role": "main"
         })
-        self.assertEqual(res["code"], 404)
+        self.assertResponseCode(res, 404)
         self.assertEqual(res["error"]["type"], "TrackNotFound")
 
     def test_add_track_artist_artist_not_found(self):
@@ -218,7 +212,7 @@ class TesttrackController(BaseLyraTestCase):
             "artist_id": non_existent_artist_id,
             "role": "main"
         })
-        self.assertEqual(res["code"], 404)
+        self.assertResponseCode(res, 404)
         self.assertEqual(res["error"]["type"], "ArtistNotFound")
 
     def test_update_track_artist_relation_not_found(self):
@@ -233,7 +227,7 @@ class TesttrackController(BaseLyraTestCase):
             "artist_id": artist_id,
             "role": "producer"
         })
-        self.assertEqual(res["code"], 404)
+        self.assertResponseCode(res, 404)
         self.assertEqual(res["error"]["type"], "RelationNotFound")
         self.assertEqual(res["error"]["message"], "Relation between Track and Artist not found.")
 
@@ -248,6 +242,6 @@ class TesttrackController(BaseLyraTestCase):
             "track_id": track_id,
             "artist_id": artist_id
         })
-        self.assertEqual(res["code"], 404)
+        self.assertResponseCode(res, 404)
         self.assertEqual(res["error"]["type"], "RelationNotFound")
         self.assertEqual(res["error"]["message"], "Relation between Track and Artist not found.")

@@ -15,15 +15,14 @@ class TestPlaylistController(BaseLyraTestCase):
         title = "My Awesome Playlist"
         res = self.dispatch("CreatePlaylist", {"title": title, "description": "A great playlist"})
         
-        self.assertEqual(res["code"], 201)
+        self.assertResponseCode(res, 201)
         self.assertEqual(res["data"]["title"], title)
         self.assertTrue("id" in res["data"])
 
     def test_playlist_create_missing_required(self):
         """Test missing required fields"""
         res = self.dispatch("CreatePlaylist", {"description": "Missing title"})
-        self.assertEqual(res["code"], 400)
-        self.assertEqual(res["error"]["type"], "MissingParameter")
+        self.assertValidationError(res, expected_type="MissingParameter")
 
     # --------
     # Get Test
@@ -31,17 +30,17 @@ class TestPlaylistController(BaseLyraTestCase):
     def test_playlist_get_success(self):
         """Test successful retrieval of an existing Playlist"""
         res_create = self.dispatch("CreatePlaylist", {"title": "Get Target Playlist"})
-        self.assertEqual(res_create["code"], 201)
+        self.assertResponseCode(res_create, 201)
 
         res_get = self.dispatch("GetPlaylist", {"id": res_create["data"]["id"]})
-        self.assertEqual(res_get["code"], 200)
+        self.assertResponseCode(res_get, 200)
         self.assertEqual(res_get["data"]["id"], res_create["data"]["id"])
         self.assertEqual(res_get["data"]["title"], "Get Target Playlist")
 
     def test_playlist_get_not_found(self):
         """Test fetching a non-existent Playlist"""
         res = self.dispatch("GetPlaylist", {"id": str(uuid.uuid4())})
-        self.assertEqual(res["code"], 404)
+        self.assertResponseCode(res, 404)
         self.assertEqual(res["error"]["type"], "PlaylistNotFound")
 
     # -----------
@@ -50,12 +49,12 @@ class TestPlaylistController(BaseLyraTestCase):
     def test_playlist_update_success(self):
         """Test successful update of an existing playlist"""
         res_create = self.dispatch("CreatePlaylist", {"title": "Old Title"})
-        self.assertEqual(res_create["code"], 201)
+        self.assertResponseCode(res_create, 201)
 
         updated_title = "New Title"
         real_id = res_create["data"]["id"]
         res_update = self.dispatch("UpdatePlaylist", {"id": real_id, "title": updated_title})
-        self.assertEqual(res_update["code"], 200)
+        self.assertResponseCode(res_update, 200)
         
         res_get = self.dispatch("GetPlaylist", {"id": real_id})
         self.assertEqual(res_get["data"]["title"], updated_title)
@@ -64,7 +63,7 @@ class TestPlaylistController(BaseLyraTestCase):
         """Test playlist update with no update fields"""
         real_id = str(uuid.uuid4())
         res = self.dispatch("UpdatePlaylist", {"id": real_id})
-        self.assertEqual(res["code"], 400)
+        self.assertValidationError(res, expected_type="InvalidValue")
 
     # ----------------------
     # Playlist-Track Tests
@@ -82,7 +81,7 @@ class TestPlaylistController(BaseLyraTestCase):
             "track_id": track_id,
             "position": 1
         })
-        self.assertEqual(res_add["code"], 201)
+        self.assertResponseCode(res_add, 201)
 
     def test_get_playlist_tracks_success(self):
         """Test fetching tracks of a playlist"""
@@ -98,7 +97,7 @@ class TestPlaylistController(BaseLyraTestCase):
         self.dispatch("AddPlaylistTrack", {"playlist_id": playlist_id, "track_id": track_id2, "position": 2})
         
         res_get = self.dispatch("GetPlaylistTracks", {"id": playlist_id})
-        self.assertEqual(res_get["code"], 200)
+        self.assertResponseCode(res_get, 200)
         self.assertEqual(len(res_get["data"]), 2)
         self.assertEqual(res_get["data"][0], track_id1)
         self.assertEqual(res_get["data"][1], track_id2)
@@ -117,7 +116,7 @@ class TestPlaylistController(BaseLyraTestCase):
             "playlist_id": playlist_id,
             "track_id": track_id
         })
-        self.assertEqual(res_remove["code"], 200)
+        self.assertResponseCode(res_remove, 200)
         
         res_get = self.dispatch("GetPlaylistTracks", {"id": playlist_id})
         self.assertEqual(len(res_get["data"]), 0)
@@ -132,7 +131,7 @@ class TestPlaylistController(BaseLyraTestCase):
             "playlist_id": non_existent_playlist_id,
             "track_id": track_id
         })
-        self.assertEqual(res["code"], 404)
+        self.assertResponseCode(res, 404)
         self.assertEqual(res["error"]["type"], "PlaylistNotFound")
 
     def test_add_playlist_track_track_not_found(self):
@@ -145,7 +144,7 @@ class TestPlaylistController(BaseLyraTestCase):
             "playlist_id": playlist_id,
             "track_id": non_existent_track_id
         })
-        self.assertEqual(res["code"], 404)
+        self.assertResponseCode(res, 404)
         self.assertEqual(res["error"]["type"], "TrackNotFound")
 
     def test_remove_playlist_track_relation_not_found(self):
@@ -159,6 +158,6 @@ class TestPlaylistController(BaseLyraTestCase):
             "playlist_id": playlist_id,
             "track_id": track_id
         })
-        self.assertEqual(res["code"], 404)
+        self.assertResponseCode(res, 404)
         self.assertEqual(res["error"]["type"], "RelationNotFound")
         self.assertEqual(res["error"]["message"], "Track not found in playlist.")

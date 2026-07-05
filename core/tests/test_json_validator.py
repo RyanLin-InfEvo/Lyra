@@ -12,17 +12,13 @@ class TestJsonValidator(BaseLyraTestCase):
         """Test missing required field: Should return 400 with MissingParameter"""
         # ArtistController::create requires 'name'
         res = self.dispatch("CreateArtist", {})
-        self.assertEqual(res["code"], 400)
-        self.assertEqual(res["error"]["type"], "MissingParameter")
-        self.assertTrue("Missing required field" in res["error"]["message"])
+        self.assertValidationError(res, expected_type="MissingParameter", expected_message_content="Missing required field")
 
     def test_type_mismatch_string(self):
         """Test type mismatch for String field"""
         # ArtistController::create requires 'name' (String)
         res = self.dispatch("CreateArtist", {"name": 1234})
-        self.assertEqual(res["code"], 400)
-        self.assertEqual(res["error"].get("type"), "InvalidValue", f"Unexpected response: {res}")
-        self.assertTrue("is not a expected type" in res["error"]["message"])
+        self.assertValidationError(res, expected_type="InvalidValue", expected_message_content="is not a expected type")
 
     def test_type_mismatch_number(self):
         """Test type mismatch for Number field"""
@@ -32,18 +28,13 @@ class TestJsonValidator(BaseLyraTestCase):
             "title": "Title",
             "duration": "180" # String instead of Number
         })
-        self.assertEqual(res["code"], 400)
-        self.assertEqual(res["error"].get("type"), "InvalidValue", f"Unexpected response: {res}")
-        self.assertTrue("is not a expected type" in res["error"]["message"])
+        self.assertValidationError(res, expected_type="InvalidValue", expected_message_content="is not a expected type")
 
     def test_string_format_uuid(self):
         """Test invalid UUID format"""
         # ArtistController::get requires 'id' (StringFormat::UUID)
         res = self.dispatch("GetArtist", {"id": "invalid-uuid-format"})
-        self.assertEqual(res["code"], 400)
-        self.assertEqual(res["error"].get("type"), "InvalidValue", f"Unexpected response: {res}")
-        # 'vaild' is a typo in the original C++ error message
-        self.assertTrue("not a vaild UUID" in res["error"]["message"])
+        self.assertValidationError(res, expected_type="InvalidValue", expected_message_content="not a vaild UUID")
 
     def test_string_empty(self):
         """Test empty string validation"""
@@ -52,9 +43,7 @@ class TestJsonValidator(BaseLyraTestCase):
             "pcm_hash": "",
             "title": "Title" # title is optional but we test required string
         })
-        self.assertEqual(res["code"], 400)
-        self.assertEqual(res["error"].get("type"), "InvalidValue", f"Unexpected response: {res}")
-        self.assertTrue("should not be empty" in res["error"]["message"])
+        self.assertValidationError(res, expected_type="InvalidValue", expected_message_content="should not be empty")
 
     def test_valid_json_payload(self):
         """Test valid payload passes JsonValidator completely"""
@@ -62,11 +51,11 @@ class TestJsonValidator(BaseLyraTestCase):
             "pcm_hash": "hash_abc",
             "duration": 180
         })
-        self.assertEqual(res["code"], 201)
+        self.assertResponseCode(res, 201)
 
     def assert_structured_error(self, res, msg_context):
         """Helper: verify the response is a proper structured 400 error, not a catch-all leak."""
-        self.assertEqual(res["code"], 400, f"[{msg_context}] Expected 400, got: {res}")
+        self.assertResponseCode(res, 400, f"[{msg_context}] Expected 400, got: {res}")
         self.assertIn("error", res, f"[{msg_context}] Missing 'error' key: {res}")
         self.assertIn("type", res["error"], f"[{msg_context}] Missing error.type (catch-all leak): {res}")
         self.assertEqual(
@@ -98,6 +87,11 @@ class TestJsonValidator(BaseLyraTestCase):
         """params: 'hello' → should return structured InvalidCommandFormat error"""
         res = self.raw_dispatch({"command": "CreateArtist", "params": "hello"})
         self.assert_structured_error(res, "params=string")
+
+    def test_artist_name_empty(self):
+        """Test empty artist name validation"""
+        res = self.dispatch("CreateArtist", {"name": ""})
+        self.assertValidationError(res, expected_type="InvalidValue", expected_message_content="should not be empty")
 
 
 if __name__ == "__main__":

@@ -69,3 +69,29 @@ class BaseLyraTestCase(unittest.TestCase):
             # Poka-Yoke: Free memory even if C++ returns invalid JSON or an exception occurs
             if res_ptr:
                 self.lib.lyra_free_string(res_ptr)
+
+    def assertResponseCode(self, response: dict, expected_code: int, msg: str = None):
+        """Assert that the response dict contains the expected code."""
+        code = response.get("code")
+        self.assertEqual(
+            code, expected_code,
+            msg or f"Expected response code {expected_code}, but got {code}. Response: {response}"
+        )
+
+    def assertValidationError(self, response: dict, expected_type: str = "InvalidValue", expected_message_content: str = None):
+        """Assert that the response indicates a validation error (400) with proper structured info."""
+        self.assertResponseCode(response, 400)
+        self.assertIn("error", response, "Response is missing 'error' key.")
+        
+        error_type = response["error"].get("type")
+        self.assertEqual(
+            error_type, expected_type,
+            f"Expected error type '{expected_type}', but got '{error_type}'. Response: {response}"
+        )
+        
+        if expected_message_content:
+            error_msg = response["error"].get("message", "")
+            self.assertIn(
+                expected_message_content, error_msg,
+                f"Expected '{expected_message_content}' in error message, but got: '{error_msg}'"
+            )

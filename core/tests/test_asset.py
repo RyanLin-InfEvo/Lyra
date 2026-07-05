@@ -20,7 +20,7 @@ class TestAssetController(BaseLyraTestCase):
             "file_size": file_size
         })
         
-        self.assertEqual(res["code"], 201)
+        self.assertResponseCode(res, 201)
         self.assertEqual(res["data"]["file_hash"], file_hash)
 
     def test_asset_create_missing_required(self):
@@ -28,8 +28,7 @@ class TestAssetController(BaseLyraTestCase):
         res = self.dispatch("CreateAsset", {
             "mime_type": "audio/flac"
         })
-        self.assertEqual(res["code"], 400)
-        self.assertEqual(res["error"]["type"], "MissingParameter")
+        self.assertValidationError(res, expected_type="MissingParameter")
 
     def test_asset_get_success(self):
         """Test successful retrieval of an existing Asset"""
@@ -40,17 +39,17 @@ class TestAssetController(BaseLyraTestCase):
             "asset_type": "audio",
             "file_size": 2048
         })
-        self.assertEqual(res_create["code"], 201)
+        self.assertResponseCode(res_create, 201)
 
         res_get = self.dispatch("GetAsset", {"file_hash": file_hash})
-        self.assertEqual(res_get["code"], 200)
+        self.assertResponseCode(res_get, 200)
         self.assertEqual(res_get["data"]["mime_type"], "audio/mp3")
         self.assertEqual(res_get["data"]["file_size"], 2048)
 
     def test_asset_get_not_found(self):
         """Test fetching a non-existent Asset"""
         res = self.dispatch("GetAsset", {"file_hash": "non-existent-hash"})
-        self.assertEqual(res["code"], 404)
+        self.assertResponseCode(res, 404)
         self.assertEqual(res["error"]["type"], "AssetNotFound")
 
     def test_asset_update_success(self):
@@ -62,17 +61,17 @@ class TestAssetController(BaseLyraTestCase):
             "asset_type": "audio",
             "file_size": 4096
         })
-        self.assertEqual(res_create["code"], 201)
+        self.assertResponseCode(res_create, 201)
 
         res_update = self.dispatch("UpdateAsset", {
             "file_hash": file_hash,
             "mime_type": "audio/ogg",
             "file_size": 8192
         })
-        self.assertEqual(res_update["code"], 200)
+        self.assertResponseCode(res_update, 200)
 
         res_get = self.dispatch("GetAsset", {"file_hash": file_hash})
-        self.assertEqual(res_get["code"], 200)
+        self.assertResponseCode(res_get, 200)
         self.assertEqual(res_get["data"]["mime_type"], "audio/ogg")
         self.assertEqual(res_get["data"]["file_size"], 8192)
 
@@ -82,7 +81,7 @@ class TestAssetController(BaseLyraTestCase):
         self.dispatch("CreateAsset", {"file_hash": "list-2", "mime_type": "image/png", "asset_type": "image", "file_size": 200})
 
         res_list = self.dispatch("ListAssets", {"offset": 0, "limit": 10})
-        self.assertEqual(res_list["code"], 200)
+        self.assertResponseCode(res_list, 200)
         self.assertGreaterEqual(res_list["data"]["total"], 2)
 
     def test_asset_list_search_and_pagination(self):
@@ -93,7 +92,7 @@ class TestAssetController(BaseLyraTestCase):
 
         # Test search by asset_type
         res = self.dispatch("ListAssets", {"offset": 0, "limit": 10, "search": "audio"})
-        self.assertEqual(res["code"], 200)
+        self.assertResponseCode(res, 200)
         self.assertGreaterEqual(res["data"]["total"], 2)
         hashes = [item["file_hash"] for item in res["data"]["items"]]
         self.assertIn("search-1", hashes)
@@ -101,14 +100,14 @@ class TestAssetController(BaseLyraTestCase):
 
         # Test search by mime_type
         res = self.dispatch("ListAssets", {"offset": 0, "limit": 10, "search": "html"})
-        self.assertEqual(res["code"], 200)
+        self.assertResponseCode(res, 200)
         self.assertGreaterEqual(res["data"]["total"], 1)
         hashes = [item["file_hash"] for item in res["data"]["items"]]
         self.assertIn("search-3", hashes)
 
         # Test pagination
         res = self.dispatch("ListAssets", {"offset": 0, "limit": 1, "search": "html"})
-        self.assertEqual(res["code"], 200)
+        self.assertResponseCode(res, 200)
         self.assertEqual(len(res["data"]["items"]), 1)
         self.assertEqual(res["data"]["items"][0]["file_hash"], "search-3")
 
@@ -119,8 +118,7 @@ class TestAssetController(BaseLyraTestCase):
             "file_hash": "val-1",
             "file_size": "not-an-integer"
         })
-        self.assertEqual(res["code"], 400)
-        self.assertEqual(res["error"]["type"], "InvalidValue")
+        self.assertValidationError(res, expected_type="InvalidValue")
 
     def test_asset_update_non_existent(self):
         """Test updating a non-existent Asset"""
@@ -128,7 +126,7 @@ class TestAssetController(BaseLyraTestCase):
             "file_hash": "non-existent-hash",
             "mime_type": "audio/wav"
         })
-        self.assertEqual(res["code"], 500)
+        self.assertResponseCode(res, 500)
         self.assertEqual(res["error"]["type"], "DatabaseError")
 
     def test_asset_update_no_fields(self):
@@ -136,5 +134,4 @@ class TestAssetController(BaseLyraTestCase):
         res = self.dispatch("UpdateAsset", {
             "file_hash": "some-hash"
         })
-        self.assertEqual(res["code"], 400)
-        self.assertEqual(res["error"]["type"], "InvalidValue")
+        self.assertValidationError(res, expected_type="InvalidValue")

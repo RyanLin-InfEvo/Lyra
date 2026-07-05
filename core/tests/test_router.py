@@ -18,8 +18,7 @@ class TestArtistController(BaseLyraTestCase):
         res = json.loads(res_str)
         self.lib.lyra_free_string(res_ptr)
 
-        self.assertEqual(res["code"], 400)
-        self.assertEqual(res["error"]["message"], "Missing or invalid 'command' field")
+        self.assertValidationError(res, expected_type=res["error"]["type"], expected_message_content="Missing or invalid 'command' field")
 
     def test_router_invalid_command_type(self):
         """Test invalid 'command' type (e.g., integer): Should return 400"""
@@ -30,11 +29,10 @@ class TestArtistController(BaseLyraTestCase):
         res = json.loads(res_str)
         self.lib.lyra_free_string(res_ptr)
 
-        self.assertEqual(res["code"], 400)
-        self.assertEqual(res["error"]["message"], "Missing or invalid 'command' field")
+        self.assertValidationError(res, expected_type=res["error"]["type"], expected_message_content="Missing or invalid 'command' field")
 
     def test_router_unknown_command(self):
         """Test calling an unknown command: Router should return 404 Not Found"""
         res = self.dispatch("InvalidCommand123", {"some_param": 1})
-        self.assertEqual(res["code"], 404)
+        self.assertResponseCode(res, 404)
         self.assertEqual(res["error"]["message"], "Unknown command: InvalidCommand123")
