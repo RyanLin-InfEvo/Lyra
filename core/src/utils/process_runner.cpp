@@ -9,14 +9,14 @@
 #endif
 
 #include "process_runner.h"
-#include <unistd.h>
+#include <cerrno>
+#include <cstring>
+#include <fcntl.h>
+#include <iostream>
+#include <signal.h>
 #include <sys/types.h>
 #include <sys/wait.h>
-#include <signal.h>
-#include <fcntl.h>
-#include <cstring>
-#include <cerrno>
-#include <iostream>
+#include <unistd.h>
 
 namespace lyra {
 namespace utils {
@@ -52,7 +52,7 @@ struct SafeProcess {
             pid_t res;
             do {
                 res = ::waitpid(pid, &status, 0);
-            } while (res == -1 && errno == EINTR);
+            } while (res == -1 && errno == EINTR); // Retry when fail(res=-1) cause by `EINTR`
         }
     }
     void disarm() { reaped = true; }
@@ -61,10 +61,9 @@ struct SafeProcess {
 } // namespace
 
 tl::expected<int, std::string> ProcessRunner::run(
-    const std::vector<std::string>& args,
-    std::function<void(const uint8_t* data, size_t size)> callback,
-    size_t max_output_size
-) {
+    const std::vector<std::string> &args,
+    std::function<void(const uint8_t *data, size_t size)> callback,
+    size_t max_output_size) {
     if (args.empty()) {
         return tl::unexpected("Arguments list is empty");
     }
@@ -85,11 +84,13 @@ tl::expected<int, std::string> ProcessRunner::run(
         // Child process
         read_fd.close(); // Close read end
 
-        // Redirect stdin to /dev/null to prevent child from hanging on parent's stdin
+        // Redirect stdin to /dev/null to prevent child from hanging on parent's stdin (get EOF id readed)
         int dev_null = open("/dev/null", O_RDONLY);
         if (dev_null != -1) {
-            dup2(dev_null, STDIN_FILENO);
+            dup2(dev_null, STDIN_FILENO); // If the child process get hangs up, it gets an EOF immidiately
             ::close(dev_null);
+        } else {
+            ::close(STDIN_FILENO); // Close its stdin, if it tries to read stdin, linux core will return a EBADF
         }
 
         // Redirect stdout to pipe
@@ -99,10 +100,10 @@ tl::expected<int, std::string> ProcessRunner::run(
         write_fd.close(); // Close original write end after duplication
 
         // Prepare arguments for execvp
-        std::vector<char*> argv;
+        std::vector<char *> argv;
         argv.reserve(args.size() + 1);
-        for (const auto& arg : args) {
-            argv.push_back(const_cast<char*>(arg.c_str()));
+        for (const auto &arg : args) {
+            argv.push_back(const_cast<char *>(arg.c_str()));
         }
         argv.push_back(nullptr);
 
@@ -123,7 +124,7 @@ tl::expected<int, std::string> ProcessRunner::run(
     while (true) {
         ssize_t bytes_read = read(read_fd.get(), buffer, sizeof(buffer));
         if (bytes_read < 0) {
-            if (errno == EINTR) {
+            if (errno == EINTR) { //  EINTR -> "Error: Interrupted System Call"
                 continue;
             }
             read_error_msg = "Read error: " + std::string(strerror(errno));
@@ -134,7 +135,7 @@ tl::expected<int, std::string> ProcessRunner::run(
             break;
         }
 
-        if (max_output_size > 0 && (total_read_bytes + bytes_read) > max_output_size) {
+        if (max_output_size > 0 && (total_read_bytes + bytes_read) > max_output_size) { // limiter
             limit_exceeded = true;
             break;
         }
@@ -169,9 +170,9 @@ tl::expected<int, std::string> ProcessRunner::run(
         return tl::unexpected("Failed to wait for child process: " + std::string(strerror(errno)));
     }
 
-    if (WIFEXITED(status)) {
+    if (WIFEXITED(status)) { // exited
         return WEXITSTATUS(status);
-    } else if (WIFSIGNALED(status)) {
+    } else if (WIFSIGNALED(status)) { // kill by siginal
         return tl::unexpected("Child process terminated by signal " + std::to_string(WTERMSIG(status)));
     } else {
         return tl::unexpected("Child process terminated abnormally");
