@@ -7,17 +7,19 @@
 #include "audio_helper.h"
 #include "process_runner.h"
 #include "sha256.h"
-#include <nlohmann/json.hpp>
-#include <iostream>
-#include <sstream>
+#include <filesystem>
+#include <fstream>
 #include <iomanip>
+#include <iostream>
+#include <nlohmann/json.hpp>
+#include <sstream>
 
 namespace lyra {
 namespace utils {
 
 namespace {
 
-std::optional<double> get_json_double(const nlohmann::json& j, const std::string& key) {
+std::optional<double> get_json_double(const nlohmann::json &j, const std::string &key) {
     if (!j.is_object() || !j.contains(key) || j[key].is_null()) {
         return std::nullopt;
     }
@@ -34,7 +36,7 @@ std::optional<double> get_json_double(const nlohmann::json& j, const std::string
     return std::nullopt;
 }
 
-std::optional<int> get_json_int(const nlohmann::json& j, const std::string& key) {
+std::optional<int> get_json_int(const nlohmann::json &j, const std::string &key) {
     if (!j.is_object() || !j.contains(key) || j[key].is_null()) {
         return std::nullopt;
     }
@@ -51,7 +53,7 @@ std::optional<int> get_json_int(const nlohmann::json& j, const std::string& key)
     return std::nullopt;
 }
 
-std::optional<std::string> get_json_string(const nlohmann::json& j, const std::string& key) {
+std::optional<std::string> get_json_string(const nlohmann::json &j, const std::string &key) {
     if (!j.is_object() || !j.contains(key) || j[key].is_null()) {
         return std::nullopt;
     }
@@ -63,15 +65,14 @@ std::optional<std::string> get_json_string(const nlohmann::json& j, const std::s
 
 } // namespace
 
-tl::expected<std::string, std::string> AudioHelper::calculate_pcm_hash(const std::string& filepath) {
+tl::expected<std::string, std::string> AudioHelper::calculate_pcm_hash(const std::string &filepath) {
     Sha256 sha;
-    auto callback = [&sha](const uint8_t* data, size_t size) {
+    auto callback = [&sha](const uint8_t *data, size_t size) {
         sha.update(data, size);
     };
 
     std::vector<std::string> args = {
-        "ffmpeg", "-v", "error", "-i", filepath, "-f", "s32le", "-acodec", "pcm_s32le", "-"
-    };
+        "ffmpeg", "-v", "error", "-i", filepath, "-f", "s32le", "-acodec", "pcm_s32le", "-"};
 
     auto result = ProcessRunner::run(args, callback, 0);
     if (!result) {
@@ -85,17 +86,16 @@ tl::expected<std::string, std::string> AudioHelper::calculate_pcm_hash(const std
     return sha.finalize();
 }
 
-tl::expected<MediaMetadata, std::string> AudioHelper::extract_metadata(const std::string& filepath) {
+tl::expected<MediaMetadata, std::string> AudioHelper::extract_metadata(const std::string &filepath) {
     std::string json_str;
-    auto callback = [&json_str](const uint8_t* data, size_t size) {
-        json_str.append(reinterpret_cast<const char*>(data), size);
+    auto callback = [&json_str](const uint8_t *data, size_t size) {
+        json_str.append(reinterpret_cast<const char *>(data), size);
     };
 
     std::vector<std::string> args = {
         "ffprobe", "-v", "error", "-show_entries", "format=duration",
         "-show_entries", "stream=sample_rate,channels,duration,disposition,width,height,codec_name,codec_type:disposition=attached_pic",
-        "-of", "json", filepath
-    };
+        "-of", "json", filepath};
 
     // Limit to 2MB as per instructions
     auto result = ProcessRunner::run(args, callback, 2 * 1024 * 1024);
@@ -110,7 +110,7 @@ tl::expected<MediaMetadata, std::string> AudioHelper::extract_metadata(const std
     nlohmann::json json_data;
     try {
         json_data = nlohmann::json::parse(json_str);
-    } catch (const std::exception& e) {
+    } catch (const std::exception &e) {
         return tl::unexpected("Failed to parse JSON: " + std::string(e.what()));
     }
 
@@ -119,15 +119,18 @@ tl::expected<MediaMetadata, std::string> AudioHelper::extract_metadata(const std
     bool has_audio_duration = false;
 
     if (json_data.contains("streams") && json_data["streams"].is_array()) {
-        for (const auto& stream : json_data["streams"]) {
+        for (const auto &stream : json_data["streams"]) {
             auto codec_type = get_json_string(stream, "codec_type");
-            if (!codec_type) continue;
+            if (!codec_type)
+                continue;
 
             if (*codec_type == "audio") {
                 auto sr = get_json_int(stream, "sample_rate");
-                if (sr) metadata.sample_rate = *sr;
+                if (sr)
+                    metadata.sample_rate = *sr;
                 auto ch = get_json_int(stream, "channels");
-                if (ch) metadata.channels = *ch;
+                if (ch)
+                    metadata.channels = *ch;
                 auto dur = get_json_double(stream, "duration");
                 if (dur) {
                     audio_duration = *dur;
@@ -145,11 +148,14 @@ tl::expected<MediaMetadata, std::string> AudioHelper::extract_metadata(const std
                 }
                 if (!is_attached_pic) {
                     auto w = get_json_int(stream, "width");
-                    if (w) metadata.video_width = *w;
+                    if (w)
+                        metadata.video_width = *w;
                     auto h = get_json_int(stream, "height");
-                    if (h) metadata.video_height = *h;
+                    if (h)
+                        metadata.video_height = *h;
                     auto codec = get_json_string(stream, "codec_name");
-                    if (codec) metadata.video_codec = *codec;
+                    if (codec)
+                        metadata.video_codec = *codec;
                 }
             }
         }
@@ -167,13 +173,13 @@ tl::expected<MediaMetadata, std::string> AudioHelper::extract_metadata(const std
     return metadata;
 }
 
-tl::expected<std::vector<uint8_t>, std::string> AudioHelper::extract_cover_art(const std::string& filepath) {
+tl::expected<std::vector<uint8_t>, std::string> AudioHelper::extract_cover_art(const std::string &filepath) {
     auto meta_res = extract_metadata(filepath);
     if (!meta_res) {
         return tl::unexpected("Metadata extraction failed: " + meta_res.error());
     }
 
-    const auto& meta = meta_res.value();
+    const auto &meta = meta_res.value();
     std::vector<std::string> args;
 
     if (meta.video_width.has_value() && meta.video_height.has_value()) {
@@ -188,7 +194,7 @@ tl::expected<std::vector<uint8_t>, std::string> AudioHelper::extract_cover_art(c
     }
 
     std::vector<uint8_t> buffer;
-    auto callback = [&buffer](const uint8_t* data, size_t size) {
+    auto callback = [&buffer](const uint8_t *data, size_t size) {
         buffer.insert(buffer.end(), data, data + size);
     };
 
@@ -205,32 +211,46 @@ tl::expected<std::vector<uint8_t>, std::string> AudioHelper::extract_cover_art(c
     return buffer;
 }
 
-tl::expected<void, std::string> AudioHelper::extract_cover_art_to_file(const std::string& filepath, const std::string& output_image_path) {
+tl::expected<void, std::string> AudioHelper::extract_cover_art_to_file(const std::string &filepath, const std::string &output_image_path) {
     auto meta_res = extract_metadata(filepath);
     if (!meta_res) {
         return tl::unexpected("Metadata extraction failed: " + meta_res.error());
     }
 
-    const auto& meta = meta_res.value();
+    const auto &meta = meta_res.value();
     std::vector<std::string> args;
 
     if (meta.video_width.has_value() && meta.video_height.has_value()) {
         double seek_time = (meta.duration > 2.0) ? 2.0 : 0.0;
         std::stringstream ss;
         ss << std::fixed << std::setprecision(6) << seek_time;
-        args = {"ffmpeg", "-v", "error", "-ss", ss.str(), "-i", filepath, "-an", "-vframes", "1", "-y", output_image_path};
+        args = {"ffmpeg", "-v", "error", "-ss", ss.str(), "-i", filepath, "-an", "-vframes", "1", "-f", "image2pipe", "-"};
     } else if (meta.has_cover_art) {
-        args = {"ffmpeg", "-v", "error", "-i", filepath, "-an", "-c:v", "copy", "-y", output_image_path};
+        args = {"ffmpeg", "-v", "error", "-i", filepath, "-an", "-c:v", "copy", "-f", "image2pipe", "-"};
     } else {
         return tl::unexpected("No cover art or video stream found");
     }
 
-    auto result = ProcessRunner::run(args, nullptr, 0);
+    std::ofstream out(output_image_path, std::ios::binary);
+    if (!out) {
+        return tl::unexpected("Failed to open output image file for writing");
+    }
+
+    auto callback = [&out](const uint8_t *data, size_t size) {
+        out.write(reinterpret_cast<const char *>(data), size);
+    };
+
+    // Limit to 10MB to prevent disk exhaustion DoS
+    auto result = ProcessRunner::run(args, callback, 10 * 1024 * 1024);
+    out.close();
+
     if (!result) {
-        return tl::unexpected("Process execution failed: " + result.error());
+        std::filesystem::remove(output_image_path);
+        return tl::unexpected("Process execution failed or output limit exceeded: " + result.error());
     }
 
     if (result.value() != 0) {
+        std::filesystem::remove(output_image_path);
         return tl::unexpected("ffmpeg exited with code: " + std::to_string(result.value()));
     }
 

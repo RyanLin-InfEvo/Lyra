@@ -167,10 +167,9 @@ bool test_extract_metadata() {
     return true;
 }
 
-bool test_extract_cover_art() {
-    std::cout << "Running test_extract_cover_art..." << std::endl;
+bool test_extract_cover_art_to_memory() {
+    std::cout << "Running test_extract_cover_art_to_memory..." << std::endl;
 
-    // 1. Extract cover art from MP3 to memory
     auto cover_mp3 = AudioHelper::extract_cover_art("test_with_cover.mp3");
     if (!cover_mp3) {
         std::cerr << "Failed to extract MP3 cover art: " << cover_mp3.error() << std::endl;
@@ -181,8 +180,12 @@ bool test_extract_cover_art() {
         return false;
     }
     std::cout << "Extracted MP3 cover art size: " << cover_mp3->size() << " bytes" << std::endl;
+    return true;
+}
 
-    // 2. Extract cover art from MP3 to file
+bool test_extract_cover_art_to_file() {
+    std::cout << "Running test_extract_cover_art_to_file..." << std::endl;
+
     auto res_to_file = AudioHelper::extract_cover_art_to_file("test_with_cover.mp3", "extracted_cover.jpg");
     if (!res_to_file) {
         std::cerr << "Failed to extract MP3 cover art to file: " << res_to_file.error() << std::endl;
@@ -204,8 +207,49 @@ bool test_extract_cover_art() {
     }
     std::cout << "Extracted cover file size: " << file_size << " bytes" << std::endl;
     std::remove("extracted_cover.jpg");
+    return true;
+}
 
-    // 3. Extract cover art from video (MV thumbnail fallback)
+bool test_extract_cover_art_to_file_failure_cleanup() {
+    std::cout << "Running test_extract_cover_art_to_file_failure_cleanup..." << std::endl;
+
+    std::remove("extracted_cover_failed.jpg"); // ensure clean slate
+    auto res_failed = AudioHelper::extract_cover_art_to_file("test_44k_stereo.wav", "extracted_cover_failed.jpg");
+    if (res_failed) {
+        std::cerr << "Expected failure for WAV file, but got success" << std::endl;
+        std::remove("extracted_cover_failed.jpg");
+        return false;
+    }
+
+    // Verify file does not exist
+    std::ifstream check_failed_file("extracted_cover_failed.jpg");
+    if (check_failed_file.good()) {
+        std::cerr << "Error: File 'extracted_cover_failed.jpg' was created/not deleted on failure!" << std::endl;
+        check_failed_file.close();
+        std::remove("extracted_cover_failed.jpg");
+        return false;
+    }
+    return true;
+}
+
+bool test_extract_cover_art_to_file_invalid_path() {
+    std::cout << "Running test_extract_cover_art_to_file_invalid_path..." << std::endl;
+
+    auto res_invalid_path = AudioHelper::extract_cover_art_to_file("test_with_cover.mp3", "/nonexistent_directory_123/cover.jpg");
+    if (res_invalid_path) {
+        std::cerr << "Expected failure for invalid output path, but got success" << std::endl;
+        return false;
+    }
+    if (res_invalid_path.error().find("Failed to open output image file") == std::string::npos) {
+        std::cerr << "Expected open file error, got: " << res_invalid_path.error() << std::endl;
+        return false;
+    }
+    return true;
+}
+
+bool test_extract_video_thumbnail() {
+    std::cout << "Running test_extract_video_thumbnail..." << std::endl;
+
     auto cover_video = AudioHelper::extract_cover_art("test_video.mp4");
     if (!cover_video) {
         std::cerr << "Failed to extract video cover art (thumbnail): " << cover_video.error() << std::endl;
@@ -216,15 +260,18 @@ bool test_extract_cover_art() {
         return false;
     }
     std::cout << "Extracted video thumbnail size: " << cover_video->size() << " bytes" << std::endl;
+    return true;
+}
 
-    // 4. Extract from plain WAV (should fail)
+bool test_extract_cover_art_from_wav_failure() {
+    std::cout << "Running test_extract_cover_art_from_wav_failure..." << std::endl;
+
     auto cover_wav = AudioHelper::extract_cover_art("test_44k_stereo.wav");
     if (cover_wav) {
         std::cerr << "Expected error extracting cover art from WAV, but succeeded!" << std::endl;
         return false;
     }
     std::cout << "Got expected error on WAV: " << cover_wav.error() << std::endl;
-
     return true;
 }
 
@@ -235,7 +282,12 @@ int main() {
     try {
         if (!test_pcm_hash_format_independence_and_difference()) success = false;
         if (!test_extract_metadata()) success = false;
-        if (!test_extract_cover_art()) success = false;
+        if (!test_extract_cover_art_to_memory()) success = false;
+        if (!test_extract_cover_art_to_file()) success = false;
+        if (!test_extract_cover_art_to_file_failure_cleanup()) success = false;
+        if (!test_extract_cover_art_to_file_invalid_path()) success = false;
+        if (!test_extract_video_thumbnail()) success = false;
+        if (!test_extract_cover_art_from_wav_failure()) success = false;
     } catch (const std::exception& e) {
         std::cerr << "Exception caught during tests: " << e.what() << std::endl;
         success = false;
