@@ -7,3 +7,5 @@ TabWidth: 4
 UseTab: Never
 AllowShortFunctionsOnASingleLine: All
 IndentCaseLabels: true
+AllowShortIfStatementsOnASingleLine: WithoutElse
+AllowShortBlocksOnASingleLine: true
