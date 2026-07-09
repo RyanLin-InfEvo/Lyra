@@ -60,6 +60,24 @@ void SqliteDatabaseContext::init_schema() {
     )");
 
     m_db.exec(R"(
+        CREATE TABLE IF NOT EXISTS Audio_Asset (
+          pcm_hash TEXT NOT NULL,
+          file_hash TEXT NOT NULL,
+          PRIMARY KEY (pcm_hash, file_hash),
+          CONSTRAINT fk_AudioAsset_Audio
+            FOREIGN KEY (pcm_hash)
+            REFERENCES Audio (pcm_hash)
+            ON DELETE CASCADE
+            ON UPDATE CASCADE,
+          CONSTRAINT fk_AudioAsset_Asset
+            FOREIGN KEY (file_hash)
+            REFERENCES Asset (file_hash)
+            ON DELETE CASCADE
+            ON UPDATE CASCADE
+        );
+    )");
+
+    m_db.exec(R"(
         CREATE TABLE IF NOT EXISTS Entity (
           id TEXT NOT NULL,
           entity_type TEXT NULL CHECK( entity_type IN ('track', 'album', 'artist', 'work', 'playlist', 'tag') ),
