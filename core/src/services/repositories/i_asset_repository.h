@@ -8,6 +8,7 @@
 #include <tl/expected.hpp>
 #include <optional>
 #include "../../models/asset.h"
+#include "../../models/audio.h"
 #include "../../utils/paginated_result.h"
 
 namespace lyra {
@@ -21,6 +22,10 @@ class IAssetRepository {
     virtual tl::expected<Asset, std::string> get(const std::string &file_hash) = 0;
     virtual tl::expected<PaginatedResult<Asset>, std::string> list(
         int offset, int limit, const std::optional<std::string> &search) = 0;
+
+    virtual tl::expected<void, std::string> insert_asset_with_audio(const Asset &asset, const Audio &audio) = 0;
+    virtual tl::expected<std::vector<std::string>, std::string> get_assets_by_audio(const std::string &pcm_hash) = 0;
+    virtual tl::expected<std::vector<std::string>, std::string> get_audio_by_asset(const std::string &file_hash) = 0;
 };
 
 } // namespace lyra
