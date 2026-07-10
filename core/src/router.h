@@ -63,6 +63,8 @@ class Router {
     json handleUpdateAsset(const json &p);
     json handleGetAsset(const json &p);
     json handleListAssets(const json &p);
+    json handleIngestAsset(const json &p);
+    json handleGetResourcePath(const json &p);
 
     json handleCreateAudio(const json &p);
     json handleUpdateAudio(const json &p);

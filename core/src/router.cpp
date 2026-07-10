@@ -2,6 +2,7 @@
 //
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+#include <filesystem>
 #include <functional>
 #include <nlohmann/json.hpp>
 #include <optional>
@@ -47,9 +48,11 @@ Router::Router(const std::string &db_path) {
     m_track_repo = std::make_unique<SqliteTrackRepository>(*m_db_context);
     m_work_repo = std::make_unique<SqliteWorkRepository>(*m_db_context);
 
+    std::string storage_root = std::filesystem::path(db_path).parent_path().string();
+
     m_album_controller = std::make_unique<AlbumController>(*m_album_repo);
     m_artist_controller = std::make_unique<ArtistController>(*m_artist_repo);
-    m_asset_controller = std::make_unique<AssetController>(*m_asset_repo);
+    m_asset_controller = std::make_unique<AssetController>(*m_asset_repo, *m_audio_repo, storage_root);
     m_audio_controller = std::make_unique<AudioController>(*m_audio_repo);
     m_playlist_controller = std::make_unique<PlaylistController>(*m_playlist_repo);
     m_track_controller = std::make_unique<TrackController>(*m_track_repo);
@@ -84,6 +87,8 @@ void Router::init_handlers() {
     m_handlers["UpdateAsset"] = [this](const json &p) { return handleUpdateAsset(p); };
     m_handlers["GetAsset"] = [this](const json &p) { return handleGetAsset(p); };
     m_handlers["ListAssets"] = [this](const json &p) { return handleListAssets(p); };
+    m_handlers["IngestAsset"] = [this](const json &p) { return handleIngestAsset(p); };
+    m_handlers["GetResourcePath"] = [this](const json &p) { return handleGetResourcePath(p); };
 
     // Audio
     m_handlers["CreateAudio"] = [this](const json &p) { return handleCreateAudio(p); };
@@ -176,8 +181,7 @@ json Router::handleCreateArtist(const json &params) {
                                                 {"musicbrainz_id", Type::String, false},
                                                 {"ytm_id", Type::String, false},
                                                 {"spotify_id", Type::String, false}});
-    if (err)
-        return *err;
+    if (err) return *err;
 
     Artist artist = params.get<Artist>();
     auto res = m_artist_controller->create(artist);
@@ -198,8 +202,7 @@ json Router::handleUpdateArtist(const json &params) {
                                                 {"musicbrainz_id", Type::String, false},
                                                 {"ytm_id", Type::String, false},
                                                 {"spotify_id", Type::String, false}});
-    if (err)
-        return *err;
+    if (err) return *err;
 
     ArtistUpdate update_data = params.get<ArtistUpdate>();
     if (!update_data.has_updates()) {
@@ -219,8 +222,7 @@ json Router::handleUpdateArtist(const json &params) {
 
 json Router::handleGetArtist(const json &params) {
     auto err = JsonValidator::validate(params, {{"id", Type::String, true, StringFormat::UUID}});
-    if (err)
-        return *err;
+    if (err) return *err;
 
     auto res = m_artist_controller->get(params["id"].get<std::string>());
     if (res) {
@@ -259,8 +261,7 @@ json Router::handleCreateTrack(const json &params) {
                                                 {"musicbrainz_id", Type::String, false},
                                                 {"ytm_id", Type::String, false},
                                                 {"spotify_id", Type::String, false}});
-    if (err)
-        return *err;
+    if (err) return *err;
 
     Track track = params.get<Track>();
     auto res = m_track_controller->create(track);
@@ -278,8 +279,7 @@ json Router::handleCreateTrack(const json &params) {
 
 json Router::handleGetTrack(const json &params) {
     auto err = JsonValidator::validate(params, {{"id", Type::String, true, StringFormat::UUID}});
-    if (err)
-        return *err;
+    if (err) return *err;
 
     auto res = m_track_controller->get(params["id"].get<std::string>());
     if (res) {
@@ -290,8 +290,7 @@ json Router::handleGetTrack(const json &params) {
 
 json Router::handleUpdateTrack(const json &params) {
     auto err = JsonValidator::validate(params, {{"id", Type::String, true, StringFormat::UUID}});
-    if (err)
-        return *err;
+    if (err) return *err;
 
     TrackUpdate update_data = params.get<TrackUpdate>();
     if (!update_data.has_updates()) {
@@ -327,8 +326,7 @@ json Router::handleCreateAlbum(const json &params) {
                                                 {"release_year", Type::Year, false},
                                                 {"release_month", Type::Integer, false},
                                                 {"release_day", Type::Integer, false}});
-    if (err)
-        return *err;
+    if (err) return *err;
 
     Album album = params.get<Album>();
     auto res = m_album_controller->create(album);
@@ -345,8 +343,7 @@ json Router::handleCreateAlbum(const json &params) {
 
 json Router::handleGetAlbum(const json &params) {
     auto err = JsonValidator::validate(params, {{"id", Type::String, true, StringFormat::UUID}});
-    if (err)
-        return *err;
+    if (err) return *err;
 
     auto res = m_album_controller->get(params["id"].get<std::string>());
     if (res) {
@@ -361,8 +358,7 @@ json Router::handleUpdateAlbum(const json &params) {
                                                 {"release_year", Type::Year, false},
                                                 {"release_month", Type::Integer, false},
                                                 {"release_day", Type::Integer, false}});
-    if (err)
-        return *err;
+    if (err) return *err;
 
     AlbumUpdate update_data = params.get<AlbumUpdate>();
     if (!update_data.has_updates()) {
@@ -398,8 +394,7 @@ json Router::handleCreateAsset(const json &params) {
                                                 {"mime_type", Type::String, false},
                                                 {"asset_type", Type::String, false},
                                                 {"file_size", Type::Integer, false}});
-    if (err)
-        return *err;
+    if (err) return *err;
 
     Asset asset = params.get<Asset>();
     auto res = m_asset_controller->create(asset);
@@ -415,8 +410,7 @@ json Router::handleCreateAsset(const json &params) {
 
 json Router::handleGetAsset(const json &params) {
     auto err = JsonValidator::validate(params, {{"file_hash", Type::String, true}});
-    if (err)
-        return *err;
+    if (err) return *err;
 
     auto res = m_asset_controller->get(params["file_hash"].get<std::string>());
     if (res) {
@@ -430,8 +424,7 @@ json Router::handleUpdateAsset(const json &params) {
                                                 {"mime_type", Type::String, false},
                                                 {"asset_type", Type::String, false},
                                                 {"file_size", Type::Integer, false}});
-    if (err)
-        return *err;
+    if (err) return *err;
 
     AssetUpdate update_data = params.get<AssetUpdate>();
     if (!update_data.has_updates()) {
@@ -460,6 +453,72 @@ json Router::handleListAssets(const json &params) {
     return ApiResponse::error({ErrorType::DatabaseError, res.error()});
 }
 
+json Router::handleIngestAsset(const json &params) {
+    auto err = JsonValidator::validate(params, {{"source_path", Type::String, true}});
+    if (err) return *err;
+
+    auto res = m_asset_controller->ingest(params["source_path"].get<std::string>());
+    if (res) {
+        json data;
+        data["asset"] = res.value().first;
+        data[res.value().first.asset_type] = res.value().second;
+        return ApiResponse::success(data);
+    }
+    return ApiResponse::error({ErrorType::InvalidValue, res.error()});
+}
+
+json Router::handleGetResourcePath(const json &params) {
+    auto err = JsonValidator::validate(params, {{"track_id", Type::String, false, StringFormat::UUID},
+                                                {"file_hash", Type::String, false},
+                                                {"pcm_hash", Type::String, false}});
+    if (err) return *err;
+
+
+    std::string file_hash = "";
+
+    if (params.contains("file_hash") && params["file_hash"].is_string()) {
+        file_hash = params["file_hash"].get<std::string>();
+    } else if (params.contains("pcm_hash") && params["pcm_hash"].is_string()) {
+        std::string pcm_hash = params["pcm_hash"].get<std::string>();
+        auto assets_res = m_asset_controller->get_assets_by_audio(pcm_hash);
+        if (!assets_res || assets_res.value().empty()) {
+            return ApiResponse::error({ErrorType::AssetNotFound, "No assets found for the PCM hash"});
+        }
+        file_hash = assets_res.value()[0];
+    } else if (params.contains("track_id") && params["track_id"].is_string()) {
+        std::string track_id = params["track_id"].get<std::string>();
+        auto track_res = m_track_controller->get(track_id);
+        if (!track_res) {
+            return ApiResponse::error({ErrorType::TrackNotFound, track_res.error()});
+        }
+        std::string pcm_hash = track_res.value().pcm_hash;
+        auto assets_res = m_asset_controller->get_assets_by_audio(pcm_hash);
+        if (!assets_res || assets_res.value().empty()) {
+            return ApiResponse::error({ErrorType::AssetNotFound, "No assets found for the track's audio"});
+        }
+        file_hash = assets_res.value()[0];
+    } else {
+        return ApiResponse::error({ErrorType::MissingParameter, "Must provide track_id, pcm_hash, or file_hash"});
+    }
+
+
+    auto asset_info_res = m_asset_controller->get(file_hash);
+    if (!asset_info_res) {
+        return ApiResponse::error({ErrorType::AssetNotFound, asset_info_res.error()});
+    }
+
+    auto path_res = m_asset_controller->resolve_file_path(file_hash);
+    if (!path_res) {
+        return ApiResponse::error({ErrorType::AssetNotFound, path_res.error()});
+    }
+
+    json response_data;
+    response_data["path"] = path_res.value();
+    response_data["mime_type"] = asset_info_res.value().mime_type;
+
+    return ApiResponse::success(response_data);
+}
+
 // --- Audio Handlers ---
 
 json Router::handleCreateAudio(const json &params) {
@@ -472,8 +531,7 @@ json Router::handleCreateAudio(const json &params) {
                                                 {"duration", Type::Number, false},
                                                 {"integrated_loudness", Type::Number, false},
                                                 {"true_peak", Type::Number, false}});
-    if (err)
-        return *err;
+    if (err) return *err;
 
     Audio audio = params.get<Audio>();
     auto res = m_audio_controller->create(audio);
@@ -489,8 +547,7 @@ json Router::handleCreateAudio(const json &params) {
 
 json Router::handleGetAudio(const json &params) {
     auto err = JsonValidator::validate(params, {{"pcm_hash", Type::String, true}});
-    if (err)
-        return *err;
+    if (err) return *err;
 
     auto res = m_audio_controller->get(params["pcm_hash"].get<std::string>());
     if (res) {
@@ -509,8 +566,7 @@ json Router::handleUpdateAudio(const json &params) {
                                                 {"duration", Type::Number, false},
                                                 {"integrated_loudness", Type::Number, false},
                                                 {"true_peak", Type::Number, false}});
-    if (err)
-        return *err;
+    if (err) return *err;
 
     AudioUpdate update_data = params.get<AudioUpdate>();
     if (!update_data.has_updates()) {
@@ -548,8 +604,7 @@ json Router::handleCreateWork(const json &params) {
                                                 {"composition_date_text", Type::String, false},
                                                 {"iswc", Type::String, false},
                                                 {"musicbrainz_id", Type::String, false}});
-    if (err)
-        return *err;
+    if (err) return *err;
 
     if (auto year_err = validateWorkCompositionYears(params))
         return *year_err;
@@ -571,8 +626,7 @@ json Router::handleCreateWork(const json &params) {
 
 json Router::handleGetWork(const json &params) {
     auto err = JsonValidator::validate(params, {{"id", Type::String, true, StringFormat::UUID}});
-    if (err)
-        return *err;
+    if (err) return *err;
 
     auto res = m_work_controller->get(params["id"].get<std::string>());
     if (res) {
@@ -589,8 +643,7 @@ json Router::handleUpdateWork(const json &params) {
                                                 {"composition_date_text", Type::String, false},
                                                 {"iswc", Type::String, false},
                                                 {"musicbrainz_id", Type::String, false}});
-    if (err)
-        return *err;
+    if (err) return *err;
 
     if (auto year_err = validateWorkCompositionYears(params))
         return *year_err;
@@ -656,8 +709,7 @@ json Router::handleAddTrackArtist(const json &params) {
                                                 {"artist_id", Type::String, true, StringFormat::UUID},
                                                 {"role", Type::String, true},
                                                 {"position", Type::Integer, false}});
-    if (err)
-        return *err;
+    if (err) return *err;
 
     std::string role_str = params["role"].get<std::string>();
     if (!ArtistRoleMapper::from_string(role_str)) {
@@ -690,8 +742,7 @@ json Router::handleAddTrackArtist(const json &params) {
 json Router::handleRemoveTrackArtist(const json &params) {
     auto err = JsonValidator::validate(params, {{"track_id", Type::String, true, StringFormat::UUID},
                                                 {"artist_id", Type::String, true, StringFormat::UUID}});
-    if (err)
-        return *err;
+    if (err) return *err;
 
     TrackArtistParams track_artist = params.get<TrackArtistParams>();
     auto res = m_track_controller->remove_artist(track_artist);
@@ -713,8 +764,7 @@ json Router::handleUpdateTrackArtist(const json &params) {
                                                 {"artist_id", Type::String, true, StringFormat::UUID},
                                                 {"role", Type::String, false},
                                                 {"position", Type::Integer, false}});
-    if (err)
-        return *err;
+    if (err) return *err;
 
     if (params.contains("role")) {
         std::string role_str = params["role"].get<std::string>();
@@ -749,8 +799,7 @@ json Router::handleUpdateTrackArtist(const json &params) {
 json Router::handleCreatePlaylist(const json &params) {
     auto err = JsonValidator::validate(params, {{"title", Type::String, true},
                                                 {"description", Type::String, false}});
-    if (err)
-        return *err;
+    if (err) return *err;
 
     Playlist playlist = params.get<Playlist>();
     auto res = m_playlist_controller->create(playlist);
@@ -766,8 +815,7 @@ json Router::handleCreatePlaylist(const json &params) {
 
 json Router::handleGetPlaylist(const json &params) {
     auto err = JsonValidator::validate(params, {{"id", Type::String, true, StringFormat::UUID}});
-    if (err)
-        return *err;
+    if (err) return *err;
 
     auto res = m_playlist_controller->get(params["id"].get<std::string>());
     if (res) {
@@ -780,8 +828,7 @@ json Router::handleUpdatePlaylist(const json &params) {
     auto err = JsonValidator::validate(params, {{"id", Type::String, true, StringFormat::UUID},
                                                 {"title", Type::String, false},
                                                 {"description", Type::String, false}});
-    if (err)
-        return *err;
+    if (err) return *err;
 
     PlaylistUpdate update_data = params.get<PlaylistUpdate>();
     if (!update_data.has_updates()) {
@@ -814,8 +861,7 @@ json Router::handleAddPlaylistTrack(const json &params) {
     auto err = JsonValidator::validate(params, {{"playlist_id", Type::String, true, StringFormat::UUID},
                                                 {"track_id", Type::String, true, StringFormat::UUID},
                                                 {"position", Type::Integer, false}});
-    if (err)
-        return *err;
+    if (err) return *err;
 
     auto res = m_playlist_controller->add_track(params["playlist_id"], params["track_id"],
                                                 params.contains("position") ? std::optional<int>(params["position"].get<int>()) : std::nullopt);
@@ -837,8 +883,7 @@ json Router::handleAddPlaylistTrack(const json &params) {
 json Router::handleRemovePlaylistTrack(const json &params) {
     auto err = JsonValidator::validate(params, {{"playlist_id", Type::String, true, StringFormat::UUID},
                                                 {"track_id", Type::String, true, StringFormat::UUID}});
-    if (err)
-        return *err;
+    if (err) return *err;
 
     auto res = m_playlist_controller->remove_track(params["playlist_id"], params["track_id"]);
     if (res) {
@@ -856,8 +901,7 @@ json Router::handleRemovePlaylistTrack(const json &params) {
 
 json Router::handleGetPlaylistTracks(const json &params) {
     auto err = JsonValidator::validate(params, {{"id", Type::String, true, StringFormat::UUID}});
-    if (err)
-        return *err;
+    if (err) return *err;
 
     std::vector<std::string> tracks = m_playlist_controller->get_tracks(params["id"].get<std::string>());
     return ApiResponse::success(tracks);
