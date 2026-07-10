@@ -154,6 +154,7 @@ void print_help() {
               << "  track create --pcm-hash <hash> [options]\n"
               << "  track update <id> [options]\n"
               << "  track get <id>\n"
+              << "  track get-path <id>     Get physical file path of a track\n"
               << "  track list [--offset <offset>] [--limit <limit>] [--search <query>]\n"
               << "  album create --title <title> [options]\n"
               << "  album update <id> [options]\n"
@@ -173,6 +174,8 @@ void print_help() {
               << "  track-artist add --track-id <tid> --artist-id <aid> --role <role> [--position <pos>]\n"
               << "  track-artist remove --track-id <tid> --artist-id <aid>\n"
               << "  track-artist update --track-id <tid> --artist-id <aid> [options]\n"
+              << "  asset\n"
+              << "    asset ingest <source_path>   Ingest a file into storage\n"
               << "  dispatch [json_payload]   Send a raw JSON request (reads stdin if payload is '-' or omitted)\n"
               << "  interactive               Start interactive REPL session\n";
 }
@@ -384,6 +387,10 @@ std::optional<std::string> parse_args_to_json(const std::vector<std::string>& cm
             action = "GetTrack";
             if (!check_positional_id(cmd_args, "track get")) return std::nullopt;
             params["id"] = cmd_args[2];
+        } else if (sub == "get-path") {
+            action = "GetResourcePath";
+            if (!check_positional_id(cmd_args, "track get-path")) return std::nullopt;
+            params["track_id"] = cmd_args[2];
         } else if (sub == "update") {
             action = "UpdateTrack";
             if (!check_positional_id(cmd_args, "track update")) return std::nullopt;
@@ -568,6 +575,29 @@ std::optional<std::string> parse_args_to_json(const std::vector<std::string>& cm
             add_param(params, cmd_args, "position", {"--position"}, true);
         } else {
             std::cerr << "Error: Unknown track-artist subcommand: " << sub << "\n";
+            return std::nullopt;
+        }
+        return build_request(action, params);
+    }
+    
+    if (cmd == "asset") {
+        if (cmd_args.size() < 2) {
+            std::cerr << "Error: asset command requires a subcommand (ingest)\n";
+            return std::nullopt;
+        }
+        std::string sub = cmd_args[1];
+        json params = json::object();
+        std::string action = "";
+        
+        if (sub == "ingest") {
+            action = "IngestAsset";
+            if (cmd_args.size() < 3) {
+                std::cerr << "Error: asset ingest requires a source file path\n";
+                return std::nullopt;
+            }
+            params["source_path"] = cmd_args[2];
+        } else {
+            std::cerr << "Error: Unknown asset subcommand: " << sub << "\n";
             return std::nullopt;
         }
         return build_request(action, params);
