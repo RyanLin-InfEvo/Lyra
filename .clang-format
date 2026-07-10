@@ -9,3 +9,4 @@ AllowShortFunctionsOnASingleLine: All
 IndentCaseLabels: true
 AllowShortIfStatementsOnASingleLine: WithoutElse
 AllowShortBlocksOnASingleLine: true
+MaxEmptyLinesToKeep: 2
