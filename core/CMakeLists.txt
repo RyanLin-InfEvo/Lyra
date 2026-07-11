@@ -40,6 +40,7 @@ set(CPP
     src/utils/make_error.cpp
     src/utils/process_runner.cpp
     src/utils/audio_helper.cpp
+    src/utils/storage_helper.cpp
     src/models/relation_types.cpp
     src/controllers/album_controller.cpp
     src/controllers/artist_controller.cpp
@@ -84,4 +85,8 @@ if(BUILD_TESTING)
     add_executable(audio_helper_test tests/audio_helper_test.cpp)
     target_link_libraries(audio_helper_test PRIVATE lyra_core nlohmann_json::nlohmann_json fmt::fmt)
     target_include_directories(audio_helper_test PRIVATE include src)
+
+    add_executable(storage_helper_test tests/storage_helper_test.cpp)
+    target_link_libraries(storage_helper_test PRIVATE lyra_core nlohmann_json::nlohmann_json fmt::fmt)
+    target_include_directories(storage_helper_test PRIVATE include src)
 endif()

@@ -14,6 +14,7 @@
 #include "../models/audio.h"
 #include "../utils/audio_helper.h"
 #include "../utils/sha256.h"
+#include "../utils/storage_helper.h"
 #include "../utils/uuid_generator.h"
 #include "asset_controller.h"
 
@@ -42,42 +43,14 @@ tl::expected<PaginatedResult<Asset>, std::string> AssetController::list(
 }
 
 tl::expected<std::pair<Asset, nlohmann::json>, std::string> AssetController::ingest(const std::string &source_path) {
-    namespace fs = std::filesystem;
-    const fs::path src_path(source_path);
-    const std::string ext = src_path.extension().string();
-    const std::string temp_filename = UuidGenerator::generate_v4() + ext;
-    const fs::path tmp_dir = fs::path(m_storage_root) / "tmp";
+    const std::string ext = std::filesystem::path(source_path).extension().string();
+    const std::filesystem::path temp_path = utils::StorageHelper::generate_temp_path(m_storage_root, ext);
 
-    // Ensure source path is a regular file and exists
-    if (!fs::is_regular_file(src_path)) return tl::unexpected("Source path does not exist or is not a regular file: " + source_path);
+    utils::TempCleanup cleanup{temp_path};
 
-    // Cerate temp dir, /tmp
-    try {
-        fs::create_directories(tmp_dir);
-    } catch (const std::exception &e) {
-        return tl::unexpected("Failed to create temporary directory: " + std::string(e.what()));
-    }
-    fs::path temp_path = tmp_dir / temp_filename;
-
-    // Setup fallback for cleaing-up the /tmp
-    struct TempCleanup {
-        fs::path path;
-        bool active = true;
-        ~TempCleanup() {
-            if (active && !path.empty()) {
-                std::error_code ec;
-                fs::remove(path, ec);
-            }
-        }
-        void dismiss() { active = false; }
-    };
-    TempCleanup cleanup{temp_path};
-
-    // Copy to /tmp
-    try {
-        fs::copy_file(src_path, temp_path, fs::copy_options::overwrite_existing);
-    } catch (const std::exception &e) {
-        return tl::unexpected("Failed to copy source file to temp path: " + std::string(e.what()));
+    auto copy_res = utils::StorageHelper::copy_to_temp(source_path, temp_path);
+    if (!copy_res.has_value()) {
+        return tl::unexpected(copy_res.error());
     }
 
     // Get the sha256 of the file
@@ -122,39 +95,21 @@ tl::expected<std::pair<Asset, nlohmann::json>, std::string> AssetController::ing
         return tl::unexpected("Invalid audio metadata: duration, channels, and sample rate must be greater than zero.");
     }
 
-
-    // Initialze varaibles, target_path, ./objects/xx/yy/the_hash.ext
-    std::string xx = file_hash.substr(0, 2);
-    std::string yy = file_hash.substr(2, 2);
-    fs::path target_dir = fs::path(m_storage_root) / "objects" / xx / yy;
-    fs::path target_path = target_dir / (file_hash + ext);
-
-    try { // Create target_dir
-        fs::create_directories(target_dir);
-    } catch (const std::exception &e) {
-        return tl::unexpected("Failed to create target directories: " + std::string(e.what()));
-    }
+    const std::filesystem::path target_path = utils::StorageHelper::resolve_cas_path(m_storage_root, file_hash, ext);
 
     // Get file size from temp path before moving
-    uintmax_t file_size = 0;
-    try {
-        file_size = fs::file_size(temp_path);
-    } catch (const std::exception &e) {
-        return tl::unexpected("Failed to determine file size: " + std::string(e.what()));
+    auto size_res = utils::StorageHelper::get_file_size(temp_path);
+    if (!size_res.has_value()) {
+        return tl::unexpected(size_res.error());
     }
+    uintmax_t file_size = size_res.value();
 
-    try { // Move file to target_path
-        fs::rename(temp_path, target_path);
-        cleanup.dismiss();
-    } catch (const std::exception &e) {
-        std::error_code ec;
-        fs::copy_file(temp_path, target_path, fs::copy_options::overwrite_existing, ec);
-        if (ec) {
-            return tl::unexpected("Failed to move/copy temp file to CAS path: " + ec.message());
-        }
-        fs::remove(temp_path, ec);
-        cleanup.dismiss();
+    // Move file to target_path
+    auto move_res = utils::StorageHelper::move_to_cas(temp_path, target_path);
+    if (!move_res.has_value()) {
+        return tl::unexpected(move_res.error());
     }
+    cleanup.dismiss();
 
     // Get mime_type
     std::string lower_ext = ext;
@@ -199,8 +154,7 @@ tl::expected<std::pair<Asset, nlohmann::json>, std::string> AssetController::ing
 
     auto insert_res = m_repo.insert_asset_with_audio(asset, audio);
     if (!insert_res.has_value()) { // Rollback, clean up orphaned CAS file on database failure
-        std::error_code ec;
-        fs::remove(target_path, ec);
+        utils::StorageHelper::remove_file(target_path);
         return tl::unexpected("Failed to insert asset and audio: " + insert_res.error());
     }
 
@@ -218,29 +172,17 @@ tl::expected<std::string, std::string> AssetController::resolve_file_path(const 
         return tl::unexpected("Invalid file hash format: " + file_hash);
     }
 
-    namespace fs = std::filesystem;
-    std::string xx = file_hash.substr(0, 2);
-    std::string yy = file_hash.substr(2, 2);
-    fs::path target_dir = fs::path(m_storage_root) / "objects" / xx / yy;
+    const std::filesystem::path target_dir = utils::StorageHelper::resolve_cas_dir(m_storage_root, file_hash);
 
-    if (!fs::exists(target_dir)) {
+    if (!std::filesystem::exists(target_dir)) {
         return tl::unexpected("Asset file not found in storage: " + file_hash);
     }
 
-    try {
-        for (const auto &entry : fs::directory_iterator(target_dir)) {
-            if (!entry.is_regular_file()) {
-                continue;
-            }
-            std::string filename = entry.path().filename().string();
-            if (filename.rfind(file_hash, 0) == 0) {
-                return entry.path().string();
-            }
-        }
-    } catch (const std::exception &e) {
-        return tl::unexpected("Failed to scan storage directory: " + std::string(e.what()));
+    auto find_res = utils::StorageHelper::find_file_by_prefix(target_dir, file_hash);
+    if (!find_res.has_value()) {
+        return tl::unexpected("Asset file not found in storage: " + file_hash);
     }
-    return tl::unexpected("Asset file not found in storage: " + file_hash);
+    return find_res.value();
 }
 
 tl::expected<std::vector<std::string>, std::string> AssetController::get_assets_by_audio(const std::string &pcm_hash) {
