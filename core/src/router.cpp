@@ -172,6 +172,36 @@ tl::expected<PaginationParams, json> parse_pagination(const json &params) {
     return PaginationParams{offset, limit, search};
 }
 
+tl::expected<std::string, json> resolveFileHash(
+    const json &params,
+    TrackController &track_controller,
+    AssetController &asset_controller) {
+    if (params.contains("file_hash") && !params["file_hash"].is_null()) {
+        return params["file_hash"].get<std::string>();
+    } else if (params.contains("pcm_hash") && !params["pcm_hash"].is_null()) {
+        std::string pcm_hash = params["pcm_hash"].get<std::string>();
+        auto assets_res = asset_controller.get_assets_by_audio(pcm_hash);
+        if (!assets_res || assets_res.value().empty()) {
+            return tl::unexpected(ApiResponse::error({ErrorType::AssetNotFound, "No assets found for the PCM hash"}));
+        }
+        return assets_res.value()[0];
+    } else if (params.contains("track_id") && !params["track_id"].is_null()) {
+        std::string track_id = params["track_id"].get<std::string>();
+        auto track_res = track_controller.get(track_id);
+        if (!track_res) {
+            return tl::unexpected(ApiResponse::error({ErrorType::TrackNotFound, track_res.error()}));
+        }
+        std::string pcm_hash = track_res.value().pcm_hash;
+        auto assets_res = asset_controller.get_assets_by_audio(pcm_hash);
+        if (!assets_res || assets_res.value().empty()) {
+            return tl::unexpected(ApiResponse::error({ErrorType::AssetNotFound, "No assets found for the track's audio"}));
+        }
+        return assets_res.value()[0];
+    }
+
+    return tl::unexpected(ApiResponse::error({ErrorType::MissingParameter, "Must provide track_id, pcm_hash, or file_hash"}));
+}
+
 } // namespace
 
 // --- Artist Handlers ---
@@ -473,34 +503,11 @@ json Router::handleGetResourcePath(const json &params) {
                                                 {"pcm_hash", Type::String, false}});
     if (err) return *err;
 
-
-    std::string file_hash = "";
-
-    if (params.contains("file_hash") && params["file_hash"].is_string()) {
-        file_hash = params["file_hash"].get<std::string>();
-    } else if (params.contains("pcm_hash") && params["pcm_hash"].is_string()) {
-        std::string pcm_hash = params["pcm_hash"].get<std::string>();
-        auto assets_res = m_asset_controller->get_assets_by_audio(pcm_hash);
-        if (!assets_res || assets_res.value().empty()) {
-            return ApiResponse::error({ErrorType::AssetNotFound, "No assets found for the PCM hash"});
-        }
-        file_hash = assets_res.value()[0];
-    } else if (params.contains("track_id") && params["track_id"].is_string()) {
-        std::string track_id = params["track_id"].get<std::string>();
-        auto track_res = m_track_controller->get(track_id);
-        if (!track_res) {
-            return ApiResponse::error({ErrorType::TrackNotFound, track_res.error()});
-        }
-        std::string pcm_hash = track_res.value().pcm_hash;
-        auto assets_res = m_asset_controller->get_assets_by_audio(pcm_hash);
-        if (!assets_res || assets_res.value().empty()) {
-            return ApiResponse::error({ErrorType::AssetNotFound, "No assets found for the track's audio"});
-        }
-        file_hash = assets_res.value()[0];
-    } else {
-        return ApiResponse::error({ErrorType::MissingParameter, "Must provide track_id, pcm_hash, or file_hash"});
+    auto file_hash_res = resolveFileHash(params, *m_track_controller, *m_asset_controller);
+    if (!file_hash_res) {
+        return file_hash_res.error();
     }
-
+    std::string file_hash = file_hash_res.value();
 
     auto asset_info_res = m_asset_controller->get(file_hash);
     if (!asset_info_res) {
