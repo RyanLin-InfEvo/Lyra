@@ -87,6 +87,20 @@ class TestAssetIngestion(BaseLyraTestCase):
         res_path_fail = self.dispatch("GetResourcePath", {})
         self.assertResponseCode(res_path_fail, 400)
 
+        # 10. Expect error if all parameters are explicitly null/None
+        res_path_all_null = self.dispatch("GetResourcePath", {"track_id": None, "pcm_hash": None, "file_hash": None})
+        self.assertResponseCode(res_path_all_null, 400)
+
+        # 11. Success when one param is valid and others are explicitly null/None
+        res_path_file_nulls = self.dispatch("GetResourcePath", {"track_id": None, "pcm_hash": None, "file_hash": file_hash})
+        self.assertResponseCode(res_path_file_nulls, 200)
+
+        res_path_pcm_nulls = self.dispatch("GetResourcePath", {"track_id": None, "pcm_hash": pcm_hash, "file_hash": None})
+        self.assertResponseCode(res_path_pcm_nulls, 200)
+
+        res_path_track_nulls = self.dispatch("GetResourcePath", {"track_id": track_id, "pcm_hash": None, "file_hash": None})
+        self.assertResponseCode(res_path_track_nulls, 200)
+
     def test_asset_ingestion_non_existent_file(self):
         # Ingest a non-existent file path
         res = self.dispatch("IngestAsset", {"source_path": "/nonexistent/path/to/file.wav"})
