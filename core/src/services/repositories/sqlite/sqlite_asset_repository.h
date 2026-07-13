@@ -4,8 +4,8 @@
 
 #pragma once
 
-#include "../database_context.h"
-#include "i_asset_repository.h"
+#include "../../database_context.h"
+#include "../i_asset_repository.h"
 
 namespace lyra {
 

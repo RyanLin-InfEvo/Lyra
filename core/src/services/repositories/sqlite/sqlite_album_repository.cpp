@@ -5,7 +5,7 @@
 #include <SQLiteCpp/SQLiteCpp.h>
 #include <vector>
 
-#include "../../utils/sqlite_helper.h"
+#include "../../../utils/sqlite_helper.h"
 #include "sqlite_album_repository.h"
 
 namespace lyra {

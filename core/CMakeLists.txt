@@ -26,13 +26,13 @@ set(CPP
     src/lyra_c_api.cpp
     src/router.cpp
     src/services/database_context.cpp
-    src/services/repositories/sqlite_album_repository.cpp
-    src/services/repositories/sqlite_artist_repository.cpp
-    src/services/repositories/sqlite_asset_repository.cpp
-    src/services/repositories/sqlite_audio_repository.cpp
-    src/services/repositories/sqlite_playlist_repository.cpp
-    src/services/repositories/sqlite_track_repository.cpp
-    src/services/repositories/sqlite_work_repository.cpp
+    src/services/repositories/sqlite/sqlite_album_repository.cpp
+    src/services/repositories/sqlite/sqlite_artist_repository.cpp
+    src/services/repositories/sqlite/sqlite_asset_repository.cpp
+    src/services/repositories/sqlite/sqlite_audio_repository.cpp
+    src/services/repositories/sqlite/sqlite_playlist_repository.cpp
+    src/services/repositories/sqlite/sqlite_track_repository.cpp
+    src/services/repositories/sqlite/sqlite_work_repository.cpp
     src/utils/uuid_generator.cpp
     src/utils/json_validator.cpp
     src/utils/sha256.cpp
