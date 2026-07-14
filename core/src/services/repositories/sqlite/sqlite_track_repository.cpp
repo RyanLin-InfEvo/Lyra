@@ -174,7 +174,7 @@ tl::expected<void, std::string> SqliteTrackRepository::add_artist(const TrackArt
     return {};
 }
 
-tl::expected<void, std::string> SqliteTrackRepository::remove_artist(const std::string& track_id, const std::string& artist_id) {
+tl::expected<void, std::string> SqliteTrackRepository::remove_artist(const std::string &track_id, const std::string &artist_id) {
     try {
         auto transaction = m_context.begin_transaction();
         auto &db = m_context.get_db();
@@ -202,8 +202,8 @@ tl::expected<void, std::string> SqliteTrackRepository::update_artist(const Track
         auto &db = m_context.get_db();
 
         SQLite::Statement query(db, "UPDATE Track_Artist SET role = COALESCE(?, role), "
-                                     "position = COALESCE(?, position) WHERE track_id = ? AND "
-                                     "artist_id = ?");
+                                    "position = COALESCE(?, position) WHERE track_id = ? AND "
+                                    "artist_id = ?");
         if (params.role) query.bind(1, ArtistRoleMapper::to_string(*params.role));
         else query.bind(1);
         if (params.position) query.bind(2, *params.position);
@@ -224,20 +224,98 @@ tl::expected<void, std::string> SqliteTrackRepository::update_artist(const Track
     return {};
 }
 
+tl::expected<void, std::string> SqliteTrackRepository::add_album(const TrackAlbumParams &params) {
+    try {
+        auto transaction = m_context.begin_transaction();
+        auto &db = m_context.get_db();
+
+        SQLite::Statement check_track(db, "SELECT 1 FROM Track WHERE id = ?");
+        check_track.bind(1, params.track_id);
+        if (!check_track.executeStep()) return tl::unexpected("Target Track not found.");
+
+        SQLite::Statement check_album(db, "SELECT 1 FROM Album WHERE id = ?");
+        check_album.bind(1, params.album_id);
+        if (!check_album.executeStep()) return tl::unexpected("Target Album not found.");
+
+        SQLite::Statement query(db, "INSERT OR REPLACE INTO Track_Album (track_id, album_id, position) VALUES (?, ?, ?)");
+        query.bind(1, params.track_id);
+        query.bind(2, params.album_id);
+        if (params.position) query.bind(3, *params.position);
+        else query.bind(3);
+
+        query.exec();
+        SQLite::Statement update_entity(db, "UPDATE Entity SET updated_at = datetime('now') WHERE id = ?");
+        update_entity.bind(1, params.track_id);
+        update_entity.exec();
+
+        transaction->commit();
+    } catch (const std::exception &e) {
+        return tl::unexpected(e.what());
+    }
+    return {};
+}
+
+tl::expected<void, std::string> SqliteTrackRepository::remove_album(const std::string &track_id, const std::string &album_id) {
+    try {
+        auto transaction = m_context.begin_transaction();
+        auto &db = m_context.get_db();
+
+        SQLite::Statement query(db, "DELETE FROM Track_Album WHERE track_id = ? AND album_id = ?");
+        query.bind(1, track_id);
+        query.bind(2, album_id);
+
+        if (query.exec() == 0) return tl::unexpected("Relation not found or already removed.");
+
+        SQLite::Statement update_entity(db, "UPDATE Entity SET updated_at = datetime('now') WHERE id = ?");
+        update_entity.bind(1, track_id);
+        update_entity.exec();
+
+        transaction->commit();
+    } catch (const std::exception &e) {
+        return tl::unexpected(e.what());
+    }
+    return {};
+}
+
+tl::expected<void, std::string> SqliteTrackRepository::update_album(const TrackAlbumParams &params) {
+    try {
+        auto transaction = m_context.begin_transaction();
+        auto &db = m_context.get_db();
+
+        SQLite::Statement query(db, "UPDATE Track_Album SET position = COALESCE(?, position) WHERE track_id = ? AND album_id = ?");
+        if (params.position) query.bind(1, *params.position);
+        else query.bind(1);
+        query.bind(2, params.track_id);
+        query.bind(3, params.album_id);
+
+        if (query.exec() == 0) return tl::unexpected("Relation not found. Cannot update.");
+
+        SQLite::Statement update_entity(db, "UPDATE Entity SET updated_at = datetime('now') WHERE id = ?");
+        update_entity.bind(1, params.track_id);
+        update_entity.exec();
+
+        transaction->commit();
+    } catch (const std::exception &e) {
+        return tl::unexpected(e.what());
+    }
+    return {};
+}
+
+
 tl::expected<PaginatedResult<Track>, std::string> SqliteTrackRepository::list(
     int offset, int limit, const std::optional<std::string> &search) {
     try {
         auto &db = m_context.get_db();
         std::string count_sql = "SELECT COUNT(*) FROM Track";
         std::string select_sql = "SELECT * FROM Track";
-        
+
         if (search.has_value()) {
             count_sql += R"( WHERE title LIKE ? ESCAPE '\' )";
             select_sql += R"( WHERE title LIKE ? ESCAPE '\' )";
         }
-        
+
         select_sql += " ORDER BY title ASC, id ASC LIMIT ? OFFSET ?";
-        
+
         int total = 0;
         {
             SQLite::Statement count_query(db, count_sql);
@@ -250,7 +328,7 @@ tl::expected<PaginatedResult<Track>, std::string> SqliteTrackRepository::list(
             }
             total = count_query.getColumn(0).getInt();
         }
-        
+
         std::vector<Track> items;
         items.reserve(limit);
         {
@@ -262,7 +340,7 @@ tl::expected<PaginatedResult<Track>, std::string> SqliteTrackRepository::list(
             }
             select_query.bind(bind_idx++, limit);
             select_query.bind(bind_idx++, offset);
-            
+
             while (select_query.executeStep()) {
                 Track track;
                 track.id = select_query.getColumn("id").getString();
@@ -281,12 +359,12 @@ tl::expected<PaginatedResult<Track>, std::string> SqliteTrackRepository::list(
                 items.push_back(track);
             }
         }
-        
+
         return PaginatedResult<Track>{
             .items = std::move(items),
             .total = total,
             .offset = offset,
-            .limit = limit
+            .limit = limit,
         };
     } catch (const std::exception &e) {
         return tl::unexpected(e.what());

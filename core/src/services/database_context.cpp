@@ -169,6 +169,26 @@ void SqliteDatabaseContext::init_schema() {
     )");
 
     m_db.exec(R"(
+        CREATE TABLE IF NOT EXISTS Track_Album (
+          track_id TEXT NOT NULL,
+          album_id TEXT NOT NULL,
+          position INTEGER NULL DEFAULT NULL,
+          PRIMARY KEY (track_id, album_id),
+          CONSTRAINT fk_TrackAlbum_Track
+            FOREIGN KEY (track_id)
+            REFERENCES Track (id)
+            ON DELETE CASCADE
+            ON UPDATE CASCADE,
+          CONSTRAINT fk_TrackAlbum_Album
+            FOREIGN KEY (album_id)
+            REFERENCES Album (id)
+            ON DELETE CASCADE
+            ON UPDATE CASCADE
+        );
+    )");
+
+
+    m_db.exec(R"(
         CREATE TABLE IF NOT EXISTS Work (
           id TEXT NOT NULL,
           title TEXT NOT NULL,
@@ -230,6 +250,7 @@ void SqliteDatabaseContext::init_schema() {
     m_db.exec("CREATE INDEX IF NOT EXISTS idx_Work_title ON Work (title);");
     m_db.exec("CREATE INDEX IF NOT EXISTS idx_Audio_parent_hash ON Audio (parent_hash);");
     m_db.exec("CREATE INDEX IF NOT EXISTS idx_Asset_asset_type ON Asset (asset_type);");
+    m_db.exec("CREATE INDEX IF NOT EXISTS idx_TrackAlbum_Album ON Track_Album (album_id);");
 }
 
 std::unique_ptr<ITransaction> SqliteDatabaseContext::begin_transaction() {
