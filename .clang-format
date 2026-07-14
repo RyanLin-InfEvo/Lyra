@@ -7,6 +7,11 @@ TabWidth: 4
 UseTab: Never
 AllowShortFunctionsOnASingleLine: All
 IndentCaseLabels: true
-AllowShortIfStatementsOnASingleLine: WithoutElse
+AllowShortIfStatementsOnASingleLine: AllIfsAndElse
 AllowShortBlocksOnASingleLine: true
 MaxEmptyLinesToKeep: 2
+
+BreakBeforeBraces: Custom
+BraceWrapping:
+  BeforeElse: false
+
