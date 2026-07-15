@@ -7,6 +7,8 @@
 #include "audio_helper.h"
 #include "process_runner.h"
 #include "sha256.h"
+#include <algorithm>
+#include <cctype>
 #include <filesystem>
 #include <fstream>
 #include <iomanip>
@@ -63,6 +65,50 @@ std::optional<std::string> get_json_string(const nlohmann::json &j, const std::s
     return std::nullopt;
 }
 
+std::optional<std::string> get_tag_case_insensitive(const nlohmann::json &tags_obj, const std::string &target_key) {
+    if (!tags_obj.is_object()) {
+        return std::nullopt;
+    }
+    for (auto it = tags_obj.begin(); it != tags_obj.end(); ++it) {
+        std::string key = it.key();
+        std::transform(key.begin(), key.end(), key.begin(), [](unsigned char c) {
+            return std::tolower(c);
+        });
+        if (key == target_key) {
+            if (it.value().is_string()) {
+                return it.value().get<std::string>();
+            } else if (it.value().is_number()) {
+                return it.value().dump();
+            }
+        }
+    }
+    return std::nullopt;
+}
+
+std::optional<std::string> get_tag(const nlohmann::json &json_data, const std::string &tag_name) {
+    // 1. Search Format tags
+    if (json_data.contains("format") && json_data["format"].is_object()) {
+        const auto &fmt = json_data["format"];
+        if (fmt.contains("tags") && fmt["tags"].is_object()) {
+            auto val = get_tag_case_insensitive(fmt["tags"], tag_name);
+            if (val) return val;
+        }
+    }
+    // 2. Search Stream tags (only audio streams)
+    if (json_data.contains("streams") && json_data["streams"].is_array()) {
+        for (const auto &stream : json_data["streams"]) {
+            auto codec_type = get_json_string(stream, "codec_type");
+            if (codec_type && *codec_type == "audio") {
+                if (stream.contains("tags") && stream["tags"].is_object()) {
+                    auto val = get_tag_case_insensitive(stream["tags"], tag_name);
+                    if (val) return val;
+                }
+            }
+        }
+    }
+    return std::nullopt;
+}
+
 } // namespace
 
 tl::expected<std::string, std::string> AudioHelper::calculate_pcm_hash(const std::string &filepath) {
@@ -93,8 +139,11 @@ tl::expected<MediaMetadata, std::string> AudioHelper::extract_metadata(const std
     };
 
     std::vector<std::string> args = {
-        "ffprobe", "-v", "error", "-show_entries", "format=duration",
-        "-show_entries", "stream=sample_rate,channels,duration,disposition,width,height,codec_name,codec_type:disposition=attached_pic",
+        "ffprobe", "-v", "error",
+        "-show_entries", "format=duration,tags",
+        "-show_entries", "format_tags",
+        "-show_entries", "stream=sample_rate,channels,duration,disposition,width,height,codec_name,codec_type,tags:disposition=attached_pic",
+        "-show_entries", "stream_tags",
         "-of", "json", filepath};
 
     // Limit to 2MB as per instructions
@@ -169,6 +218,12 @@ tl::expected<MediaMetadata, std::string> AudioHelper::extract_metadata(const std
             metadata.duration = *fmt_dur;
         }
     }
+
+    metadata.title = get_tag(json_data, "title");
+    metadata.artist = get_tag(json_data, "artist");
+    metadata.album = get_tag(json_data, "album");
+    metadata.date = get_tag(json_data, "date");
+    metadata.track = get_tag(json_data, "track");
 
     return metadata;
 }

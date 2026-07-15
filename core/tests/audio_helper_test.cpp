@@ -29,8 +29,8 @@ void setup_fixtures() {
     // Generate a cover image
     int r5 = std::system("ffmpeg -y -f lavfi -i color=c=blue:s=100x100:d=1 -vframes 1 cover.jpg > /dev/null 2>&1");
     
-    // Generate an MP3 with the cover image attached (ID3v2)
-    int r6 = std::system("ffmpeg -y -i test_44k_stereo.wav -i cover.jpg -map 0:a -map 1:v -c:a libmp3lame -c:v copy -id3v2_version 3 -metadata:s:v title=\"Album cover\" -metadata:s:v comment=\"Cover (front)\" test_with_cover.mp3 > /dev/null 2>&1");
+    // Generate an MP3 with the cover image attached (ID3v2) and tags
+    int r6 = std::system("ffmpeg -y -i test_44k_stereo.wav -i cover.jpg -map 0:a -map 1:v -c:a libmp3lame -c:v copy -id3v2_version 3 -metadata:s:v title=\"Album cover\" -metadata:s:v comment=\"Cover (front)\" -metadata title=\"Test Title\" -metadata artist=\"Test Artist\" -metadata album=\"Test Album\" -metadata date=\"2026\" -metadata track=\"3\" test_with_cover.mp3 > /dev/null 2>&1");
 
     // Generate a video file (3 seconds duration, width 320, height 240, h264)
     int r7 = std::system("ffmpeg -y -f lavfi -i sine=frequency=1000:duration=3 -f lavfi -i color=c=red:s=320x240:duration=3 -c:a aac -c:v libx264 -pix_fmt yuv420p test_video.mp4 > /dev/null 2>&1");
@@ -135,6 +135,26 @@ bool test_extract_metadata() {
     }
     if (!meta_mp3->has_cover_art) {
         std::cerr << "MP3: Expected has_cover_art to be true" << std::endl;
+        return false;
+    }
+    if (!meta_mp3->title.has_value() || meta_mp3->title.value() != "Test Title") {
+        std::cerr << "MP3: Expected title 'Test Title', got " << (meta_mp3->title ? meta_mp3->title.value() : "none") << std::endl;
+        return false;
+    }
+    if (!meta_mp3->artist.has_value() || meta_mp3->artist.value() != "Test Artist") {
+        std::cerr << "MP3: Expected artist 'Test Artist', got " << (meta_mp3->artist ? meta_mp3->artist.value() : "none") << std::endl;
+        return false;
+    }
+    if (!meta_mp3->album.has_value() || meta_mp3->album.value() != "Test Album") {
+        std::cerr << "MP3: Expected album 'Test Album', got " << (meta_mp3->album ? meta_mp3->album.value() : "none") << std::endl;
+        return false;
+    }
+    if (!meta_mp3->date.has_value() || meta_mp3->date.value() != "2026") {
+        std::cerr << "MP3: Expected date '2026', got " << (meta_mp3->date ? meta_mp3->date.value() : "none") << std::endl;
+        return false;
+    }
+    if (!meta_mp3->track.has_value() || meta_mp3->track.value() != "3") {
+        std::cerr << "MP3: Expected track '3', got " << (meta_mp3->track ? meta_mp3->track.value() : "none") << std::endl;
         return false;
     }
 

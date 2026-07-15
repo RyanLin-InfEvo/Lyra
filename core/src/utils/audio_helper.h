@@ -23,6 +23,11 @@ struct MediaMetadata {
     std::optional<int> video_width;
     std::optional<int> video_height;
     std::optional<std::string> video_codec;
+    std::optional<std::string> title;
+    std::optional<std::string> artist;
+    std::optional<std::string> album;
+    std::optional<std::string> date;
+    std::optional<std::string> track;
 };
 
 class AudioHelper {
