@@ -22,6 +22,7 @@ class WorkController {
     tl::expected<void, std::string> update(const WorkUpdate &work_update);
     tl::expected<PaginatedResult<Work>, std::string> list(
         int offset, int limit, const std::optional<std::string> &search);
+    tl::expected<std::vector<Work>, std::string> get_by_title(const std::string &title);
 
   private:
     IWorkRepository &m_repo;

@@ -22,6 +22,7 @@ class AlbumController {
     tl::expected<void, std::string> update(const AlbumUpdate &album_update);
     tl::expected<PaginatedResult<Album>, std::string> list(
         int offset, int limit, const std::optional<std::string> &search);
+    tl::expected<std::vector<Album>, std::string> get_by_title(const std::string &title);
 
   private:
     IAlbumRepository &m_repo;

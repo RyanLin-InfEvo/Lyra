@@ -4,12 +4,12 @@
 
 #pragma once
 
+#include "../../models/playlist.h"
+#include "../../utils/paginated_result.h"
+#include <optional>
 #include <string>
 #include <tl/expected.hpp>
 #include <vector>
-#include <optional>
-#include "../../models/playlist.h"
-#include "../../utils/paginated_result.h"
 
 namespace lyra {
 
@@ -26,6 +26,7 @@ class IPlaylistRepository {
     virtual tl::expected<void, std::string> add_track(const std::string &playlist_id, const std::string &track_id, std::optional<int> position) = 0;
     virtual tl::expected<void, std::string> remove_track(const std::string &playlist_id, const std::string &track_id) = 0;
     virtual std::vector<std::string> get_tracks(const std::string &playlist_id) = 0;
+    virtual tl::expected<std::vector<Playlist>, std::string> get_by_title(const std::string &title) = 0;
 };
 
 } // namespace lyra

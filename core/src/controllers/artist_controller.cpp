@@ -35,4 +35,8 @@ tl::expected<PaginatedResult<Artist>, std::string> ArtistController::list(
     return m_repo.list(offset, limit, search);
 }
 
+tl::expected<std::vector<Artist>, std::string> ArtistController::get_by_name(const std::string &name) {
+    return m_repo.get_by_name(name);
+}
+
 } // namespace lyra

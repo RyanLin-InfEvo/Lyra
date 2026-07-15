@@ -8,8 +8,8 @@
 
 #include "../models/artist.h"
 #include "../services/repositories/i_artist_repository.h"
-#include <nlohmann/json.hpp>
 #include <memory>
+#include <nlohmann/json.hpp>
 #include <tl/expected.hpp>
 
 namespace lyra {
@@ -31,6 +31,7 @@ class ArtistController {
 
     tl::expected<PaginatedResult<Artist>, std::string> list(
         int offset, int limit, const std::optional<std::string> &search);
+    tl::expected<std::vector<Artist>, std::string> get_by_name(const std::string &name);
 
   private:
     IArtistRepository &m_repo;

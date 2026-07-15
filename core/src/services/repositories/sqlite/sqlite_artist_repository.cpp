@@ -27,7 +27,7 @@ tl::expected<void, std::string> SqliteArtistRepository::insert(const Artist &art
 
         // insert into Artist table
         SQLite::Statement query2(db, "INSERT INTO Artist (id, name, musicbrainz_id, "
-                                      "spotify_id, ytm_id) VALUES (?, ?, ?, ?, ?)");
+                                     "spotify_id, ytm_id) VALUES (?, ?, ?, ?, ?)");
 
         auto bind_opt = [&query2](int index, const auto &val) {
             if (val) {
@@ -127,14 +127,14 @@ tl::expected<PaginatedResult<Artist>, std::string> SqliteArtistRepository::list(
         auto &db = m_context.get_db();
         std::string count_sql = "SELECT COUNT(*) FROM Artist";
         std::string select_sql = "SELECT * FROM Artist";
-        
+
         if (search.has_value()) {
             count_sql += R"( WHERE name LIKE ? ESCAPE '\' )";
             select_sql += R"( WHERE name LIKE ? ESCAPE '\' )";
         }
-        
+
         select_sql += " ORDER BY name ASC, id ASC LIMIT ? OFFSET ?";
-        
+
         int total = 0;
         {
             SQLite::Statement count_query(db, count_sql);
@@ -147,7 +147,7 @@ tl::expected<PaginatedResult<Artist>, std::string> SqliteArtistRepository::list(
             }
             total = count_query.getColumn(0).getInt();
         }
-        
+
         std::vector<Artist> items;
         items.reserve(limit);
         {
@@ -159,7 +159,7 @@ tl::expected<PaginatedResult<Artist>, std::string> SqliteArtistRepository::list(
             }
             select_query.bind(bind_idx++, limit);
             select_query.bind(bind_idx++, offset);
-            
+
             while (select_query.executeStep()) {
                 Artist artist;
                 artist.id = select_query.getColumn("id").getString();
@@ -170,13 +170,35 @@ tl::expected<PaginatedResult<Artist>, std::string> SqliteArtistRepository::list(
                 items.push_back(artist);
             }
         }
-        
+
         return PaginatedResult<Artist>{
             .items = std::move(items),
             .total = total,
             .offset = offset,
-            .limit = limit
+            .limit = limit,
         };
+    } catch (const std::exception &e) {
+        return tl::unexpected(e.what());
+    }
+}
+
+tl::expected<std::vector<Artist>, std::string> SqliteArtistRepository::get_by_name(const std::string &name) {
+    try {
+        auto &db = m_context.get_db();
+        SQLite::Statement query(db, "SELECT * FROM Artist WHERE name = ? ORDER BY id ASC");
+        query.bind(1, name);
+
+        std::vector<Artist> artists;
+        while (query.executeStep()) {
+            Artist artist;
+            artist.id = query.getColumn("id").getString();
+            artist.name = query.getColumn("name").getString();
+            artist.musicbrainz_id = SqliteHelper::get_optional<std::string>(query, "musicbrainz_id");
+            artist.ytm_id = SqliteHelper::get_optional<std::string>(query, "ytm_id");
+            artist.spotify_id = SqliteHelper::get_optional<std::string>(query, "spotify_id");
+            artists.push_back(artist);
+        }
+        return artists;
     } catch (const std::exception &e) {
         return tl::unexpected(e.what());
     }

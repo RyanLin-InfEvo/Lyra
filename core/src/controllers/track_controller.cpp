@@ -46,4 +46,8 @@ tl::expected<PaginatedResult<Track>, std::string> TrackController::list(
     return m_repo.list(offset, limit, search);
 }
 
+tl::expected<std::vector<Track>, std::string> TrackController::get_by_title(const std::string &title) {
+    return m_repo.get_by_title(title);
+}
+
 } // namespace lyra

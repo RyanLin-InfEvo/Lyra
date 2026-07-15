@@ -4,11 +4,11 @@
 
 #pragma once
 
-#include <string>
-#include <tl/expected.hpp>
-#include <optional>
 #include "../../models/artist.h"
 #include "../../utils/paginated_result.h"
+#include <optional>
+#include <string>
+#include <tl/expected.hpp>
 
 namespace lyra {
 
@@ -21,6 +21,7 @@ class IArtistRepository {
     virtual tl::expected<Artist, std::string> get(const std::string &artist_id) = 0;
     virtual tl::expected<PaginatedResult<Artist>, std::string> list(
         int offset, int limit, const std::optional<std::string> &search) = 0;
+    virtual tl::expected<std::vector<Artist>, std::string> get_by_name(const std::string &name) = 0;
 };
 
 } // namespace lyra

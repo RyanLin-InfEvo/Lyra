@@ -18,6 +18,7 @@ class SqliteWorkRepository : public IWorkRepository {
     tl::expected<Work, std::string> get(const std::string &work_id) override;
     tl::expected<PaginatedResult<Work>, std::string> list(
         int offset, int limit, const std::optional<std::string> &search) override;
+    tl::expected<std::vector<Work>, std::string> get_by_title(const std::string &title) override;
 
   private:
     IDatabaseContext &m_context;

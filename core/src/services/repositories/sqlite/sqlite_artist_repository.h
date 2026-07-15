@@ -18,6 +18,7 @@ class SqliteArtistRepository : public IArtistRepository {
     tl::expected<Artist, std::string> get(const std::string &artist_id) override;
     tl::expected<PaginatedResult<Artist>, std::string> list(
         int offset, int limit, const std::optional<std::string> &search) override;
+    tl::expected<std::vector<Artist>, std::string> get_by_name(const std::string &name) override;
 
   private:
     IDatabaseContext &m_context;

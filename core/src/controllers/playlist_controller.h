@@ -26,6 +26,7 @@ class PlaylistController {
     tl::expected<void, std::string> add_track(const std::string &playlist_id, const std::string &track_id, std::optional<int> position);
     tl::expected<void, std::string> remove_track(const std::string &playlist_id, const std::string &track_id);
     std::vector<std::string> get_tracks(const std::string &playlist_id);
+    tl::expected<std::vector<Playlist>, std::string> get_by_title(const std::string &title);
 
   private:
     IPlaylistRepository &m_repo;

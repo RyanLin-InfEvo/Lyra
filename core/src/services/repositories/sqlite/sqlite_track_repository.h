@@ -20,11 +20,12 @@ class SqliteTrackRepository : public ITrackRepository {
         int offset, int limit, const std::optional<std::string> &search) override;
 
     tl::expected<void, std::string> add_artist(const TrackArtistParams &params) override;
-    tl::expected<void, std::string> remove_artist(const std::string& track_id, const std::string& artist_id) override;
+    tl::expected<void, std::string> remove_artist(const std::string &track_id, const std::string &artist_id) override;
     tl::expected<void, std::string> update_artist(const TrackArtistParams &params) override;
+    tl::expected<std::vector<Track>, std::string> get_by_title(const std::string &title) override;
 
     tl::expected<void, std::string> add_album(const TrackAlbumParams &params) override;
-    tl::expected<void, std::string> remove_album(const std::string& track_id, const std::string& album_id) override;
+    tl::expected<void, std::string> remove_album(const std::string &track_id, const std::string &album_id) override;
     tl::expected<void, std::string> update_album(const TrackAlbumParams &params) override;
 
   private:

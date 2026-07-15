@@ -30,13 +30,13 @@ tl::expected<void, std::string> PlaylistController::update(const PlaylistUpdate 
 }
 
 tl::expected<void, std::string> PlaylistController::add_track(const std::string &playlist_id,
-                                                        const std::string &track_id,
-                                                        std::optional<int> position) {
+                                                              const std::string &track_id,
+                                                              std::optional<int> position) {
     return m_repo.add_track(playlist_id, track_id, position);
 }
 
 tl::expected<void, std::string> PlaylistController::remove_track(const std::string &playlist_id,
-                                                           const std::string &track_id) {
+                                                                 const std::string &track_id) {
     return m_repo.remove_track(playlist_id, track_id);
 }
 
@@ -47,6 +47,10 @@ std::vector<std::string> PlaylistController::get_tracks(const std::string &playl
 tl::expected<PaginatedResult<Playlist>, std::string> PlaylistController::list(
     int offset, int limit, const std::optional<std::string> &search) {
     return m_repo.list(offset, limit, search);
+}
+
+tl::expected<std::vector<Playlist>, std::string> PlaylistController::get_by_title(const std::string &title) {
+    return m_repo.get_by_title(title);
 }
 
 } // namespace lyra

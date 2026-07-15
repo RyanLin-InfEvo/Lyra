@@ -89,4 +89,8 @@ if(BUILD_TESTING)
     add_executable(storage_helper_test tests/storage_helper_test.cpp)
     target_link_libraries(storage_helper_test PRIVATE lyra_core nlohmann_json::nlohmann_json fmt::fmt)
     target_include_directories(storage_helper_test PRIVATE include src)
+
+    add_executable(repository_test tests/repository_test.cpp)
+    target_link_libraries(repository_test PRIVATE lyra_core nlohmann_json::nlohmann_json fmt::fmt SQLiteCpp)
+    target_include_directories(repository_test PRIVATE include src)
 endif()

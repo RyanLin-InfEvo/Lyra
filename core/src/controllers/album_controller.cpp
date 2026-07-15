@@ -34,4 +34,8 @@ tl::expected<PaginatedResult<Album>, std::string> AlbumController::list(
     return m_repo.list(offset, limit, search);
 }
 
+tl::expected<std::vector<Album>, std::string> AlbumController::get_by_title(const std::string &title) {
+    return m_repo.get_by_title(title);
+}
+
 } // namespace lyra

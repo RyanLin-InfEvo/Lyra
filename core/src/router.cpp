@@ -117,6 +117,13 @@ void Router::init_handlers() {
     m_handlers["AddPlaylistTrack"] = [this](const json &p) { return handleAddPlaylistTrack(p); };
     m_handlers["RemovePlaylistTrack"] = [this](const json &p) { return handleRemovePlaylistTrack(p); };
     m_handlers["GetPlaylistTracks"] = [this](const json &p) { return handleGetPlaylistTracks(p); };
+
+    // Exact query endpoints
+    m_handlers["GetTracksByTitle"] = [this](const json &p) { return handleGetTracksByTitle(p); };
+    m_handlers["GetArtistsByName"] = [this](const json &p) { return handleGetArtistsByName(p); };
+    m_handlers["GetAlbumsByTitle"] = [this](const json &p) { return handleGetAlbumsByTitle(p); };
+    m_handlers["GetWorksByTitle"] = [this](const json &p) { return handleGetWorksByTitle(p); };
+    m_handlers["GetPlaylistsByTitle"] = [this](const json &p) { return handleGetPlaylistsByTitle(p); };
 }
 
 namespace {
@@ -912,6 +919,61 @@ json Router::handleGetPlaylistTracks(const json &params) {
 
     std::vector<std::string> tracks = m_playlist_controller->get_tracks(params["id"].get<std::string>());
     return ApiResponse::success(tracks);
+}
+
+json Router::handleGetTracksByTitle(const json &params) {
+    auto err = JsonValidator::validate(params, {{"title", Type::String, true}});
+    if (err) return *err;
+
+    auto res = m_track_controller->get_by_title(params["title"].get<std::string>());
+    if (res) {
+        return ApiResponse::success(res.value());
+    }
+    return ApiResponse::error({ErrorType::DatabaseError, res.error()});
+}
+
+json Router::handleGetArtistsByName(const json &params) {
+    auto err = JsonValidator::validate(params, {{"name", Type::String, true}});
+    if (err) return *err;
+
+    auto res = m_artist_controller->get_by_name(params["name"].get<std::string>());
+    if (res) {
+        return ApiResponse::success(res.value());
+    }
+    return ApiResponse::error({ErrorType::DatabaseError, res.error()});
+}
+
+json Router::handleGetAlbumsByTitle(const json &params) {
+    auto err = JsonValidator::validate(params, {{"title", Type::String, true}});
+    if (err) return *err;
+
+    auto res = m_album_controller->get_by_title(params["title"].get<std::string>());
+    if (res) {
+        return ApiResponse::success(res.value());
+    }
+    return ApiResponse::error({ErrorType::DatabaseError, res.error()});
+}
+
+json Router::handleGetWorksByTitle(const json &params) {
+    auto err = JsonValidator::validate(params, {{"title", Type::String, true}});
+    if (err) return *err;
+
+    auto res = m_work_controller->get_by_title(params["title"].get<std::string>());
+    if (res) {
+        return ApiResponse::success(res.value());
+    }
+    return ApiResponse::error({ErrorType::DatabaseError, res.error()});
+}
+
+json Router::handleGetPlaylistsByTitle(const json &params) {
+    auto err = JsonValidator::validate(params, {{"title", Type::String, true}});
+    if (err) return *err;
+
+    auto res = m_playlist_controller->get_by_title(params["title"].get<std::string>());
+    if (res) {
+        return ApiResponse::success(res.value());
+    }
+    return ApiResponse::error({ErrorType::DatabaseError, res.error()});
 }
 
 json Router::route(const json &request) {

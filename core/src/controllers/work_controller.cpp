@@ -34,4 +34,8 @@ tl::expected<PaginatedResult<Work>, std::string> WorkController::list(
     return m_repo.list(offset, limit, search);
 }
 
+tl::expected<std::vector<Work>, std::string> WorkController::get_by_title(const std::string &title) {
+    return m_repo.get_by_title(title);
+}
+
 } // namespace lyra

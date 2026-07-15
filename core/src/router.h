@@ -88,6 +88,12 @@ class Router {
     json handleRemovePlaylistTrack(const json &p);
     json handleGetPlaylistTracks(const json &p);
 
+    json handleGetTracksByTitle(const json &p);
+    json handleGetArtistsByName(const json &p);
+    json handleGetAlbumsByTitle(const json &p);
+    json handleGetWorksByTitle(const json &p);
+    json handleGetPlaylistsByTitle(const json &p);
+
     // Dependencies
     std::unique_ptr<IDatabaseContext> m_db_context;
 

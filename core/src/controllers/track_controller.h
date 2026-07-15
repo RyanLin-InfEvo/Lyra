@@ -25,6 +25,7 @@ class TrackController {
     tl::expected<void, std::string> add_artist(const TrackArtistParams &params);
     tl::expected<void, std::string> remove_artist(const TrackArtistParams &params);
     tl::expected<void, std::string> update_artist(const TrackArtistParams &params);
+    tl::expected<std::vector<Track>, std::string> get_by_title(const std::string &title);
 
   private:
     ITrackRepository &m_repo;

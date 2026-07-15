@@ -25,8 +25,8 @@ tl::expected<void, std::string> SqliteWorkRepository::insert(const Work &work) {
         query1.exec();
 
         SQLite::Statement query2(db, "INSERT INTO Work (id, title, composition_start_year, "
-                                      "composition_end_year, composition_date_text, iswc, "
-                                      "musicbrainz_id) VALUES (?, ?, ?, ?, ?, ?, ?)");
+                                     "composition_end_year, composition_date_text, iswc, "
+                                     "musicbrainz_id) VALUES (?, ?, ?, ?, ?, ?, ?)");
         auto bind_opt = [&query2](int index, const auto &val) {
             if (val) query2.bind(index, *val);
             else query2.bind(index);
@@ -119,14 +119,14 @@ tl::expected<PaginatedResult<Work>, std::string> SqliteWorkRepository::list(
         auto &db = m_context.get_db();
         std::string count_sql = "SELECT COUNT(*) FROM Work";
         std::string select_sql = "SELECT * FROM Work";
-        
+
         if (search.has_value()) {
             count_sql += R"( WHERE title LIKE ? ESCAPE '\' )";
             select_sql += R"( WHERE title LIKE ? ESCAPE '\' )";
         }
-        
+
         select_sql += " ORDER BY title ASC, id ASC LIMIT ? OFFSET ?";
-        
+
         int total = 0;
         {
             SQLite::Statement count_query(db, count_sql);
@@ -139,7 +139,7 @@ tl::expected<PaginatedResult<Work>, std::string> SqliteWorkRepository::list(
             }
             total = count_query.getColumn(0).getInt();
         }
-        
+
         std::vector<Work> items;
         items.reserve(limit);
         {
@@ -151,7 +151,7 @@ tl::expected<PaginatedResult<Work>, std::string> SqliteWorkRepository::list(
             }
             select_query.bind(bind_idx++, limit);
             select_query.bind(bind_idx++, offset);
-            
+
             while (select_query.executeStep()) {
                 Work work;
                 work.id = select_query.getColumn("id").getString();
@@ -164,13 +164,36 @@ tl::expected<PaginatedResult<Work>, std::string> SqliteWorkRepository::list(
                 items.push_back(work);
             }
         }
-        
+
         return PaginatedResult<Work>{
             .items = std::move(items),
             .total = total,
             .offset = offset,
-            .limit = limit
-        };
+            .limit = limit};
+    } catch (const std::exception &e) {
+        return tl::unexpected(e.what());
+    }
+}
+
+tl::expected<std::vector<Work>, std::string> SqliteWorkRepository::get_by_title(const std::string &title) {
+    try {
+        auto &db = m_context.get_db();
+        SQLite::Statement query(db, "SELECT * FROM Work WHERE title = ? ORDER BY id ASC");
+        query.bind(1, title);
+
+        std::vector<Work> works;
+        while (query.executeStep()) {
+            Work work;
+            work.id = query.getColumn("id").getString();
+            work.title = query.getColumn("title").getString();
+            work.composition_start_year = SqliteHelper::get_optional<int>(query, "composition_start_year");
+            work.composition_end_year = SqliteHelper::get_optional<int>(query, "composition_end_year");
+            work.composition_date_text = SqliteHelper::get_optional<std::string>(query, "composition_date_text");
+            work.iswc = SqliteHelper::get_optional<std::string>(query, "iswc");
+            work.musicbrainz_id = SqliteHelper::get_optional<std::string>(query, "musicbrainz_id");
+            works.push_back(work);
+        }
+        return works;
     } catch (const std::exception &e) {
         return tl::unexpected(e.what());
     }
