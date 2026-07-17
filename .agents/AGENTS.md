@@ -73,12 +73,19 @@ To maintain repository hygiene and ensure clean code integration, all agents mus
 ### B. CMake Source Registration
 *   When adding any new `.cpp` file to `core/src/`, you **MUST** immediately register it in [core/CMakeLists.txt](file:///home/ryan/Documents/Lyra/core/CMakeLists.txt) under the `add_library(lyra_core ...)` target. Failure to do so will result in linker errors (`undefined symbols`) during test execution.
 
-### C. Atomic Commit & Commit Style
+### C. C++ Code Formatting
+*   Run `clang-format` (auto format) on edited C++ source files after completing edits.
+*   You can run it directly on the host if `clang-format` is installed, or execute it via the Nix shell wrapper:
+    ```bash
+    nix-shell core/shell.nix --run "clang-format -i <file>"
+    ```
+
+### D. Atomic Commit & Commit Style
 *   **Atomic Commits:** Break down tasks into small, logical increments. Pause and ask the user for review and commit after each logical unit is complete.
 *   **Commit Message Format:** Use the standard semantic commit style: `type(scope): description` (e.g., `feat(core): implement savepoint transaction model`).
 *   **Approval:** Always propose the draft commit message to the user and wait for explicit approval before proceeding.
 
-### D. Self-Correction & Subagent Review
+### E. Self-Correction & Subagent Review
 *   Perform a security review (checking SQLite query injection, resource cleanup, thread safety).
 *   Invoke a subagent (e.g., `self` or `codebase_investigator`) to verify modifications against architectural constraints before presenting the final work.
 
