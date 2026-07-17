@@ -53,6 +53,7 @@ class Router {
     json handleUpdateTrack(const json &p);
     json handleGetTrack(const json &p);
     json handleListTracks(const json &p);
+    json handleImportTrack(const json &p);
 
     json handleCreateAlbum(const json &p);
     json handleUpdateAlbum(const json &p);

@@ -26,6 +26,7 @@
 #include "services/repositories/sqlite/sqlite_playlist_repository.h"
 #include "services/repositories/sqlite/sqlite_track_repository.h"
 #include "services/repositories/sqlite/sqlite_work_repository.h"
+#include "utils/audio_helper.h"
 #include "utils/json_helper.h"
 #include "utils/json_validator.h"
 #include "utils/make_error.h"
@@ -75,6 +76,7 @@ void Router::init_handlers() {
     m_handlers["UpdateTrack"] = [this](const json &p) { return handleUpdateTrack(p); };
     m_handlers["GetTrack"] = [this](const json &p) { return handleGetTrack(p); };
     m_handlers["ListTracks"] = [this](const json &p) { return handleListTracks(p); };
+    m_handlers["ImportTrack"] = [this](const json &p) { return handleImportTrack(p); };
 
     // Album
     m_handlers["CreateAlbum"] = [this](const json &p) { return handleCreateAlbum(p); };
@@ -207,6 +209,29 @@ tl::expected<std::string, json> resolveFileHash(
     }
 
     return tl::unexpected(ApiResponse::error({ErrorType::MissingParameter, "Must provide track_id, pcm_hash, or file_hash"}));
+}
+
+template <typename GetFn, typename CreateFn>
+tl::expected<std::string, json> get_or_create_entity(
+    const std::string &key,
+    const std::string &entity_type, // For error log
+    GetFn &&get_fn,
+    CreateFn &&create_fn) {
+    auto get_res = get_fn(key);
+    if (!get_res) {
+        return tl::unexpected(ApiResponse::error({ErrorType::DatabaseError,
+                                                  "Database error retrieving " + entity_type + ": " + get_res.error()}));
+    }
+    if (!get_res.value().empty()) {
+        return get_res.value()[0].id;
+    }
+
+    auto create_res = create_fn(key);
+    if (!create_res) {
+        return tl::unexpected(ApiResponse::error({ErrorType::DatabaseError,
+                                                  "Failed to create " + entity_type + ": " + create_res.error()}));
+    }
+    return *create_res;
 }
 
 } // namespace
@@ -354,6 +379,185 @@ json Router::handleListTracks(const json &params) {
         return ApiResponse::success(res.value());
     }
     return ApiResponse::error({ErrorType::DatabaseError, res.error()});
+}
+
+json Router::handleImportTrack(const json &params) {
+    auto err = JsonValidator::validate(params, {{"source_path", Type::String, true}});
+    if (err) return *err;
+
+    std::string source_path = params["source_path"].get<std::string>();
+
+    // 1. Extract metadata tags first
+    auto metadata_res = utils::AudioHelper::extract_metadata(source_path);
+    if (!metadata_res) {
+        return ApiResponse::error({ErrorType::InvalidValue, "Failed to extract metadata: " + metadata_res.error()});
+    }
+    const auto &tags = metadata_res.value();
+
+    // 2. Begin transaction
+    auto tx = m_db_context->begin_transaction();
+
+    // 3. Ingest asset
+    auto ingest_res = m_asset_controller->ingest(source_path);
+    if (!ingest_res) {
+        return ApiResponse::error({ErrorType::InvalidValue, "Asset ingestion failed: " + ingest_res.error()});
+    }
+    const auto &asset = ingest_res.value().first;
+    const auto &audio_json = ingest_res.value().second;
+    std::string pcm_hash = audio_json["pcm_hash"].get<std::string>();
+    double duration_sec = audio_json["duration"].get<double>();
+
+    // 4. Extract metadata fields
+    std::string title;
+    if (tags.title && !tags.title->empty()) {
+        title = *tags.title;
+    } else {
+        title = std::filesystem::path(source_path).stem().string();
+    }
+
+    // Artist deduplication & creation
+    std::string artist_id;
+    if (tags.artist && !tags.artist->empty()) {
+        auto artist_name = *tags.artist;
+        auto artist_res = get_or_create_entity(
+            artist_name,
+            "artist",
+            [&](const std::string &name) { return m_artist_repo->get_by_name(name); },
+            [&](const std::string &name) -> tl::expected<std::string, std::string> {
+                Artist artist;
+                artist.name = name;
+                auto res = m_artist_controller->create(artist);
+                if (!res) return tl::unexpected(res.error());
+                return artist.id;
+            });
+        if (!artist_res) return artist_res.error();
+        artist_id = artist_res.value();
+    }
+
+    // Album deduplication & creation
+    std::string album_id;
+    if (tags.album && !tags.album->empty()) {
+        auto album_title = *tags.album;
+        auto album_res = get_or_create_entity(
+            album_title,
+            "album",
+            [&](const std::string &title) { return m_album_repo->get_by_title(title); },
+            [&](const std::string &title) -> tl::expected<std::string, std::string> {
+                Album album;
+                album.title = title;
+                auto res = m_album_controller->create(album);
+                if (!res) return tl::unexpected(res.error());
+                return album.id;
+            });
+        if (!album_res) return album_res.error();
+        album_id = album_res.value();
+    }
+
+    // Track creation
+    std::optional<uint16_t> recording_year = std::nullopt;
+    std::optional<uint8_t> recording_month = std::nullopt;
+    std::optional<uint8_t> recording_day = std::nullopt;
+    if (tags.date && !tags.date->empty()) {
+        const auto &date_str = *tags.date;
+        try {
+            if (date_str.length() >= 4) {
+                bool all_digits = true;
+                for (int i = 0; i < 4; ++i) {
+                    if (!std::isdigit(date_str[i])) {
+                        all_digits = false;
+                        break;
+                    }
+                }
+                if (all_digits) {
+                    recording_year = static_cast<uint16_t>(std::stoi(date_str.substr(0, 4)));
+                }
+            }
+        } catch (...) {
+            // ignore
+        }
+        try {
+            if (date_str.length() >= 10 && date_str[4] == '-' && date_str[7] == '-') {
+                if (std::isdigit(date_str[5]) && std::isdigit(date_str[6])) {
+                    recording_month = static_cast<uint8_t>(std::stoi(date_str.substr(5, 2)));
+                }
+                if (std::isdigit(date_str[8]) && std::isdigit(date_str[9])) {
+                    recording_day = static_cast<uint8_t>(std::stoi(date_str.substr(8, 2)));
+                }
+            }
+        } catch (...) {
+            // ignore
+        }
+    }
+
+    Track track;
+    track.pcm_hash = pcm_hash;
+    track.title = title;
+    track.recording_year = recording_year;
+    track.recording_month = recording_month;
+    track.recording_day = recording_day;
+    track.duration = static_cast<uint32_t>(duration_sec * 1000.0);
+
+    auto create_track_res = m_track_controller->create(track);
+    if (!create_track_res) {
+        return ApiResponse::error({ErrorType::DatabaseError, "Failed to create track: " + create_track_res.error()});
+    }
+
+    // Link Artist
+    if (!artist_id.empty()) {
+        TrackArtistParams artist_params;
+        artist_params.track_id = track.id;
+        artist_params.artist_id = artist_id;
+        artist_params.role = ArtistRole::Main;
+        artist_params.position = 1;
+        auto link_artist_res = m_track_repo->add_artist(artist_params);
+        if (!link_artist_res) {
+            return ApiResponse::error({ErrorType::DatabaseError, "Failed to link artist to track: " + link_artist_res.error()});
+        }
+    }
+
+    // Link Album
+    if (!album_id.empty()) {
+        std::optional<int> position = std::nullopt;
+        if (tags.track && !tags.track->empty()) {
+            const auto &track_str = *tags.track;
+            std::string pos_str;
+            for (char c : track_str) {
+                if (std::isdigit(c)) {
+                    pos_str += c;
+                } else {
+                    break;
+                }
+            }
+            if (!pos_str.empty()) {
+                try {
+                    position = std::stoi(pos_str);
+                } catch (...) {
+                    // ignore
+                }
+            }
+        }
+
+        TrackAlbumParams album_params;
+        album_params.track_id = track.id;
+        album_params.album_id = album_id;
+        album_params.position = position;
+        auto link_album_res = m_track_repo->add_album(album_params);
+        if (!link_album_res) {
+            return ApiResponse::error({ErrorType::DatabaseError, "Failed to link album to track: " + link_album_res.error()});
+        }
+    }
+
+    // Commit transaction
+    tx->commit();
+
+    json response_data;
+    response_data["track_id"] = track.id;
+    response_data["pcm_hash"] = track.pcm_hash;
+    response_data["title"] = track.title.value_or("");
+    if (!artist_id.empty()) response_data["artist_id"] = artist_id;
+    if (!album_id.empty()) response_data["album_id"] = album_id;
+
+    return ApiResponse::success(response_data);
 }
 
 // --- Album Handlers ---

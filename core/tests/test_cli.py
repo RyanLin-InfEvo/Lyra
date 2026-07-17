@@ -153,4 +153,23 @@ class TestLyraCLI(unittest.TestCase):
         self.assertEqual(data["data"]["pcm_hash"], "debussy_pcm_2")
         self.assertEqual(data["data"]["title"], "La Mer 2")
 
+    def test_cli_track_import(self):
+        # Create a dummy WAV file
+        import wave
+        import struct
+        wav_path = os.path.join(self.test_db_dir, "cli_import_test.wav")
+        with wave.open(wav_path, 'wb') as wav_file:
+            wav_file.setnchannels(1)
+            wav_file.setsampwidth(2)
+            wav_file.setframerate(44100)
+            data = struct.pack('<h', 0)
+            wav_file.writeframes(data)
+            
+        res = self.run_cli(["track", "import", wav_path])
+        self.assertEqual(res.returncode, 0)
+        data = json.loads(res.stdout)
+        self.assertEqual(data["code"], 200)
+        self.assertEqual(data["data"]["title"], "cli_import_test")
+
+
 

@@ -2,15 +2,15 @@
 //
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+#include <cctype>
+#include <cstdlib>
 #include <iostream>
-#include <string>
-#include <vector>
+#include <nlohmann/json.hpp>
 #include <optional>
 #include <sstream>
-#include <cstdlib>
-#include <cctype>
+#include <string>
 #include <unistd.h>
-#include <nlohmann/json.hpp>
+#include <vector>
 
 #include "lyra_c_api.h"
 
@@ -18,32 +18,32 @@ using json = nlohmann::json;
 
 // Function declarations
 void print_help();
-std::vector<std::string> tokenize(const std::string& line);
-std::vector<std::string> get_flag_aliases(const std::string& flag);
-std::string get_opt(const std::vector<std::string>& args, const std::vector<std::string>& flags);
-void add_param(json& params, const std::vector<std::string>& args, const std::string& name, const std::vector<std::string>& flags, bool is_int = false);
-bool check_positional_id(const std::vector<std::string>& cmd_args, const std::string& cmd_name);
-std::optional<std::string> parse_args_to_json(const std::vector<std::string>& cmd_args);
-int run_dispatch(const std::string& req_str, bool pretty);
-std::string build_request(const std::string& command, const json& params);
+std::vector<std::string> tokenize(const std::string &line);
+std::vector<std::string> get_flag_aliases(const std::string &flag);
+std::string get_opt(const std::vector<std::string> &args, const std::vector<std::string> &flags);
+void add_param(json &params, const std::vector<std::string> &args, const std::string &name, const std::vector<std::string> &flags, bool is_int = false);
+bool check_positional_id(const std::vector<std::string> &cmd_args, const std::string &cmd_name);
+std::optional<std::string> parse_args_to_json(const std::vector<std::string> &cmd_args);
+int run_dispatch(const std::string &req_str, bool pretty);
+std::string build_request(const std::string &command, const json &params);
 
-int main(int argc, char* argv[]) {
+int main(int argc, char *argv[]) {
     std::vector<std::string> args(argv + 1, argv + argc);
-    
+
     // Parse global options
     std::string db_dir = ".";
-    if (const char* env_db = std::getenv("LYRA_DB_DIR")) {
+    if (const char *env_db = std::getenv("LYRA_DB_DIR")) {
         db_dir = env_db;
     }
-    
+
     bool pretty = false;
     bool force_interactive = false;
-    
+
     std::vector<std::string> cmd_args;
     for (size_t i = 0; i < args.size(); ++i) {
         if (args[i] == "-d" || args[i] == "--db-dir") {
             if (i + 1 < args.size()) {
-                db_dir = args[i+1];
+                db_dir = args[i + 1];
                 i++;
             } else {
                 std::cerr << "Error: Missing value for " << args[i] << "\n";
@@ -61,7 +61,7 @@ int main(int argc, char* argv[]) {
             break;
         }
     }
-    
+
     // Default to interactive mode if no command is specified and stdin/stdout are terminals
     if (cmd_args.empty()) {
         if (force_interactive || (isatty(STDIN_FILENO) && isatty(STDOUT_FILENO))) {
@@ -71,20 +71,20 @@ int main(int argc, char* argv[]) {
             return 1;
         }
     }
-    
+
     // Initialize Database
     int init_res = lyra_init(db_dir.c_str());
     if (init_res != 0) {
         std::cerr << "Error: Failed to initialize database in directory: " << db_dir << "\n";
         return 1;
     }
-    
+
     // Handle Interactive Mode
     if (cmd_args[0] == "interactive") {
         std::cout << "❄️ Lyra CLI Interactive REPL\n";
         std::cout << "Type a command (e.g., 'artist create --name \"Artist Name\"') or a raw JSON request.\n";
         std::cout << "Type 'exit' or 'quit' to exit.\n\n";
-        
+
         std::string line;
         while (true) {
             std::cout << "lyra> ";
@@ -92,7 +92,7 @@ int main(int argc, char* argv[]) {
             if (!std::getline(std::cin, line)) {
                 break;
             }
-            
+
             size_t first = line.find_first_not_of(" \t\r\n");
             if (first == std::string::npos) {
                 continue;
@@ -101,13 +101,13 @@ int main(int argc, char* argv[]) {
             if (line == "exit" || line == "quit") {
                 break;
             }
-            
+
             if (line[0] == '{') {
                 run_dispatch(line, pretty);
             } else {
                 std::vector<std::string> tokens = tokenize(line);
                 if (tokens.empty()) continue;
-                
+
                 auto req_opt = parse_args_to_json(tokens);
                 if (req_opt) {
                     run_dispatch(*req_opt, pretty);
@@ -116,7 +116,7 @@ int main(int argc, char* argv[]) {
         }
         return 0;
     }
-    
+
     // Handle One-shot Command Execution
     if (cmd_args[0] == "dispatch") {
         std::string json_payload = "";
@@ -130,13 +130,13 @@ int main(int argc, char* argv[]) {
         }
         return run_dispatch(json_payload, pretty);
     }
-    
+
     // Parse native subcommands
     auto req_opt = parse_args_to_json(cmd_args);
     if (!req_opt) {
         return 1;
     }
-    
+
     return run_dispatch(*req_opt, pretty);
 }
 
@@ -156,6 +156,7 @@ void print_help() {
               << "  track get <id>\n"
               << "  track get-path <id>     Get physical file path of a track\n"
               << "  track list [--offset <offset>] [--limit <limit>] [--search <query>]\n"
+              << "  track import <filepath> Import a track from a local file, parsing tags\n"
               << "  album create --title <title> [options]\n"
               << "  album update <id> [options]\n"
               << "  album get <id>\n"
@@ -180,12 +181,12 @@ void print_help() {
               << "  interactive               Start interactive REPL session\n";
 }
 
-std::vector<std::string> tokenize(const std::string& line) {
+std::vector<std::string> tokenize(const std::string &line) {
     std::vector<std::string> tokens;
     std::string current;
     bool in_quotes = false;
     char quote_char = 0;
-    
+
     for (size_t i = 0; i < line.size(); ++i) {
         char c = line[i];
         if (in_quotes) {
@@ -214,14 +215,14 @@ std::vector<std::string> tokenize(const std::string& line) {
     return tokens;
 }
 
-std::vector<std::string> get_flag_aliases(const std::string& flag) {
+std::vector<std::string> get_flag_aliases(const std::string &flag) {
     std::vector<std::string> aliases;
     if (flag.empty()) return aliases;
     aliases.push_back(flag);
     if (flag.starts_with("--")) {
         std::string alt_body = flag.substr(2);
         bool changed = false;
-        for (char& c : alt_body) {
+        for (char &c : alt_body) {
             if (c == '-') {
                 c = '_';
                 changed = true;
@@ -237,16 +238,16 @@ std::vector<std::string> get_flag_aliases(const std::string& flag) {
     return aliases;
 }
 
-std::string get_opt(const std::vector<std::string>& args, const std::vector<std::string>& flags) {
+std::string get_opt(const std::vector<std::string> &args, const std::vector<std::string> &flags) {
     std::vector<std::string> all_aliases;
-    for (const auto& f : flags) {
+    for (const auto &f : flags) {
         auto aliases = get_flag_aliases(f);
         all_aliases.insert(all_aliases.end(), aliases.begin(), aliases.end());
     }
-    
+
     for (size_t i = 0; i < args.size(); ++i) {
         bool match = false;
-        for (const auto& f : all_aliases) {
+        for (const auto &f : all_aliases) {
             if (args[i] == f) {
                 match = true;
                 break;
@@ -254,7 +255,7 @@ std::string get_opt(const std::vector<std::string>& args, const std::vector<std:
         }
         if (match) {
             if (i + 1 < args.size()) {
-                std::string next_val = args[i+1];
+                std::string next_val = args[i + 1];
                 if (next_val.starts_with("-")) {
                     bool is_negative_int = true;
                     if (next_val.size() > 1) {
@@ -278,7 +279,7 @@ std::string get_opt(const std::vector<std::string>& args, const std::vector<std:
     return "";
 }
 
-void add_param(json& params, const std::vector<std::string>& args, const std::string& name, const std::vector<std::string>& flags, bool is_int) {
+void add_param(json &params, const std::vector<std::string> &args, const std::string &name, const std::vector<std::string> &flags, bool is_int) {
     std::string val = get_opt(args, flags);
     if (!val.empty()) {
         if (is_int) {
@@ -294,7 +295,7 @@ void add_param(json& params, const std::vector<std::string>& args, const std::st
     }
 }
 
-bool check_positional_id(const std::vector<std::string>& cmd_args, const std::string& cmd_name) {
+bool check_positional_id(const std::vector<std::string> &cmd_args, const std::string &cmd_name) {
     if (cmd_args.size() < 3) {
         std::cerr << "Error: " << cmd_name << " requires an <id> positional argument\n";
         return false;
@@ -307,18 +308,18 @@ bool check_positional_id(const std::vector<std::string>& cmd_args, const std::st
     return true;
 }
 
-std::string build_request(const std::string& command, const json& params) {
+std::string build_request(const std::string &command, const json &params) {
     json request;
     request["command"] = command;
     request["params"] = params;
     return request.dump();
 }
 
-std::optional<std::string> parse_args_to_json(const std::vector<std::string>& cmd_args) {
+std::optional<std::string> parse_args_to_json(const std::vector<std::string> &cmd_args) {
     if (cmd_args.empty()) return std::nullopt;
-    
+
     std::string cmd = cmd_args[0];
-    
+
     if (cmd == "artist") {
         if (cmd_args.size() < 2) {
             std::cerr << "Error: artist command requires a subcommand (create, update, get, list)\n";
@@ -327,7 +328,7 @@ std::optional<std::string> parse_args_to_json(const std::vector<std::string>& cm
         std::string sub = cmd_args[1];
         json params = json::object();
         std::string action = "";
-        
+
         if (sub == "create") {
             action = "CreateArtist";
             add_param(params, cmd_args, "name", {"--name", "-n"});
@@ -357,7 +358,7 @@ std::optional<std::string> parse_args_to_json(const std::vector<std::string>& cm
         }
         return build_request(action, params);
     }
-    
+
     if (cmd == "track") {
         if (cmd_args.size() < 2) {
             std::cerr << "Error: track command requires a subcommand (create, update, get, list)\n";
@@ -366,7 +367,7 @@ std::optional<std::string> parse_args_to_json(const std::vector<std::string>& cm
         std::string sub = cmd_args[1];
         json params = json::object();
         std::string action = "";
-        
+
         if (sub == "create") {
             action = "CreateTrack";
             // TODO: Once audio file upload or decoding is implemented, pcm_hash should be computed
@@ -411,13 +412,20 @@ std::optional<std::string> parse_args_to_json(const std::vector<std::string>& cm
             add_param(params, cmd_args, "offset", {"--offset"}, true);
             add_param(params, cmd_args, "limit", {"--limit"}, true);
             add_param(params, cmd_args, "search", {"--search", "-s"});
+        } else if (sub == "import") {
+            action = "ImportTrack";
+            if (cmd_args.size() < 3) {
+                std::cerr << "Error: track import requires a source file path\n";
+                return std::nullopt;
+            }
+            params["source_path"] = cmd_args[2];
         } else {
             std::cerr << "Error: Unknown track subcommand: " << sub << "\n";
             return std::nullopt;
         }
         return build_request(action, params);
     }
-    
+
     if (cmd == "album") {
         if (cmd_args.size() < 2) {
             std::cerr << "Error: album command requires a subcommand (create, update, get, list)\n";
@@ -426,7 +434,7 @@ std::optional<std::string> parse_args_to_json(const std::vector<std::string>& cm
         std::string sub = cmd_args[1];
         json params = json::object();
         std::string action = "";
-        
+
         if (sub == "create") {
             action = "CreateAlbum";
             add_param(params, cmd_args, "title", {"--title", "--name", "-t", "-n"});
@@ -456,7 +464,7 @@ std::optional<std::string> parse_args_to_json(const std::vector<std::string>& cm
         }
         return build_request(action, params);
     }
-    
+
     if (cmd == "work") {
         if (cmd_args.size() < 2) {
             std::cerr << "Error: work command requires a subcommand (create, update, get, list)\n";
@@ -465,7 +473,7 @@ std::optional<std::string> parse_args_to_json(const std::vector<std::string>& cm
         std::string sub = cmd_args[1];
         json params = json::object();
         std::string action = "";
-        
+
         if (sub == "create") {
             action = "CreateWork";
             add_param(params, cmd_args, "title", {"--title", "--name", "-t", "-n"});
@@ -499,7 +507,7 @@ std::optional<std::string> parse_args_to_json(const std::vector<std::string>& cm
         }
         return build_request(action, params);
     }
-    
+
     if (cmd == "playlist") {
         if (cmd_args.size() < 2) {
             std::cerr << "Error: playlist command requires a subcommand (create, update, get, list, add-track, remove-track, get-tracks)\n";
@@ -508,7 +516,7 @@ std::optional<std::string> parse_args_to_json(const std::vector<std::string>& cm
         std::string sub = cmd_args[1];
         json params = json::object();
         std::string action = "";
-        
+
         if (sub == "create") {
             action = "CreatePlaylist";
             add_param(params, cmd_args, "title", {"--title", "--name", "-t", "-n"});
@@ -547,7 +555,7 @@ std::optional<std::string> parse_args_to_json(const std::vector<std::string>& cm
         }
         return build_request(action, params);
     }
-    
+
     if (cmd == "track-artist") {
         if (cmd_args.size() < 2) {
             std::cerr << "Error: track-artist command requires a subcommand (add, remove, update)\n";
@@ -556,7 +564,7 @@ std::optional<std::string> parse_args_to_json(const std::vector<std::string>& cm
         std::string sub = cmd_args[1];
         json params = json::object();
         std::string action = "";
-        
+
         if (sub == "add") {
             action = "AddTrackArtist";
             add_param(params, cmd_args, "track_id", {"--track-id"});
@@ -579,7 +587,7 @@ std::optional<std::string> parse_args_to_json(const std::vector<std::string>& cm
         }
         return build_request(action, params);
     }
-    
+
     if (cmd == "asset") {
         if (cmd_args.size() < 2) {
             std::cerr << "Error: asset command requires a subcommand (ingest)\n";
@@ -588,7 +596,7 @@ std::optional<std::string> parse_args_to_json(const std::vector<std::string>& cm
         std::string sub = cmd_args[1];
         json params = json::object();
         std::string action = "";
-        
+
         if (sub == "ingest") {
             action = "IngestAsset";
             if (cmd_args.size() < 3) {
@@ -602,21 +610,21 @@ std::optional<std::string> parse_args_to_json(const std::vector<std::string>& cm
         }
         return build_request(action, params);
     }
-    
+
     std::cerr << "Error: Unknown command: " << cmd << "\n";
     return std::nullopt;
 }
 
-int run_dispatch(const std::string& req_str, bool pretty) {
-    char* res_ptr = lyra_dispatch(req_str.c_str());
+int run_dispatch(const std::string &req_str, bool pretty) {
+    char *res_ptr = lyra_dispatch(req_str.c_str());
     if (!res_ptr) {
         std::cerr << "Error: C++ core returned a null pointer.\n";
         return 1;
     }
-    
+
     std::string res_str(res_ptr);
     lyra_free_string(res_ptr);
-    
+
     int exit_code = 0;
     try {
         auto j = json::parse(res_str);
