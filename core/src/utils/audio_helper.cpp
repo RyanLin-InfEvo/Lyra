@@ -132,6 +132,7 @@ tl::expected<std::string, std::string> AudioHelper::calculate_pcm_hash(const std
     return sha.finalize();
 }
 
+// extract metadata from media file using ffprobe
 tl::expected<MediaMetadata, std::string> AudioHelper::extract_metadata(const std::string &filepath) {
     std::string json_str;
     auto callback = [&json_str](const uint8_t *data, size_t size) {
@@ -146,15 +147,13 @@ tl::expected<MediaMetadata, std::string> AudioHelper::extract_metadata(const std
         "-show_entries", "stream_tags",
         "-of", "json", filepath};
 
-    // Limit to 2MB as per instructions
+    // Limit output size to 2MB
     auto result = ProcessRunner::run(args, callback, 2 * 1024 * 1024);
-    if (!result) {
+    if (!result)
         return tl::unexpected("Process execution failed: " + result.error());
-    }
 
-    if (result.value() != 0) {
+    if (result.value() != 0)
         return tl::unexpected("ffprobe exited with code: " + std::to_string(result.value()));
-    }
 
     nlohmann::json json_data;
     try {
