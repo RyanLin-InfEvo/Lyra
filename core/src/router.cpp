@@ -315,8 +315,8 @@ json Router::handleCreateTrack(const json &params) {
                                                 {"title", Type::String, false},
                                                 {"work_id", Type::String, false, StringFormat::UUID},
                                                 {"recording_year", Type::Year, false},
-                                                {"recording_month", Type::Integer, false},
-                                                {"recording_day", Type::Integer, false},
+                                                {"recording_month", Type::Month, false},
+                                                {"recording_day", Type::Day, false},
                                                 {"recording_location", Type::String, false},
                                                 {"duration", Type::Integer, false},
                                                 {"isrc", Type::String, false},
@@ -565,8 +565,8 @@ json Router::handleImportTrack(const json &params) {
 json Router::handleCreateAlbum(const json &params) {
     auto err = JsonValidator::validate(params, {{"title", Type::String, true},
                                                 {"release_year", Type::Year, false},
-                                                {"release_month", Type::Integer, false},
-                                                {"release_day", Type::Integer, false}});
+                                                {"release_month", Type::Month, false},
+                                                {"release_day", Type::Day, false}});
     if (err) return *err;
 
     Album album = params.get<Album>();
@@ -597,8 +597,8 @@ json Router::handleUpdateAlbum(const json &params) {
     auto err = JsonValidator::validate(params, {{"id", Type::String, true, StringFormat::UUID},
                                                 {"title", Type::String, false},
                                                 {"release_year", Type::Year, false},
-                                                {"release_month", Type::Integer, false},
-                                                {"release_day", Type::Integer, false}});
+                                                {"release_month", Type::Month, false},
+                                                {"release_day", Type::Day, false}});
     if (err) return *err;
 
     AlbumUpdate update_data = params.get<AlbumUpdate>();

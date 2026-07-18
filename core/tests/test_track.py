@@ -245,3 +245,39 @@ class TesttrackController(BaseLyraTestCase):
         self.assertResponseCode(res, 404)
         self.assertEqual(res["error"]["type"], "RelationNotFound")
         self.assertEqual(res["error"]["message"], "Relation between Track and Artist not found.")
+
+    def test_track_create_invalid_date(self):
+        """Test track creation with invalid recording month or day (OutOfRange)"""
+        # Invalid month 13
+        res = self.dispatch("CreateTrack", {
+            "pcm_hash": "track_invalid_month",
+            "title": "Invalid Month Track",
+            "recording_month": 13
+        })
+        self.assertValidationError(res, expected_type="OutOfRange")
+        self.assertIn("out of reasonable month range", res["error"]["message"])
+
+        # Invalid day 32
+        res2 = self.dispatch("CreateTrack", {
+            "pcm_hash": "track_invalid_day",
+            "title": "Invalid Day Track",
+            "recording_day": 32
+        })
+        self.assertValidationError(res2, expected_type="OutOfRange")
+        self.assertIn("out of reasonable day range", res2["error"]["message"])
+
+        # Negative month -1
+        res3 = self.dispatch("CreateTrack", {
+            "pcm_hash": "track_negative_month",
+            "title": "Negative Month Track",
+            "recording_month": -1
+        })
+        self.assertValidationError(res3, expected_type="OutOfRange")
+
+        # Invalid type for day (String)
+        res4 = self.dispatch("CreateTrack", {
+            "pcm_hash": "track_string_day",
+            "title": "String Day Track",
+            "recording_day": "15"
+        })
+        self.assertValidationError(res4, expected_type="InvalidValue")

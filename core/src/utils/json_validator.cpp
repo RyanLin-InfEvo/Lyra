@@ -60,6 +60,8 @@ std::optional<json> JsonValidator::validate(const json &params,
                     break;
                 case JsonFieldType::Integer:
                 case JsonFieldType::Year:
+                case JsonFieldType::Month:
+                case JsonFieldType::Day:
                     type_valid = params[rule.key].is_number_integer();
                     break;
                 case JsonFieldType::Boolean:
@@ -112,6 +114,24 @@ std::optional<json> JsonValidator::validate(const json &params,
                 if (year_val < 1 || year_val > 3000) {
                     return ApiResponse::error({ErrorType::OutOfRange,
                                                "Value of key '" + current_path + "' is out of reasonable year range (1-3000)."});
+                }
+            }
+
+            // Special check for "Month"
+            if (rule.expected_type == JsonFieldType::Month) {
+                int64_t month_val = params[rule.key].get<int64_t>();
+                if (month_val < 1 || month_val > 12) {
+                    return ApiResponse::error({ErrorType::OutOfRange,
+                                               "Value of key '" + current_path + "' is out of reasonable month range (1-12)."});
+                }
+            }
+
+            // Special check for "Day"
+            if (rule.expected_type == JsonFieldType::Day) {
+                int64_t day_val = params[rule.key].get<int64_t>();
+                if (day_val < 1 || day_val > 31) {
+                    return ApiResponse::error({ErrorType::OutOfRange,
+                                               "Value of key '" + current_path + "' is out of reasonable day range (1-31)."});
                 }
             }
 

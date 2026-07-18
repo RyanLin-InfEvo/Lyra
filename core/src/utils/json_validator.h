@@ -19,6 +19,8 @@ enum class JsonFieldType { String,
                            Number,
                            Integer,
                            Year,
+                           Month,
+                           Day,
                            Boolean,
                            Array,
                            Object };

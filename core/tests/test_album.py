@@ -91,3 +91,39 @@ class TestAlbumController(BaseLyraTestCase):
         res_update = self.dispatch("UpdateAlbum", {"id": unexist_id, "title": updated_title})
         self.assertResponseCode(res_update, 500)
         self.assertTrue("error" in res_update)
+
+    def test_album_create_invalid_date(self):
+        """Test album creation with invalid month or day (OutOfRange)"""
+        # Invalid month 13
+        res = self.dispatch("CreateAlbum", {
+            "id": str(uuid.uuid4()),
+            "title": "Invalid Month Album",
+            "release_month": 13
+        })
+        self.assertValidationError(res, expected_type="OutOfRange")
+        self.assertIn("out of reasonable month range", res["error"]["message"])
+
+        # Invalid day 32
+        res2 = self.dispatch("CreateAlbum", {
+            "id": str(uuid.uuid4()),
+            "title": "Invalid Day Album",
+            "release_day": 32
+        })
+        self.assertValidationError(res2, expected_type="OutOfRange")
+        self.assertIn("out of reasonable day range", res2["error"]["message"])
+
+        # Negative month -1
+        res3 = self.dispatch("CreateAlbum", {
+            "id": str(uuid.uuid4()),
+            "title": "Negative Month Album",
+            "release_month": -1
+        })
+        self.assertValidationError(res3, expected_type="OutOfRange")
+
+        # Invalid type for day (String)
+        res4 = self.dispatch("CreateAlbum", {
+            "id": str(uuid.uuid4()),
+            "title": "String Day Album",
+            "release_day": "15"
+        })
+        self.assertValidationError(res4, expected_type="InvalidValue")
