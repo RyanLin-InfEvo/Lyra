@@ -82,6 +82,10 @@ if(BUILD_TESTING)
     target_link_libraries(sqlite_helper_test PRIVATE lyra_core nlohmann_json::nlohmann_json fmt::fmt)
     target_include_directories(sqlite_helper_test PRIVATE include src)
 
+    add_executable(json_validator_test tests/json_validator_test.cpp)
+    target_link_libraries(json_validator_test PRIVATE lyra_core nlohmann_json::nlohmann_json fmt::fmt)
+    target_include_directories(json_validator_test PRIVATE include src)
+
     add_executable(process_runner_test tests/process_runner_test.cpp)
     target_link_libraries(process_runner_test PRIVATE lyra_core nlohmann_json::nlohmann_json fmt::fmt)
     target_include_directories(process_runner_test PRIVATE include src)
