@@ -78,6 +78,10 @@ if(BUILD_TESTING)
     target_link_libraries(sha256_test PRIVATE lyra_core nlohmann_json::nlohmann_json fmt::fmt)
     target_include_directories(sha256_test PRIVATE include src)
 
+    add_executable(sqlite_helper_test tests/sqlite_helper_test.cpp)
+    target_link_libraries(sqlite_helper_test PRIVATE lyra_core nlohmann_json::nlohmann_json fmt::fmt)
+    target_include_directories(sqlite_helper_test PRIVATE include src)
+
     add_executable(process_runner_test tests/process_runner_test.cpp)
     target_link_libraries(process_runner_test PRIVATE lyra_core nlohmann_json::nlohmann_json fmt::fmt)
     target_include_directories(process_runner_test PRIVATE include src)
