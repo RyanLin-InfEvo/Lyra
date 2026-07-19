@@ -86,6 +86,14 @@ if(BUILD_TESTING)
     target_link_libraries(json_validator_test PRIVATE lyra_core nlohmann_json::nlohmann_json fmt::fmt)
     target_include_directories(json_validator_test PRIVATE include src)
 
+    add_executable(uuid_generator_test tests/uuid_generator_test.cpp)
+    target_link_libraries(uuid_generator_test PRIVATE lyra_core nlohmann_json::nlohmann_json fmt::fmt)
+    target_include_directories(uuid_generator_test PRIVATE include src)
+
+    add_executable(make_error_test tests/make_error_test.cpp)
+    target_link_libraries(make_error_test PRIVATE lyra_core nlohmann_json::nlohmann_json fmt::fmt)
+    target_include_directories(make_error_test PRIVATE include src)
+
     add_executable(process_runner_test tests/process_runner_test.cpp)
     target_link_libraries(process_runner_test PRIVATE lyra_core nlohmann_json::nlohmann_json fmt::fmt)
     target_include_directories(process_runner_test PRIVATE include src)
