@@ -176,6 +176,147 @@ bool test_playlist_get_by_title(SqliteDatabaseContext &ctx) {
     return true;
 }
 
+bool test_track_album_relationships(SqliteDatabaseContext &ctx) {
+    std::cout << "Running test_track_album_relationships..." << std::endl;
+    SqliteTrackRepository track_repo(ctx);
+    SqliteAlbumRepository album_repo(ctx);
+
+    // 1. Prepare data (Insert Track & Album)
+    Track track;
+    track.id = "track-id-rel-1";
+    track.title = "Relationship Song";
+    track.pcm_hash = "pcm-hash-rel-1";
+    assert(track_repo.insert(track).has_value());
+
+    Album album;
+    album.id = "album-id-rel-1";
+    album.title = "Relationship Album";
+    assert(album_repo.insert(album).has_value());
+
+    // 2. Test add_album success
+    TrackAlbumParams params;
+    params.track_id = track.id;
+    params.album_id = album.id;
+    params.position = 5;
+
+    auto add_res = track_repo.add_album(params);
+    if (!add_res.has_value()) {
+        std::cerr << "add_album failed unexpectedly: " << add_res.error() << std::endl;
+        return false;
+    }
+
+    // Verify database record
+    {
+        auto &db = ctx.get_db();
+        SQLite::Statement check_query(db, "SELECT position FROM Track_Album WHERE track_id = ? AND album_id = ?");
+        check_query.bind(1, track.id);
+        check_query.bind(2, album.id);
+        if (!check_query.executeStep()) {
+            std::cerr << "Track_Album relation record not found in db" << std::endl;
+            return false;
+        }
+        int pos = check_query.getColumn(0).getInt();
+        if (pos != 5) {
+            std::cerr << "Expected position 5, got " << pos << std::endl;
+            return false;
+        }
+    }
+
+    // 3. Test update_album success
+    params.position = 10;
+    auto update_res = track_repo.update_album(params);
+    if (!update_res.has_value()) {
+        std::cerr << "update_album failed unexpectedly: " << update_res.error() << std::endl;
+        return false;
+    }
+
+    // Verify updated position
+    {
+        auto &db = ctx.get_db();
+        SQLite::Statement check_query(db, "SELECT position FROM Track_Album WHERE track_id = ? AND album_id = ?");
+        check_query.bind(1, track.id);
+        check_query.bind(2, album.id);
+        if (!check_query.executeStep()) {
+            std::cerr << "Track_Album relation record not found in db after update" << std::endl;
+            return false;
+        }
+        int pos = check_query.getColumn(0).getInt();
+        if (pos != 10) {
+            std::cerr << "Expected updated position 10, got " << pos << std::endl;
+            return false;
+        }
+    }
+
+    // 4. Test remove_album success
+    auto remove_res = track_repo.remove_album(track.id, album.id);
+    if (!remove_res.has_value()) {
+        std::cerr << "remove_album failed unexpectedly: " << remove_res.error() << std::endl;
+        return false;
+    }
+
+    // Verify relationship is removed
+    {
+        auto &db = ctx.get_db();
+        SQLite::Statement check_query(db, "SELECT position FROM Track_Album WHERE track_id = ? AND album_id = ?");
+        check_query.bind(1, track.id);
+        check_query.bind(2, album.id);
+        if (check_query.executeStep()) {
+            std::cerr << "Track_Album relation record still exists in db after removal" << std::endl;
+            return false;
+        }
+    }
+
+    // 5. Test exceptions & boundary cases
+    // Case A: Target Track not found
+    {
+        TrackAlbumParams invalid_params;
+        invalid_params.track_id = "nonexistent-track";
+        invalid_params.album_id = album.id;
+        invalid_params.position = 1;
+        auto res = track_repo.add_album(invalid_params);
+        if (res.has_value()) {
+            std::cerr << "add_album succeeded unexpectedly for non-existent track" << std::endl;
+            return false;
+        }
+        if (res.error().find("Target Track not found.") == std::string::npos) {
+            std::cerr << "Expected error 'Target Track not found.', got: " << res.error() << std::endl;
+            return false;
+        }
+    }
+
+    // Case B: Target Album not found
+    {
+        TrackAlbumParams invalid_params;
+        invalid_params.track_id = track.id;
+        invalid_params.album_id = "nonexistent-album";
+        invalid_params.position = 1;
+        auto res = track_repo.add_album(invalid_params);
+        if (res.has_value()) {
+            std::cerr << "add_album succeeded unexpectedly for non-existent album" << std::endl;
+            return false;
+        }
+        if (res.error().find("Target Album not found.") == std::string::npos) {
+            std::cerr << "Expected error 'Target Album not found.', got: " << res.error() << std::endl;
+            return false;
+        }
+    }
+
+    // Case C: remove_album on non-existent relationship
+    {
+        auto res = track_repo.remove_album(track.id, album.id); // Already removed above
+        if (res.has_value()) {
+            std::cerr << "remove_album succeeded unexpectedly on non-existent relationship" << std::endl;
+            return false;
+        }
+        if (res.error().find("Relation not found or already removed.") == std::string::npos) {
+            std::cerr << "Expected error 'Relation not found or already removed.', got: " << res.error() << std::endl;
+            return false;
+        }
+    }
+
+    return true;
+}
+
 int main() {
     std::string db_path = "test_repo.db";
     std::filesystem::remove(db_path);
@@ -188,6 +329,7 @@ int main() {
         if (!test_track_get_by_title(ctx)) success = false;
         if (!test_work_get_by_title(ctx)) success = false;
         if (!test_playlist_get_by_title(ctx)) success = false;
+        if (!test_track_album_relationships(ctx)) success = false;
     } catch (const std::exception &e) {
         std::cerr << "Exception in repository tests: " << e.what() << std::endl;
         success = false;
