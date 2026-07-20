@@ -173,6 +173,58 @@ bool test_callback_exception_safety() {
     return true;
 }
 
+
+bool test_invalid_command() {
+    std::cout << "Running test_invalid_command..." << std::endl;
+    // Execute a command that doesn't exist
+    auto result = ProcessRunner::run({"/bin/nonexistent_command_xyz"}, nullptr);
+    // As the child process exits with 127 when execvp fails,
+    // the parent waitpid should read this exit code.
+    if (!result) {
+        std::cerr << "Got unexpected error from ProcessRunner instead of exit code 127: " << result.error() << std::endl;
+        return false;
+    }
+    if (result.value() != 127) {
+        std::cerr << "Expected exit code 127, got: " << result.value() << std::endl;
+        return false;
+    }
+    return true;
+}
+
+bool test_signal_termination() {
+    std::cout << "Running test_signal_termination..." << std::endl;
+
+    pid_t child_pid = -1;
+    auto callback = [&child_pid](const uint8_t *data, size_t size) {
+        std::string s(reinterpret_cast<const char *>(data), size);
+        try {
+            child_pid = std::stoi(s);
+        } catch (...) {
+            return;
+        }
+        if (child_pid > 0) {
+            // Send SIGKILL to the child process from the callback
+            ::kill(child_pid, SIGKILL);
+        }
+    };
+
+    // Execute a process that prints its own PID and then sleeps, waiting to be killed.
+    auto result = ProcessRunner::run({"/bin/sh", "-c", "echo $$; sleep 10"}, callback);
+
+    if (result) {
+        std::cerr << "Test failed: expected termination by signal, but command completed successfully with exit code: " << result.value() << std::endl;
+        return false;
+    }
+
+    if (result.error().find("terminated by signal") == std::string::npos) {
+        std::cerr << "Test failed: unexpected error message: " << result.error() << std::endl;
+        return false;
+    }
+
+    std::cout << "Got expected signal termination error: " << result.error() << std::endl;
+    return true;
+}
+
 int main() {
     // clang-format off
     if (!test_normal_execution()) return 1;
@@ -181,6 +233,8 @@ int main() {
     if (!test_output_limit_kill_hang()) return 1;
     if (!test_empty_arguments()) return 1;
     if (!test_callback_exception_safety()) return 1;
+    if (!test_invalid_command()) return 1;
+    if (!test_signal_termination()) return 1;
     // clang-format on
 
     std::cout << "ALL_TESTS_PASSED" << std::endl;
