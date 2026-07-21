@@ -4,9 +4,12 @@
  * SPDX-License-Identifier: AGPL-3.0-or-later
  */
 
+#include "../src/models/asset.h"
+#include "../src/models/audio.h"
 #include "../src/services/database_context.h"
 #include "../src/services/repositories/sqlite/sqlite_album_repository.h"
 #include "../src/services/repositories/sqlite/sqlite_artist_repository.h"
+#include "../src/services/repositories/sqlite/sqlite_asset_repository.h"
 #include "../src/services/repositories/sqlite/sqlite_playlist_repository.h"
 #include "../src/services/repositories/sqlite/sqlite_track_repository.h"
 #include "../src/services/repositories/sqlite/sqlite_work_repository.h"
@@ -317,6 +320,122 @@ bool test_track_album_relationships(SqliteDatabaseContext &ctx) {
     return true;
 }
 
+bool test_asset_repository_operations(SqliteDatabaseContext &ctx) {
+    std::cout << "Running test_asset_repository_operations..." << std::endl;
+    SqliteAssetRepository repo(ctx);
+
+    // 1. Prepare Audio and Asset data
+    Audio audio1;
+    audio1.pcm_hash = "pcm-hash-audio1";
+    audio1.bit_depth = 16;
+    audio1.sample_rate = 44100;
+    audio1.channels = 2;
+    audio1.duration = 180.5;
+
+    Asset asset1;
+    asset1.file_hash = "file-hash-asset1";
+    asset1.mime_type = "audio/mpeg";
+    asset1.asset_type = "source";
+    asset1.file_size = 5000000;
+
+    // 2. Test insert_asset_with_audio
+    auto insert_res = repo.insert_asset_with_audio(asset1, audio1);
+    if (!insert_res.has_value()) {
+        std::cerr << "insert_asset_with_audio failed: " << insert_res.error() << std::endl;
+        return false;
+    }
+
+    // Verify record in Asset
+    auto get_asset_res = repo.get(asset1.file_hash);
+    if (!get_asset_res.has_value()) {
+        std::cerr << "Failed to get inserted asset: " << get_asset_res.error() << std::endl;
+        return false;
+    }
+    if (get_asset_res.value().file_hash != asset1.file_hash || get_asset_res.value().file_size != asset1.file_size) {
+        std::cerr << "Inserted asset mismatch" << std::endl;
+        return false;
+    }
+
+    // 3. Audio maps to multiple Assets test
+    Asset asset2;
+    asset2.file_hash = "file-hash-asset2";
+    asset2.mime_type = "audio/ogg";
+    asset2.asset_type = "transcode";
+    asset2.file_size = 3000000;
+
+    auto insert_res2 = repo.insert_asset_with_audio(asset2, audio1); // associate with same audio1
+    if (!insert_res2.has_value()) {
+        std::cerr << "insert_asset_with_audio (asset2) failed: " << insert_res2.error() << std::endl;
+        return false;
+    }
+
+    // Call get_assets_by_audio to check if both assets are returned
+    auto assets_res = repo.get_assets_by_audio(audio1.pcm_hash);
+    if (!assets_res.has_value()) {
+        std::cerr << "get_assets_by_audio failed: " << assets_res.error() << std::endl;
+        return false;
+    }
+    if (assets_res.value().size() != 2) {
+        std::cerr << "Expected 2 assets, got " << assets_res.value().size() << std::endl;
+        return false;
+    }
+
+    // Check if both file_hashes are in the list
+    bool found_asset1 = false;
+    bool found_asset2 = false;
+    for (const auto &hash : assets_res.value()) {
+        if (hash == asset1.file_hash) found_asset1 = true;
+        if (hash == asset2.file_hash) found_asset2 = true;
+    }
+    if (!found_asset1 || !found_asset2) {
+        std::cerr << "One or both assets not found in get_assets_by_audio result" << std::endl;
+        return false;
+    }
+
+    // 4. Asset reverse query Audio test
+    auto audios_res = repo.get_audio_by_asset(asset1.file_hash);
+    if (!audios_res.has_value()) {
+        std::cerr << "get_audio_by_asset failed: " << audios_res.error() << std::endl;
+        return false;
+    }
+    if (audios_res.value().size() != 1 || audios_res.value()[0] != audio1.pcm_hash) {
+        std::cerr << "Expected 1 audio with pcm_hash 'pcm-hash-audio1', got mismatch" << std::endl;
+        return false;
+    }
+
+    // 5. Exception query test
+    // Non-existent pcm_hash -> should return empty list
+    auto empty_assets = repo.get_assets_by_audio("nonexistent-pcm");
+    if (!empty_assets.has_value()) {
+        std::cerr << "get_assets_by_audio for nonexistent pcm failed" << std::endl;
+        return false;
+    }
+    if (!empty_assets.value().empty()) {
+        std::cerr << "Expected empty assets list, got size: " << empty_assets.value().size() << std::endl;
+        return false;
+    }
+
+    // Non-existent file_hash -> should return empty list
+    auto empty_audios = repo.get_audio_by_asset("nonexistent-file");
+    if (!empty_audios.has_value()) {
+        std::cerr << "get_audio_by_asset for nonexistent file failed" << std::endl;
+        return false;
+    }
+    if (!empty_audios.value().empty()) {
+        std::cerr << "Expected empty audios list, got size: " << empty_audios.value().size() << std::endl;
+        return false;
+    }
+
+    // Get non-existent asset -> should return unexpected
+    auto nonexistent_asset = repo.get("nonexistent-file");
+    if (nonexistent_asset.has_value()) {
+        std::cerr << "Expected get for nonexistent asset to fail" << std::endl;
+        return false;
+    }
+
+    return true;
+}
+
 int main() {
     std::string db_path = "test_repo.db";
     std::filesystem::remove(db_path);
@@ -330,6 +449,7 @@ int main() {
         if (!test_work_get_by_title(ctx)) success = false;
         if (!test_playlist_get_by_title(ctx)) success = false;
         if (!test_track_album_relationships(ctx)) success = false;
+        if (!test_asset_repository_operations(ctx)) success = false;
     } catch (const std::exception &e) {
         std::cerr << "Exception in repository tests: " << e.what() << std::endl;
         success = false;
