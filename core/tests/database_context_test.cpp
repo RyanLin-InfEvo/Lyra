@@ -2,15 +2,97 @@
 //
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-#include <iostream>
-#include <string>
-#include <SQLiteCpp/SQLiteCpp.h>
 #include "../src/services/database_context.h"
 #include "../src/utils/uuid_generator.h"
+#include <SQLiteCpp/SQLiteCpp.h>
+#include <iostream>
+#include <string>
 
 using namespace lyra;
 
-int main(int argc, char* argv[]) {
+bool test_nested_savepoint_rollback_and_commit(const std::string &db_path) {
+    std::cout << "Running test_nested_savepoint_rollback_and_commit..." << std::endl;
+    SqliteDatabaseContext ctx(db_path);
+    auto &db = ctx.get_db();
+
+    // 1. Create a temporary test table
+    db.exec("CREATE TABLE IF NOT EXISTS test_tx (id INTEGER PRIMARY KEY, val TEXT);");
+    db.exec("DELETE FROM test_tx;"); // ensure clean state
+
+    try {
+        // 2. Outer transaction (depth = 0)
+        auto tx_outer = ctx.begin_transaction();
+        db.exec("INSERT INTO test_tx (id, val) VALUES (1, 'outer');");
+
+        // 3. Inner savepoint 1 (depth = 1)
+        {
+            auto tx_inner_1 = ctx.begin_transaction();
+            db.exec("INSERT INTO test_tx (id, val) VALUES (2, 'nested_1');");
+
+            // 4. Inner savepoint 2 (depth = 2)
+            {
+                auto tx_inner_2 = ctx.begin_transaction();
+                db.exec("INSERT INTO test_tx (id, val) VALUES (3, 'nested_2');");
+
+                // Rollback tx_inner_2 implicitly by leaving block without commit
+            }
+
+            // Verify inner rollback: (3, "nested_2") should be removed
+            // but (1, "outer") and (2, "nested_1") should remain.
+            {
+                SQLite::Statement query(db, "SELECT COUNT(*) FROM test_tx WHERE id = 3;");
+                if (query.executeStep() && query.getColumn(0).getInt() != 0) {
+                    std::cerr << "Inner rollback failed: (3, 'nested_2') still exists" << std::endl;
+                    return false;
+                }
+                SQLite::Statement query_outer(db, "SELECT COUNT(*) FROM test_tx WHERE id = 1;");
+                if (!query_outer.executeStep() || query_outer.getColumn(0).getInt() != 1) {
+                    std::cerr << "Inner rollback side effect: (1, 'outer') does not exist" << std::endl;
+                    return false;
+                }
+                SQLite::Statement query_inner_1(db, "SELECT COUNT(*) FROM test_tx WHERE id = 2;");
+                if (!query_inner_1.executeStep() || query_inner_1.getColumn(0).getInt() != 1) {
+                    std::cerr << "Inner rollback side effect: (2, 'nested_1') does not exist" << std::endl;
+                    return false;
+                }
+            }
+
+            // Commit tx_inner_1
+            tx_inner_1->commit();
+        }
+
+        // Verify tx_inner_1 commit (but outer transaction is still uncommitted)
+        {
+            SQLite::Statement query_inner_1(db, "SELECT COUNT(*) FROM test_tx WHERE id = 2;");
+            if (!query_inner_1.executeStep() || query_inner_1.getColumn(0).getInt() != 1) {
+                std::cerr << "Inner commit failed: (2, 'nested_1') does not exist inside active outer transaction" << std::endl;
+                return false;
+            }
+        }
+
+        // Rollback tx_outer
+        // This should roll back EVERYTHING, including the committed nested_1!
+        tx_outer.reset(); // implicitly rolls back since commit() is not called
+    } catch (const std::exception &e) {
+        std::cerr << "Savepoint test failed with exception: " << e.what() << std::endl;
+        return false;
+    }
+
+    // Verify outer rollback: both (1, 'outer') and (2, 'nested_1') must be gone!
+    {
+        SQLite::Statement query(db, "SELECT COUNT(*) FROM test_tx;");
+        if (query.executeStep() && query.getColumn(0).getInt() != 0) {
+            std::cerr << "Outer rollback failed: table is not empty" << std::endl;
+            return false;
+        }
+    }
+
+    // Clean up
+    db.exec("DROP TABLE test_tx;");
+    return true;
+}
+
+int main(int argc, char *argv[]) {
     if (argc < 2) {
         std::cerr << "Usage: " << argv[0] << " <db_path>\n";
         return 2;
@@ -58,6 +140,11 @@ int main(int argc, char* argv[]) {
 
         // Rollback/commit tx1 to clean up
         tx1->commit();
+
+        if (!test_nested_savepoint_rollback_and_commit(db_path1)) {
+            std::cerr << "test_nested_savepoint_rollback_and_commit FAILED\n";
+            return 4;
+        }
 
         if (count == 0) {
             std::cout << "BUG_PRESENT\n";
