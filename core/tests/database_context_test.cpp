@@ -10,30 +10,127 @@
 
 using namespace lyra;
 
-bool test_nested_savepoint_rollback_and_commit(const std::string &db_path) {
-    std::cout << "Running test_nested_savepoint_rollback_and_commit..." << std::endl;
+namespace {
+struct TableCleaner {
+    SQLite::Database &db;
+    std::string name;
+    ~TableCleaner() {
+        try {
+            db.exec("DROP TABLE IF EXISTS " + name + ";");
+        } catch (...) {
+        }
+    }
+};
+} // namespace
+
+bool test_basic_transaction(const std::string &db_path) {
     SqliteDatabaseContext ctx(db_path);
     auto &db = ctx.get_db();
 
-    // 1. Create a temporary test table
-    db.exec("CREATE TABLE IF NOT EXISTS test_tx (id INTEGER PRIMARY KEY, val TEXT);");
-    db.exec("DELETE FROM test_tx;"); // ensure clean state
+    TableCleaner cleaner{db, "test_basic"};
+    db.exec("CREATE TABLE IF NOT EXISTS test_basic (id INTEGER PRIMARY KEY, val TEXT);");
+    db.exec("DELETE FROM test_basic;");
 
     try {
-        // 2. Outer transaction (depth = 0)
+        // Test commit
+        {
+            auto tx = ctx.begin_transaction();
+            db.exec("INSERT INTO test_basic (id, val) VALUES (1, 'commit_test');");
+            tx->commit();
+        }
+
+        {
+            SQLite::Statement query(db, "SELECT COUNT(*) FROM test_basic WHERE id = 1;");
+            if (!query.executeStep() || query.getColumn(0).getInt() != 1) {
+                std::cerr << "test_basic_transaction FAILED: committed row missing\n";
+                return false;
+            }
+        }
+
+        // Test rollback on scope exit
+        {
+            auto tx = ctx.begin_transaction();
+            db.exec("INSERT INTO test_basic (id, val) VALUES (2, 'rollback_test');");
+            // No commit called
+        } // `tx` been destruct
+
+        {
+            SQLite::Statement query(db, "SELECT COUNT(*) FROM test_basic WHERE id = 2;");
+            if (query.executeStep() && query.getColumn(0).getInt() != 0) {
+                std::cerr << "test_basic_transaction FAILED: uncommitted row was not rolled back\n";
+                return false;
+            }
+        }
+    } catch (const std::exception &e) {
+        std::cerr << "test_basic_transaction failed with exception: " << e.what() << "\n";
+        return false;
+    }
+
+    return true;
+}
+
+bool test_savepoint_rollback(const std::string &db_path) {
+    SqliteDatabaseContext ctx(db_path);
+    auto &db = ctx.get_db();
+
+    TableCleaner cleaner{db, "test_sp"};
+    db.exec("CREATE TABLE IF NOT EXISTS test_sp (id INTEGER PRIMARY KEY, val TEXT);");
+    db.exec("DELETE FROM test_sp;");
+
+    try {
+        auto tx_outer = ctx.begin_transaction();
+        db.exec("INSERT INTO test_sp (id, val) VALUES (1, 'outer');");
+
+        {
+            auto tx_inner = ctx.begin_transaction();
+            db.exec("INSERT INTO test_sp (id, val) VALUES (2, 'inner');");
+            // tx_inner rolls back on scope exit
+        }
+
+        // Outer tx commits
+        tx_outer->commit();
+
+        SQLite::Statement query_outer(db, "SELECT COUNT(*) FROM test_sp WHERE id = 1;");
+        if (!query_outer.executeStep() || query_outer.getColumn(0).getInt() != 1) {
+            std::cerr << "test_savepoint_rollback FAILED: outer row missing\n";
+            return false;
+        }
+
+        SQLite::Statement query_inner(db, "SELECT COUNT(*) FROM test_sp WHERE id = 2;");
+        if (query_inner.executeStep() && query_inner.getColumn(0).getInt() != 0) {
+            std::cerr << "test_savepoint_rollback FAILED: inner rolled-back row exists\n";
+            return false;
+        }
+    } catch (const std::exception &e) {
+        std::cerr << "test_savepoint_rollback failed with exception: " << e.what() << "\n";
+        return false;
+    }
+
+    return true;
+}
+
+bool test_nested_savepoint_rollback_and_commit(const std::string &db_path) {
+    SqliteDatabaseContext ctx(db_path);
+    auto &db = ctx.get_db();
+
+    TableCleaner cleaner{db, "test_tx"};
+    db.exec("CREATE TABLE IF NOT EXISTS test_tx (id INTEGER PRIMARY KEY, val TEXT);");
+    db.exec("DELETE FROM test_tx;");
+
+    try {
+        // Outer transaction (depth = 0)
         auto tx_outer = ctx.begin_transaction();
         db.exec("INSERT INTO test_tx (id, val) VALUES (1, 'outer');");
 
-        // 3. Inner savepoint 1 (depth = 1)
+        // Inner savepoint 1 (depth = 1)
         {
             auto tx_inner_1 = ctx.begin_transaction();
             db.exec("INSERT INTO test_tx (id, val) VALUES (2, 'nested_1');");
 
-            // 4. Inner savepoint 2 (depth = 2)
+            // Inner savepoint 2 (depth = 2)
             {
                 auto tx_inner_2 = ctx.begin_transaction();
                 db.exec("INSERT INTO test_tx (id, val) VALUES (3, 'nested_2');");
-
                 // Rollback tx_inner_2 implicitly by leaving block without commit
             }
 
@@ -42,17 +139,17 @@ bool test_nested_savepoint_rollback_and_commit(const std::string &db_path) {
             {
                 SQLite::Statement query(db, "SELECT COUNT(*) FROM test_tx WHERE id = 3;");
                 if (query.executeStep() && query.getColumn(0).getInt() != 0) {
-                    std::cerr << "Inner rollback failed: (3, 'nested_2') still exists" << std::endl;
+                    std::cerr << "Inner rollback failed: (3, 'nested_2') still exists\n";
                     return false;
                 }
                 SQLite::Statement query_outer(db, "SELECT COUNT(*) FROM test_tx WHERE id = 1;");
                 if (!query_outer.executeStep() || query_outer.getColumn(0).getInt() != 1) {
-                    std::cerr << "Inner rollback side effect: (1, 'outer') does not exist" << std::endl;
+                    std::cerr << "Inner rollback side effect: (1, 'outer') does not exist\n";
                     return false;
                 }
                 SQLite::Statement query_inner_1(db, "SELECT COUNT(*) FROM test_tx WHERE id = 2;");
                 if (!query_inner_1.executeStep() || query_inner_1.getColumn(0).getInt() != 1) {
-                    std::cerr << "Inner rollback side effect: (2, 'nested_1') does not exist" << std::endl;
+                    std::cerr << "Inner rollback side effect: (2, 'nested_1') does not exist\n";
                     return false;
                 }
             }
@@ -65,7 +162,7 @@ bool test_nested_savepoint_rollback_and_commit(const std::string &db_path) {
         {
             SQLite::Statement query_inner_1(db, "SELECT COUNT(*) FROM test_tx WHERE id = 2;");
             if (!query_inner_1.executeStep() || query_inner_1.getColumn(0).getInt() != 1) {
-                std::cerr << "Inner commit failed: (2, 'nested_1') does not exist inside active outer transaction" << std::endl;
+                std::cerr << "Inner commit failed: (2, 'nested_1') does not exist inside active outer transaction\n";
                 return false;
             }
         }
@@ -73,43 +170,33 @@ bool test_nested_savepoint_rollback_and_commit(const std::string &db_path) {
         // Rollback tx_outer
         // This should roll back EVERYTHING, including the committed nested_1!
         tx_outer.reset(); // implicitly rolls back since commit() is not called
+
+        // Verify outer rollback: both (1, 'outer') and (2, 'nested_1') must be gone!
+        {
+            SQLite::Statement query(db, "SELECT COUNT(*) FROM test_tx;");
+            if (query.executeStep() && query.getColumn(0).getInt() != 0) {
+                std::cerr << "Outer rollback failed: table is not empty\n";
+                return false;
+            }
+        }
     } catch (const std::exception &e) {
-        std::cerr << "Savepoint test failed with exception: " << e.what() << std::endl;
+        std::cerr << "test_nested_savepoint_rollback_and_commit failed with exception: " << e.what() << "\n";
         return false;
     }
 
-    // Verify outer rollback: both (1, 'outer') and (2, 'nested_1') must be gone!
-    {
-        SQLite::Statement query(db, "SELECT COUNT(*) FROM test_tx;");
-        if (query.executeStep() && query.getColumn(0).getInt() != 0) {
-            std::cerr << "Outer rollback failed: table is not empty" << std::endl;
-            return false;
-        }
-    }
-
-    // Clean up
-    db.exec("DROP TABLE test_tx;");
     return true;
 }
 
-int main(int argc, char *argv[]) {
-    if (argc < 2) {
-        std::cerr << "Usage: " << argv[0] << " <db_path>\n";
-        return 2;
-    }
-    std::string db_path1 = argv[1];
-    std::string db_path2 = db_path1 + "_2";
-
+bool test_context_isolation(const std::string &db_path1, const std::string &db_path2) {
     try {
         SqliteDatabaseContext ctx1(db_path1);
         SqliteDatabaseContext ctx2(db_path2);
 
-        // 1. Begin transaction on ctx1. This sets the shared tl_depth = 1 (if bug is present).
+        // 1. Begin transaction on ctx1.
         auto tx1 = ctx1.begin_transaction();
 
         // 2. Begin transaction on ctx2.
-        // Due to the bug (shared tl_depth = 1), ctx2 believes a transaction is already active
-        // and starts a SAVEPOINT sp_1 instead of a real database transaction on db2.
+        // Multiple context instances on the same thread must maintain independent transaction depths.
         auto tx2 = ctx2.begin_transaction();
 
         // 3. Insert an artist using ctx2's connection with a unique random UUID
@@ -121,15 +208,9 @@ int main(int argc, char *argv[]) {
         }
 
         // 4. Commit tx2.
-        // Due to the bug, tx2 is a SAVEPOINT transaction, so it runs "RELEASE SAVEPOINT sp_1;".
-        // However, since there is no outer transaction active on ctx2's SQLite connection,
-        // SQLite's implicit transaction remains active and UNCOMMITTED!
         tx2->commit();
 
-        // 5. Query from a separate independent connection db3 pointing to db_path2.
-        // If the bug is present, the transaction on ctx2 was NOT committed, so db3 cannot see the new artist.
-        // If the bug is fixed (independent tl_depth), the transaction on ctx2 was a real transaction
-        // that successfully committed, making the artist visible on db3.
+        // 5. Query from an independent connection db3 pointing to db_path2.
         SQLite::Database db3(db_path2, SQLite::OPEN_READONLY);
         SQLite::Statement query(db3, "SELECT COUNT(*) FROM Artist WHERE id = ?");
         query.bind(1, artist_id);
@@ -138,24 +219,59 @@ int main(int argc, char *argv[]) {
             count = query.getColumn(0).getInt();
         }
 
-        // Rollback/commit tx1 to clean up
         tx1->commit();
 
-        if (!test_nested_savepoint_rollback_and_commit(db_path1)) {
-            std::cerr << "test_nested_savepoint_rollback_and_commit FAILED\n";
-            return 4;
-        }
-
         if (count == 0) {
-            std::cout << "BUG_PRESENT\n";
-            return 1; // Exit code 1 indicates the bug is present
-        } else {
-            std::cout << "BUG_FIXED\n";
-            return 0; // Exit code 0 indicates the bug is fixed
+            std::cerr << "test_context_isolation FAILED: artist not committed on ctx2\n";
+            return false;
         }
+        return true;
 
     } catch (const std::exception &e) {
-        std::cerr << "Test crashed with error: " << e.what() << "\n";
-        return 3;
+        std::cerr << "test_context_isolation failed with exception: " << e.what() << "\n";
+        return false;
+    }
+}
+
+int main(int argc, char *argv[]) {
+    if (argc < 2) {
+        std::cerr << "Usage: " << argv[0] << " <db_path>\n";
+        return 2;
+    }
+    std::string db_path1 = argv[1];
+    std::string db_path2 = db_path1 + "_2";
+
+    bool all_passed = true;
+
+    std::cout << "[1/4] Running test_basic_transaction..." << std::endl;
+    if (!test_basic_transaction(db_path1)) {
+        std::cerr << "test_basic_transaction FAILED\n";
+        all_passed = false;
+    }
+
+    std::cout << "[2/4] Running test_savepoint_rollback..." << std::endl;
+    if (!test_savepoint_rollback(db_path1)) {
+        std::cerr << "test_savepoint_rollback FAILED\n";
+        all_passed = false;
+    }
+
+    std::cout << "[3/4] Running test_nested_savepoint_rollback_and_commit..." << std::endl;
+    if (!test_nested_savepoint_rollback_and_commit(db_path1)) {
+        std::cerr << "test_nested_savepoint_rollback_and_commit FAILED\n";
+        all_passed = false;
+    }
+
+    std::cout << "[4/4] Running test_context_isolation..." << std::endl;
+    if (!test_context_isolation(db_path1, db_path2)) {
+        std::cerr << "test_context_isolation FAILED\n";
+        all_passed = false;
+    }
+
+    if (all_passed) {
+        std::cout << "All database context tests passed successfully! BUG_FIXED\n";
+        return 0;
+    } else {
+        std::cerr << "Some database context tests failed. BUG_PRESENT\n";
+        return 1;
     }
 }
