@@ -133,4 +133,56 @@ class TestAssetIngestion(BaseLyraTestCase):
         self.assertEqual(res_path["error"]["type"], "AssetNotFound")
         self.assertIn("Invalid file hash format", res_path["error"]["message"])
 
+    def test_ingest_database_rollback_removes_cas_file(self):
+        """Test that CAS file is deleted when database insert fails during ingestion"""
+        import sqlite3
+        import hashlib
+        
+        # 1. Create a dummy WAV file
+        wav_path = os.path.join(self.test_db_dir, "rollback_test.wav")
+        self.write_dummy_wav(wav_path, duration=1.0, sample_rate=44100, channels=2)
+        
+        # Calculate expected file_hash
+        h = hashlib.sha256()
+        with open(wav_path, 'rb') as f:
+            h.update(f.read())
+        file_hash = h.hexdigest()
+        
+        xx = file_hash[0:2]
+        yy = file_hash[2:4]
+        cas_file_path = os.path.join(self.test_db_dir, "objects", xx, yy, f"{file_hash}.wav")
+        
+        # 2. Inject a trigger to force DB insert failure
+        db_path = os.path.join(self.test_db_dir, "lyra.db")
+        conn = sqlite3.connect(db_path)
+        cursor = conn.cursor()
+        cursor.execute("""
+            CREATE TRIGGER fail_insert BEFORE INSERT ON Asset
+            BEGIN
+                SELECT RAISE(ABORT, 'Simulated database insert failure');
+            END;
+        """)
+        conn.commit()
+        conn.close()
+        
+        try:
+            # 3. Call IngestAsset - expect database failure
+            res = self.dispatch("IngestAsset", {"source_path": wav_path})
+            
+            # Expecting validation / api error (e.g. InvalidValue or DatabaseError)
+            self.assertResponseCode(res, 400)
+            self.assertIn("error", res)
+            self.assertIn("Failed to insert asset and audio", res["error"].get("message", ""))
+            
+            # 4. Verify CAS file does NOT exist
+            self.assertFalse(os.path.exists(cas_file_path), f"CAS file {cas_file_path} should have been cleaned up")
+            
+        finally:
+            # 5. Clean up the trigger
+            conn = sqlite3.connect(db_path)
+            cursor = conn.cursor()
+            cursor.execute("DROP TRIGGER IF EXISTS fail_insert;")
+            conn.commit()
+            conn.close()
+
 
