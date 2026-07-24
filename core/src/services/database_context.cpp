@@ -251,6 +251,44 @@ void SqliteDatabaseContext::init_schema() {
     m_db.exec("CREATE INDEX IF NOT EXISTS idx_Audio_parent_hash ON Audio (parent_hash);");
     m_db.exec("CREATE INDEX IF NOT EXISTS idx_Asset_asset_type ON Asset (asset_type);");
     m_db.exec("CREATE INDEX IF NOT EXISTS idx_TrackAlbum_Album ON Track_Album (album_id);");
+
+    m_db.exec(R"(
+        CREATE TABLE IF NOT EXISTS Image (
+          image_hash TEXT NOT NULL,
+          file_hash TEXT NOT NULL,
+          width INTEGER NULL DEFAULT NULL,
+          height INTEGER NULL DEFAULT NULL,
+          dominant_color TEXT NULL DEFAULT NULL,
+          PRIMARY KEY (image_hash),
+          CONSTRAINT fk_Image_Asset
+            FOREIGN KEY (file_hash)
+            REFERENCES Asset (file_hash)
+            ON DELETE CASCADE
+            ON UPDATE CASCADE
+        );
+    )");
+
+    m_db.exec(R"(
+        CREATE TABLE IF NOT EXISTS Entity_Images (
+          entity_id TEXT NOT NULL,
+          image_hash TEXT NOT NULL,
+          role TEXT NULL DEFAULT NULL CHECK( role IN ('front', 'back', 'leaflet', 'medium', 'matrix', 'spine', 'tray', 'sleeve', 'artist_avatar', 'artist_banner', 'artist_logo', 'live', 'studio', 'series_logo', 'thumbnail', 'other') ),
+          PRIMARY KEY (entity_id, image_hash),
+          CONSTRAINT fk_EntityImages_Image
+            FOREIGN KEY (image_hash)
+            REFERENCES Image (image_hash)
+            ON DELETE CASCADE
+            ON UPDATE CASCADE,
+          CONSTRAINT fk_EntityImages_Entity
+            FOREIGN KEY (entity_id)
+            REFERENCES Entity (id)
+            ON DELETE CASCADE
+            ON UPDATE CASCADE
+        );
+    )");
+
+    m_db.exec("CREATE INDEX IF NOT EXISTS idx_Image_file_hash ON Image (file_hash);");
+    m_db.exec("CREATE INDEX IF NOT EXISTS idx_EntityImages_image_hash ON Entity_Images (image_hash);");
 }
 
 std::unique_ptr<ITransaction> SqliteDatabaseContext::begin_transaction() {

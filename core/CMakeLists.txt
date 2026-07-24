@@ -30,6 +30,7 @@ set(CPP
     src/services/repositories/sqlite/sqlite_artist_repository.cpp
     src/services/repositories/sqlite/sqlite_asset_repository.cpp
     src/services/repositories/sqlite/sqlite_audio_repository.cpp
+    src/services/repositories/sqlite/sqlite_image_repository.cpp
     src/services/repositories/sqlite/sqlite_playlist_repository.cpp
     src/services/repositories/sqlite/sqlite_track_repository.cpp
     src/services/repositories/sqlite/sqlite_work_repository.cpp
@@ -109,4 +110,8 @@ if(BUILD_TESTING)
     add_executable(repository_test tests/repository_test.cpp)
     target_link_libraries(repository_test PRIVATE lyra_core nlohmann_json::nlohmann_json fmt::fmt SQLiteCpp)
     target_include_directories(repository_test PRIVATE include src)
+
+    add_executable(image_repository_test tests/image_repository_test.cpp)
+    target_link_libraries(image_repository_test PRIVATE lyra_core nlohmann_json::nlohmann_json fmt::fmt SQLiteCpp)
+    target_include_directories(image_repository_test PRIVATE include src)
 endif()
