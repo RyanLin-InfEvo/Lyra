@@ -240,3 +240,13 @@ class TestWorkController(BaseLyraTestCase):
             "composition_end_year": 1803
         })
         self.assertValidationError(res_update, expected_type="OutOfRange")
+
+    def test_update_nonexistent_work_year(self):
+        """Test updating composition year of a non-existent Work: Should return 404 (WorkNotFound)"""
+        random_id = str(uuid.uuid4())
+        res = self.dispatch("UpdateWork", {
+            "id": random_id,
+            "composition_start_year": 1800
+        })
+        self.assertResponseCode(res, 404)
+        self.assertEqual(res["error"]["type"], "WorkNotFound")
