@@ -25,6 +25,7 @@ enum class ErrorType {
     AudioNotFound,
     UnknownCommand,
     RelationNotFound,
+    NotFound,
     // 400 Series
     MissingParameter,
     InvalidValue,

@@ -96,7 +96,11 @@ class Router {
     json handleGetWorksByTitle(const json &p);
     json handleGetPlaylistsByTitle(const json &p);
 
+    json handleGetAlbumCover(const json &p);
+    json handleGetTrackCover(const json &p);
+
     // Dependencies
+    std::string m_storage_root;
     std::unique_ptr<IDatabaseContext> m_db_context;
 
     std::unique_ptr<IAlbumRepository> m_album_repo;

@@ -55,6 +55,8 @@ std::pair<int, std::string> ApiResponse::getErrorMapping(ErrorType type) {
             return {404, "UnknownCommand"};
         case ErrorType::RelationNotFound:
             return {404, "RelationNotFound"};
+        case ErrorType::NotFound:
+            return {404, "NotFound"};
 
         // 400 Series
         case ErrorType::MissingParameter:
