@@ -23,6 +23,7 @@
 #include "services/repositories/sqlite/sqlite_artist_repository.h"
 #include "services/repositories/sqlite/sqlite_asset_repository.h"
 #include "services/repositories/sqlite/sqlite_audio_repository.h"
+#include "services/repositories/sqlite/sqlite_image_repository.h"
 #include "services/repositories/sqlite/sqlite_playlist_repository.h"
 #include "services/repositories/sqlite/sqlite_track_repository.h"
 #include "services/repositories/sqlite/sqlite_work_repository.h"
@@ -45,6 +46,7 @@ Router::Router(const std::string &db_path) {
     m_artist_repo = std::make_unique<SqliteArtistRepository>(*m_db_context);
     m_asset_repo = std::make_unique<SqliteAssetRepository>(*m_db_context);
     m_audio_repo = std::make_unique<SqliteAudioRepository>(*m_db_context);
+    m_image_repo = std::make_unique<SqliteImageRepository>(*m_db_context);
     m_playlist_repo = std::make_unique<SqlitePlaylistRepository>(*m_db_context);
     m_track_repo = std::make_unique<SqliteTrackRepository>(*m_db_context);
     m_work_repo = std::make_unique<SqliteWorkRepository>(*m_db_context);
@@ -53,7 +55,7 @@ Router::Router(const std::string &db_path) {
 
     m_album_controller = std::make_unique<AlbumController>(*m_album_repo);
     m_artist_controller = std::make_unique<ArtistController>(*m_artist_repo);
-    m_asset_controller = std::make_unique<AssetController>(*m_asset_repo, *m_audio_repo, storage_root);
+    m_asset_controller = std::make_unique<AssetController>(*m_asset_repo, *m_audio_repo, storage_root, m_image_repo.get());
     m_audio_controller = std::make_unique<AudioController>(*m_audio_repo);
     m_playlist_controller = std::make_unique<PlaylistController>(*m_playlist_repo);
     m_track_controller = std::make_unique<TrackController>(*m_track_repo);
@@ -402,8 +404,8 @@ json Router::handleImportTrack(const json &params) {
     if (!ingest_res) {
         return ApiResponse::error({ErrorType::InvalidValue, "Asset ingestion failed: " + ingest_res.error()});
     }
-    const auto &asset = ingest_res.value().first;
-    const auto &audio_json = ingest_res.value().second;
+    const auto &asset = ingest_res.value().asset;
+    const auto &audio_json = ingest_res.value().metadata;
     std::string pcm_hash = audio_json["pcm_hash"].get<std::string>();
     double duration_sec = audio_json["duration"].get<double>();
 
@@ -547,6 +549,27 @@ json Router::handleImportTrack(const json &params) {
         }
     }
 
+    // Link Cover Image if present
+    if (ingest_res.value().cover_image_hash.has_value() && m_image_repo) {
+        const std::string &cover_hash = *ingest_res.value().cover_image_hash;
+        auto link_track_img = m_image_repo->link_entity(track.id, cover_hash, "front");
+        if (!link_track_img) {
+            return ApiResponse::error({ErrorType::DatabaseError, "Failed to link cover image to track: " + link_track_img.error()});
+        }
+        if (!album_id.empty()) {
+            auto existing_images = m_image_repo->get_images_by_entity(album_id);
+            if (!existing_images) {
+                return ApiResponse::error({ErrorType::DatabaseError, "Failed to query album images: " + existing_images.error()});
+            }
+            if (existing_images.value().empty()) {
+                auto link_album_img = m_image_repo->link_entity(album_id, cover_hash, "front");
+                if (!link_album_img) {
+                    return ApiResponse::error({ErrorType::DatabaseError, "Failed to link cover image to album: " + link_album_img.error()});
+                }
+            }
+        }
+    }
+
     // Commit transaction
     tx->commit();
 
@@ -556,6 +579,9 @@ json Router::handleImportTrack(const json &params) {
     response_data["title"] = track.title.value_or("");
     if (!artist_id.empty()) response_data["artist_id"] = artist_id;
     if (!album_id.empty()) response_data["album_id"] = album_id;
+    if (ingest_res.value().cover_image_hash.has_value()) {
+        response_data["cover_image_hash"] = *ingest_res.value().cover_image_hash;
+    }
 
     return ApiResponse::success(response_data);
 }
@@ -701,8 +727,15 @@ json Router::handleIngestAsset(const json &params) {
     auto res = m_asset_controller->ingest(params["source_path"].get<std::string>());
     if (res) {
         json data;
-        data["asset"] = res.value().first;
-        data[res.value().first.asset_type] = res.value().second;
+        const auto &ingest_val = res.value();
+        data["asset"] = ingest_val.asset;
+        data[ingest_val.asset.asset_type] = ingest_val.metadata;
+        if (ingest_val.cover_image_hash.has_value()) {
+            data["cover_image_hash"] = *ingest_val.cover_image_hash;
+        }
+        if (ingest_val.cover_file_hash.has_value()) {
+            data["cover_file_hash"] = *ingest_val.cover_file_hash;
+        }
         return ApiResponse::success(data);
     }
     return ApiResponse::error({ErrorType::InvalidValue, res.error()});

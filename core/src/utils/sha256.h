@@ -8,6 +8,7 @@
 
 #include <cstdint>
 #include <string>
+#include <vector>
 
 namespace lyra {
 namespace utils {
@@ -21,6 +22,7 @@ class Sha256 {
 
     static std::string hash_string(const std::string &str);
     static std::string hash_file(const std::string &filepath);
+    static std::string hash_bytes(const std::vector<uint8_t> &bytes);
 
   private:
     void transform(const uint8_t *message);

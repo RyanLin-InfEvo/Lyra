@@ -146,6 +146,12 @@ std::string Sha256::hash_string(const std::string &str) {
     return ctx.finalize();
 }
 
+std::string Sha256::hash_bytes(const std::vector<uint8_t> &bytes) {
+    Sha256 ctx;
+    ctx.update(bytes.data(), bytes.size());
+    return ctx.finalize();
+}
+
 std::string Sha256::hash_file(const std::string &filepath) {
     std::ifstream file(filepath, std::ios::binary);
     if (!file.is_open()) {

@@ -21,6 +21,7 @@ class IAlbumRepository;
 class IArtistRepository;
 class IAssetRepository;
 class IAudioRepository;
+class IImageRepository;
 class IPlaylistRepository;
 class ITrackRepository;
 class IWorkRepository;
@@ -102,6 +103,7 @@ class Router {
     std::unique_ptr<IArtistRepository> m_artist_repo;
     std::unique_ptr<IAssetRepository> m_asset_repo;
     std::unique_ptr<IAudioRepository> m_audio_repo;
+    std::unique_ptr<IImageRepository> m_image_repo;
     std::unique_ptr<IPlaylistRepository> m_playlist_repo;
     std::unique_ptr<ITrackRepository> m_track_repo;
     std::unique_ptr<IWorkRepository> m_work_repo;
