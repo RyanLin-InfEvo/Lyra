@@ -16,6 +16,8 @@ namespace lyra {
 
 using json = nlohmann::json;
 
+struct Image;
+
 class IDatabaseContext;
 class IAlbumRepository;
 class IArtistRepository;
@@ -98,6 +100,11 @@ class Router {
 
     json handleGetAlbumCover(const json &p);
     json handleGetTrackCover(const json &p);
+    json handleGetArtistCover(const json &p);
+    json handleGetPlaylistCover(const json &p);
+    json handleGetEntityImages(const json &p);
+
+    json build_image_response(const Image &img);
 
     // Dependencies
     std::string m_storage_root;

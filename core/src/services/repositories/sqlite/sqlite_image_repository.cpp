@@ -185,17 +185,20 @@ tl::expected<void, std::string> SqliteImageRepository::unlink_entity(
 }
 
 tl::expected<std::vector<Image>, std::string> SqliteImageRepository::get_images_by_entity(
-    const std::string &entity_id) {
+    const std::string &entity_id, const std::optional<std::string> &role) {
     try {
         auto &db = m_context.get_db();
-        SQLite::Statement query(
-            db,
-            "SELECT i.image_hash, i.file_hash, i.width, i.height, i.dominant_color "
+        std::string sql =
+            "SELECT i.image_hash, i.file_hash, i.width, i.height, i.dominant_color, ei.role "
             "FROM Image i "
             "JOIN Entity_Images ei ON i.image_hash = ei.image_hash "
-            "WHERE ei.entity_id = ? "
-            "ORDER BY i.image_hash ASC");
+            "WHERE ei.entity_id = ?";
+        if (role.has_value() && !role->empty()) sql += " AND ei.role = ?";
+        sql += " ORDER BY i.image_hash ASC";
+
+        SQLite::Statement query(db, sql);
         query.bind(1, entity_id);
+        if (role.has_value() && !role->empty()) query.bind(2, *role);
 
         std::vector<Image> images;
         while (query.executeStep()) {
@@ -205,9 +208,43 @@ tl::expected<std::vector<Image>, std::string> SqliteImageRepository::get_images_
             img.width = query.getColumn("width").getInt();
             img.height = query.getColumn("height").getInt();
             img.dominant_color = SqliteHelper::get_safe<std::string>(query, "dominant_color", "");
+            if (!query.isColumnNull("role")) img.role = query.getColumn("role").getString();
             images.push_back(img);
         }
         return images;
+    } catch (const std::exception &e) {
+        return tl::unexpected(e.what());
+    }
+}
+
+tl::expected<Image, std::string> SqliteImageRepository::get_artist_latest_album_cover(
+    const std::string &artist_id) {
+    try {
+        auto &db = m_context.get_db();
+        SQLite::Statement query(
+            db,
+            "SELECT i.image_hash, i.file_hash, i.width, i.height, i.dominant_color, ei.role "
+            "FROM Image i "
+            "JOIN Entity_Images ei ON i.image_hash = ei.image_hash "
+            "JOIN Album a ON ei.entity_id = a.id "
+            "JOIN Track_Album ta ON a.id = ta.album_id "
+            "JOIN Track_Artist tar ON ta.track_id = tar.track_id "
+            "WHERE tar.artist_id = ? "
+            "ORDER BY a.release_year DESC, a.release_month DESC, a.release_day DESC, a.id ASC "
+            "LIMIT 1");
+        query.bind(1, artist_id);
+
+        if (query.executeStep()) {
+            Image img;
+            img.image_hash = query.getColumn("image_hash").getString();
+            img.file_hash = query.getColumn("file_hash").getString();
+            img.width = query.getColumn("width").getInt();
+            img.height = query.getColumn("height").getInt();
+            img.dominant_color = SqliteHelper::get_safe<std::string>(query, "dominant_color", "");
+            if (!query.isColumnNull("role")) img.role = query.getColumn("role").getString();
+            return img;
+        }
+        return tl::unexpected("No album cover image found for artist.");
     } catch (const std::exception &e) {
         return tl::unexpected(e.what());
     }

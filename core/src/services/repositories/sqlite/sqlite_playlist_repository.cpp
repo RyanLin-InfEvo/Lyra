@@ -131,7 +131,8 @@ tl::expected<void, std::string> SqlitePlaylistRepository::remove_track(const std
         auto transaction = m_context.begin_transaction();
         auto &db = m_context.get_db();
 
-        SQLite::Statement query(db, "DELETE FROM Playlist_Track WHERE playlist_id = ? AND track_id = ?");
+        SQLite::Statement query(db,
+                                "DELETE FROM Playlist_Track WHERE playlist_id = ? AND track_id = ?");
         query.bind(1, playlist_id);
         query.bind(2, track_id);
 
@@ -153,12 +154,29 @@ std::vector<std::string> SqlitePlaylistRepository::get_tracks(const std::string 
     auto &db = m_context.get_db();
     std::vector<std::string> track_ids;
 
-    SQLite::Statement query(db, "SELECT track_id FROM Playlist_Track WHERE playlist_id = ? ORDER BY position ASC, track_id ASC");
+    SQLite::Statement query(db,
+                            "SELECT track_id FROM Playlist_Track WHERE playlist_id = ? ORDER BY position ASC, track_id ASC");
     query.bind(1, playlist_id);
     while (query.executeStep()) {
         track_ids.push_back(query.getColumn(0).getString());
     }
     return track_ids;
+}
+
+tl::expected<std::string, std::string> SqlitePlaylistRepository::get_first_track_id(
+    const std::string &playlist_id) {
+    try {
+        auto &db = m_context.get_db();
+        SQLite::Statement query(db,
+                                "SELECT track_id FROM Playlist_Track WHERE playlist_id = ? ORDER BY position ASC LIMIT 1");
+        query.bind(1, playlist_id);
+
+        if (query.executeStep())
+            return query.getColumn(0).getString();
+        return tl::unexpected("Playlist is empty.");
+    } catch (const std::exception &e) {
+        return tl::unexpected(e.what());
+    }
 }
 
 tl::expected<PaginatedResult<Playlist>, std::string> SqlitePlaylistRepository::list(
@@ -222,7 +240,8 @@ tl::expected<PaginatedResult<Playlist>, std::string> SqlitePlaylistRepository::l
 tl::expected<std::vector<Playlist>, std::string> SqlitePlaylistRepository::get_by_title(const std::string &title) {
     try {
         auto &db = m_context.get_db();
-        SQLite::Statement query(db, "SELECT * FROM Playlist WHERE title = ? ORDER BY id ASC");
+        SQLite::Statement query(db,
+                                "SELECT * FROM Playlist WHERE title = ? ORDER BY id ASC");
         query.bind(1, title);
 
         std::vector<Playlist> playlists;

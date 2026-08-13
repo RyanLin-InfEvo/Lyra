@@ -24,7 +24,9 @@ class SqliteImageRepository : public IImageRepository {
     tl::expected<void, std::string> unlink_entity(
         const std::string &entity_id, const std::string &image_hash) override;
     tl::expected<std::vector<Image>, std::string> get_images_by_entity(
-        const std::string &entity_id) override;
+        const std::string &entity_id, const std::optional<std::string> &role = std::nullopt) override;
+    tl::expected<Image, std::string> get_artist_latest_album_cover(
+        const std::string &artist_id) override;
 
   private:
     IDatabaseContext &m_context;

@@ -133,6 +133,9 @@ void Router::init_handlers() {
     // Cover Art endpoints
     m_handlers["GetAlbumCover"] = [this](const json &p) { return handleGetAlbumCover(p); };
     m_handlers["GetTrackCover"] = [this](const json &p) { return handleGetTrackCover(p); };
+    m_handlers["GetArtistCover"] = [this](const json &p) { return handleGetArtistCover(p); };
+    m_handlers["GetPlaylistCover"] = [this](const json &p) { return handleGetPlaylistCover(p); };
+    m_handlers["GetEntityImages"] = [this](const json &p) { return handleGetEntityImages(p); };
 }
 
 namespace {
@@ -1223,29 +1226,18 @@ json Router::handleGetPlaylistsByTitle(const json &params) {
     return ApiResponse::error({ErrorType::DatabaseError, res.error()});
 }
 
-// --- Cover Art Handlers ---
+// --- Cover Art & Image Handlers ---
 
-json Router::handleGetAlbumCover(const json &params) {
-    auto err = JsonValidator::validate(params, {{"album_id", Type::String, true, StringFormat::UUID}});
-    if (err) return *err;
-
-    std::string album_id = params["album_id"].get<std::string>();
-    auto images_res = m_image_repo->get_images_by_entity(album_id);
-    if (!images_res) return ApiResponse::error({ErrorType::DatabaseError, images_res.error()});
-
-    const auto &images = images_res.value();
-    if (images.empty()) return ApiResponse::error({ErrorType::NotFound, "No cover image found for album: " + album_id});
-
-    const Image &img = images[0];
+json Router::build_image_response(const Image &img) {
     auto asset_res = m_asset_repo->get(img.file_hash);
     if (!asset_res) return ApiResponse::error({ErrorType::AssetNotFound, asset_res.error()});
 
     const auto &asset = asset_res.value();
 
     std::string ext = get_file_extension(asset, *m_asset_controller);
-    std::string path = utils::StorageHelper::resolve_cas_path(m_storage_root, asset.file_hash, ext).string();
+    std::string path = utils::StorageHelper::resolve_cas_path(m_storage_root, asset.file_hash, ext).string(); // calc -> /xx/yy/hash.ext
     if (!std::filesystem::exists(path)) {
-        auto path_res = m_asset_controller->resolve_file_path(asset.file_hash);
+        auto path_res = m_asset_controller->resolve_file_path(asset.file_hash); // asset_controller db
         if (path_res) {
             path = path_res.value();
         }
@@ -1264,6 +1256,20 @@ json Router::handleGetAlbumCover(const json &params) {
     return response;
 }
 
+json Router::handleGetAlbumCover(const json &params) {
+    auto err = JsonValidator::validate(params, {{"album_id", Type::String, true, StringFormat::UUID}});
+    if (err) return *err;
+
+    std::string album_id = params["album_id"].get<std::string>();
+    auto images_res = m_image_repo->get_images_by_entity(album_id);
+    if (!images_res) return ApiResponse::error({ErrorType::DatabaseError, images_res.error()});
+
+    const auto &images = images_res.value();
+    if (images.empty()) return ApiResponse::error({ErrorType::NotFound, "No cover image found for album: " + album_id});
+
+    return build_image_response(images[0]);
+}
+
 json Router::handleGetTrackCover(const json &params) {
     auto err = JsonValidator::validate(params, {{"track_id", Type::String, true, StringFormat::UUID}});
     if (err) return *err;
@@ -1272,31 +1278,8 @@ json Router::handleGetTrackCover(const json &params) {
     auto images_res = m_image_repo->get_images_by_entity(track_id);
     if (!images_res) return ApiResponse::error({ErrorType::DatabaseError, images_res.error()});
 
-
     if (!images_res.value().empty()) {
-        const Image &img = images_res.value()[0];
-        auto asset_res = m_asset_repo->get(img.file_hash);
-        if (!asset_res) return ApiResponse::error({ErrorType::AssetNotFound, asset_res.error()});
-        const auto &asset = asset_res.value();
-
-        std::string ext = get_file_extension(asset, *m_asset_controller);
-        std::string path = utils::StorageHelper::resolve_cas_path(m_storage_root, asset.file_hash, ext).string();
-        if (!std::filesystem::exists(path)) {
-            auto path_res = m_asset_controller->resolve_file_path(asset.file_hash);
-            if (path_res) path = path_res.value();
-        }
-
-        json data;
-        data["image_hash"] = img.image_hash;
-        data["file_hash"] = asset.file_hash;
-        data["path"] = path;
-        data["mime_type"] = asset.mime_type;
-        data["width"] = img.width;
-        data["height"] = img.height;
-
-        json response = ApiResponse::success(data);
-        response["status"] = "success";
-        return response;
+        return build_image_response(images_res.value()[0]);
     }
 
     // Direct image link not found. Check track exists and get album_id fallback
@@ -1309,7 +1292,6 @@ json Router::handleGetTrackCover(const json &params) {
         SQLite::Statement query(db, "SELECT album_id FROM Track_Album WHERE track_id = ? LIMIT 1");
         query.bind(1, track_id);
         if (query.executeStep()) album_id = query.getColumn("album_id").getString();
-
     } catch (const std::exception &e) {
         return ApiResponse::error({ErrorType::DatabaseError, e.what()});
     }
@@ -1317,33 +1299,143 @@ json Router::handleGetTrackCover(const json &params) {
     if (album_id.has_value()) {
         auto album_images_res = m_image_repo->get_images_by_entity(*album_id);
         if (album_images_res && !album_images_res.value().empty()) {
-            const Image &img = album_images_res.value()[0];
-            auto asset_res = m_asset_repo->get(img.file_hash);
-            if (!asset_res) return ApiResponse::error({ErrorType::AssetNotFound, asset_res.error()});
-            const auto &asset = asset_res.value();
-
-            std::string ext = get_file_extension(asset, *m_asset_controller);
-            std::string path = utils::StorageHelper::resolve_cas_path(m_storage_root, asset.file_hash, ext).string();
-            if (!std::filesystem::exists(path)) {
-                auto path_res = m_asset_controller->resolve_file_path(asset.file_hash);
-                if (path_res) path = path_res.value();
-            }
-
-            json data;
-            data["image_hash"] = img.image_hash;
-            data["file_hash"] = asset.file_hash;
-            data["path"] = path;
-            data["mime_type"] = asset.mime_type;
-            data["width"] = img.width;
-            data["height"] = img.height;
-
-            json response = ApiResponse::success(data);
-            response["status"] = "success";
-            return response;
+            return build_image_response(album_images_res.value()[0]);
         }
     }
 
     return ApiResponse::error({ErrorType::NotFound, "No cover image found for track or its album: " + track_id});
+}
+
+json Router::handleGetArtistCover(const json &params) {
+    auto err = JsonValidator::validate(params, {{"artist_id", Type::String, true, StringFormat::UUID}});
+    if (err) return *err;
+
+    std::string artist_id = params["artist_id"].get<std::string>();
+
+    try {
+        auto &db = m_db_context->get_db();
+        SQLite::Statement check_artist(db, "SELECT 1 FROM Artist WHERE id = ?");
+        check_artist.bind(1, artist_id);
+        if (!check_artist.executeStep()) {
+            return ApiResponse::error({ErrorType::ArtistNotFound, "Artist not found: " + artist_id});
+        }
+    } catch (const std::exception &e) {
+        return ApiResponse::error({ErrorType::DatabaseError, e.what()});
+    }
+
+    auto avatar_images = m_image_repo->get_images_by_entity(artist_id, "artist_avatar");
+    if (avatar_images && !avatar_images.value().empty()) {
+        return build_image_response(avatar_images.value()[0]);
+    }
+
+    auto latest_album_cover = m_image_repo->get_artist_latest_album_cover(artist_id);
+    if (latest_album_cover) {
+        return build_image_response(latest_album_cover.value());
+    }
+
+    return ApiResponse::error({ErrorType::NotFound, "No cover image found for artist: " + artist_id});
+}
+
+json Router::handleGetPlaylistCover(const json &params) {
+    auto err = JsonValidator::validate(params, {{"playlist_id", Type::String, true, StringFormat::UUID}});
+    if (err) return *err;
+
+    std::string playlist_id = params["playlist_id"].get<std::string>();
+
+    try {
+        auto &db = m_db_context->get_db();
+        SQLite::Statement check_playlist(db, "SELECT 1 FROM Playlist WHERE id = ?");
+        check_playlist.bind(1, playlist_id);
+        if (!check_playlist.executeStep()) {
+            return ApiResponse::error({ErrorType::PlaylistNotFound, "Playlist not found: " + playlist_id});
+        }
+    } catch (const std::exception &e) {
+        return ApiResponse::error({ErrorType::DatabaseError, e.what()});
+    }
+
+    auto playlist_images = m_image_repo->get_images_by_entity(playlist_id);
+    if (playlist_images && !playlist_images.value().empty()) {
+        return build_image_response(playlist_images.value()[0]);
+    }
+
+    auto first_track_res = m_playlist_repo->get_first_track_id(playlist_id);
+    if (!first_track_res) {
+        return ApiResponse::error({ErrorType::NotFound, "No cover image found for playlist: " + playlist_id});
+    }
+
+    std::string first_track_id = first_track_res.value();
+    auto track_cover_res = handleGetTrackCover({{"track_id", first_track_id}});
+    if (track_cover_res.contains("code") && track_cover_res["code"] == 200) {
+        return track_cover_res;
+    }
+
+    return ApiResponse::error({ErrorType::NotFound, "No cover image found for playlist: " + playlist_id});
+}
+
+json Router::handleGetEntityImages(const json &params) {
+    auto err = JsonValidator::validate(
+        params, {{"entity_id", Type::String, true, StringFormat::UUID}, {"role", Type::String, false}});
+    if (err) return *err;
+
+    std::string entity_id = params["entity_id"].get<std::string>();
+
+    try {
+        auto &db = m_db_context->get_db();
+        SQLite::Statement check_entity(db, "SELECT 1 FROM Entity WHERE id = ?");
+        check_entity.bind(1, entity_id);
+        if (!check_entity.executeStep()) {
+            return ApiResponse::error({ErrorType::NotFound, "Entity not found: " + entity_id});
+        }
+    } catch (const std::exception &e) {
+        return ApiResponse::error({ErrorType::DatabaseError, e.what()});
+    }
+
+    std::optional<std::string> role;
+    if (params.contains("role") && !params["role"].is_null()) {
+        role = params["role"].get<std::string>();
+    }
+
+    auto images_res = m_image_repo->get_images_by_entity(entity_id, role);
+    if (!images_res) {
+        return ApiResponse::error({ErrorType::DatabaseError, images_res.error()});
+    }
+
+    json result_list = json::array();
+    for (const auto &img : images_res.value()) {
+        auto asset_res = m_asset_repo->get(img.file_hash);
+        if (!asset_res) continue;
+
+        const auto &asset = asset_res.value();
+
+        std::string ext = get_file_extension(asset, *m_asset_controller);
+        std::string path = utils::StorageHelper::resolve_cas_path(m_storage_root, asset.file_hash, ext).string();
+        if (!std::filesystem::exists(path)) {
+            auto path_res = m_asset_controller->resolve_file_path(asset.file_hash);
+            if (path_res) {
+                path = path_res.value();
+            }
+        }
+
+        json item;
+        item["image_hash"] = img.image_hash;
+        item["file_hash"] = asset.file_hash;
+        item["path"] = path;
+        item["mime_type"] = asset.mime_type;
+        item["width"] = img.width;
+        item["height"] = img.height;
+        item["dominant_color"] = img.dominant_color;
+        if (img.role.has_value()) {
+            item["role"] = *img.role;
+        } else {
+            item["role"] = nullptr;
+        }
+
+        result_list.push_back(item);
+    }
+
+    json response = ApiResponse::success(result_list);
+    response["status"] = "success";
+    return response;
 }
 
 json Router::route(const json &request) {

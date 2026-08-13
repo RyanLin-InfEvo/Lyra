@@ -22,6 +22,7 @@ class SqlitePlaylistRepository : public IPlaylistRepository {
     tl::expected<void, std::string> add_track(const std::string &playlist_id, const std::string &track_id, std::optional<int> position) override;
     tl::expected<void, std::string> remove_track(const std::string &playlist_id, const std::string &track_id) override;
     std::vector<std::string> get_tracks(const std::string &playlist_id) override;
+    tl::expected<std::string, std::string> get_first_track_id(const std::string &playlist_id) override;
     tl::expected<std::vector<Playlist>, std::string> get_by_title(const std::string &title) override;
 
   private:
