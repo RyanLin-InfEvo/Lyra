@@ -132,16 +132,20 @@ tl::expected<void, std::string> SqliteImageRepository::link_entity(
         auto transaction = m_context.begin_transaction();
         auto &db = m_context.get_db();
 
-        SQLite::Statement check_entity(db, "SELECT 1 FROM Entity WHERE id = ?");
-        check_entity.bind(1, entity_id);
-        if (!check_entity.executeStep()) {
-            return tl::unexpected("Target Entity not found.");
+        {
+            SQLite::Statement check_entity(db, "SELECT 1 FROM Entity WHERE id = ?");
+            check_entity.bind(1, entity_id);
+            if (!check_entity.executeStep()) {
+                return tl::unexpected("Target Entity not found.");
+            }
         }
 
-        SQLite::Statement check_image(db, "SELECT 1 FROM Image WHERE image_hash = ?");
-        check_image.bind(1, image_hash);
-        if (!check_image.executeStep()) {
-            return tl::unexpected("Target Image not found.");
+        {
+            SQLite::Statement check_image(db, "SELECT 1 FROM Image WHERE image_hash = ?");
+            check_image.bind(1, image_hash);
+            if (!check_image.executeStep()) {
+                return tl::unexpected("Target Image not found.");
+            }
         }
 
         SQLite::Statement query(db,

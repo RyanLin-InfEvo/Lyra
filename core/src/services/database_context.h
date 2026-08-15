@@ -81,6 +81,8 @@ class SqliteDatabaseContext : public IDatabaseContext {
         void commit() override {
             if (m_transaction) {
                 m_transaction->commit();
+                m_db.exec("PRAGMA wal_checkpoint(PASSIVE);");
+                // Commit & flash *.-wal changes to *.db for the readers
             } else {
                 m_db.exec("RELEASE SAVEPOINT " + m_savepoint_name + ";");
             }

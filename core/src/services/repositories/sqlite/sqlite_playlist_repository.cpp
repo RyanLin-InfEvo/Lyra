@@ -99,13 +99,17 @@ tl::expected<void, std::string> SqlitePlaylistRepository::add_track(const std::s
         auto transaction = m_context.begin_transaction();
         auto &db = m_context.get_db();
 
-        SQLite::Statement check_playlist(db, "SELECT 1 FROM Playlist WHERE id = ?");
-        check_playlist.bind(1, playlist_id);
-        if (!check_playlist.executeStep()) return tl::unexpected("Playlist ID not found.");
+        {
+            SQLite::Statement check_playlist(db, "SELECT 1 FROM Playlist WHERE id = ?");
+            check_playlist.bind(1, playlist_id);
+            if (!check_playlist.executeStep()) return tl::unexpected("Playlist ID not found.");
+        }
 
-        SQLite::Statement check_track(db, "SELECT 1 FROM Track WHERE id = ?");
-        check_track.bind(1, track_id);
-        if (!check_track.executeStep()) return tl::unexpected("Track ID not found.");
+        {
+            SQLite::Statement check_track(db, "SELECT 1 FROM Track WHERE id = ?");
+            check_track.bind(1, track_id);
+            if (!check_track.executeStep()) return tl::unexpected("Track ID not found.");
+        }
 
         SQLite::Statement query(db, "INSERT OR REPLACE INTO Playlist_Track (playlist_id, track_id, position) VALUES (?, ?, ?)");
         query.bind(1, playlist_id);

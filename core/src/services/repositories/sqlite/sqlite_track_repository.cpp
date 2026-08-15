@@ -146,13 +146,17 @@ tl::expected<void, std::string> SqliteTrackRepository::add_artist(const TrackArt
         auto transaction = m_context.begin_transaction();
         auto &db = m_context.get_db();
 
-        SQLite::Statement check_track(db, "SELECT 1 FROM Track WHERE id = ?");
-        check_track.bind(1, params.track_id);
-        if (!check_track.executeStep()) return tl::unexpected("Target Track not found.");
+        {
+            SQLite::Statement check_track(db, "SELECT 1 FROM Track WHERE id = ?");
+            check_track.bind(1, params.track_id);
+            if (!check_track.executeStep()) return tl::unexpected("Target Track not found.");
+        }
 
-        SQLite::Statement check_artist(db, "SELECT 1 FROM Artist WHERE id = ?");
-        check_artist.bind(1, params.artist_id);
-        if (!check_artist.executeStep()) return tl::unexpected("Target Artist not found.");
+        {
+            SQLite::Statement check_artist(db, "SELECT 1 FROM Artist WHERE id = ?");
+            check_artist.bind(1, params.artist_id);
+            if (!check_artist.executeStep()) return tl::unexpected("Target Artist not found.");
+        }
 
         SQLite::Statement query(db, "INSERT OR REPLACE INTO Track_Artist (track_id, artist_id, role, position) VALUES (?, ?, ?, ?)");
         query.bind(1, params.track_id);
@@ -229,13 +233,17 @@ tl::expected<void, std::string> SqliteTrackRepository::add_album(const TrackAlbu
         auto transaction = m_context.begin_transaction();
         auto &db = m_context.get_db();
 
-        SQLite::Statement check_track(db, "SELECT 1 FROM Track WHERE id = ?");
-        check_track.bind(1, params.track_id);
-        if (!check_track.executeStep()) return tl::unexpected("Target Track not found.");
+        {
+            SQLite::Statement check_track(db, "SELECT 1 FROM Track WHERE id = ?");
+            check_track.bind(1, params.track_id);
+            if (!check_track.executeStep()) return tl::unexpected("Target Track not found.");
+        }
 
-        SQLite::Statement check_album(db, "SELECT 1 FROM Album WHERE id = ?");
-        check_album.bind(1, params.album_id);
-        if (!check_album.executeStep()) return tl::unexpected("Target Album not found.");
+        {
+            SQLite::Statement check_album(db, "SELECT 1 FROM Album WHERE id = ?");
+            check_album.bind(1, params.album_id);
+            if (!check_album.executeStep()) return tl::unexpected("Target Album not found.");
+        }
 
         SQLite::Statement query(db, "INSERT OR REPLACE INTO Track_Album (track_id, album_id, position) VALUES (?, ?, ?)");
         query.bind(1, params.track_id);

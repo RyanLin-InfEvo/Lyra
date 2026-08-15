@@ -233,6 +233,44 @@ bool test_context_isolation(const std::string &db_path1, const std::string &db_p
     }
 }
 
+bool test_wal_checkpoint_visibility(const std::string &db_path) {
+    try {
+        SqliteDatabaseContext ctx(db_path);
+        auto &db = ctx.get_db();
+
+        TableCleaner cleaner{db, "test_wal_visibility"};
+        db.exec("CREATE TABLE IF NOT EXISTS test_wal_visibility (id INTEGER PRIMARY KEY, val TEXT);");
+        db.exec("DELETE FROM test_wal_visibility;");
+
+        // Open a secondary reader connection before/during transaction
+        SQLite::Database reader(db_path, SQLite::OPEN_READONLY);
+
+        {
+            auto tx = ctx.begin_transaction();
+            db.exec("INSERT INTO test_wal_visibility (id, val) VALUES (1, 'wal_visibility_test');");
+            tx->commit();
+        }
+
+        // Assert that reader can immediately query and find the committed row
+        SQLite::Statement query(reader, "SELECT val FROM test_wal_visibility WHERE id = 1;");
+        if (!query.executeStep()) {
+            std::cerr << "test_wal_checkpoint_visibility FAILED: reader connection could not find committed row\n";
+            return false;
+        }
+
+        std::string val = query.getColumn(0).getText();
+        if (val != "wal_visibility_test") {
+            std::cerr << "test_wal_checkpoint_visibility FAILED: unexpected value '" << val << "'\n";
+            return false;
+        }
+
+        return true;
+    } catch (const std::exception &e) {
+        std::cerr << "test_wal_checkpoint_visibility failed with exception: " << e.what() << "\n";
+        return false;
+    }
+}
+
 int main(int argc, char *argv[]) {
     if (argc < 2) {
         std::cerr << "Usage: " << argv[0] << " <db_path>\n";
@@ -243,27 +281,33 @@ int main(int argc, char *argv[]) {
 
     bool all_passed = true;
 
-    std::cout << "[1/4] Running test_basic_transaction..." << std::endl;
+    std::cout << "[1/5] Running test_basic_transaction..." << std::endl;
     if (!test_basic_transaction(db_path1)) {
         std::cerr << "test_basic_transaction FAILED\n";
         all_passed = false;
     }
 
-    std::cout << "[2/4] Running test_savepoint_rollback..." << std::endl;
+    std::cout << "[2/5] Running test_savepoint_rollback..." << std::endl;
     if (!test_savepoint_rollback(db_path1)) {
         std::cerr << "test_savepoint_rollback FAILED\n";
         all_passed = false;
     }
 
-    std::cout << "[3/4] Running test_nested_savepoint_rollback_and_commit..." << std::endl;
+    std::cout << "[3/5] Running test_nested_savepoint_rollback_and_commit..." << std::endl;
     if (!test_nested_savepoint_rollback_and_commit(db_path1)) {
         std::cerr << "test_nested_savepoint_rollback_and_commit FAILED\n";
         all_passed = false;
     }
 
-    std::cout << "[4/4] Running test_context_isolation..." << std::endl;
+    std::cout << "[4/5] Running test_context_isolation..." << std::endl;
     if (!test_context_isolation(db_path1, db_path2)) {
         std::cerr << "test_context_isolation FAILED\n";
+        all_passed = false;
+    }
+
+    std::cout << "[5/5] Running test_wal_checkpoint_visibility..." << std::endl;
+    if (!test_wal_checkpoint_visibility(db_path1)) {
+        std::cerr << "test_wal_checkpoint_visibility FAILED\n";
         all_passed = false;
     }
 
