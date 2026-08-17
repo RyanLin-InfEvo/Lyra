@@ -18,6 +18,7 @@
 #include "controllers/work_controller.h"
 #include "models/relation_types.h"
 #include "models/track.h"
+#include "services/audio_engine.h"
 #include "services/database_context.h"
 #include "services/repositories/sqlite/sqlite_album_repository.h"
 #include "services/repositories/sqlite/sqlite_artist_repository.h"
@@ -61,11 +62,20 @@ Router::Router(const std::string &db_path) {
     m_playlist_controller = std::make_unique<PlaylistController>(*m_playlist_repo);
     m_track_controller = std::make_unique<TrackController>(*m_track_repo);
     m_work_controller = std::make_unique<WorkController>(*m_work_repo);
+    m_audio_engine = std::make_unique<AudioEngine>();
 
     init_handlers();
 }
 
 Router::~Router() = default;
+
+void Router::set_event_callback(std::function<void(const std::string &)> callback) {
+    if (m_audio_engine) m_audio_engine->set_event_callback(std::move(callback));
+}
+
+AudioEngine &Router::get_audio_engine() {
+    return *m_audio_engine;
+}
 
 void Router::init_handlers() {
     // Artist
@@ -133,7 +143,17 @@ void Router::init_handlers() {
     // Cover Art endpoints
     m_handlers["GetAlbumCover"] = [this](const json &p) { return handleGetAlbumCover(p); };
     m_handlers["GetTrackCover"] = [this](const json &p) { return handleGetTrackCover(p); };
+
+    // Audio Engine Control endpoints
+    m_handlers["audio.play"] = [this](const json &p) { return handleAudioPlay(p); };
+    m_handlers["audio.pause"] = [this](const json &p) { return handleAudioPause(p); };
+    m_handlers["audio.resume"] = [this](const json &p) { return handleAudioResume(p); };
+    m_handlers["audio.seek"] = [this](const json &p) { return handleAudioSeek(p); };
+    m_handlers["audio.stop"] = [this](const json &p) { return handleAudioStop(p); };
+    m_handlers["audio.set_volume"] = [this](const json &p) { return handleAudioSetVolume(p); };
+    m_handlers["audio.get_state"] = [this](const json &p) { return handleAudioGetState(p); };
 }
+
 
 namespace {
 
@@ -1343,10 +1363,86 @@ json Router::handleGetTrackCover(const json &params) {
         }
     }
 
-    return ApiResponse::error({ErrorType::NotFound, "No cover image found for track or its album: " + track_id});
+    return ApiResponse::error(Error{ErrorType::NotFound, "No cover image found for track or its album: " + track_id});
+}
+
+json Router::handleAudioPlay(const json &p) {
+    // Play a file_path or audio_id or asset_id
+    std::string file_path;
+    if (p.contains("file_path") && p["file_path"].is_string()) {
+        file_path = p["file_path"].get<std::string>();
+    } else if (p.contains("asset_id") && p["asset_id"].is_string()) {
+        std::string asset_id = p["asset_id"].get<std::string>();
+        auto path_res = m_asset_controller->resolve_file_path(asset_id);
+        if (!path_res) {
+            return ApiResponse::error(Error{ErrorType::NotFound, "File path not found for asset: " + asset_id});
+        }
+        file_path = *path_res;
+    } else if (p.contains("audio_id") && p["audio_id"].is_string()) {
+        std::string pcm_hash = p["audio_id"].get<std::string>();
+        auto assets_res = m_asset_controller->get_assets_by_audio(pcm_hash);
+        if (!assets_res || assets_res->empty()) {
+            return ApiResponse::error(Error{ErrorType::AudioNotFound, "No assets found for audio: " + pcm_hash});
+        }
+        auto path_res = m_asset_controller->resolve_file_path((*assets_res)[0]);
+        if (!path_res) {
+            return ApiResponse::error(Error{ErrorType::NotFound, "File path not found for asset: " + (*assets_res)[0]});
+        }
+        file_path = *path_res;
+    } else {
+        return ApiResponse::error(Error{ErrorType::MissingParameter, "Missing 'file_path', 'asset_id', or 'audio_id' parameter"});
+    }
+
+    bool success = m_audio_engine->play(file_path);
+    if (!success) {
+        return ApiResponse::error(Error{ErrorType::InvalidValue, "Failed to play audio file: " + file_path});
+    }
+    return ApiResponse::success(m_audio_engine->get_state_json());
+}
+
+json Router::handleAudioPause(const json &p) {
+    (void)p;
+    m_audio_engine->pause();
+    return ApiResponse::success(m_audio_engine->get_state_json());
+}
+
+json Router::handleAudioResume(const json &p) {
+    (void)p;
+    m_audio_engine->resume();
+    return ApiResponse::success(m_audio_engine->get_state_json());
+}
+
+json Router::handleAudioSeek(const json &p) {
+    if (!p.contains("position") || !p["position"].is_number()) {
+        return ApiResponse::error(Error{ErrorType::MissingParameter, "Missing or invalid 'position' parameter"});
+    }
+    double pos = p["position"].get<double>();
+    m_audio_engine->seek(pos);
+    return ApiResponse::success(m_audio_engine->get_state_json());
+}
+
+json Router::handleAudioStop(const json &p) {
+    (void)p;
+    m_audio_engine->stop();
+    return ApiResponse::success(m_audio_engine->get_state_json());
+}
+
+json Router::handleAudioSetVolume(const json &p) {
+    if (!p.contains("volume") || !p["volume"].is_number()) {
+        return ApiResponse::error(Error{ErrorType::MissingParameter, "Missing or invalid 'volume' parameter"});
+    }
+    float vol = p["volume"].get<float>();
+    m_audio_engine->set_volume(vol);
+    return ApiResponse::success(m_audio_engine->get_state_json());
+}
+
+json Router::handleAudioGetState(const json &p) {
+    (void)p;
+    return ApiResponse::success(m_audio_engine->get_state_json());
 }
 
 json Router::route(const json &request) {
+
     if (!request.contains("command") || !request["command"].is_string()) {
         return ApiResponse::error(
             {ErrorType::InvalidCommandFormat, "Missing or invalid 'command' field"});
