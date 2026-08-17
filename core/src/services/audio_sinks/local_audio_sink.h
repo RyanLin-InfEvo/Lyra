@@ -1,0 +1,44 @@
+/*
+ * SPDX-FileCopyrightText: 2026 Tzu-Ting Lin
+ *
+ * SPDX-License-Identifier: AGPL-3.0-or-later
+ */
+
+#pragma once
+
+#include "lyra_plugin_api.h"
+#include <atomic>
+#include <cstdint>
+
+namespace lyra {
+
+class LocalAudioSinkImpl {
+  public:
+    struct InternalState;
+    LocalAudioSinkImpl();
+    ~LocalAudioSinkImpl();
+
+    int open(const LyraAudioSpec *spec);
+    int start();
+    int stop();
+    int close();
+    int write_pcm(const void *pcm_data, uint32_t frame_count);
+    int set_volume(float volume);
+
+    bool is_open() const { return m_open; }
+    bool is_playing() const { return m_playing; }
+    float get_volume() const { return m_volume; }
+
+  private:
+    InternalState *m_state{nullptr};
+
+    bool m_open{false};
+    bool m_playing{false};
+    float m_volume{1.0f};
+    LyraAudioSpec m_spec{};
+};
+
+LyraAudioSink *create_local_audio_sink();
+void destroy_local_audio_sink(LyraAudioSink *sink);
+
+} // namespace lyra

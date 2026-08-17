@@ -22,6 +22,13 @@ lyra_dispatch(const char *json_request);
 // Clean up string in memory
 __attribute__((visibility("default"))) void lyra_free_string(char *str);
 
+// Event callback function type
+typedef void (*LyraEventCallback)(const char *json_event, void *user_data);
+
+// Register event callback for push notifications
+__attribute__((visibility("default"))) void
+lyra_register_event_callback(LyraEventCallback callback, void *user_data);
+
 #ifdef __cplusplus
 }
 #endif

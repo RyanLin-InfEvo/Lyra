@@ -50,12 +50,15 @@ set(CPP
     src/controllers/track_controller.cpp
     src/controllers/work_controller.cpp
     src/controllers/playlist_controller.cpp
+    src/services/audio_sinks/null_audio_sink.cpp
+    src/services/audio_sinks/local_audio_sink.cpp
+    src/services/audio_engine.cpp
 )
 
 add_library(lyra_core SHARED ${CPP})
 
-# .h files in include/ directory
-target_include_directories(lyra_core PUBLIC include)
+# .h files in include/ and src/ directory
+target_include_directories(lyra_core PUBLIC include src)
 
 # link vcpkg packages with our code
 target_link_libraries(lyra_core PRIVATE 
@@ -114,4 +117,8 @@ if(BUILD_TESTING)
     add_executable(image_repository_test tests/image_repository_test.cpp)
     target_link_libraries(image_repository_test PRIVATE lyra_core nlohmann_json::nlohmann_json fmt::fmt SQLiteCpp)
     target_include_directories(image_repository_test PRIVATE include src)
+
+    add_executable(audio_engine_test tests/audio_engine_test.cpp)
+    target_link_libraries(audio_engine_test PRIVATE lyra_core nlohmann_json::nlohmann_json fmt::fmt)
+    target_include_directories(audio_engine_test PRIVATE include src)
 endif()

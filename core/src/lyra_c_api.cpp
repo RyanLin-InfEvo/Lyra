@@ -2,6 +2,7 @@
 //
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+#include <atomic>
 #include <cstring>
 #include <fmt/core.h>
 #include <memory>
@@ -16,7 +17,19 @@ using namespace lyra;
 
 namespace {
 std::unique_ptr<Router> g_router;
+std::atomic<LyraEventCallback> g_event_callback{nullptr};
+std::atomic<void *> g_event_user_data{nullptr};
+
+void update_router_event_callback() {
+    if (g_router && g_event_callback.load() != nullptr) {
+        g_router->set_event_callback([](const std::string &json_event) {
+            auto cb = g_event_callback.load();
+            auto ud = g_event_user_data.load();
+            if (cb) cb(json_event.c_str(), ud);
+        });
+    }
 }
+} // namespace
 
 // Lyra core initialization
 int lyra_init(const char *storage_root) {
@@ -33,6 +46,7 @@ int lyra_init(const char *storage_root) {
 
         std::string db_path = std::string(storage_root) + "/lyra.db";
         g_router = std::make_unique<Router>(db_path);
+        update_router_event_callback();
         return 0;
 
     } catch (const std::exception &e) {
@@ -92,4 +106,10 @@ void lyra_free_string(char *str) {
     if (str != nullptr) {
         free(str);
     }
+}
+
+void lyra_register_event_callback(LyraEventCallback callback, void *user_data) {
+    g_event_callback = callback;
+    g_event_user_data = user_data;
+    update_router_event_callback();
 }

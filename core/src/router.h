@@ -36,12 +36,16 @@ class PlaylistController;
 class TrackController;
 class WorkController;
 
+class AudioEngine;
+
 class Router {
   public:
     explicit Router(const std::string &db_path);
     ~Router();
 
     json route(const json &request);
+    void set_event_callback(std::function<void(const std::string &)> callback);
+    AudioEngine &get_audio_engine();
 
   private:
     void init_handlers();
@@ -106,6 +110,15 @@ class Router {
 
     json build_image_response(const Image &img);
 
+    // Audio Engine Handlers
+    json handleAudioPlay(const json &p);
+    json handleAudioPause(const json &p);
+    json handleAudioResume(const json &p);
+    json handleAudioSeek(const json &p);
+    json handleAudioStop(const json &p);
+    json handleAudioSetVolume(const json &p);
+    json handleAudioGetState(const json &p);
+
     // Dependencies
     std::string m_storage_root;
     std::unique_ptr<IDatabaseContext> m_db_context;
@@ -126,6 +139,7 @@ class Router {
     std::unique_ptr<PlaylistController> m_playlist_controller;
     std::unique_ptr<TrackController> m_track_controller;
     std::unique_ptr<WorkController> m_work_controller;
+    std::unique_ptr<AudioEngine> m_audio_engine;
 
     // Handler Mapping
     using Handler = std::function<json(const json &)>;
