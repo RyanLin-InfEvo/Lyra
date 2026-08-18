@@ -409,8 +409,17 @@ class LyraApp {
       if (plRes.code !== 200 || !plRes.data) return;
 
       const playlist = plRes.data;
-      const plTracksRes = await this.dispatch('GetPlaylistTracks', { playlist_id: playlistId });
-      const tracks = plTracksRes.code === 200 && plTracksRes.data ? plTracksRes.data : [];
+      const plTracksRes = await this.dispatch('GetPlaylistTracks', { id: playlistId });
+      const rawTracks = plTracksRes.code === 200 && plTracksRes.data ? plTracksRes.data : [];
+
+      // Map raw items (which may be string IDs or track objects) into track objects
+      const tracks = rawTracks.map((item) => {
+        if (typeof item === 'string') {
+          const found = this.tracks.find((t) => (t.id === item || t.track_id === item));
+          return found || { id: item, title: `Track (${item.slice(0, 8)}...)`, artist_name: 'Unknown', duration: 0 };
+        }
+        return item;
+      });
 
       this.currentDetail = {
         type: 'PLAYLIST',
@@ -559,26 +568,40 @@ class LyraApp {
 
   async playTrack(track, replaceQueue = false) {
     if (!track) return;
-    this.currentTrack = track;
+
+    let targetTrack = track;
+    let trackId = typeof track === 'string' ? track : (track.id || track.track_id);
+    if (typeof track === 'string') {
+      targetTrack = this.findTrack(track) || { id: track, title: 'Track' };
+    }
+    if (!targetTrack.id && targetTrack.track_id) {
+      targetTrack.id = targetTrack.track_id;
+    }
+    if (!trackId) {
+      this.showToast('Invalid track selected', 'error');
+      return;
+    }
+
+    this.currentTrack = targetTrack;
 
     if (replaceQueue) {
-      this.queue = [track];
+      this.queue = [targetTrack];
       this.queueIndex = 0;
     } else {
-      const idx = this.queue.findIndex((t) => t.id === track.id);
+      const idx = this.queue.findIndex((t) => (t.id || t.track_id) === trackId);
       if (idx !== -1) {
         this.queueIndex = idx;
       } else {
-        this.queue.push(track);
+        this.queue.push(targetTrack);
         this.queueIndex = this.queue.length - 1;
       }
     }
 
-    this.updatePlayerTrackUI(track);
+    this.updatePlayerTrackUI(targetTrack);
     this.updateQueueUI();
 
     if (this.playbackMode === 'browser') {
-      this.audioElement.src = `/api/audio/${track.id}`;
+      this.audioElement.src = `/api/audio/${trackId}`;
       try {
         await this.audioElement.play();
         this.isPlaying = true;
@@ -588,16 +611,41 @@ class LyraApp {
     } else {
       // Local C++ Core Mode
       try {
-        const resPath = await this.dispatch('GetResourcePath', { track_id: track.id });
-        if (resPath.code === 200 && resPath.data && resPath.data.path) {
-          await this.dispatch('audio.play', { file_path: resPath.data.path });
+        let playSuccess = false;
+        let lastErrMessage = '';
+
+        // 1. Try direct audio.play with track_id
+        let res = await this.dispatch('audio.play', { track_id: trackId });
+        if (res && res.code === 200) {
+          playSuccess = true;
+        } else {
+          if (res && res.error && res.error.message) {
+            lastErrMessage = res.error.message;
+          }
+          // 2. Fallback: resolve path via GetResourcePath and play file_path
+          const resPath = await this.dispatch('GetResourcePath', { track_id: trackId });
+          if (resPath && resPath.code === 200 && resPath.data && resPath.data.path) {
+            res = await this.dispatch('audio.play', { file_path: resPath.data.path });
+            if (res && res.code === 200) {
+              playSuccess = true;
+            } else if (res && res.error && res.error.message) {
+              lastErrMessage = res.error.message;
+            }
+          } else if (resPath && resPath.error && resPath.error.message) {
+            lastErrMessage = resPath.error.message;
+          }
+        }
+
+        if (playSuccess) {
           await this.dispatch('audio.set_volume', { volume: this.volume });
           this.isPlaying = true;
+          this.startCoreStatePolling();
         } else {
-          this.showToast('Could not resolve audio path for Core playback', 'error');
+          const detail = lastErrMessage ? `: ${lastErrMessage}` : '';
+          this.showToast(`Could not play track with Local Core${detail}`, 'error');
         }
       } catch (err) {
-        this.showToast('Core play failed', 'error');
+        this.showToast(`Core play failed: ${err.message || err}`, 'error');
       }
     }
 
@@ -742,11 +790,12 @@ class LyraApp {
           const pos = res.data.position || 0;
           const dur = (this.currentTrack && this.currentTrack.duration) ? this.currentTrack.duration / 1000.0 : (res.data.duration || 0);
 
+          const wasPlaying = this.isPlaying;
           this.isPlaying = state === 'PLAYING';
           this.updatePlayPauseUI();
           this.updateProgressUI(pos, dur);
 
-          if (state === 'STOPPED' && this.isPlaying) {
+          if (state === 'STOPPED' && wasPlaying) {
             this.handleTrackEnded();
           }
         }
@@ -761,16 +810,28 @@ class LyraApp {
   // =========================================================================
 
   playTrackById(trackId) {
+    if (!trackId) return;
     const track = this.findTrack(trackId);
-    if (track) this.playTrack(track);
+    if (track) {
+      this.playTrack(track);
+    } else {
+      // Fallback: direct play by ID even if not cached in current page
+      this.playTrack({ id: trackId });
+    }
   }
 
   addToQueueById(trackId) {
+    if (!trackId) return;
     const track = this.findTrack(trackId);
     if (track) {
       this.queue.push(track);
       this.updateQueueUI();
       this.showToast(`Added "${track.title || 'Track'}" to queue`, 'info');
+    } else {
+      const stub = { id: trackId, title: 'Track' };
+      this.queue.push(stub);
+      this.updateQueueUI();
+      this.showToast('Added track to queue', 'info');
     }
   }
 
@@ -792,10 +853,12 @@ class LyraApp {
   }
 
   findTrack(trackId) {
+    if (!trackId) return null;
     return (
-      this.tracks.find((t) => t.id === trackId) ||
-      (this.currentDetail && this.currentDetail.tracks && this.currentDetail.tracks.find((t) => t.id === trackId)) ||
-      this.queue.find((t) => t.id === trackId)
+      this.tracks.find((t) => (t && (t.id === trackId || t.track_id === trackId))) ||
+      (this.currentDetail && this.currentDetail.tracks && this.currentDetail.tracks.find((t) => (typeof t === 'object' && t && (t.id === trackId || t.track_id === trackId)))) ||
+      this.queue.find((t) => (t && (t.id === trackId || t.track_id === trackId))) ||
+      null
     );
   }
 

@@ -1191,10 +1191,20 @@ json Router::handleRemovePlaylistTrack(const json &params) {
 }
 
 json Router::handleGetPlaylistTracks(const json &params) {
-    auto err = JsonValidator::validate(params, {{"id", Type::String, true, StringFormat::UUID}});
+    auto err = JsonValidator::validate(params, {{"id", Type::String, false, StringFormat::UUID},
+                                                {"playlist_id", Type::String, false, StringFormat::UUID}});
     if (err) return *err;
 
-    std::vector<std::string> tracks = m_playlist_controller->get_tracks(params["id"].get<std::string>());
+    std::string playlist_id;
+    if (params.contains("id") && params["id"].is_string()) {
+        playlist_id = params["id"].get<std::string>();
+    } else if (params.contains("playlist_id") && params["playlist_id"].is_string()) {
+        playlist_id = params["playlist_id"].get<std::string>();
+    } else {
+        return ApiResponse::error({ErrorType::MissingParameter, "Missing 'id' or 'playlist_id' parameter"});
+    }
+
+    std::vector<std::string> tracks = m_playlist_controller->get_tracks(playlist_id);
     return ApiResponse::success(tracks);
 }
 
@@ -1280,32 +1290,36 @@ json Router::handleGetAlbumCover(const json &params) {
     auto err = JsonValidator::validate(params, {{"album_id", Type::String, true, StringFormat::UUID}});
     if (err) return *err;
 
+    if (!m_image_repo) {
+        return ApiResponse::error(Error{ErrorType::DatabaseError, "Image repository not available"});
+    }
+
     std::string album_id = params["album_id"].get<std::string>();
     auto images_res = m_image_repo->get_images_by_entity(album_id);
-    if (!images_res) return ApiResponse::error({ErrorType::DatabaseError, images_res.error()});
+    if (!images_res || images_res.value().empty()) {
+        return ApiResponse::error(Error{ErrorType::NotFound, "No cover image found for album: " + album_id});
+    }
 
-    const auto &images = images_res.value();
-    if (images.empty()) return ApiResponse::error({ErrorType::NotFound, "No cover image found for album: " + album_id});
-
-    return build_image_response(images[0]);
+    return build_image_response(images_res.value()[0]);
 }
 
 json Router::handleGetTrackCover(const json &params) {
     auto err = JsonValidator::validate(params, {{"track_id", Type::String, true, StringFormat::UUID}});
     if (err) return *err;
 
-    std::string track_id = params["track_id"].get<std::string>();
-    auto images_res = m_image_repo->get_images_by_entity(track_id);
-    if (!images_res) return ApiResponse::error({ErrorType::DatabaseError, images_res.error()});
+    if (!m_image_repo) {
+        return ApiResponse::error(Error{ErrorType::DatabaseError, "Image repository not available"});
+    }
 
-    if (!images_res.value().empty()) {
+    std::string track_id = params["track_id"].get<std::string>();
+
+    // 1. Direct track cover
+    auto images_res = m_image_repo->get_images_by_entity(track_id);
+    if (images_res && !images_res.value().empty()) {
         return build_image_response(images_res.value()[0]);
     }
 
-    // Direct image link not found. Check track exists and get album_id fallback
-    auto track_res = m_track_controller->get(track_id);
-    if (!track_res) return ApiResponse::error({ErrorType::TrackNotFound, track_res.error()});
-
+    // 2. Fallback to album cover if track belongs to an album
     std::optional<std::string> album_id;
     try {
         auto &db = m_db_context->get_db();
@@ -1327,12 +1341,28 @@ json Router::handleGetTrackCover(const json &params) {
 }
 
 json Router::handleAudioPlay(const json &p) {
-    // Play a file_path, track_id, asset_id, or audio_id
+    // Play a file_path, track_id, id, asset_id, or audio_id
     std::string file_path;
     if (p.contains("file_path") && p["file_path"].is_string()) {
         file_path = p["file_path"].get<std::string>();
     } else if (p.contains("track_id") && p["track_id"].is_string()) {
         std::string track_id = p["track_id"].get<std::string>();
+        auto track_res = m_track_controller->get(track_id);
+        if (!track_res) {
+            return ApiResponse::error(Error{ErrorType::TrackNotFound, "Track not found: " + track_id});
+        }
+        std::string pcm_hash = track_res.value().pcm_hash;
+        auto assets_res = m_asset_controller->get_assets_by_audio(pcm_hash);
+        if (!assets_res || assets_res->empty()) {
+            return ApiResponse::error(Error{ErrorType::AssetNotFound, "No assets found for track's audio: " + track_id});
+        }
+        auto path_res = m_asset_controller->resolve_file_path((*assets_res)[0]);
+        if (!path_res) {
+            return ApiResponse::error(Error{ErrorType::NotFound, "File path not found for asset: " + (*assets_res)[0]});
+        }
+        file_path = *path_res;
+    } else if (p.contains("id") && p["id"].is_string()) {
+        std::string track_id = p["id"].get<std::string>();
         auto track_res = m_track_controller->get(track_id);
         if (!track_res) {
             return ApiResponse::error(Error{ErrorType::TrackNotFound, "Track not found: " + track_id});
@@ -1366,12 +1396,16 @@ json Router::handleAudioPlay(const json &p) {
         }
         file_path = *path_res;
     } else {
-        return ApiResponse::error(Error{ErrorType::MissingParameter, "Missing 'file_path', 'track_id', 'asset_id', or 'audio_id' parameter"});
+        return ApiResponse::error(Error{ErrorType::MissingParameter, "Missing 'file_path', 'track_id', 'id', 'asset_id', or 'audio_id' parameter"});
+    }
+
+    if (!std::filesystem::exists(file_path)) {
+        return ApiResponse::error(Error{ErrorType::NotFound, "Audio file does not exist on disk: " + file_path});
     }
 
     bool success = m_audio_engine->play(file_path);
     if (!success) {
-        return ApiResponse::error(Error{ErrorType::InvalidValue, "Failed to play audio file: " + file_path});
+        return ApiResponse::error(Error{ErrorType::InvalidValue, "Failed to initialize decoder for audio file: " + file_path});
     }
     return ApiResponse::success(m_audio_engine->get_state_json());
 }

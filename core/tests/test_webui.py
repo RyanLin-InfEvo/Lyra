@@ -346,3 +346,112 @@ class TestWebUI(BaseLyraTestCase):
         with self.assertRaises(urllib.error.HTTPError) as ctx:
             urllib.request.urlopen(req)
         self.assertEqual(ctx.exception.code, 404)
+
+    def test_core_playback_dispatch_workflow(self):
+        """Test full Local Core playback API workflow via /api/dispatch."""
+        audio_file = self.create_dummy_audio_file("core_play_test.mp3", with_cover=True)
+        res_import = self.client.dispatch("ImportTrack", {"source_path": audio_file})
+        self.assertEqual(res_import["code"], 200)
+        track_id = res_import["data"]["track_id"]
+
+        # 1. ListTracks via dispatch HTTP endpoint
+        req_body = json.dumps({"command": "ListTracks", "params": {"limit": 10}}).encode("utf-8")
+        req = urllib.request.Request(f"{self.base_url}/api/dispatch", data=req_body, headers={"Content-Type": "application/json"}, method="POST")
+        with urllib.request.urlopen(req) as resp:
+            self.assertEqual(resp.status, 200)
+            res_list = json.loads(resp.read().decode("utf-8"))
+            self.assertEqual(res_list["code"], 200)
+            self.assertGreater(len(res_list["data"]["items"]), 0)
+
+        # 2. GetResourcePath via dispatch HTTP endpoint
+        req_body = json.dumps({"command": "GetResourcePath", "params": {"track_id": track_id}}).encode("utf-8")
+        req = urllib.request.Request(f"{self.base_url}/api/dispatch", data=req_body, headers={"Content-Type": "application/json"}, method="POST")
+        with urllib.request.urlopen(req) as resp:
+            self.assertEqual(resp.status, 200)
+            res_path = json.loads(resp.read().decode("utf-8"))
+            self.assertEqual(res_path["code"], 200)
+            self.assertIn("path", res_path["data"])
+            self.assertTrue(os.path.exists(res_path["data"]["path"]))
+
+        # 3. audio.play with track_id via dispatch HTTP endpoint
+        req_body = json.dumps({"command": "audio.play", "params": {"track_id": track_id}}).encode("utf-8")
+        req = urllib.request.Request(f"{self.base_url}/api/dispatch", data=req_body, headers={"Content-Type": "application/json"}, method="POST")
+        with urllib.request.urlopen(req) as resp:
+            self.assertEqual(resp.status, 200)
+            res_play = json.loads(resp.read().decode("utf-8"))
+            self.assertEqual(res_play["code"], 200)
+            self.assertEqual(res_play["data"]["state"], "PLAYING")
+
+        # 4. audio.get_state
+        req_body = json.dumps({"command": "audio.get_state", "params": {}}).encode("utf-8")
+        req = urllib.request.Request(f"{self.base_url}/api/dispatch", data=req_body, headers={"Content-Type": "application/json"}, method="POST")
+        with urllib.request.urlopen(req) as resp:
+            res_state = json.loads(resp.read().decode("utf-8"))
+            self.assertEqual(res_state["code"], 200)
+            self.assertIn("state", res_state["data"])
+            self.assertIn("position", res_state["data"])
+            self.assertIn("duration", res_state["data"])
+
+        # 5. audio.pause
+        req_body = json.dumps({"command": "audio.pause", "params": {}}).encode("utf-8")
+        req = urllib.request.Request(f"{self.base_url}/api/dispatch", data=req_body, headers={"Content-Type": "application/json"}, method="POST")
+        with urllib.request.urlopen(req) as resp:
+            res_pause = json.loads(resp.read().decode("utf-8"))
+            self.assertEqual(res_pause["code"], 200)
+            self.assertEqual(res_pause["data"]["state"], "PAUSED")
+
+        # 6. audio.resume
+        req_body = json.dumps({"command": "audio.resume", "params": {}}).encode("utf-8")
+        req = urllib.request.Request(f"{self.base_url}/api/dispatch", data=req_body, headers={"Content-Type": "application/json"}, method="POST")
+        with urllib.request.urlopen(req) as resp:
+            res_resume = json.loads(resp.read().decode("utf-8"))
+            self.assertEqual(res_resume["code"], 200)
+            self.assertEqual(res_resume["data"]["state"], "PLAYING")
+
+        # 7. audio.stop
+        req_body = json.dumps({"command": "audio.stop", "params": {}}).encode("utf-8")
+        req = urllib.request.Request(f"{self.base_url}/api/dispatch", data=req_body, headers={"Content-Type": "application/json"}, method="POST")
+        with urllib.request.urlopen(req) as resp:
+            res_stop = json.loads(resp.read().decode("utf-8"))
+            self.assertEqual(res_stop["code"], 200)
+            self.assertEqual(res_stop["data"]["state"], "STOPPED")
+
+    def test_core_playback_error_handling(self):
+        """Test audio.play error handling on non-existent track or missing file."""
+        non_existent_id = str(uuid.uuid4())
+
+        # audio.play with non-existent track ID
+        req_body = json.dumps({"command": "audio.play", "params": {"track_id": non_existent_id}}).encode("utf-8")
+        req = urllib.request.Request(f"{self.base_url}/api/dispatch", data=req_body, headers={"Content-Type": "application/json"}, method="POST")
+        with urllib.request.urlopen(req) as resp:
+            res = json.loads(resp.read().decode("utf-8"))
+            self.assertEqual(res["code"], 404)
+            self.assertIn("error", res)
+
+        # audio.play with non-existent file path
+        req_body = json.dumps({"command": "audio.play", "params": {"file_path": "/path/to/nonexistent/music.mp3"}}).encode("utf-8")
+        req = urllib.request.Request(f"{self.base_url}/api/dispatch", data=req_body, headers={"Content-Type": "application/json"}, method="POST")
+        with urllib.request.urlopen(req) as resp:
+            res = json.loads(resp.read().decode("utf-8"))
+            self.assertEqual(res["code"], 404)
+            self.assertIn("error", res)
+            self.assertIn("does not exist", res["error"]["message"])
+
+    def test_playlist_tracks_dispatch(self):
+        """Test GetPlaylistTracks accepts both id and playlist_id."""
+        res_pl = self.client.dispatch("CreatePlaylist", {"title": "Dispatch Playlist"})
+        pl_id = res_pl["data"]["id"]
+
+        # Call with 'id'
+        req_body = json.dumps({"command": "GetPlaylistTracks", "params": {"id": pl_id}}).encode("utf-8")
+        req = urllib.request.Request(f"{self.base_url}/api/dispatch", data=req_body, headers={"Content-Type": "application/json"}, method="POST")
+        with urllib.request.urlopen(req) as resp:
+            res = json.loads(resp.read().decode("utf-8"))
+            self.assertEqual(res["code"], 200)
+
+        # Call with 'playlist_id'
+        req_body = json.dumps({"command": "GetPlaylistTracks", "params": {"playlist_id": pl_id}}).encode("utf-8")
+        req = urllib.request.Request(f"{self.base_url}/api/dispatch", data=req_body, headers={"Content-Type": "application/json"}, method="POST")
+        with urllib.request.urlopen(req) as resp:
+            res = json.loads(resp.read().decode("utf-8"))
+            self.assertEqual(res["code"], 200)
