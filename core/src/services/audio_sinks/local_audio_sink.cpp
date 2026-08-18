@@ -81,12 +81,25 @@ LocalAudioSinkImpl::~LocalAudioSinkImpl() {
 
 int LocalAudioSinkImpl::open(const LyraAudioSpec *spec) {
     if (!spec) return -1;
-    if (m_open) close();
 
-    m_spec = *spec;
     ma_format format = lyra_format_to_ma(spec->format);
     uint32_t channels = spec->channels == 0 ? 2 : spec->channels;
     uint32_t sample_rate = spec->sample_rate == 0 ? 44100 : spec->sample_rate;
+
+    if (m_open && m_state->device_inited && m_state->rb_inited &&
+        m_spec.sample_rate == sample_rate &&
+        m_spec.channels == channels &&
+        m_spec.format == spec->format) {
+        // Reuse initialized device and clear buffer
+        flush();
+        return 0;
+    }
+
+    if (m_open) close();
+
+    m_spec = *spec;
+    m_spec.channels = static_cast<uint8_t>(channels);
+    m_spec.sample_rate = sample_rate;
 
     // Buffer 2 seconds worth of frames in ring buffer
     ma_uint32 rb_capacity = sample_rate * 2;
@@ -105,10 +118,9 @@ int LocalAudioSinkImpl::open(const LyraAudioSpec *spec) {
 
     result = ma_device_init(NULL, &config, &m_state->device);
     if (result != MA_SUCCESS) {
-        // Headless fallback: keep ring buffer valid even if sound card device init fails
-        m_open = true;
-        set_volume(m_volume);
-        return 0;
+        ma_pcm_rb_uninit(&m_state->ring_buffer);
+        m_state->rb_inited = false;
+        return -1;
     }
     m_state->device_inited = true;
     m_open = true;
@@ -147,6 +159,18 @@ int LocalAudioSinkImpl::close() {
     }
     m_open = false;
     return 0;
+}
+
+int LocalAudioSinkImpl::flush() {
+    if (m_state && m_state->rb_inited) {
+        ma_pcm_rb_reset(&m_state->ring_buffer);
+    }
+    return 0;
+}
+
+uint32_t LocalAudioSinkImpl::get_buffered_frames() const {
+    if (!m_open || !m_state || !m_state->rb_inited || !m_state->device_inited) return 0;
+    return ma_pcm_rb_available_read(&m_state->ring_buffer);
 }
 
 int LocalAudioSinkImpl::write_pcm(const void *pcm_data, uint32_t frame_count) {
@@ -208,6 +232,16 @@ int local_sink_close(LyraAudioSink *sink) {
     return static_cast<LocalAudioSinkImpl *>(sink->user_data)->close();
 }
 
+int local_sink_flush(LyraAudioSink *sink) {
+    if (!sink || !sink->user_data) return -1;
+    return static_cast<LocalAudioSinkImpl *>(sink->user_data)->flush();
+}
+
+uint32_t local_sink_get_buffered_frames(LyraAudioSink *sink) {
+    if (!sink || !sink->user_data) return 0;
+    return static_cast<LocalAudioSinkImpl *>(sink->user_data)->get_buffered_frames();
+}
+
 int local_sink_write_pcm(LyraAudioSink *sink, const void *pcm_data, uint32_t frame_count) {
     if (!sink || !sink->user_data) return -1;
     return static_cast<LocalAudioSinkImpl *>(sink->user_data)->write_pcm(pcm_data, frame_count);
@@ -230,6 +264,8 @@ LyraAudioSink *create_local_audio_sink() {
     sink->close = local_sink_close;
     sink->write_pcm = local_sink_write_pcm;
     sink->set_volume = local_sink_set_volume;
+    sink->flush = local_sink_flush;
+    sink->get_buffered_frames = local_sink_get_buffered_frames;
     return sink;
 }
 

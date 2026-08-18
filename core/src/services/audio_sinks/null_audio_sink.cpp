@@ -82,6 +82,16 @@ int null_sink_set_volume(LyraAudioSink *sink, float volume) {
     if (!sink || !sink->user_data) return -1;
     return static_cast<NullAudioSinkImpl *>(sink->user_data)->set_volume(volume);
 }
+
+int null_sink_flush(LyraAudioSink *sink) {
+    if (!sink || !sink->user_data) return -1;
+    return static_cast<NullAudioSinkImpl *>(sink->user_data)->flush();
+}
+
+uint32_t null_sink_get_buffered_frames(LyraAudioSink *sink) {
+    if (!sink || !sink->user_data) return 0;
+    return static_cast<NullAudioSinkImpl *>(sink->user_data)->get_buffered_frames();
+}
 } // namespace
 
 LyraAudioSink *create_null_audio_sink() {
@@ -95,6 +105,8 @@ LyraAudioSink *create_null_audio_sink() {
     sink->close = null_sink_close;
     sink->write_pcm = null_sink_write_pcm;
     sink->set_volume = null_sink_set_volume;
+    sink->flush = null_sink_flush;
+    sink->get_buffered_frames = null_sink_get_buffered_frames;
     return sink;
 }
 

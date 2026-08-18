@@ -23,6 +23,8 @@ class NullAudioSinkImpl {
     int close();
     int write_pcm(const void *pcm_data, uint32_t frame_count);
     int set_volume(float volume);
+    int flush() { return 0; }
+    uint32_t get_buffered_frames() const { return 0; }
 
     bool is_open() const { return m_open; }
     bool is_playing() const { return m_playing; }

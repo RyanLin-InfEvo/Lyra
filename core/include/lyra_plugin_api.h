@@ -54,6 +54,12 @@ typedef struct LyraAudioSink {
 
     // Set output volume (0.0f to 1.0f)
     int (*set_volume)(struct LyraAudioSink *sink, float volume);
+
+    // Flush/clear buffered PCM data (optional, may be NULL)
+    int (*flush)(struct LyraAudioSink *sink);
+
+    // Get count of buffered frames pending playback (optional, may be NULL)
+    uint32_t (*get_buffered_frames)(struct LyraAudioSink *sink);
 } LyraAudioSink;
 
 #ifdef __cplusplus
