@@ -1,0 +1,515 @@
+<!DOCTYPE html>
+<!--
+SPDX-FileCopyrightText: 2026 Tzu-Ting Lin
+
+SPDX-License-Identifier: AGPL-3.0-or-later
+-->
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Lyra — Audiophile Music Asset Manager &amp; Player</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <div class="app-layout">
+    <!-- TOP HEADER -->
+    <header class="top-header">
+      <div class="header-brand">
+        <div class="brand-logo">
+          <svg viewBox="0 0 28 28" width="28" height="28" fill="none" stroke="currentColor">
+            <circle cx="14" cy="14" r="12" stroke="currentColor" stroke-width="2" stroke-dasharray="4 2" />
+            <path d="M11 9v10l8-5-8-5z" fill="currentColor" />
+          </svg>
+        </div>
+        <div class="brand-text">
+          <h1 class="brand-title">LYRA</h1>
+          <span class="brand-tag">CORE ENGINE</span>
+        </div>
+      </div>
+
+      <div class="header-search">
+        <div class="search-input-wrapper">
+          <svg class="search-icon" viewBox="0 0 20 20" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="9" cy="9" r="6" />
+            <path d="M13.5 13.5L18 18" />
+          </svg>
+          <input type="text" id="globalSearchInput" placeholder="Search tracks, albums, artists... (Press / to focus)" autocomplete="off" />
+          <button id="searchClearBtn" class="search-clear-btn" title="Clear search" style="display: none;">&times;</button>
+        </div>
+      </div>
+
+      <div class="header-actions">
+        <!-- Playback Mode Switcher -->
+        <div class="mode-switcher-container" title="Toggle audio output target">
+          <span class="mode-label">Output:</span>
+          <div class="mode-toggle-group">
+            <button id="modeBrowserBtn" class="mode-btn active" data-mode="browser">
+              <svg viewBox="0 0 20 20" width="14" height="14" fill="currentColor">
+                <path d="M10 2a8 8 0 100 16 8 8 0 000-16zM4 10a6 6 0 0110.9-3.5A7.95 7.95 0 0010 8c-2 0-3.8.7-5.2 2A5.96 5.96 0 014 10zm6 6a5.96 5.96 0 01-4.9-2.5c1.4-1.3 3.2-2 5.2-2 2.2 0 4.1.9 5.5 2.3A5.96 5.96 0 0110 16z" />
+              </svg>
+              Browser Stream
+            </button>
+            <button id="modeCoreBtn" class="mode-btn" data-mode="core">
+              <svg viewBox="0 0 20 20" width="14" height="14" fill="currentColor">
+                <path d="M9.383 3.076A1 1 0 0110 4v12a1 1 0 01-1.707.707L4.586 13H2a1 1 0 01-1-1V8a1 1 0 011-1h2.586l3.707-3.707a1 1 0 011.09-.217zM14.657 5.343a1 1 0 011.414 0A9.972 9.972 0 0119 12a9.972 9.972 0 01-2.929 6.657 1 1 0 11-1.414-1.414A7.971 7.971 0 0017 12c0-2.21-.894-4.208-2.343-5.657a1 1 0 010-1.414zm-2.829 2.828a1 1 0 011.415 0A5.983 5.983 0 0115 12a5.982 5.982 0 01-1.757 4.243 1 1 0 01-1.415-1.415A3.982 3.982 0 0013 12a3.982 3.982 0 00-1.172-2.828 1 1 0 010-1.415z" />
+              </svg>
+              Local C++ Core
+            </button>
+          </div>
+        </div>
+
+        <!-- Import Button -->
+        <button id="openImportModalBtn" class="btn btn-primary btn-icon">
+          <svg viewBox="0 0 20 20" width="16" height="16" fill="currentColor">
+            <path fill-rule="evenodd" d="M10 3a1 1 0 011 1v5h5a1 1 0 110 2h-5v5a1 1 0 11-2 0v-5H4a1 1 0 110-2h5V4a1 1 0 011-1z" clip-rule="evenodd" />
+          </svg>
+          Import Audio
+        </button>
+
+        <!-- System Status Pill -->
+        <div id="systemStatusPill" class="status-pill online" title="Lyra Core Service Online">
+          <span class="status-dot"></span>
+          <span class="status-text">Online</span>
+        </div>
+      </div>
+    </header>
+
+    <!-- MAIN BODY (SIDEBAR + CONTENT) -->
+    <div class="app-body">
+      <!-- SIDEBAR NAV -->
+      <aside class="app-sidebar">
+        <div class="sidebar-section">
+          <div class="sidebar-label">LIBRARY</div>
+          <nav class="sidebar-nav">
+            <button class="nav-item active" data-view="tracks">
+              <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M9 18V5l12-2v13" />
+                <circle cx="6" cy="18" r="3" />
+                <circle cx="18" cy="16" r="3" />
+              </svg>
+              <span>Tracks</span>
+              <span id="badgeTracksCount" class="nav-count">0</span>
+            </button>
+
+            <button class="nav-item" data-view="albums">
+              <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="12" cy="12" r="10" />
+                <circle cx="12" cy="12" r="3" />
+              </svg>
+              <span>Albums</span>
+              <span id="badgeAlbumsCount" class="nav-count">0</span>
+            </button>
+
+            <button class="nav-item" data-view="artists">
+              <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
+                <circle cx="12" cy="7" r="4" />
+              </svg>
+              <span>Artists</span>
+              <span id="badgeArtistsCount" class="nav-count">0</span>
+            </button>
+
+            <button class="nav-item" data-view="playlists">
+              <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01" />
+              </svg>
+              <span>Playlists</span>
+              <span id="badgePlaylistsCount" class="nav-count">0</span>
+            </button>
+          </nav>
+        </div>
+
+        <div class="sidebar-section">
+          <div class="sidebar-label">ACTIONS</div>
+          <div class="sidebar-quick-actions">
+            <button id="sidebarNewPlaylistBtn" class="sidebar-action-btn">
+              <svg viewBox="0 0 20 20" width="16" height="16" fill="currentColor">
+                <path fill-rule="evenodd" d="M10 3a1 1 0 011 1v5h5a1 1 0 110 2h-5v5a1 1 0 11-2 0v-5H4a1 1 0 110-2h5V4a1 1 0 011-1z" clip-rule="evenodd" />
+              </svg>
+              New Playlist
+            </button>
+            <button id="sidebarRefreshBtn" class="sidebar-action-btn">
+              <svg viewBox="0 0 20 20" width="16" height="16" fill="currentColor">
+                <path fill-rule="evenodd" d="M4 2a1 1 0 011 1v2.101a7.002 7.002 0 0111.601 2.566 1 1 0 11-1.885.666A5.002 5.002 0 005.999 7H9a1 1 0 010 2H4a1 1 0 01-1-1V3a1 1 0 011-1zm.008 9.047a1 1 0 011.885-.666A5.002 5.002 0 0014.001 13H11a1 1 0 110-2h5a1 1 0 011 1v5a1 1 0 11-2 0v-2.101a7.002 7.002 0 01-11.601-2.566z" clip-rule="evenodd" />
+              </svg>
+              Refresh Library
+            </button>
+          </div>
+        </div>
+
+        <!-- System Architecture Pill / Info -->
+        <div class="sidebar-footer">
+          <div class="storage-info-card">
+            <div class="storage-info-header">
+              <span class="storage-title">Immutable CAS</span>
+              <span class="storage-status">WAL Mode</span>
+            </div>
+            <div class="storage-desc">Offline-first content-addressable PCM audio storage.</div>
+          </div>
+        </div>
+      </aside>
+
+      <!-- MAIN CONTENT VIEW CONTAINER -->
+      <main class="app-content" id="mainContent">
+        <!-- 1. TRACKS VIEW -->
+        <section id="viewTracks" class="view-panel active">
+          <div class="view-header">
+            <div class="view-title-area">
+              <h2 class="view-title">All Tracks</h2>
+              <span id="tracksSubtext" class="view-subtitle">0 tracks in library</span>
+            </div>
+            <div class="view-toolbar">
+              <button id="tracksPlayAllBtn" class="btn btn-secondary btn-icon">
+                <svg viewBox="0 0 20 20" width="16" height="16" fill="currentColor">
+                  <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z" clip-rule="evenodd" />
+                </svg>
+                Play All
+              </button>
+              <button id="tracksShuffleAllBtn" class="btn btn-secondary btn-icon">
+                <svg viewBox="0 0 20 20" width="16" height="16" fill="currentColor">
+                  <path fill-rule="evenodd" d="M4 2a1 1 0 011 1v2.101a7.002 7.002 0 0111.601 2.566 1 1 0 11-1.885.666A5.002 5.002 0 005.999 7H9a1 1 0 010 2H4a1 1 0 01-1-1V3a1 1 0 011-1z" clip-rule="evenodd" />
+                </svg>
+                Shuffle
+              </button>
+            </div>
+          </div>
+
+          <!-- Tracks Table -->
+          <div class="table-container">
+            <table class="tracks-table" id="tracksTable">
+              <thead>
+                <tr>
+                  <th class="col-num">#</th>
+                  <th class="col-cover">Cover</th>
+                  <th class="col-title">Title</th>
+                  <th class="col-artist">Artist</th>
+                  <th class="col-album">Album</th>
+                  <th class="col-duration">Duration</th>
+                  <th class="col-actions">Actions</th>
+                </tr>
+              </thead>
+              <tbody id="tracksTableBody">
+                <!-- Dynamically Rendered -->
+              </tbody>
+            </table>
+            <div id="tracksEmptyState" class="empty-state" style="display: none;">
+              <div class="empty-icon">🎵</div>
+              <h3>No tracks found</h3>
+              <p>Import your first audio file or change your search filter.</p>
+              <button class="btn btn-primary" onclick="app.openImportModal()">+ Import Audio Now</button>
+            </div>
+          </div>
+
+          <!-- Pagination Footer -->
+          <div class="pagination-bar" id="tracksPaginationBar">
+            <div class="pagination-info">
+              Showing <span id="pageStartIdx">0</span>-<span id="pageEndIdx">0</span> of <span id="pageTotalCount">0</span>
+            </div>
+            <div class="pagination-controls">
+              <button id="prevPageBtn" class="btn btn-ghost" disabled>&laquo; Prev</button>
+              <span id="pageIndicator" class="page-indicator">Page 1</span>
+              <button id="nextPageBtn" class="btn btn-ghost" disabled>Next &raquo;</button>
+            </div>
+          </div>
+        </section>
+
+        <!-- 2. ALBUMS VIEW -->
+        <section id="viewAlbums" class="view-panel">
+          <div class="view-header">
+            <div class="view-title-area">
+              <h2 class="view-title">Albums</h2>
+              <span id="albumsSubtext" class="view-subtitle">0 albums in library</span>
+            </div>
+          </div>
+          <div class="cards-grid" id="albumsGrid">
+            <!-- Dynamically Rendered -->
+          </div>
+          <div id="albumsEmptyState" class="empty-state" style="display: none;">
+            <div class="empty-icon">💿</div>
+            <h3>No albums found</h3>
+            <p>Imported tracks with album tags will appear here automatically.</p>
+          </div>
+        </section>
+
+        <!-- 3. ARTISTS VIEW -->
+        <section id="viewArtists" class="view-panel">
+          <div class="view-header">
+            <div class="view-title-area">
+              <h2 class="view-title">Artists</h2>
+              <span id="artistsSubtext" class="view-subtitle">0 artists in library</span>
+            </div>
+          </div>
+          <div class="cards-grid" id="artistsGrid">
+            <!-- Dynamically Rendered -->
+          </div>
+          <div id="artistsEmptyState" class="empty-state" style="display: none;">
+            <div class="empty-icon">👤</div>
+            <h3>No artists found</h3>
+            <p>Imported tracks with artist tags will appear here automatically.</p>
+          </div>
+        </section>
+
+        <!-- 4. PLAYLISTS VIEW -->
+        <section id="viewPlaylists" class="view-panel">
+          <div class="view-header">
+            <div class="view-title-area">
+              <h2 class="view-title">Playlists</h2>
+              <span id="playlistsSubtext" class="view-subtitle">0 playlists created</span>
+            </div>
+            <div class="view-toolbar">
+              <button id="createPlaylistBtn" class="btn btn-primary btn-icon">
+                <svg viewBox="0 0 20 20" width="16" height="16" fill="currentColor">
+                  <path fill-rule="evenodd" d="M10 3a1 1 0 011 1v5h5a1 1 0 110 2h-5v5a1 1 0 11-2 0v-5H4a1 1 0 110-2h5V4a1 1 0 011-1z" clip-rule="evenodd" />
+                </svg>
+                Create Playlist
+              </button>
+            </div>
+          </div>
+          <div class="cards-grid" id="playlistsGrid">
+            <!-- Dynamically Rendered -->
+          </div>
+          <div id="playlistsEmptyState" class="empty-state" style="display: none;">
+            <div class="empty-icon">📑</div>
+            <h3>No playlists yet</h3>
+            <p>Create your custom playlist and curate tracks.</p>
+            <button class="btn btn-primary" onclick="app.openCreatePlaylistModal()">+ Create New Playlist</button>
+          </div>
+        </section>
+
+        <!-- 5. DETAIL VIEW (FOR ALBUM, ARTIST, OR PLAYLIST) -->
+        <section id="viewDetail" class="view-panel">
+          <div class="detail-header">
+            <button id="detailBackBtn" class="btn btn-ghost btn-icon detail-back-btn">
+              <svg viewBox="0 0 20 20" width="16" height="16" fill="currentColor">
+                <path fill-rule="evenodd" d="M9.707 14.707a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414l4-4a1 1 0 011.414 1.414L7.414 9H15a1 1 0 110 2H7.414l2.293 2.293a1 1 0 010 1.414z" clip-rule="evenodd" />
+              </svg>
+              Back
+            </button>
+            <div class="detail-banner">
+              <img id="detailCoverImg" class="detail-cover-img" src="/api/cover/default" alt="Cover" />
+              <div class="detail-info">
+                <span id="detailTypeBadge" class="detail-type-badge">ALBUM</span>
+                <h2 id="detailTitle" class="detail-title">Detail Title</h2>
+                <div id="detailMeta" class="detail-meta">Description / Meta Info</div>
+                <div class="detail-actions">
+                  <button id="detailPlayAllBtn" class="btn btn-primary btn-icon">
+                    <svg viewBox="0 0 20 20" width="16" height="16" fill="currentColor">
+                      <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z" clip-rule="evenodd" />
+                    </svg>
+                    Play All
+                  </button>
+                  <button id="detailAddQueueBtn" class="btn btn-secondary btn-icon">
+                    <svg viewBox="0 0 20 20" width="16" height="16" fill="currentColor">
+                      <path fill-rule="evenodd" d="M10 3a1 1 0 011 1v5h5a1 1 0 110 2h-5v5a1 1 0 11-2 0v-5H4a1 1 0 110-2h5V4a1 1 0 011-1z" clip-rule="evenodd" />
+                    </svg>
+                    Add to Queue
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="table-container">
+            <table class="tracks-table" id="detailTracksTable">
+              <thead>
+                <tr>
+                  <th class="col-num">#</th>
+                  <th class="col-cover">Cover</th>
+                  <th class="col-title">Title</th>
+                  <th class="col-artist">Artist</th>
+                  <th class="col-album">Album</th>
+                  <th class="col-duration">Duration</th>
+                  <th class="col-actions">Actions</th>
+                </tr>
+              </thead>
+              <tbody id="detailTracksTableBody"></tbody>
+            </table>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <!-- BOTTOM PERSISTENT PLAYER BAR -->
+    <footer class="player-bar">
+      <!-- Left: Track Info -->
+      <div class="player-track-info">
+        <img id="playerCoverImg" class="player-cover" src="/api/cover/none" alt="Album Art" />
+        <div class="player-track-texts">
+          <div id="playerTrackTitle" class="player-title">No Track Selected</div>
+          <div id="playerTrackArtist" class="player-artist">Lyra Audio Engine</div>
+        </div>
+      </div>
+
+      <!-- Center: Controls & Scrub Bar -->
+      <div class="player-center-controls">
+        <div class="player-buttons">
+          <button id="btnShuffle" class="player-btn btn-toggle" title="Toggle Shuffle (S)">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M16 3h5v5M4 20L21 3M21 16v5h-5M15 15l6 6M4 4l5 5" />
+            </svg>
+          </button>
+
+          <button id="btnPrev" class="player-btn" title="Previous Track (P)">
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor">
+              <path d="M6 6h2v12H6zm3.5 6l8.5 6V6z" />
+            </svg>
+          </button>
+
+          <button id="btnPlayPause" class="player-btn btn-play-main" title="Play / Pause (Space)">
+            <svg id="playIcon" viewBox="0 0 24 24" width="24" height="24" fill="currentColor">
+              <path d="M8 5v14l11-7z" />
+            </svg>
+            <svg id="pauseIcon" viewBox="0 0 24 24" width="24" height="24" fill="currentColor" style="display: none;">
+              <path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z" />
+            </svg>
+          </button>
+
+          <button id="btnNext" class="player-btn" title="Next Track (N)">
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor">
+              <path d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z" />
+            </svg>
+          </button>
+
+          <button id="btnRepeat" class="player-btn btn-toggle" title="Toggle Repeat (R)">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M17 2l4 4-4 4M3 11v-1a4 4 0 0 1 4-4h14M7 22l-4-4 4-4M21 13v1a4 4 0 0 1-4 4H3" />
+            </svg>
+          </button>
+        </div>
+
+        <div class="player-scrub-bar">
+          <span id="playerCurrentTime" class="time-label">0:00</span>
+          <div class="scrub-slider-wrapper">
+            <input type="range" id="playerSeekSlider" class="scrub-slider" min="0" max="100" value="0" step="0.1" />
+            <div id="playerProgressFill" class="slider-fill"></div>
+          </div>
+          <span id="playerTotalDuration" class="time-label">0:00</span>
+        </div>
+      </div>
+
+      <!-- Right: Mode Badge, Volume, Queue Toggle -->
+      <div class="player-right-controls">
+        <div id="playerModeBadge" class="player-mode-badge" title="Active Playback Mode">
+          Browser Stream
+        </div>
+
+        <div class="player-volume-wrapper">
+          <button id="btnMute" class="player-btn btn-vol-icon" title="Mute/Unmute (M)">
+            <svg id="volIconHigh" viewBox="0 0 24 24" width="18" height="18" fill="currentColor">
+              <path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z" />
+            </svg>
+            <svg id="volIconMuted" viewBox="0 0 24 24" width="18" height="18" fill="currentColor" style="display: none;">
+              <path d="M16.5 12c0-1.77-1.02-3.29-2.5-4.03v2.21l2.45 2.45c.03-.2.05-.41.05-.63zm2.5 0c0 .94-.2 1.82-.54 2.64l1.51 1.51C20.63 14.91 21 13.5 21 12c0-4.28-2.99-7.86-7-8.77v2.06c2.89.86 5 3.54 5 6.71zM4.27 3L3 4.27 7.73 9H3v6h4l5 5v-6.73l4.25 4.25c-.67.52-1.42.93-2.25 1.18v2.06c1.38-.31 2.63-.95 3.69-1.81L19.73 21 21 19.73l-9-9L4.27 3zM12 4L9.91 6.09 12 8.18V4z" />
+            </svg>
+          </button>
+          <input type="range" id="playerVolumeSlider" class="volume-slider" min="0" max="1" step="0.01" value="0.8" />
+        </div>
+
+        <button id="btnToggleQueue" class="player-btn btn-queue" title="Toggle Queue (Q)">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01" />
+          </svg>
+          <span id="queueBadge" class="queue-badge">0</span>
+        </button>
+      </div>
+    </footer>
+
+    <!-- PLAY QUEUE SLIDE-OVER DRAWER -->
+    <div id="queueDrawer" class="queue-drawer">
+      <div class="drawer-header">
+        <div class="drawer-title">
+          <h3>Play Queue</h3>
+          <span id="queueCountLabel" class="drawer-count">0 items</span>
+        </div>
+        <div class="drawer-actions">
+          <button id="btnClearQueue" class="btn btn-ghost btn-sm">Clear</button>
+          <button id="btnCloseQueue" class="btn btn-ghost btn-icon">&times;</button>
+        </div>
+      </div>
+      <div class="drawer-content">
+        <div id="queueList" class="queue-items">
+          <!-- Dynamically populated -->
+        </div>
+      </div>
+    </div>
+    <div id="queueOverlay" class="drawer-overlay"></div>
+
+    <!-- MODAL: IMPORT AUDIO -->
+    <div id="importModal" class="modal">
+      <div class="modal-dialog">
+        <div class="modal-header">
+          <h3 class="modal-title">Import Audio into Lyra</h3>
+          <button class="modal-close-btn" onclick="app.closeModal('importModal')">&times;</button>
+        </div>
+        <div class="modal-body">
+          <p class="modal-description">
+            Provide the absolute or relative file path of the audio file to ingest into Lyra CAS.
+            Metadata tags (ID3 / Vorbis) and embedded album art will be automatically extracted.
+          </p>
+          <div class="form-group">
+            <label for="importSourcePath">Audio File Path</label>
+            <input type="text" id="importSourcePath" class="form-input" placeholder="/path/to/music/song.mp3 or ./music/album.flac" />
+          </div>
+          <div id="importResultBox" class="import-result-box" style="display: none;"></div>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-ghost" onclick="app.closeModal('importModal')">Cancel</button>
+          <button id="btnExecuteImport" class="btn btn-primary">Start Import</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- MODAL: CREATE PLAYLIST -->
+    <div id="createPlaylistModal" class="modal">
+      <div class="modal-dialog">
+        <div class="modal-header">
+          <h3 class="modal-title">Create New Playlist</h3>
+          <button class="modal-close-btn" onclick="app.closeModal('createPlaylistModal')">&times;</button>
+        </div>
+        <div class="modal-body">
+          <div class="form-group">
+            <label for="newPlaylistTitle">Playlist Title *</label>
+            <input type="text" id="newPlaylistTitle" class="form-input" placeholder="e.g. My Audiophile Favorites" />
+          </div>
+          <div class="form-group">
+            <label for="newPlaylistDesc">Description (Optional)</label>
+            <textarea id="newPlaylistDesc" class="form-input" rows="3" placeholder="Brief notes about this playlist..."></textarea>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-ghost" onclick="app.closeModal('createPlaylistModal')">Cancel</button>
+          <button id="btnSubmitCreatePlaylist" class="btn btn-primary">Create</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- MODAL: ADD TRACK TO PLAYLIST -->
+    <div id="addToPlaylistModal" class="modal">
+      <div class="modal-dialog">
+        <div class="modal-header">
+          <h3 class="modal-title">Add Track to Playlist</h3>
+          <button class="modal-close-btn" onclick="app.closeModal('addToPlaylistModal')">&times;</button>
+        </div>
+        <div class="modal-body">
+          <p id="addToPlaylistTrackLabel" class="modal-description">Select target playlist:</p>
+          <div id="playlistSelectOptions" class="playlist-choice-list">
+            <!-- Dynamically populated -->
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-ghost" onclick="app.closeModal('addToPlaylistModal')">Cancel</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- TOAST NOTIFICATION CONTAINER -->
+    <div id="toastContainer" class="toast-container"></div>
+  </div>
+
+  <!-- MAIN SCRIPT -->
+  <script src="/app.js"></script>
+</body>
+</html>
