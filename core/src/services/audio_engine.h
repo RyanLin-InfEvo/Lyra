@@ -7,6 +7,7 @@
 #pragma once
 
 #include "lyra_plugin_api.h"
+#include "services/audio_decoder.h"
 #include <atomic>
 #include <functional>
 #include <memory>
@@ -66,15 +67,16 @@ class AudioEngine {
 
     LyraAudioSink *m_sink{nullptr};
     void (*m_sink_deleter)(LyraAudioSink *){nullptr};
+    bool m_sink_is_fallback{false};
+    bool m_custom_sink_set{false};
 
     mutable std::recursive_mutex m_mutex;
     AudioEngineState m_state{AudioEngineState::STOPPED};
     float m_volume{1.0f};
     std::string m_current_file_path;
 
-    // miniaudio decoder handle (void* to avoid exposing miniaudio.h in public header)
-    void *m_decoder_ptr{nullptr};
-    bool m_decoder_initialized{false};
+    // Universal Audio Decoder (FFmpeg backend)
+    std::unique_ptr<AudioDecoder> m_decoder;
     uint32_t m_sample_rate{44100};
     uint8_t m_channels{2};
     uint64_t m_total_frames{0};

@@ -8,6 +8,7 @@ import json
 import os
 import random
 import struct
+import subprocess
 import threading
 import time
 import wave
@@ -262,3 +263,47 @@ class TestAudioEngine(BaseLyraTestCase):
 
         self.assertEqual(len(errors), 0, f"Concurrent audio operations had errors: {errors}")
         self.dispatch("audio.stop", {})
+
+    def test_play_opus_and_other_formats(self):
+        """
+        Verify that AudioEngine can decode and play .opus, .ogg, .flac, .mp3, .m4a files.
+        """
+        formats = [
+            ("test.opus", "libopus"),
+            ("test.ogg", "libvorbis"),
+            ("test.flac", "flac"),
+            ("test.mp3", "libmp3lame"),
+            ("test.m4a", "aac"),
+        ]
+
+        for filename, codec in formats:
+            filepath = os.path.abspath(os.path.join(self.test_db_dir, filename))
+            subprocess.run([
+                "ffmpeg", "-y", "-v", "error", "-f", "lavfi",
+                "-i", "sine=frequency=440:duration=1.0",
+                "-c:a", codec, filepath
+            ], check=True)
+
+            # Play file
+            res = self.dispatch("audio.play", {"file_path": filepath})
+            self.assertResponseCode(res, 200, f"Failed to play {filename}: {res}")
+            self.assertEqual(res["data"]["state"], "PLAYING")
+
+            # Pause & resume
+            res_pause = self.dispatch("audio.pause", {})
+            self.assertResponseCode(res_pause, 200)
+            self.assertEqual(res_pause["data"]["state"], "PAUSED")
+
+            res_resume = self.dispatch("audio.resume", {})
+            self.assertResponseCode(res_resume, 200)
+            self.assertEqual(res_resume["data"]["state"], "PLAYING")
+
+            # Seek
+            res_seek = self.dispatch("audio.seek", {"position": 0.4})
+            self.assertResponseCode(res_seek, 200)
+
+            # Stop
+            res_stop = self.dispatch("audio.stop", {})
+            self.assertResponseCode(res_stop, 200)
+            self.assertEqual(res_stop["data"]["state"], "STOPPED")
+

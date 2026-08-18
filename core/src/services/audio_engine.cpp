@@ -5,7 +5,7 @@
  */
 
 #include "services/audio_engine.h"
-#include "extern/miniaudio.h"
+#include "services/audio_sinks/local_audio_sink.h"
 #include "services/audio_sinks/null_audio_sink.h"
 
 #include <chrono>
@@ -15,15 +15,17 @@
 
 namespace lyra {
 
-
 AudioEngine::AudioEngine() {
-    // Default to NullAudioSink for safe headless operation
-    m_sink = create_null_audio_sink();
-    m_sink_deleter = destroy_null_audio_sink;
+    // Default to LocalAudioSink for hardware audio output; fallback to NullAudioSink on open if unavailable
+    m_sink = create_local_audio_sink();
+    m_sink_deleter = destroy_local_audio_sink;
 }
 
 AudioEngine::~AudioEngine() {
     stop();
+    if (m_sink && m_sink->close) {
+        m_sink->close(m_sink);
+    }
     if (m_sink && m_sink_deleter) {
         m_sink_deleter(m_sink);
         m_sink = nullptr;
@@ -46,6 +48,8 @@ void AudioEngine::set_sink(LyraAudioSink *sink, SinkDeleter deleter) {
     }
     m_sink = sink;
     m_sink_deleter = deleter;
+    m_custom_sink_set = (sink != nullptr);
+    m_sink_is_fallback = false;
 }
 
 void AudioEngine::set_event_callback(EventCallbackFunc callback) {
@@ -54,12 +58,9 @@ void AudioEngine::set_event_callback(EventCallbackFunc callback) {
 }
 
 void AudioEngine::close_decoder_unlocked() {
-    if (m_decoder_initialized && m_decoder_ptr) {
-        auto *decoder = static_cast<ma_decoder *>(m_decoder_ptr);
-        ma_decoder_uninit(decoder);
-        delete decoder;
-        m_decoder_ptr = nullptr;
-        m_decoder_initialized = false;
+    if (m_decoder) {
+        m_decoder->close();
+        m_decoder.reset();
     }
 }
 
@@ -69,28 +70,27 @@ bool AudioEngine::play(const std::string &file_path) {
     {
         std::lock_guard<std::recursive_mutex> lock(m_mutex);
 
-        auto *decoder = new ma_decoder();
-        ma_decoder_config config = ma_decoder_config_init(ma_format_f32, 0, 0);
-        ma_result result = ma_decoder_init_file(file_path.c_str(), &config, decoder);
-        if (result != MA_SUCCESS) {
-            delete decoder;
+        auto decoder = std::make_unique<AudioDecoder>();
+        if (!decoder->open(file_path)) {
             return false;
         }
 
-        m_decoder_ptr = decoder;
-        m_decoder_initialized = true;
-        m_sample_rate = decoder->outputSampleRate;
-        m_channels = static_cast<uint8_t>(decoder->outputChannels);
-
-        ma_uint64 length_frames = 0;
-        if (ma_decoder_get_length_in_pcm_frames(decoder, &length_frames) == MA_SUCCESS) {
-            m_total_frames = length_frames;
-        } else {
-            m_total_frames = 0;
-        }
-
+        m_sample_rate = decoder->get_sample_rate();
+        m_channels = decoder->get_channels();
+        m_total_frames = decoder->get_total_frames();
         m_current_frame = 0;
         m_current_file_path = file_path;
+        m_decoder = std::move(decoder);
+
+        // If no sink or sink is a fallback NullAudioSink (and not explicitly set by set_sink), try to create/use LocalAudioSink
+        if (!m_custom_sink_set && (!m_sink || m_sink_is_fallback)) {
+            if (m_sink && m_sink_deleter) {
+                m_sink_deleter(m_sink);
+            }
+            m_sink = create_local_audio_sink();
+            m_sink_deleter = destroy_local_audio_sink;
+            m_sink_is_fallback = false;
+        }
 
         if (m_sink) {
             LyraAudioSpec spec{};
@@ -98,9 +98,19 @@ bool AudioEngine::play(const std::string &file_path) {
             spec.channels = m_channels;
             spec.format = LYRA_AUDIO_FORMAT_F32;
 
+            int open_res = -1;
             if (m_sink->open) {
-                m_sink->open(m_sink, &spec);
+                open_res = m_sink->open(m_sink, &spec);
             }
+            if (open_res != 0 && !m_custom_sink_set) {
+                // If opening sink fails (e.g. LocalAudioSink on headless environment), graceful fallback to NullAudioSink
+                if (m_sink_deleter) m_sink_deleter(m_sink);
+                m_sink = create_null_audio_sink();
+                m_sink_deleter = destroy_null_audio_sink;
+                m_sink_is_fallback = true;
+                if (m_sink->open) m_sink->open(m_sink, &spec);
+            }
+
             if (m_sink->set_volume) {
                 m_sink->set_volume(m_sink, m_volume);
             }
@@ -160,8 +170,8 @@ bool AudioEngine::stop() {
     {
         std::lock_guard<std::recursive_mutex> lock(m_mutex);
         if (m_sink) {
+            if (m_sink->flush) m_sink->flush(m_sink);
             if (m_sink->stop) m_sink->stop(m_sink);
-            if (m_sink->close) m_sink->close(m_sink);
         }
         close_decoder_unlocked();
         m_current_frame = 0;
@@ -175,21 +185,22 @@ bool AudioEngine::stop() {
 bool AudioEngine::seek(double position_seconds) {
     {
         std::lock_guard<std::recursive_mutex> lock(m_mutex);
-        if (!m_decoder_initialized || !m_decoder_ptr) return false;
+        if (!m_decoder || !m_decoder->is_open()) return false;
 
         if (position_seconds < 0.0) position_seconds = 0.0;
-        ma_uint64 target_frame = static_cast<ma_uint64>(position_seconds * m_sample_rate);
-        if (m_total_frames > 0 && target_frame > m_total_frames) {
-            target_frame = m_total_frames;
+        double dur = get_duration();
+        if (dur > 0.0 && position_seconds > dur) {
+            position_seconds = dur;
         }
 
-        auto *decoder = static_cast<ma_decoder *>(m_decoder_ptr);
-        ma_result result = ma_decoder_seek_to_pcm_frame(decoder, target_frame);
-        if (result != MA_SUCCESS) {
+        if (!m_decoder->seek_seconds(position_seconds)) {
             return false;
         }
-        m_current_frame = target_frame;
+        m_current_frame = m_decoder->get_current_frame();
         m_seek_epoch++;
+        if (m_sink && m_sink->flush) {
+            m_sink->flush(m_sink);
+        }
     }
     emit_state_event("audio_seek");
     return true;
@@ -228,8 +239,12 @@ std::string AudioEngine::get_state_string() const {
 }
 
 double AudioEngine::get_position() const {
+    std::lock_guard<std::recursive_mutex> lock(m_mutex);
     if (m_sample_rate == 0) return 0.0;
-    return static_cast<double>(m_current_frame.load()) / static_cast<double>(m_sample_rate);
+    uint64_t current = m_current_frame.load();
+    uint32_t buffered = (m_sink && m_sink->get_buffered_frames) ? m_sink->get_buffered_frames(m_sink) : 0;
+    uint64_t played = (current > buffered) ? (current - buffered) : 0;
+    return static_cast<double>(played) / static_cast<double>(m_sample_rate);
 }
 
 double AudioEngine::get_duration() const {
@@ -290,24 +305,22 @@ void AudioEngine::pump_loop() {
 
     while (m_pump_running) {
 
-        ma_uint64 frames_read = 0;
-        ma_result result = MA_SUCCESS;
+        uint32_t frames_read = 0;
         bool is_paused = false;
         uint64_t chunk_epoch = 0;
         { // LOCK
             std::lock_guard<std::recursive_mutex> lock(m_mutex);
 
             if (m_state == AudioEngineState::PAUSED) {
-                // PAUSED, sleep outside the lock for 20ms Than directly get out of the lock
+                // PAUSED, sleep outside the lock for 20ms then continue
                 is_paused = true;
-            } else if (m_state != AudioEngineState::PLAYING || !m_decoder_ptr || !m_pump_running) {
-                // STOPED or encouner some error
+            } else if (m_state != AudioEngineState::PLAYING || !m_decoder || !m_pump_running) {
+                // STOPPED or encountered error
                 break;
+            } else {
+                frames_read = m_decoder->read_pcm_frames(buffer.data(), chunk_frames);
+                chunk_epoch = m_seek_epoch; // Record the seek epoch when this chunk decoded
             }
-
-            auto *decoder = static_cast<ma_decoder *>(m_decoder_ptr);
-            result = ma_decoder_read_pcm_frames(decoder, buffer.data(), chunk_frames, &frames_read);
-            chunk_epoch = m_seek_epoch; // Record the seek epoch when this chunck decoded
         } // LOCK END
 
         if (is_paused) {
@@ -315,33 +328,46 @@ void AudioEngine::pump_loop() {
             continue;
         }
 
-        if (result != MA_SUCCESS || frames_read == 0) {
-            // EOF reached or decode error
+        if (frames_read == 0) {
+            // EOF reached or decode error:
+            // If sink has pending buffered frames, wait for buffer to drain to hardware output
+            while (m_pump_running) {
+                {
+                    std::lock_guard<std::recursive_mutex> lock(m_mutex);
+                    if (m_state != AudioEngineState::PLAYING) break;
+                    if (!m_sink || !m_sink->get_buffered_frames) break;
+                    uint32_t remaining = m_sink->get_buffered_frames(m_sink);
+                    if (remaining == 0) break;
+                }
+                std::this_thread::sleep_for(std::chrono::milliseconds(10));
+            }
+
             {
                 std::lock_guard<std::recursive_mutex> lock(m_mutex);
-                m_state = AudioEngineState::STOPPED;
-                m_pump_running = false;
-                if (m_sink && m_sink->stop) m_sink->stop(m_sink);
+                if (m_pump_running && m_state == AudioEngineState::PLAYING) {
+                    m_state = AudioEngineState::STOPPED;
+                    m_pump_running = false;
+                    if (m_sink && m_sink->stop) m_sink->stop(m_sink);
+                    emit_state_event("audio_ended");
+                }
             }
-            emit_state_event("audio_ended");
             break;
         }
 
-
         // Natural Backpressure !
-        uint32_t frames_written_total = 0; // The frames successfuly written in to the sink
+        uint32_t frames_written_total = 0; // The frames successfully written into the sink
         while (frames_written_total < frames_read && m_pump_running) {
 
             { // LOCK
                 std::lock_guard<std::recursive_mutex> lock(m_mutex);
                 if (m_state != AudioEngineState::PLAYING || m_seek_epoch != chunk_epoch) {
-                    // A New seek happen or status changes, abandon this chunk
+                    // A New seek happened or status changed, abandon this chunk
                     break;
                 }
             } // LOCK END
 
             const float *src = buffer.data() + (frames_written_total * m_channels);
-            uint32_t to_write = static_cast<uint32_t>(frames_read) - frames_written_total;
+            uint32_t to_write = frames_read - frames_written_total;
 
             if (!m_sink || !m_sink->write_pcm) break;
             int written = m_sink->write_pcm(m_sink, src, to_write);
@@ -350,11 +376,11 @@ void AudioEngine::pump_loop() {
                 frames_written_total += static_cast<uint32_t>(written);
                 // LOCK and update m_current_frame
                 std::lock_guard<std::recursive_mutex> lock(m_mutex);
-                if (m_seek_epoch == chunk_epoch) { // If m_seek_epoch remains unchange
+                if (m_seek_epoch == chunk_epoch) { // If m_seek_epoch remains unchanged
                     m_current_frame += written;
                 }
             } else if (written < 0) {
-                // Sink error, or the device
+                // Sink error, or the device disconnected
                 break;
             } else {
                 // written == 0, Buffer IS Full

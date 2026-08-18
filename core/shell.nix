@@ -14,6 +14,7 @@ pkgs.mkShell rec {
     sqlite
     stduuid
     tl-expected
+    ffmpeg
   ];
 
   shellHook = ''

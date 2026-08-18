@@ -15,12 +15,15 @@ option(BUILD_TESTING "Build the testing suite" ON)
 # load FetchContent module
 include(FetchContent)
 
-# load vcpkg dependencies
+# load vcpkg / system dependencies
 find_package(nlohmann_json CONFIG REQUIRED)
 find_package(fmt CONFIG REQUIRED)
 find_package(SQLiteCpp CONFIG REQUIRED)
 find_package(stduuid CONFIG REQUIRED)
 find_package(tl-expected CONFIG REQUIRED)
+
+find_package(PkgConfig REQUIRED)
+pkg_check_modules(FFMPEG REQUIRED IMPORTED_TARGET libavformat libavcodec libswresample libavutil)
 
 set(CPP
     src/lyra_c_api.cpp
@@ -52,6 +55,7 @@ set(CPP
     src/controllers/playlist_controller.cpp
     src/services/audio_sinks/null_audio_sink.cpp
     src/services/audio_sinks/local_audio_sink.cpp
+    src/services/audio_decoder.cpp
     src/services/audio_engine.cpp
 )
 
@@ -67,6 +71,7 @@ target_link_libraries(lyra_core PRIVATE
     SQLiteCpp
     stduuid
     tl::expected
+    PkgConfig::FFMPEG
 )
 
 add_executable(lyra-cli src/cli/main.cpp)
@@ -121,4 +126,8 @@ if(BUILD_TESTING)
     add_executable(audio_engine_test tests/audio_engine_test.cpp)
     target_link_libraries(audio_engine_test PRIVATE lyra_core nlohmann_json::nlohmann_json fmt::fmt)
     target_include_directories(audio_engine_test PRIVATE include src)
+
+    add_executable(audio_decoder_test tests/audio_decoder_test.cpp)
+    target_link_libraries(audio_decoder_test PRIVATE lyra_core nlohmann_json::nlohmann_json fmt::fmt)
+    target_include_directories(audio_decoder_test PRIVATE include src)
 endif()

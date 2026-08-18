@@ -130,6 +130,8 @@ static LyraAudioSink *create_mock_backpressure_sink(MockBackpressureState *state
     sink->close = mock_close;
     sink->write_pcm = mock_write_pcm;
     sink->set_volume = mock_set_volume;
+    sink->flush = nullptr;
+    sink->get_buffered_frames = nullptr;
     return sink;
 }
 
@@ -160,6 +162,8 @@ int main(int argc, char *argv[]) {
         float buf[1024] = {0};
         int written = null_sink->write_pcm(null_sink, buf, 512);
         assert(written == 512);
+        assert(null_sink->flush != nullptr && null_sink->flush(null_sink) == 0);
+        assert(null_sink->get_buffered_frames != nullptr && null_sink->get_buffered_frames(null_sink) == 0);
 
         assert(null_sink->stop(null_sink) == 0);
         assert(null_sink->close(null_sink) == 0);
@@ -173,20 +177,24 @@ int main(int argc, char *argv[]) {
         LyraAudioSink *local_sink = create_local_audio_sink();
         assert(local_sink != nullptr);
         assert(local_sink->struct_size == sizeof(LyraAudioSink));
+        assert(local_sink->flush != nullptr);
+        assert(local_sink->get_buffered_frames != nullptr);
         LyraAudioSpec spec{44100, 2, LYRA_AUDIO_FORMAT_F32, 0};
         int res = local_sink->open(local_sink, &spec);
-        (void)res; // res may be 0 or -2 depending on host sound device availability
+        (void)res; // res may be 0 or -1 depending on host sound device availability
         destroy_local_audio_sink(local_sink);
         std::cout << "  ✓ LocalAudioSink creation test passed.\n";
     }
 
-    // 3. Test AudioEngine State Machine & File Playback with NullSink
+    // 3. Test AudioEngine State Machine & File Playback with MockSink
     generate_test_wav(test_wav, 2.0);
 
     {
         bool event_received = false;
         std::string last_event_name;
         AudioEngine engine;
+        MockBackpressureState bp_state;
+        engine.set_sink(create_mock_backpressure_sink(&bp_state), destroy_mock_backpressure_sink);
         assert(engine.get_state_enum() == AudioEngineState::STOPPED);
 
         engine.set_event_callback([&](const std::string &evt_str) {
@@ -234,6 +242,7 @@ int main(int argc, char *argv[]) {
     {
         std::atomic<bool> ended_event_received{false};
         AudioEngine engine;
+        engine.set_sink(create_null_audio_sink(), destroy_null_audio_sink);
         engine.set_event_callback([&](const std::string &evt_str) {
             auto j = nlohmann::json::parse(evt_str);
             if (j.value("event", "") == "audio_ended") {
@@ -288,6 +297,7 @@ int main(int argc, char *argv[]) {
 
     {
         AudioEngine engine;
+        engine.set_sink(create_null_audio_sink(), destroy_null_audio_sink);
         assert(engine.play(chaos_wav) == true);
 
         std::atomic<bool> keep_running{true};
@@ -402,8 +412,27 @@ int main(int argc, char *argv[]) {
                   << bp_state.total_frames_written.load() << " frames written) passed.\n";
     }
 
+    // 7. Test 4: Opus File Playback via AudioEngine
+    std::string test_opus = base_dir + "/temp_engine_test.opus";
+    {
+        std::string cmd = "ffmpeg -y -v error -f lavfi -i 'sine=frequency=440:duration=1.0' -c:a libopus " + test_opus;
+        int r = std::system(cmd.c_str());
+        assert(r == 0);
+
+        AudioEngine engine;
+        engine.set_sink(create_null_audio_sink(), destroy_null_audio_sink);
+        assert(engine.play(test_opus) == true);
+        assert(engine.get_state_enum() == AudioEngineState::PLAYING);
+        assert(engine.get_duration() >= 0.9);
+        assert(engine.seek(0.5) == true);
+        assert(engine.stop() == true);
+        assert(engine.get_state_enum() == AudioEngineState::STOPPED);
+
+        std::cout << "  ✓ Test 4 (Opus playback via AudioEngine) passed.\n";
+    }
+
     // Clean up temporary test files
-    for (const auto &f : {test_wav, short_wav, chaos_wav, backpressure_wav}) {
+    for (const auto &f : {test_wav, short_wav, chaos_wav, backpressure_wav, test_opus}) {
         if (std::filesystem::exists(f)) {
             std::filesystem::remove(f);
         }
