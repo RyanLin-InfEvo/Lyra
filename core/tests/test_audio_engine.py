@@ -77,6 +77,42 @@ class TestAudioEngine(BaseLyraTestCase):
         self.assertResponseCode(res, 200)
         self.assertEqual(res["data"]["state"], "STOPPED")
 
+    def test_audio_play_with_track_id(self):
+        # 1. Ingest asset
+        res_ingest = self.dispatch("IngestAsset", {"source_path": self.sample_wav_path})
+        self.assertResponseCode(res_ingest, 200)
+        pcm_hash = res_ingest["data"]["audio"]["pcm_hash"]
+        file_hash = res_ingest["data"]["asset"]["file_hash"]
+
+        # 2. Create track
+        res_track = self.dispatch("CreateTrack", {
+            "title": "Track for Audio Engine Play",
+            "pcm_hash": pcm_hash
+        })
+        self.assertResponseCode(res_track, 201)
+        track_id = res_track["data"]["id"]
+
+        # 3. Play via track_id
+        res_play = self.dispatch("audio.play", {"track_id": track_id})
+        self.assertResponseCode(res_play, 200)
+        self.assertEqual(res_play["data"]["state"], "PLAYING")
+
+        # 4. Stop
+        res_stop = self.dispatch("audio.stop", {})
+        self.assertResponseCode(res_stop, 200)
+
+        # 5. Play via asset_id
+        res_play_asset = self.dispatch("audio.play", {"asset_id": file_hash})
+        self.assertResponseCode(res_play_asset, 200)
+        self.assertEqual(res_play_asset["data"]["state"], "PLAYING")
+        self.dispatch("audio.stop", {})
+
+        # 6. Play via audio_id
+        res_play_audio = self.dispatch("audio.play", {"audio_id": pcm_hash})
+        self.assertResponseCode(res_play_audio, 200)
+        self.assertEqual(res_play_audio["data"]["state"], "PLAYING")
+        self.dispatch("audio.stop", {})
+
     def test_audio_event_callback(self):
         events_received = []
 

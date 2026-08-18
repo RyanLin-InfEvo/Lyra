@@ -1327,10 +1327,26 @@ json Router::handleGetTrackCover(const json &params) {
 }
 
 json Router::handleAudioPlay(const json &p) {
-    // Play a file_path or audio_id or asset_id
+    // Play a file_path, track_id, asset_id, or audio_id
     std::string file_path;
     if (p.contains("file_path") && p["file_path"].is_string()) {
         file_path = p["file_path"].get<std::string>();
+    } else if (p.contains("track_id") && p["track_id"].is_string()) {
+        std::string track_id = p["track_id"].get<std::string>();
+        auto track_res = m_track_controller->get(track_id);
+        if (!track_res) {
+            return ApiResponse::error(Error{ErrorType::TrackNotFound, "Track not found: " + track_id});
+        }
+        std::string pcm_hash = track_res.value().pcm_hash;
+        auto assets_res = m_asset_controller->get_assets_by_audio(pcm_hash);
+        if (!assets_res || assets_res->empty()) {
+            return ApiResponse::error(Error{ErrorType::AssetNotFound, "No assets found for track's audio: " + track_id});
+        }
+        auto path_res = m_asset_controller->resolve_file_path((*assets_res)[0]);
+        if (!path_res) {
+            return ApiResponse::error(Error{ErrorType::NotFound, "File path not found for asset: " + (*assets_res)[0]});
+        }
+        file_path = *path_res;
     } else if (p.contains("asset_id") && p["asset_id"].is_string()) {
         std::string asset_id = p["asset_id"].get<std::string>();
         auto path_res = m_asset_controller->resolve_file_path(asset_id);
@@ -1350,7 +1366,7 @@ json Router::handleAudioPlay(const json &p) {
         }
         file_path = *path_res;
     } else {
-        return ApiResponse::error(Error{ErrorType::MissingParameter, "Missing 'file_path', 'asset_id', or 'audio_id' parameter"});
+        return ApiResponse::error(Error{ErrorType::MissingParameter, "Missing 'file_path', 'track_id', 'asset_id', or 'audio_id' parameter"});
     }
 
     bool success = m_audio_engine->play(file_path);
