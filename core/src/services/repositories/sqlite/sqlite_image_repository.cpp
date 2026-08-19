@@ -254,4 +254,15 @@ tl::expected<Image, std::string> SqliteImageRepository::get_artist_latest_album_
     }
 }
 
+tl::expected<bool, std::string> SqliteImageRepository::entity_exists(const std::string &entity_id) {
+    try {
+        auto &db = m_context.get_db();
+        SQLite::Statement query(db, "SELECT 1 FROM Entity WHERE id = ?");
+        query.bind(1, entity_id);
+        return query.executeStep();
+    } catch (const std::exception &e) {
+        return tl::unexpected(e.what());
+    }
+}
+
 } // namespace lyra

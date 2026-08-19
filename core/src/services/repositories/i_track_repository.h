@@ -32,6 +32,7 @@ class ITrackRepository {
     virtual tl::expected<void, std::string> add_album(const TrackAlbumParams &params) = 0;
     virtual tl::expected<void, std::string> remove_album(const std::string &track_id, const std::string &album_id) = 0;
     virtual tl::expected<void, std::string> update_album(const TrackAlbumParams &params) = 0;
+    virtual tl::expected<std::optional<std::string>, std::string> get_album_id_by_track(const std::string &track_id) = 0;
 
     virtual tl::expected<std::vector<Track>, std::string> get_by_title(const std::string &title) = 0;
 };

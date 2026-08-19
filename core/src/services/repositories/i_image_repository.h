@@ -31,6 +31,7 @@ class IImageRepository {
         const std::string &entity_id, const std::optional<std::string> &role = std::nullopt) = 0;
     virtual tl::expected<Image, std::string> get_artist_latest_album_cover(
         const std::string &artist_id) = 0;
+    virtual tl::expected<bool, std::string> entity_exists(const std::string &entity_id) = 0;
 };
 
 } // namespace lyra

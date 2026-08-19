@@ -309,6 +309,20 @@ tl::expected<void, std::string> SqliteTrackRepository::update_album(const TrackA
     return {};
 }
 
+tl::expected<std::optional<std::string>, std::string> SqliteTrackRepository::get_album_id_by_track(const std::string &track_id) {
+    try {
+        auto &db = m_context.get_db();
+        SQLite::Statement query(db, "SELECT album_id FROM Track_Album WHERE track_id = ? LIMIT 1");
+        query.bind(1, track_id);
+        if (query.executeStep()) {
+            return query.getColumn("album_id").getString();
+        }
+        return std::nullopt;
+    } catch (const std::exception &e) {
+        return tl::unexpected(e.what());
+    }
+}
+
 
 tl::expected<PaginatedResult<Track>, std::string> SqliteTrackRepository::list(
     int offset, int limit, const std::optional<std::string> &search) {

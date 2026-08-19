@@ -124,6 +124,7 @@ bool test_image_entity_links(SqliteDatabaseContext &ctx) {
     std::string entity_id = "album-id-99999";
 
     // 1. Link to non-existent entity should fail
+    assert(image_repo.entity_exists(entity_id).value() == false);
     auto link_fail_entity = image_repo.link_entity(entity_id, img.image_hash, "front");
     assert(!link_fail_entity.has_value());
     assert(link_fail_entity.error() == "Target Entity not found.");
@@ -131,6 +132,7 @@ bool test_image_entity_links(SqliteDatabaseContext &ctx) {
     // 2. Insert Entity record in DB
     auto &db = ctx.get_db();
     db.exec("INSERT INTO Entity (id, entity_type) VALUES ('" + entity_id + "', 'album');");
+    assert(image_repo.entity_exists(entity_id).value() == true);
 
     // 3. Link to non-existent image should fail
     auto link_fail_img = image_repo.link_entity(entity_id, "nonexistent-img-hash", "front");

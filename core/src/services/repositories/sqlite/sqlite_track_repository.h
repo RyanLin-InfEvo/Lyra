@@ -27,6 +27,7 @@ class SqliteTrackRepository : public ITrackRepository {
     tl::expected<void, std::string> add_album(const TrackAlbumParams &params) override;
     tl::expected<void, std::string> remove_album(const std::string &track_id, const std::string &album_id) override;
     tl::expected<void, std::string> update_album(const TrackAlbumParams &params) override;
+    tl::expected<std::optional<std::string>, std::string> get_album_id_by_track(const std::string &track_id) override;
 
   private:
     IDatabaseContext &m_context;

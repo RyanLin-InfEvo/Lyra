@@ -37,6 +37,9 @@ class TrackController;
 class WorkController;
 
 class AudioEngine;
+class IngestionService;
+class CoverArtService;
+struct CoverResolutionResult;
 
 class Router {
   public:
@@ -108,7 +111,7 @@ class Router {
     json handleGetPlaylistCover(const json &p);
     json handleGetEntityImages(const json &p);
 
-    json build_image_response(const Image &img);
+    json build_image_response(const CoverResolutionResult &res);
 
     // Audio Engine Handlers
     json handleAudioPlay(const json &p);
@@ -140,6 +143,8 @@ class Router {
     std::unique_ptr<TrackController> m_track_controller;
     std::unique_ptr<WorkController> m_work_controller;
     std::unique_ptr<AudioEngine> m_audio_engine;
+    std::unique_ptr<IngestionService> m_ingestion_service;
+    std::unique_ptr<CoverArtService> m_cover_art_service;
 
     // Handler Mapping
     using Handler = std::function<json(const json &)>;

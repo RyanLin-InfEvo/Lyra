@@ -196,6 +196,9 @@ bool test_track_album_relationships(SqliteDatabaseContext &ctx) {
     album.title = "Relationship Album";
     assert(album_repo.insert(album).has_value());
 
+    auto album_before = track_repo.get_album_id_by_track(track.id);
+    assert(album_before.has_value() && !album_before.value().has_value());
+
     // 2. Test add_album success
     TrackAlbumParams params;
     params.track_id = track.id;
@@ -207,6 +210,9 @@ bool test_track_album_relationships(SqliteDatabaseContext &ctx) {
         std::cerr << "add_album failed unexpectedly: " << add_res.error() << std::endl;
         return false;
     }
+
+    auto album_after = track_repo.get_album_id_by_track(track.id);
+    assert(album_after.has_value() && album_after.value().has_value() && album_after.value().value() == album.id);
 
     // Verify database record
     {
@@ -256,6 +262,9 @@ bool test_track_album_relationships(SqliteDatabaseContext &ctx) {
         std::cerr << "remove_album failed unexpectedly: " << remove_res.error() << std::endl;
         return false;
     }
+
+    auto album_after_remove = track_repo.get_album_id_by_track(track.id);
+    assert(album_after_remove.has_value() && !album_after_remove.value().has_value());
 
     // Verify relationship is removed
     {

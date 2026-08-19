@@ -57,6 +57,8 @@ set(CPP
     src/services/audio_sinks/local_audio_sink.cpp
     src/services/audio_decoder.cpp
     src/services/audio_engine.cpp
+    src/services/ingestion_service.cpp
+    src/services/cover_art_service.cpp
 )
 
 add_library(lyra_core SHARED ${CPP})
@@ -130,4 +132,12 @@ if(BUILD_TESTING)
     add_executable(audio_decoder_test tests/audio_decoder_test.cpp)
     target_link_libraries(audio_decoder_test PRIVATE lyra_core nlohmann_json::nlohmann_json fmt::fmt)
     target_include_directories(audio_decoder_test PRIVATE include src)
+
+    add_executable(ingestion_service_test tests/ingestion_service_test.cpp)
+    target_link_libraries(ingestion_service_test PRIVATE lyra_core nlohmann_json::nlohmann_json fmt::fmt SQLiteCpp)
+    target_include_directories(ingestion_service_test PRIVATE include src)
+
+    add_executable(cover_art_service_test tests/cover_art_service_test.cpp)
+    target_link_libraries(cover_art_service_test PRIVATE lyra_core nlohmann_json::nlohmann_json fmt::fmt SQLiteCpp)
+    target_include_directories(cover_art_service_test PRIVATE include src)
 endif()
