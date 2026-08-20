@@ -5,6 +5,8 @@
 cmake_minimum_required(VERSION 3.20)
 project(LyraCore CXX)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+# Ensure Nix-provided include paths are preserved in compile_commands.json for Clangd/LSP
+set(CMAKE_CXX_IMPLICIT_INCLUDE_DIRECTORIES "")
 
 # set C++ standard to 20
 set(CMAKE_CXX_STANDARD 20)
