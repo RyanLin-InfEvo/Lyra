@@ -20,11 +20,23 @@ You can compile and build the project from the workspace root directory using th
 ```
 *Note: Alternatively, you can run CMake configuration and compilation directly using the Nix-shell command: `nix-shell core/shell.nix --run "cd core && ./build.sh"`.*
 
+### Flutter UI Commands (Desktop & Web)
+All Flutter actions must be executed inside the Nix environment using the root wrapper script:
+```bash
+# Run Linux desktop application
+./flutter.sh run -d linux
+
+# Fetch dependencies & run static analysis
+./flutter.sh pub get
+./flutter.sh analyze
+```
+*Note: Alternatively, you can run Flutter commands directly via: `nix-shell ui/shell.nix --run "cd ui && flutter ..."`.*
+
 ---
 
 ## 🧪 2. Test Commands & TDD Workflow
 
-Lyra implements a dual-layer test suite: C++ unit tests and Python integration tests (interacting with the C FFI).
+Lyra implements a dual-layer test suite: C++ unit tests and Python integration tests (interacting with the C FFI), along with Flutter widget/unit tests for the UI.
 
 ### Run Python Integration Tests
 You can run the full automated test suite from the workspace root directory using the wrapper script:
@@ -39,10 +51,24 @@ If you need to run a specific Python integration test module (e.g. `test_list_ap
 nix-shell core/shell.nix --run "PYTHONPATH=core/tests python -m unittest core/tests/test_list_apis.py"
 ```
 
+### Run Flutter Widget & Unit Tests
+You can run the Flutter test suite from the workspace root directory using the wrapper script:
+```bash
+./flutter.sh test
+```
+*Note: Alternatively, you can run tests directly via: `nix-shell ui/shell.nix --run "cd ui && flutter test"`.*
+
 ### Test-Driven Development (TDD) Rule
 *   Before finalizing any feature or bug fix, write corresponding test cases.
 *   Low-level database or transaction depth validation should be added to C++ unit tests (e.g. `core/tests/database_context_test.cpp`).
 *   Behavioral APIs should be validated via Python integration tests under `core/tests/`.
+*   UI components and presentation logic should be validated via Flutter widget tests under `ui/test/`.
+
+### Flutter UI Testing & Modular Design System Validation
+*   **Widget & Contract Tests:** Test widgets against abstract facade contracts (e.g., `LyraButton`, `LyraCard`) and verify behavioral states (hover, focus, disabled, loading) across different themes.
+*   **Design Token & Theme Validation:** Validate theme extensions and design tokens to ensure colors, paddings, and typography adapt correctly between dark/light modes and custom themes without hardcoded values.
+*   **Layout Safety & Responsiveness Tests:** Run widget tests across multiple viewport constraints (e.g., mobile, tablet, desktop resolutions) to detect `RenderFlex` overflow errors early.
+*   **Controller Leak Prevention:** Verify that stateful widgets properly clean up their controllers (`TextEditingController`, `ScrollController`, `AnimationController`) upon unmounting.
 
 ### Testing Internal C++ Modules (Without C FFI)
 For C++ modules and utility classes (such as [sha256.cpp](file:///home/ryan/Documents/Lyra/core/src/utils/sha256.cpp)) that do not have a public FFI/C-API:
@@ -80,13 +106,21 @@ To maintain repository hygiene and ensure clean code integration, all agents mus
     nix-shell core/shell.nix --run "clang-format -i <file>"
     ```
 
-### D. Atomic Commit & Commit Style
+### D. Dart & Flutter Code Formatting
+*   Run `dart format` on edited Dart source files:
+    ```bash
+    ./flutter.sh format lib/ test/
+    ```
+    *or `nix-shell ui/shell.nix --run "cd ui && dart format ."`.*
+
+### E. Atomic Commit & Commit Style
 *   **Atomic Commits:** Break down tasks into small, logical increments. Pause and ask the user for review and commit after each logical unit is complete.
 *   **Commit Message Format:** Use the standard semantic commit style: `type(scope): description` (e.g., `feat(core): implement savepoint transaction model`).
 *   **Approval:** Always propose the draft commit message to the user and wait for explicit approval before proceeding.
 
-### E. Self-Correction & Subagent Review
+### F. Self-Correction & Subagent Review
 *   Perform a security review (checking SQLite query injection, resource cleanup, thread safety).
+*   Perform a UI architecture review (checking facade abstraction, design token usage, `RepaintBoundary` on shaders/blurs, controller lifecycle disposal, and presentation/core separation).
 *   Invoke a subagent (e.g., `self` or `codebase_investigator`) to verify modifications against architectural constraints before presenting the final work.
 
 ---

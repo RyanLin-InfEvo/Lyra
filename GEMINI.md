@@ -23,12 +23,22 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 *   **Subagent Final Review:** Once potential issues are resolved (or if none are found), the agent MUST invoke a subagent (e.g., `codebase_investigator` or `generalist`) to perform a "final confirmation" (會後確認) to ensure overall system integrity and adherence to standards.
 
 ## 3. Coding & Engineering Standards
+
+### Core & C++ Engineering Standards
 *   **Pattern Adherence:** Rigorously analyze and replicate established implementation patterns, naming conventions (e.g., snake_case for members, CamelCase for classes), and architectural structures found in the codebase. Use standard libraries (e.g., `nlohmann/json`, `std::optional`) as the primary toolset whenever they are established as the idiomatic choice in existing modules.
 *   **CMake Source Registration:** When adding any new `.cpp` source file, the agent MUST immediately update `core/CMakeLists.txt` to include it in the `add_library` target. Forgetting this step causes `undefined symbol` linker errors that only surface at test time.
 *   **C++ Code Formatting:** Run `clang-format` (auto format) on edited C++ source files after completing edits. If `clang-format` is not installed on the host system, execute it via the Nix shell wrapper: `nix-shell core/shell.nix --run "clang-format -i <file>"`.
 *   **Security & Data Integrity:** Maintain strict server-side authority as a non-negotiable standard. Critical identifiers (e.g., UUIDs) must be generated on the server to prevent collision or injection, and all client-provided data must be treated as untrusted and validated against server-side business logic.
 *   **Hardware Optimization:** Account for high-performance hardware (e.g., 64GB RAM) in system and environment configurations.
 *   **Performance & Platform Trade-offs:** When encountering potential performance bottlenecks or architectural choices that differ between Mobile, PC, or Server environments, the agent MUST proactively initiate a discussion with the user about these trade-offs before implementing a solution.
+
+### Flutter UI & Modular Design System Standards
+*   **Contract & Facade Abstraction:** Screens and feature widgets MUST consume abstract facade widgets (e.g., `LyraButton`, `LyraCard`, `LyraTextField`) instead of directly coupling to concrete Material or Cupertino widgets. This architecture enables hot-swappable, pluggable Design Systems (such as Shadcn or Liquid Glass) behind unified facade contracts.
+*   **Design Token Semantics:** Hardcoded color hex values (`Color(0xFF...)`), fixed magic dimensions, or arbitrary paddings/margins are strictly prohibited. All visual styling, spacing, typography, and color schemes must derive from semantic Design Tokens and theme extensions (e.g., `Theme.of(context)`, `LyraTheme`).
+*   **Layout Safety & Responsiveness:** Always design defensively against `RenderFlex` overflow errors across dynamic window sizes and display densities. Use adaptive and flexible layout primitives (`Expanded`, `Flexible`, `LayoutBuilder`, `SingleChildScrollView`) to guarantee responsive constraints.
+*   **Performance & Shader/Blur Isolation:** Isolate computationally intensive GPU operations (such as `BackdropFilter`, custom fragment shaders, and heavy vector effects) using `RepaintBoundary` widgets. Never place live, un-cached blur filters or complex shaders inside unoptimized scrolling lists or rapidly repainting viewports.
+*   **Controller Lifecycle Management:** Stateful resources and event listeners (`TextEditingController`, `ScrollController`, `AnimationController`, streams) must have deterministic lifecycles. Ensure all controllers are explicitly disposed of in the `State.dispose()` method to prevent memory leaks and dangling listeners.
+*   **Server/Core Authority:** The UI layer functions strictly as a presentation and interaction surface. All business logic, state transitions, validation rules, and data integrity guarantees belong entirely to the C++ core engine.
 
 ## 4. Git & Commit Habits
 *   **Commit Message Style:**
@@ -39,4 +49,4 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 
 ## 5. Environment & Context
 *   **Nix/NixOS Proficiency:** The agent must be comfortable working with `nix-shell`, `flake.nix`, and NixOS-specific configurations.
-*   **Mandatory nix-shell Wrapper:** All build and test commands (e.g., `cmake`, `python -m unittest`) MUST be executed inside the Nix environment. You should prioritize using the root-level `./build.sh` and `./test.sh` scripts for convenience, or execute them through the wrapper: `nix-shell core/shell.nix --run "..."`. Direct host-level execution will fail due to missing dependencies.
+*   **Mandatory nix-shell Wrapper:** All build, test, and execution commands (e.g., `cmake`, `python -m unittest`, `flutter`) MUST be executed inside the Nix environment. Directly executing C++ or Flutter commands on the host will fail due to missing dependencies. You should prioritize using the root-level `./build.sh`, `./test.sh`, and `./flutter.sh` scripts for convenience (e.g., `./flutter.sh test`, `./flutter.sh run -d linux`, `./flutter.sh pub get`), or execute them through the wrapper: `nix-shell core/shell.nix --run "..."` or `nix-shell ui/shell.nix --run "cd ui && flutter ..."`. Direct host-level execution will fail.
