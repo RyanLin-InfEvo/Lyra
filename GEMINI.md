@@ -39,6 +39,8 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 *   **Performance & Shader/Blur Isolation:** Isolate computationally intensive GPU operations (such as `BackdropFilter`, custom fragment shaders, and heavy vector effects) using `RepaintBoundary` widgets. Never place live, un-cached blur filters or complex shaders inside unoptimized scrolling lists or rapidly repainting viewports.
 *   **Controller Lifecycle Management:** Stateful resources and event listeners (`TextEditingController`, `ScrollController`, `AnimationController`, streams) must have deterministic lifecycles. Ensure all controllers are explicitly disposed of in the `State.dispose()` method to prevent memory leaks and dangling listeners.
 *   **Server/Core Authority:** The UI layer functions strictly as a presentation and interaction surface. All business logic, state transitions, validation rules, and data integrity guarantees belong entirely to the C++ core engine.
+*   **Avoid Redundant Status Badges & AI Clutter (消除 AI 味標籤):** Do not add frivolous, redundant status capsules/badges to headers, toolbars, or table headers (such as "Bit-Perfect Engine", "CAS Validated", "AI Verified", or repetitive shortcut tags). Keep the UI clean, purposeful, and uncluttered like professional desktop applications.
+*   **Platform-Neutral Search & Shortcuts:** Avoid hardcoding platform-specific shortcut strings (e.g. `⌘K` or `cmd + K`) into generic input placeholders.
 
 ## 4. Git & Commit Habits
 *   **Commit Message Style:**

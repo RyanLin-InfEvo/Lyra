@@ -69,6 +69,8 @@ You can run the Flutter test suite from the workspace root directory using the w
 *   **Design Token & Theme Validation:** Validate theme extensions and design tokens to ensure colors, paddings, and typography adapt correctly between dark/light modes and custom themes without hardcoded values.
 *   **Layout Safety & Responsiveness Tests:** Run widget tests across multiple viewport constraints (e.g., mobile, tablet, desktop resolutions) to detect `RenderFlex` overflow errors early.
 *   **Controller Leak Prevention:** Verify that stateful widgets properly clean up their controllers (`TextEditingController`, `ScrollController`, `AnimationController`) upon unmounting.
+*   **Avoid Redundant Status Badges & AI Clutter (消除 AI 味標籤):** Do not add frivolous, redundant status capsules/badges to headers, toolbars, or table headers (such as "Bit-Perfect Engine", "CAS Validated", "AI Verified", or repetitive shortcut tags). Keep the UI clean, purposeful, and uncluttered like professional desktop applications.
+*   **Platform-Neutral Search & Shortcuts:** Avoid hardcoding platform-specific shortcut strings (e.g. `⌘K` or `cmd + K`) into generic input placeholders.
 
 ### Testing Internal C++ Modules (Without C FFI)
 For C++ modules and utility classes (such as [sha256.cpp](file:///home/ryan/Documents/Lyra/core/src/utils/sha256.cpp)) that do not have a public FFI/C-API:
