@@ -19,8 +19,8 @@ tl::expected<void, std::string> SqliteAudioRepository::insert(const Audio &audio
         auto &db = m_context.get_db();
 
         SQLite::Statement query(db,
-                                 "INSERT INTO Audio (pcm_hash, parent_hash, quality_score, bit_depth, sample_rate, channels, duration, integrated_loudness, true_peak) "
-                                 "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)");
+                                "INSERT INTO Audio (pcm_hash, parent_hash, quality_score, bit_depth, sample_rate, channels, duration, integrated_loudness, true_peak) "
+                                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)");
         query.bind(1, audio.pcm_hash);
         if (audio.parent_hash.empty()) {
             query.bind(2);
@@ -112,6 +112,24 @@ tl::expected<Audio, std::string> SqliteAudioRepository::get(const std::string &p
             audio.duration = query.getColumn("duration").getDouble();
             audio.integrated_loudness = query.getColumn("integrated_loudness").getDouble();
             audio.true_peak = query.getColumn("true_peak").getDouble();
+
+            SQLite::Statement asset_query(
+                db,
+                "SELECT a.file_hash, a.mime_type, a.asset_type, a.file_size, a.created_at "
+                "FROM Audio_Asset aa JOIN Asset a ON aa.file_hash = a.file_hash "
+                "WHERE aa.pcm_hash = ?");
+            asset_query.bind(1, pcm_hash);
+
+            while (asset_query.executeStep()) {
+                Asset asset;
+                asset.file_hash = asset_query.getColumn("file_hash").getString();
+                asset.mime_type = SqliteHelper::get_safe<std::string>(asset_query, "mime_type", "");
+                asset.asset_type = SqliteHelper::get_safe<std::string>(asset_query, "asset_type", "");
+                asset.file_size = SqliteHelper::get_safe<int>(asset_query, "file_size", 0);
+                asset.created_at = SqliteHelper::get_safe<std::string>(asset_query, "created_at", "");
+                audio.assets.push_back(asset);
+            }
+
             return audio;
         }
         return tl::unexpected("Audio not found.");
@@ -126,14 +144,14 @@ tl::expected<PaginatedResult<Audio>, std::string> SqliteAudioRepository::list(
         auto &db = m_context.get_db();
         std::string count_sql = "SELECT COUNT(*) FROM Audio";
         std::string select_sql = "SELECT * FROM Audio";
-        
+
         if (search.has_value()) {
             count_sql += R"( WHERE parent_hash LIKE ? ESCAPE '\' )";
             select_sql += R"( WHERE parent_hash LIKE ? ESCAPE '\' )";
         }
-        
+
         select_sql += " ORDER BY pcm_hash ASC LIMIT ? OFFSET ?";
-        
+
         int total = 0;
         {
             SQLite::Statement count_query(db, count_sql);
@@ -146,7 +164,7 @@ tl::expected<PaginatedResult<Audio>, std::string> SqliteAudioRepository::list(
             }
             total = count_query.getColumn(0).getInt();
         }
-        
+
         std::vector<Audio> items;
         items.reserve(limit);
         {
@@ -158,7 +176,7 @@ tl::expected<PaginatedResult<Audio>, std::string> SqliteAudioRepository::list(
             }
             select_query.bind(bind_idx++, limit);
             select_query.bind(bind_idx++, offset);
-            
+
             while (select_query.executeStep()) {
                 Audio audio;
                 audio.pcm_hash = select_query.getColumn("pcm_hash").getString();
@@ -173,12 +191,12 @@ tl::expected<PaginatedResult<Audio>, std::string> SqliteAudioRepository::list(
                 items.push_back(audio);
             }
         }
-        
+
         return PaginatedResult<Audio>{
             .items = std::move(items),
             .total = total,
             .offset = offset,
-            .limit = limit
+            .limit = limit,
         };
     } catch (const std::exception &e) {
         return tl::unexpected(e.what());

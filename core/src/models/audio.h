@@ -5,10 +5,12 @@
  */
 
 #pragma once
-#include <string>
-#include <optional>
-#include <nlohmann/json.hpp>
 #include "../utils/optional_helper.h"
+#include "asset.h"
+#include <nlohmann/json.hpp>
+#include <optional>
+#include <string>
+#include <vector>
 
 namespace lyra {
 
@@ -22,6 +24,7 @@ struct Audio {
     double duration = 0.0;
     double integrated_loudness = 0.0;
     double true_peak = 0.0;
+    std::vector<Asset> assets;
 };
 
 struct AudioUpdate {
@@ -42,7 +45,7 @@ struct AudioUpdate {
     }
 };
 
-NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(Audio, pcm_hash, parent_hash, quality_score, bit_depth, sample_rate, channels, duration, integrated_loudness, true_peak)
+NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(Audio, pcm_hash, parent_hash, quality_score, bit_depth, sample_rate, channels, duration, integrated_loudness, true_peak, assets)
 NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(AudioUpdate, pcm_hash, parent_hash, quality_score, bit_depth, sample_rate, channels, duration, integrated_loudness, true_peak)
 
 } // namespace lyra

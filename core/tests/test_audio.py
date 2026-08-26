@@ -2,10 +2,116 @@
 #
 # SPDX-License-Identifier: AGPL-3.0-or-later
 
+import os
+import sqlite3
 import unittest
 from base_test_case import BaseLyraTestCase
 
 class TestAudioController(BaseLyraTestCase):
+
+    def test_audio_get_without_assets(self):
+        """Test GetAudio returns empty assets array when no assets are linked"""
+        pcm_hash = "pcm-no-assets"
+        res_create = self.dispatch("CreateAudio", {
+            "pcm_hash": pcm_hash,
+            "quality_score": 90,
+            "bit_depth": 16,
+            "sample_rate": 44100,
+            "channels": 2,
+            "duration": 60.0
+        })
+        self.assertResponseCode(res_create, 201)
+
+        res_get = self.dispatch("GetAudio", {"pcm_hash": pcm_hash})
+        self.assertResponseCode(res_get, 200)
+        self.assertEqual(res_get["data"]["assets"], [])
+
+    def test_audio_get_with_single_asset(self):
+        """Test GetAudio returns single linked asset with matching fields"""
+        pcm_hash = "pcm-single-asset"
+        file_hash = "file-hash-single"
+        mime_type = "audio/flac"
+        asset_type = "audio"
+        file_size = 1048576
+
+        res_audio = self.dispatch("CreateAudio", {
+            "pcm_hash": pcm_hash,
+            "quality_score": 95,
+            "bit_depth": 24,
+            "sample_rate": 48000,
+            "channels": 2,
+            "duration": 180.0
+        })
+        self.assertResponseCode(res_audio, 201)
+
+        res_asset = self.dispatch("CreateAsset", {
+            "file_hash": file_hash,
+            "mime_type": mime_type,
+            "asset_type": asset_type,
+            "file_size": file_size
+        })
+        self.assertResponseCode(res_asset, 201)
+
+        db_path = os.path.join(self.test_db_dir, "lyra.db")
+        conn = sqlite3.connect(db_path)
+        cursor = conn.cursor()
+        cursor.execute("INSERT INTO Audio_Asset (pcm_hash, file_hash) VALUES (?, ?)", (pcm_hash, file_hash))
+        conn.commit()
+        conn.close()
+
+        res_get = self.dispatch("GetAudio", {"pcm_hash": pcm_hash})
+        self.assertResponseCode(res_get, 200)
+        assets = res_get["data"]["assets"]
+        self.assertEqual(len(assets), 1)
+        self.assertEqual(assets[0]["file_hash"], file_hash)
+        self.assertEqual(assets[0]["mime_type"], mime_type)
+        self.assertEqual(assets[0]["asset_type"], asset_type)
+        self.assertEqual(assets[0]["file_size"], file_size)
+
+    def test_audio_get_with_multiple_assets(self):
+        """Test GetAudio returns multiple linked assets with matching file hashes"""
+        pcm_hash = "pcm-multi-assets"
+        file_hash_1 = "file-hash-multi-1"
+        file_hash_2 = "file-hash-multi-2"
+
+        res_audio = self.dispatch("CreateAudio", {
+            "pcm_hash": pcm_hash,
+            "quality_score": 88,
+            "sample_rate": 44100
+        })
+        self.assertResponseCode(res_audio, 201)
+
+        res_asset_1 = self.dispatch("CreateAsset", {
+            "file_hash": file_hash_1,
+            "mime_type": "audio/flac",
+            "asset_type": "audio",
+            "file_size": 204800
+        })
+        self.assertResponseCode(res_asset_1, 201)
+
+        res_asset_2 = self.dispatch("CreateAsset", {
+            "file_hash": file_hash_2,
+            "mime_type": "audio/mp3",
+            "asset_type": "audio",
+            "file_size": 51200
+        })
+        self.assertResponseCode(res_asset_2, 201)
+
+        db_path = os.path.join(self.test_db_dir, "lyra.db")
+        conn = sqlite3.connect(db_path)
+        cursor = conn.cursor()
+        cursor.execute("INSERT INTO Audio_Asset (pcm_hash, file_hash) VALUES (?, ?)", (pcm_hash, file_hash_1))
+        cursor.execute("INSERT INTO Audio_Asset (pcm_hash, file_hash) VALUES (?, ?)", (pcm_hash, file_hash_2))
+        conn.commit()
+        conn.close()
+
+        res_get = self.dispatch("GetAudio", {"pcm_hash": pcm_hash})
+        self.assertResponseCode(res_get, 200)
+        assets = res_get["data"]["assets"]
+        self.assertEqual(len(assets), 2)
+        asset_hashes = [a["file_hash"] for a in assets]
+        self.assertIn(file_hash_1, asset_hashes)
+        self.assertIn(file_hash_2, asset_hashes)
 
     def test_audio_create_success(self):
         """Test successful Audio creation"""
