@@ -5,7 +5,7 @@
 #include <SQLiteCpp/SQLiteCpp.h>
 #include <vector>
 
-#include "../../../utils/sqlite_helper.h"
+#include "../../../utils/sqlite_mappers.h"
 #include "sqlite_audio_repository.h"
 
 namespace lyra {
@@ -101,18 +101,8 @@ tl::expected<Audio, std::string> SqliteAudioRepository::get(const std::string &p
         SQLite::Statement query(db, "SELECT * FROM Audio WHERE pcm_hash = ?");
         query.bind(1, pcm_hash);
 
-        if (query.executeStep()) {
-            Audio audio;
-            audio.pcm_hash = query.getColumn("pcm_hash").getString();
-            audio.parent_hash = SqliteHelper::get_safe<std::string>(query, "parent_hash", "");
-            audio.quality_score = query.getColumn("quality_score").getInt();
-            audio.bit_depth = query.getColumn("bit_depth").getInt();
-            audio.sample_rate = query.getColumn("sample_rate").getInt();
-            audio.channels = query.getColumn("channels").getInt();
-            audio.duration = query.getColumn("duration").getDouble();
-            audio.integrated_loudness = query.getColumn("integrated_loudness").getDouble();
-            audio.true_peak = query.getColumn("true_peak").getDouble();
-
+        auto audio = SqliteHelper::fetch_one(query, SqliteMappers::map_audio);
+        if (audio) {
             SQLite::Statement asset_query(
                 db,
                 "SELECT a.file_hash, a.mime_type, a.asset_type, a.file_size, a.created_at "
@@ -120,17 +110,8 @@ tl::expected<Audio, std::string> SqliteAudioRepository::get(const std::string &p
                 "WHERE aa.pcm_hash = ?");
             asset_query.bind(1, pcm_hash);
 
-            while (asset_query.executeStep()) {
-                Asset asset;
-                asset.file_hash = asset_query.getColumn("file_hash").getString();
-                asset.mime_type = SqliteHelper::get_safe<std::string>(asset_query, "mime_type", "");
-                asset.asset_type = SqliteHelper::get_safe<std::string>(asset_query, "asset_type", "");
-                asset.file_size = SqliteHelper::get_safe<int>(asset_query, "file_size", 0);
-                asset.created_at = SqliteHelper::get_safe<std::string>(asset_query, "created_at", "");
-                audio.assets.push_back(asset);
-            }
-
-            return audio;
+            audio->assets = SqliteHelper::fetch_all(asset_query, SqliteMappers::map_asset);
+            return *audio;
         }
         return tl::unexpected("Audio not found.");
     } catch (const std::exception &e) {
@@ -165,32 +146,16 @@ tl::expected<PaginatedResult<Audio>, std::string> SqliteAudioRepository::list(
             total = count_query.getColumn(0).getInt();
         }
 
-        std::vector<Audio> items;
-        items.reserve(limit);
-        {
-            SQLite::Statement select_query(db, select_sql);
-            int bind_idx = 1;
-            if (search.has_value()) {
-                std::string query_param = "%" + SqliteHelper::escape_like(search.value(), '\\') + "%";
-                select_query.bind(bind_idx++, query_param);
-            }
-            select_query.bind(bind_idx++, limit);
-            select_query.bind(bind_idx++, offset);
-
-            while (select_query.executeStep()) {
-                Audio audio;
-                audio.pcm_hash = select_query.getColumn("pcm_hash").getString();
-                audio.parent_hash = SqliteHelper::get_safe<std::string>(select_query, "parent_hash", "");
-                audio.quality_score = select_query.getColumn("quality_score").getInt();
-                audio.bit_depth = select_query.getColumn("bit_depth").getInt();
-                audio.sample_rate = select_query.getColumn("sample_rate").getInt();
-                audio.channels = select_query.getColumn("channels").getInt();
-                audio.duration = select_query.getColumn("duration").getDouble();
-                audio.integrated_loudness = select_query.getColumn("integrated_loudness").getDouble();
-                audio.true_peak = select_query.getColumn("true_peak").getDouble();
-                items.push_back(audio);
-            }
+        SQLite::Statement select_query(db, select_sql);
+        int bind_idx = 1;
+        if (search.has_value()) {
+            std::string query_param = "%" + SqliteHelper::escape_like(search.value(), '\\') + "%";
+            select_query.bind(bind_idx++, query_param);
         }
+        select_query.bind(bind_idx++, limit);
+        select_query.bind(bind_idx++, offset);
+
+        std::vector<Audio> items = SqliteHelper::fetch_all(select_query, SqliteMappers::map_audio, limit);
 
         return PaginatedResult<Audio>{
             .items = std::move(items),

@@ -5,7 +5,7 @@
 #include <SQLiteCpp/SQLiteCpp.h>
 #include <vector>
 
-#include "../../../utils/sqlite_helper.h"
+#include "../../../utils/sqlite_mappers.h"
 #include "sqlite_track_repository.h"
 
 namespace lyra {
@@ -58,30 +58,20 @@ tl::expected<void, std::string> SqliteTrackRepository::insert(const Track &track
 }
 
 tl::expected<Track, std::string> SqliteTrackRepository::get(const std::string &track_id) {
+    try {
+        auto &db = m_context.get_db();
 
-    auto &db = m_context.get_db();
+        SQLite::Statement query(db, "SELECT * FROM Track WHERE id = ?");
+        query.bind(1, track_id);
 
-    SQLite::Statement query(db, "SELECT * FROM Track WHERE id = ?");
-    query.bind(1, track_id);
-
-    if (query.executeStep()) {
-        Track track;
-        track.id = query.getColumn("id").getString();
-        track.pcm_hash = query.getColumn("pcm_hash").getString();
-        track.work_id = SqliteHelper::get_optional<std::string>(query, "work_id");
-        track.title = SqliteHelper::get_optional<std::string>(query, "title");
-        track.recording_year = SqliteHelper::get_optional<int>(query, "recording_year");
-        track.recording_month = SqliteHelper::get_optional<int>(query, "recording_month");
-        track.recording_day = SqliteHelper::get_optional<int>(query, "recording_day");
-        track.recording_location = SqliteHelper::get_optional<std::string>(query, "recording_location");
-        track.duration = SqliteHelper::get_optional<int>(query, "duration");
-        track.isrc = SqliteHelper::get_optional<std::string>(query, "isrc");
-        track.musicbrainz_id = SqliteHelper::get_optional<std::string>(query, "musicbrainz_id");
-        track.ytm_id = SqliteHelper::get_optional<std::string>(query, "ytm_id");
-        track.spotify_id = SqliteHelper::get_optional<std::string>(query, "spotify_id");
-        return track;
+        auto track = SqliteHelper::fetch_one(query, SqliteMappers::map_track);
+        if (track) {
+            return *track;
+        }
+        return tl::unexpected("Track not found.");
+    } catch (const std::exception &e) {
+        return tl::unexpected(e.what());
     }
-    return tl::unexpected("Track not found.");
 }
 
 tl::expected<void, std::string> SqliteTrackRepository::update(const TrackUpdate &data) {
@@ -314,10 +304,9 @@ tl::expected<std::optional<std::string>, std::string> SqliteTrackRepository::get
         auto &db = m_context.get_db();
         SQLite::Statement query(db, "SELECT album_id FROM Track_Album WHERE track_id = ? LIMIT 1");
         query.bind(1, track_id);
-        if (query.executeStep()) {
-            return query.getColumn("album_id").getString();
-        }
-        return std::nullopt;
+        return SqliteHelper::fetch_one(query, [](SQLite::Statement &q) {
+            return q.getColumn("album_id").getString();
+        });
     } catch (const std::exception &e) {
         return tl::unexpected(e.what());
     }
@@ -351,36 +340,16 @@ tl::expected<PaginatedResult<Track>, std::string> SqliteTrackRepository::list(
             total = count_query.getColumn(0).getInt();
         }
 
-        std::vector<Track> items;
-        items.reserve(limit);
-        {
-            SQLite::Statement select_query(db, select_sql);
-            int bind_idx = 1;
-            if (search.has_value()) {
-                std::string query_param = "%" + SqliteHelper::escape_like(search.value(), '\\') + "%";
-                select_query.bind(bind_idx++, query_param);
-            }
-            select_query.bind(bind_idx++, limit);
-            select_query.bind(bind_idx++, offset);
-
-            while (select_query.executeStep()) {
-                Track track;
-                track.id = select_query.getColumn("id").getString();
-                track.pcm_hash = select_query.getColumn("pcm_hash").getString();
-                track.work_id = SqliteHelper::get_optional<std::string>(select_query, "work_id");
-                track.title = SqliteHelper::get_optional<std::string>(select_query, "title");
-                track.recording_year = SqliteHelper::get_optional<int>(select_query, "recording_year");
-                track.recording_month = SqliteHelper::get_optional<int>(select_query, "recording_month");
-                track.recording_day = SqliteHelper::get_optional<int>(select_query, "recording_day");
-                track.recording_location = SqliteHelper::get_optional<std::string>(select_query, "recording_location");
-                track.duration = SqliteHelper::get_optional<int>(select_query, "duration");
-                track.isrc = SqliteHelper::get_optional<std::string>(select_query, "isrc");
-                track.musicbrainz_id = SqliteHelper::get_optional<std::string>(select_query, "musicbrainz_id");
-                track.ytm_id = SqliteHelper::get_optional<std::string>(select_query, "ytm_id");
-                track.spotify_id = SqliteHelper::get_optional<std::string>(select_query, "spotify_id");
-                items.push_back(track);
-            }
+        SQLite::Statement select_query(db, select_sql);
+        int bind_idx = 1;
+        if (search.has_value()) {
+            std::string query_param = "%" + SqliteHelper::escape_like(search.value(), '\\') + "%";
+            select_query.bind(bind_idx++, query_param);
         }
+        select_query.bind(bind_idx++, limit);
+        select_query.bind(bind_idx++, offset);
+
+        std::vector<Track> items = SqliteHelper::fetch_all(select_query, SqliteMappers::map_track, limit);
 
         return PaginatedResult<Track>{
             .items = std::move(items),
@@ -399,25 +368,7 @@ tl::expected<std::vector<Track>, std::string> SqliteTrackRepository::get_by_titl
         SQLite::Statement query(db, "SELECT * FROM Track WHERE title = ? ORDER BY id ASC");
         query.bind(1, title);
 
-        std::vector<Track> tracks;
-        while (query.executeStep()) {
-            Track track;
-            track.id = query.getColumn("id").getString();
-            track.pcm_hash = query.getColumn("pcm_hash").getString();
-            track.work_id = SqliteHelper::get_optional<std::string>(query, "work_id");
-            track.title = SqliteHelper::get_optional<std::string>(query, "title");
-            track.recording_year = SqliteHelper::get_optional<int>(query, "recording_year");
-            track.recording_month = SqliteHelper::get_optional<int>(query, "recording_month");
-            track.recording_day = SqliteHelper::get_optional<int>(query, "recording_day");
-            track.recording_location = SqliteHelper::get_optional<std::string>(query, "recording_location");
-            track.duration = SqliteHelper::get_optional<int>(query, "duration");
-            track.isrc = SqliteHelper::get_optional<std::string>(query, "isrc");
-            track.musicbrainz_id = SqliteHelper::get_optional<std::string>(query, "musicbrainz_id");
-            track.ytm_id = SqliteHelper::get_optional<std::string>(query, "ytm_id");
-            track.spotify_id = SqliteHelper::get_optional<std::string>(query, "spotify_id");
-            tracks.push_back(track);
-        }
-        return tracks;
+        return SqliteHelper::fetch_all(query, SqliteMappers::map_track);
     } catch (const std::exception &e) {
         return tl::unexpected(e.what());
     }

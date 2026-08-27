@@ -5,7 +5,7 @@
 #include <SQLiteCpp/SQLiteCpp.h>
 #include <vector>
 
-#include "../../../utils/sqlite_helper.h"
+#include "../../../utils/sqlite_mappers.h"
 #include "sqlite_artist_repository.h"
 
 namespace lyra {
@@ -102,23 +102,20 @@ tl::expected<void, std::string> SqliteArtistRepository::update(const ArtistUpdat
 }
 
 tl::expected<Artist, std::string> SqliteArtistRepository::get(const std::string &artist_id) {
+    try {
+        auto &db = m_context.get_db();
 
-    auto &db = m_context.get_db();
+        SQLite::Statement query(db, "SELECT * FROM Artist WHERE id = ?");
+        query.bind(1, artist_id);
 
-    SQLite::Statement query(db, "SELECT * FROM Artist WHERE id = ?");
-    query.bind(1, artist_id);
-
-    if (query.executeStep()) {
-        Artist artist;
-        artist.id = query.getColumn("id").getString();
-        artist.name = query.getColumn("name").getString();
-        artist.musicbrainz_id = SqliteHelper::get_optional<std::string>(query, "musicbrainz_id");
-        artist.ytm_id = SqliteHelper::get_optional<std::string>(query, "ytm_id");
-        artist.spotify_id = SqliteHelper::get_optional<std::string>(query, "spotify_id");
-        return artist;
+        auto artist = SqliteHelper::fetch_one(query, SqliteMappers::map_artist);
+        if (artist) {
+            return *artist;
+        }
+        return tl::unexpected("Artist not found.");
+    } catch (const std::exception &e) {
+        return tl::unexpected(e.what());
     }
-
-    return tl::unexpected("Artist not found.");
 }
 
 tl::expected<PaginatedResult<Artist>, std::string> SqliteArtistRepository::list(
@@ -148,28 +145,16 @@ tl::expected<PaginatedResult<Artist>, std::string> SqliteArtistRepository::list(
             total = count_query.getColumn(0).getInt();
         }
 
-        std::vector<Artist> items;
-        items.reserve(limit);
-        {
-            SQLite::Statement select_query(db, select_sql);
-            int bind_idx = 1;
-            if (search.has_value()) {
-                std::string query_param = "%" + SqliteHelper::escape_like(search.value(), '\\') + "%";
-                select_query.bind(bind_idx++, query_param);
-            }
-            select_query.bind(bind_idx++, limit);
-            select_query.bind(bind_idx++, offset);
-
-            while (select_query.executeStep()) {
-                Artist artist;
-                artist.id = select_query.getColumn("id").getString();
-                artist.name = select_query.getColumn("name").getString();
-                artist.musicbrainz_id = SqliteHelper::get_optional<std::string>(select_query, "musicbrainz_id");
-                artist.ytm_id = SqliteHelper::get_optional<std::string>(select_query, "ytm_id");
-                artist.spotify_id = SqliteHelper::get_optional<std::string>(select_query, "spotify_id");
-                items.push_back(artist);
-            }
+        SQLite::Statement select_query(db, select_sql);
+        int bind_idx = 1;
+        if (search.has_value()) {
+            std::string query_param = "%" + SqliteHelper::escape_like(search.value(), '\\') + "%";
+            select_query.bind(bind_idx++, query_param);
         }
+        select_query.bind(bind_idx++, limit);
+        select_query.bind(bind_idx++, offset);
+
+        std::vector<Artist> items = SqliteHelper::fetch_all(select_query, SqliteMappers::map_artist, limit);
 
         return PaginatedResult<Artist>{
             .items = std::move(items),
@@ -188,17 +173,7 @@ tl::expected<std::vector<Artist>, std::string> SqliteArtistRepository::get_by_na
         SQLite::Statement query(db, "SELECT * FROM Artist WHERE name = ? ORDER BY id ASC");
         query.bind(1, name);
 
-        std::vector<Artist> artists;
-        while (query.executeStep()) {
-            Artist artist;
-            artist.id = query.getColumn("id").getString();
-            artist.name = query.getColumn("name").getString();
-            artist.musicbrainz_id = SqliteHelper::get_optional<std::string>(query, "musicbrainz_id");
-            artist.ytm_id = SqliteHelper::get_optional<std::string>(query, "ytm_id");
-            artist.spotify_id = SqliteHelper::get_optional<std::string>(query, "spotify_id");
-            artists.push_back(artist);
-        }
-        return artists;
+        return SqliteHelper::fetch_all(query, SqliteMappers::map_artist);
     } catch (const std::exception &e) {
         return tl::unexpected(e.what());
     }

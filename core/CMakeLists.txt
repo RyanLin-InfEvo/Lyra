@@ -43,6 +43,7 @@ set(CPP
     src/utils/json_validator.cpp
     src/utils/sha256.cpp
     src/utils/sqlite_helper.cpp
+    src/utils/sqlite_mappers.cpp
     src/utils/make_error.cpp
     src/utils/process_runner.cpp
     src/utils/audio_helper.cpp
@@ -94,6 +95,10 @@ if(BUILD_TESTING)
     add_executable(sqlite_helper_test tests/sqlite_helper_test.cpp)
     target_link_libraries(sqlite_helper_test PRIVATE lyra_core nlohmann_json::nlohmann_json fmt::fmt)
     target_include_directories(sqlite_helper_test PRIVATE include src)
+
+    add_executable(sqlite_mappers_test tests/sqlite_mappers_test.cpp)
+    target_link_libraries(sqlite_mappers_test PRIVATE lyra_core nlohmann_json::nlohmann_json fmt::fmt SQLiteCpp)
+    target_include_directories(sqlite_mappers_test PRIVATE include src)
 
     add_executable(json_validator_test tests/json_validator_test.cpp)
     target_link_libraries(json_validator_test PRIVATE lyra_core nlohmann_json::nlohmann_json fmt::fmt)

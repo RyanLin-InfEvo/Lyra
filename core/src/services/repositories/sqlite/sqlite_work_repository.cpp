@@ -5,7 +5,7 @@
 #include <SQLiteCpp/SQLiteCpp.h>
 #include <vector>
 
-#include "../../../utils/sqlite_helper.h"
+#include "../../../utils/sqlite_mappers.h"
 #include "sqlite_work_repository.h"
 
 namespace lyra {
@@ -48,24 +48,20 @@ tl::expected<void, std::string> SqliteWorkRepository::insert(const Work &work) {
 }
 
 tl::expected<Work, std::string> SqliteWorkRepository::get(const std::string &work_id) {
+    try {
+        auto &db = m_context.get_db();
 
-    auto &db = m_context.get_db();
+        SQLite::Statement query(db, "SELECT * FROM Work WHERE id = ?");
+        query.bind(1, work_id);
 
-    SQLite::Statement query(db, "SELECT * FROM Work WHERE id = ?");
-    query.bind(1, work_id);
-
-    if (query.executeStep()) {
-        Work work;
-        work.id = query.getColumn("id").getString();
-        work.title = query.getColumn("title").getString();
-        work.composition_start_year = SqliteHelper::get_optional<int>(query, "composition_start_year");
-        work.composition_end_year = SqliteHelper::get_optional<int>(query, "composition_end_year");
-        work.composition_date_text = SqliteHelper::get_optional<std::string>(query, "composition_date_text");
-        work.iswc = SqliteHelper::get_optional<std::string>(query, "iswc");
-        work.musicbrainz_id = SqliteHelper::get_optional<std::string>(query, "musicbrainz_id");
-        return work;
+        auto work = SqliteHelper::fetch_one(query, SqliteMappers::map_work);
+        if (work) {
+            return *work;
+        }
+        return tl::unexpected("Work not found.");
+    } catch (const std::exception &e) {
+        return tl::unexpected(e.what());
     }
-    return tl::unexpected("Work not found.");
 }
 
 tl::expected<void, std::string> SqliteWorkRepository::update(const WorkUpdate &data) {
@@ -140,30 +136,16 @@ tl::expected<PaginatedResult<Work>, std::string> SqliteWorkRepository::list(
             total = count_query.getColumn(0).getInt();
         }
 
-        std::vector<Work> items;
-        items.reserve(limit);
-        {
-            SQLite::Statement select_query(db, select_sql);
-            int bind_idx = 1;
-            if (search.has_value()) {
-                std::string query_param = "%" + SqliteHelper::escape_like(search.value(), '\\') + "%";
-                select_query.bind(bind_idx++, query_param);
-            }
-            select_query.bind(bind_idx++, limit);
-            select_query.bind(bind_idx++, offset);
-
-            while (select_query.executeStep()) {
-                Work work;
-                work.id = select_query.getColumn("id").getString();
-                work.title = select_query.getColumn("title").getString();
-                work.composition_start_year = SqliteHelper::get_optional<int>(select_query, "composition_start_year");
-                work.composition_end_year = SqliteHelper::get_optional<int>(select_query, "composition_end_year");
-                work.composition_date_text = SqliteHelper::get_optional<std::string>(select_query, "composition_date_text");
-                work.iswc = SqliteHelper::get_optional<std::string>(select_query, "iswc");
-                work.musicbrainz_id = SqliteHelper::get_optional<std::string>(select_query, "musicbrainz_id");
-                items.push_back(work);
-            }
+        SQLite::Statement select_query(db, select_sql);
+        int bind_idx = 1;
+        if (search.has_value()) {
+            std::string query_param = "%" + SqliteHelper::escape_like(search.value(), '\\') + "%";
+            select_query.bind(bind_idx++, query_param);
         }
+        select_query.bind(bind_idx++, limit);
+        select_query.bind(bind_idx++, offset);
+
+        std::vector<Work> items = SqliteHelper::fetch_all(select_query, SqliteMappers::map_work, limit);
 
         return PaginatedResult<Work>{
             .items = std::move(items),
@@ -181,19 +163,7 @@ tl::expected<std::vector<Work>, std::string> SqliteWorkRepository::get_by_title(
         SQLite::Statement query(db, "SELECT * FROM Work WHERE title = ? ORDER BY id ASC");
         query.bind(1, title);
 
-        std::vector<Work> works;
-        while (query.executeStep()) {
-            Work work;
-            work.id = query.getColumn("id").getString();
-            work.title = query.getColumn("title").getString();
-            work.composition_start_year = SqliteHelper::get_optional<int>(query, "composition_start_year");
-            work.composition_end_year = SqliteHelper::get_optional<int>(query, "composition_end_year");
-            work.composition_date_text = SqliteHelper::get_optional<std::string>(query, "composition_date_text");
-            work.iswc = SqliteHelper::get_optional<std::string>(query, "iswc");
-            work.musicbrainz_id = SqliteHelper::get_optional<std::string>(query, "musicbrainz_id");
-            works.push_back(work);
-        }
-        return works;
+        return SqliteHelper::fetch_all(query, SqliteMappers::map_work);
     } catch (const std::exception &e) {
         return tl::unexpected(e.what());
     }

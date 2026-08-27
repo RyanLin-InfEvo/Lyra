@@ -5,7 +5,7 @@
 #include <SQLiteCpp/SQLiteCpp.h>
 #include <vector>
 
-#include "../../../utils/sqlite_helper.h"
+#include "../../../utils/sqlite_mappers.h"
 #include "sqlite_asset_repository.h"
 
 namespace lyra {
@@ -99,14 +99,9 @@ tl::expected<Asset, std::string> SqliteAssetRepository::get(const std::string &f
         SQLite::Statement query(db, "SELECT * FROM Asset WHERE file_hash = ?");
         query.bind(1, file_hash);
 
-        if (query.executeStep()) {
-            Asset asset;
-            asset.file_hash = query.getColumn("file_hash").getString();
-            asset.mime_type = SqliteHelper::get_safe<std::string>(query, "mime_type", "");
-            asset.asset_type = SqliteHelper::get_safe<std::string>(query, "asset_type", "");
-            asset.file_size = query.getColumn("file_size").getInt();
-            asset.created_at = query.getColumn("created_at").getString();
-            return asset;
+        auto asset = SqliteHelper::fetch_one(query, SqliteMappers::map_asset);
+        if (asset) {
+            return *asset;
         }
         return tl::unexpected("Asset not found.");
     } catch (const std::exception &e) {
@@ -142,29 +137,17 @@ tl::expected<PaginatedResult<Asset>, std::string> SqliteAssetRepository::list(
             total = count_query.getColumn(0).getInt();
         }
 
-        std::vector<Asset> items;
-        items.reserve(limit);
-        {
-            SQLite::Statement select_query(db, select_sql);
-            int bind_idx = 1;
-            if (search.has_value()) {
-                std::string query_param = "%" + SqliteHelper::escape_like(search.value(), '\\') + "%";
-                select_query.bind(bind_idx++, query_param);
-                select_query.bind(bind_idx++, query_param);
-            }
-            select_query.bind(bind_idx++, limit);
-            select_query.bind(bind_idx++, offset);
-
-            while (select_query.executeStep()) {
-                Asset asset;
-                asset.file_hash = select_query.getColumn("file_hash").getString();
-                asset.mime_type = SqliteHelper::get_safe<std::string>(select_query, "mime_type", "");
-                asset.asset_type = SqliteHelper::get_safe<std::string>(select_query, "asset_type", "");
-                asset.file_size = select_query.getColumn("file_size").getInt();
-                asset.created_at = select_query.getColumn("created_at").getString();
-                items.push_back(asset);
-            }
+        SQLite::Statement select_query(db, select_sql);
+        int bind_idx = 1;
+        if (search.has_value()) {
+            std::string query_param = "%" + SqliteHelper::escape_like(search.value(), '\\') + "%";
+            select_query.bind(bind_idx++, query_param);
+            select_query.bind(bind_idx++, query_param);
         }
+        select_query.bind(bind_idx++, limit);
+        select_query.bind(bind_idx++, offset);
+
+        std::vector<Asset> items = SqliteHelper::fetch_all(select_query, SqliteMappers::map_asset, limit);
 
         return PaginatedResult<Asset>{
             .items = std::move(items),
@@ -246,11 +229,9 @@ tl::expected<std::vector<std::string>, std::string> SqliteAssetRepository::get_a
         SQLite::Statement query(db, "SELECT file_hash FROM Audio_Asset WHERE pcm_hash = ?");
         query.bind(1, pcm_hash);
 
-        std::vector<std::string> file_hashes;
-        while (query.executeStep()) {
-            file_hashes.push_back(query.getColumn("file_hash").getString());
-        }
-        return file_hashes;
+        return SqliteHelper::fetch_all(query, [](SQLite::Statement &q) {
+            return q.getColumn("file_hash").getString();
+        });
     } catch (const std::exception &e) {
         return tl::unexpected(e.what());
     }
@@ -263,11 +244,9 @@ tl::expected<std::vector<std::string>, std::string> SqliteAssetRepository::get_a
         SQLite::Statement query(db, "SELECT pcm_hash FROM Audio_Asset WHERE file_hash = ?");
         query.bind(1, file_hash);
 
-        std::vector<std::string> pcm_hashes;
-        while (query.executeStep()) {
-            pcm_hashes.push_back(query.getColumn("pcm_hash").getString());
-        }
-        return pcm_hashes;
+        return SqliteHelper::fetch_all(query, [](SQLite::Statement &q) {
+            return q.getColumn("pcm_hash").getString();
+        });
     } catch (const std::exception &e) {
         return tl::unexpected(e.what());
     }

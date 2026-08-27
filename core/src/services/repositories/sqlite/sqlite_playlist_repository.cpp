@@ -5,7 +5,7 @@
 #include <SQLiteCpp/SQLiteCpp.h>
 #include <vector>
 
-#include "../../../utils/sqlite_helper.h"
+#include "../../../utils/sqlite_mappers.h"
 #include "sqlite_playlist_repository.h"
 
 namespace lyra {
@@ -39,20 +39,20 @@ tl::expected<void, std::string> SqlitePlaylistRepository::insert(const Playlist 
 }
 
 tl::expected<Playlist, std::string> SqlitePlaylistRepository::get(const std::string &playlist_id) {
+    try {
+        auto &db = m_context.get_db();
 
-    auto &db = m_context.get_db();
+        SQLite::Statement query(db, "SELECT * FROM Playlist WHERE id = ?");
+        query.bind(1, playlist_id);
 
-    SQLite::Statement query(db, "SELECT * FROM Playlist WHERE id = ?");
-    query.bind(1, playlist_id);
-
-    if (query.executeStep()) {
-        Playlist playlist;
-        playlist.id = query.getColumn("id").getString();
-        playlist.title = query.getColumn("title").getString();
-        playlist.description = SqliteHelper::get_optional<std::string>(query, "description");
-        return playlist;
+        auto playlist = SqliteHelper::fetch_one(query, SqliteMappers::map_playlist);
+        if (playlist) {
+            return *playlist;
+        }
+        return tl::unexpected("Playlist not found.");
+    } catch (const std::exception &e) {
+        return tl::unexpected(e.what());
     }
-    return tl::unexpected("Playlist not found.");
 }
 
 tl::expected<void, std::string> SqlitePlaylistRepository::update(const PlaylistUpdate &data) {
@@ -154,17 +154,14 @@ tl::expected<void, std::string> SqlitePlaylistRepository::remove_track(const std
 }
 
 std::vector<std::string> SqlitePlaylistRepository::get_tracks(const std::string &playlist_id) {
-
     auto &db = m_context.get_db();
-    std::vector<std::string> track_ids;
 
     SQLite::Statement query(db,
                             "SELECT track_id FROM Playlist_Track WHERE playlist_id = ? ORDER BY position ASC, track_id ASC");
     query.bind(1, playlist_id);
-    while (query.executeStep()) {
-        track_ids.push_back(query.getColumn(0).getString());
-    }
-    return track_ids;
+    return SqliteHelper::fetch_all(query, [](SQLite::Statement &q) {
+        return q.getColumn(0).getString();
+    });
 }
 
 tl::expected<std::string, std::string> SqlitePlaylistRepository::get_first_track_id(
@@ -175,8 +172,11 @@ tl::expected<std::string, std::string> SqlitePlaylistRepository::get_first_track
                                 "SELECT track_id FROM Playlist_Track WHERE playlist_id = ? ORDER BY position ASC LIMIT 1");
         query.bind(1, playlist_id);
 
-        if (query.executeStep())
-            return query.getColumn(0).getString();
+        auto track_id = SqliteHelper::fetch_one(query, [](SQLite::Statement &q) {
+            return q.getColumn(0).getString();
+        });
+        if (track_id)
+            return *track_id;
         return tl::unexpected("Playlist is empty.");
     } catch (const std::exception &e) {
         return tl::unexpected(e.what());
@@ -210,26 +210,16 @@ tl::expected<PaginatedResult<Playlist>, std::string> SqlitePlaylistRepository::l
             total = count_query.getColumn(0).getInt();
         }
 
-        std::vector<Playlist> items;
-        items.reserve(limit);
-        {
-            SQLite::Statement select_query(db, select_sql);
-            int bind_idx = 1;
-            if (search.has_value()) {
-                std::string query_param = "%" + SqliteHelper::escape_like(search.value(), '\\') + "%";
-                select_query.bind(bind_idx++, query_param);
-            }
-            select_query.bind(bind_idx++, limit);
-            select_query.bind(bind_idx++, offset);
-
-            while (select_query.executeStep()) {
-                Playlist playlist;
-                playlist.id = select_query.getColumn("id").getString();
-                playlist.title = select_query.getColumn("title").getString();
-                playlist.description = SqliteHelper::get_optional<std::string>(select_query, "description");
-                items.push_back(playlist);
-            }
+        SQLite::Statement select_query(db, select_sql);
+        int bind_idx = 1;
+        if (search.has_value()) {
+            std::string query_param = "%" + SqliteHelper::escape_like(search.value(), '\\') + "%";
+            select_query.bind(bind_idx++, query_param);
         }
+        select_query.bind(bind_idx++, limit);
+        select_query.bind(bind_idx++, offset);
+
+        std::vector<Playlist> items = SqliteHelper::fetch_all(select_query, SqliteMappers::map_playlist, limit);
 
         return PaginatedResult<Playlist>{
             .items = std::move(items),
@@ -248,15 +238,7 @@ tl::expected<std::vector<Playlist>, std::string> SqlitePlaylistRepository::get_b
                                 "SELECT * FROM Playlist WHERE title = ? ORDER BY id ASC");
         query.bind(1, title);
 
-        std::vector<Playlist> playlists;
-        while (query.executeStep()) {
-            Playlist playlist;
-            playlist.id = query.getColumn("id").getString();
-            playlist.title = query.getColumn("title").getString();
-            playlist.description = SqliteHelper::get_optional<std::string>(query, "description");
-            playlists.push_back(playlist);
-        }
-        return playlists;
+        return SqliteHelper::fetch_all(query, SqliteMappers::map_playlist);
     } catch (const std::exception &e) {
         return tl::unexpected(e.what());
     }

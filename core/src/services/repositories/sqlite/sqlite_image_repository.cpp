@@ -5,7 +5,7 @@
 #include <SQLiteCpp/SQLiteCpp.h>
 #include <vector>
 
-#include "../../../utils/sqlite_helper.h"
+#include "../../../utils/sqlite_mappers.h"
 #include "sqlite_image_repository.h"
 
 namespace lyra {
@@ -47,14 +47,9 @@ tl::expected<Image, std::string> SqliteImageRepository::get(const std::string &i
                                 "FROM Image WHERE image_hash = ?");
         query.bind(1, image_hash);
 
-        if (query.executeStep()) {
-            Image img;
-            img.image_hash = query.getColumn("image_hash").getString();
-            img.file_hash = query.getColumn("file_hash").getString();
-            img.width = query.getColumn("width").getInt();
-            img.height = query.getColumn("height").getInt();
-            img.dominant_color = SqliteHelper::get_safe<std::string>(query, "dominant_color", "");
-            return img;
+        auto img = SqliteHelper::fetch_one(query, SqliteMappers::map_image);
+        if (img) {
+            return *img;
         }
         return tl::unexpected("Image not found.");
     } catch (const std::exception &e) {
@@ -90,29 +85,17 @@ tl::expected<PaginatedResult<Image>, std::string> SqliteImageRepository::list(
             total = count_query.getColumn(0).getInt();
         }
 
-        std::vector<Image> items;
-        items.reserve(limit);
-        {
-            SQLite::Statement select_query(db, select_sql);
-            int bind_idx = 1;
-            if (search.has_value() && !search->empty()) {
-                std::string param = "%" + SqliteHelper::escape_like(search.value(), '\\') + "%";
-                select_query.bind(bind_idx++, param);
-                select_query.bind(bind_idx++, param);
-            }
-            select_query.bind(bind_idx++, limit);
-            select_query.bind(bind_idx++, offset);
-
-            while (select_query.executeStep()) {
-                Image img;
-                img.image_hash = select_query.getColumn("image_hash").getString();
-                img.file_hash = select_query.getColumn("file_hash").getString();
-                img.width = select_query.getColumn("width").getInt();
-                img.height = select_query.getColumn("height").getInt();
-                img.dominant_color = SqliteHelper::get_safe<std::string>(select_query, "dominant_color", "");
-                items.push_back(img);
-            }
+        SQLite::Statement select_query(db, select_sql);
+        int bind_idx = 1;
+        if (search.has_value() && !search->empty()) {
+            std::string param = "%" + SqliteHelper::escape_like(search.value(), '\\') + "%";
+            select_query.bind(bind_idx++, param);
+            select_query.bind(bind_idx++, param);
         }
+        select_query.bind(bind_idx++, limit);
+        select_query.bind(bind_idx++, offset);
+
+        std::vector<Image> items = SqliteHelper::fetch_all(select_query, SqliteMappers::map_image, limit);
 
         return PaginatedResult<Image>{
             .items = std::move(items),
@@ -204,18 +187,7 @@ tl::expected<std::vector<Image>, std::string> SqliteImageRepository::get_images_
         query.bind(1, entity_id);
         if (role.has_value() && !role->empty()) query.bind(2, *role);
 
-        std::vector<Image> images;
-        while (query.executeStep()) {
-            Image img;
-            img.image_hash = query.getColumn("image_hash").getString();
-            img.file_hash = query.getColumn("file_hash").getString();
-            img.width = query.getColumn("width").getInt();
-            img.height = query.getColumn("height").getInt();
-            img.dominant_color = SqliteHelper::get_safe<std::string>(query, "dominant_color", "");
-            if (!query.isColumnNull("role")) img.role = query.getColumn("role").getString();
-            images.push_back(img);
-        }
-        return images;
+        return SqliteHelper::fetch_all(query, SqliteMappers::map_image);
     } catch (const std::exception &e) {
         return tl::unexpected(e.what());
     }
@@ -238,15 +210,9 @@ tl::expected<Image, std::string> SqliteImageRepository::get_artist_latest_album_
             "LIMIT 1");
         query.bind(1, artist_id);
 
-        if (query.executeStep()) {
-            Image img;
-            img.image_hash = query.getColumn("image_hash").getString();
-            img.file_hash = query.getColumn("file_hash").getString();
-            img.width = query.getColumn("width").getInt();
-            img.height = query.getColumn("height").getInt();
-            img.dominant_color = SqliteHelper::get_safe<std::string>(query, "dominant_color", "");
-            if (!query.isColumnNull("role")) img.role = query.getColumn("role").getString();
-            return img;
+        auto img = SqliteHelper::fetch_one(query, SqliteMappers::map_image);
+        if (img) {
+            return *img;
         }
         return tl::unexpected("No album cover image found for artist.");
     } catch (const std::exception &e) {

@@ -5,7 +5,7 @@
 #include <SQLiteCpp/SQLiteCpp.h>
 #include <vector>
 
-#include "../../../utils/sqlite_helper.h"
+#include "../../../utils/sqlite_mappers.h"
 #include "sqlite_album_repository.h"
 
 namespace lyra {
@@ -46,22 +46,20 @@ tl::expected<void, std::string> SqliteAlbumRepository::insert(const Album &album
 }
 
 tl::expected<Album, std::string> SqliteAlbumRepository::get(const std::string &album_id) {
+    try {
+        auto &db = m_context.get_db();
 
-    auto &db = m_context.get_db();
+        SQLite::Statement query(db, "SELECT * FROM Album WHERE id = ?");
+        query.bind(1, album_id);
 
-    SQLite::Statement query(db, "SELECT * FROM Album WHERE id = ?");
-    query.bind(1, album_id);
-
-    if (query.executeStep()) {
-        Album album;
-        album.id = query.getColumn("id").getString();
-        album.title = query.getColumn("title").getString();
-        album.release_year = SqliteHelper::get_optional<int>(query, "release_year");
-        album.release_month = SqliteHelper::get_optional<int>(query, "release_month");
-        album.release_day = SqliteHelper::get_optional<int>(query, "release_day");
-        return album;
+        auto album = SqliteHelper::fetch_one(query, SqliteMappers::map_album);
+        if (album) {
+            return *album;
+        }
+        return tl::unexpected("Album not found.");
+    } catch (const std::exception &e) {
+        return tl::unexpected(e.what());
     }
-    return tl::unexpected("Album not found.");
 }
 
 tl::expected<void, std::string> SqliteAlbumRepository::update(const AlbumUpdate &data) {
@@ -132,28 +130,16 @@ tl::expected<PaginatedResult<Album>, std::string> SqliteAlbumRepository::list(
             total = count_query.getColumn(0).getInt();
         }
 
-        std::vector<Album> items;
-        items.reserve(limit);
-        {
-            SQLite::Statement select_query(db, select_sql);
-            int bind_idx = 1;
-            if (search.has_value()) {
-                std::string query_param = "%" + SqliteHelper::escape_like(search.value(), '\\') + "%";
-                select_query.bind(bind_idx++, query_param);
-            }
-            select_query.bind(bind_idx++, limit);
-            select_query.bind(bind_idx++, offset);
-
-            while (select_query.executeStep()) {
-                Album album;
-                album.id = select_query.getColumn("id").getString();
-                album.title = select_query.getColumn("title").getString();
-                album.release_year = SqliteHelper::get_optional<int>(select_query, "release_year");
-                album.release_month = SqliteHelper::get_optional<int>(select_query, "release_month");
-                album.release_day = SqliteHelper::get_optional<int>(select_query, "release_day");
-                items.push_back(album);
-            }
+        SQLite::Statement select_query(db, select_sql);
+        int bind_idx = 1;
+        if (search.has_value()) {
+            std::string query_param = "%" + SqliteHelper::escape_like(search.value(), '\\') + "%";
+            select_query.bind(bind_idx++, query_param);
         }
+        select_query.bind(bind_idx++, limit);
+        select_query.bind(bind_idx++, offset);
+
+        std::vector<Album> items = SqliteHelper::fetch_all(select_query, SqliteMappers::map_album, limit);
 
         return PaginatedResult<Album>{
             .items = std::move(items),
@@ -172,17 +158,7 @@ tl::expected<std::vector<Album>, std::string> SqliteAlbumRepository::get_by_titl
         SQLite::Statement query(db, "SELECT * FROM Album WHERE title = ? ORDER BY id ASC");
         query.bind(1, title);
 
-        std::vector<Album> albums;
-        while (query.executeStep()) {
-            Album album;
-            album.id = query.getColumn("id").getString();
-            album.title = query.getColumn("title").getString();
-            album.release_year = SqliteHelper::get_optional<int>(query, "release_year");
-            album.release_month = SqliteHelper::get_optional<int>(query, "release_month");
-            album.release_day = SqliteHelper::get_optional<int>(query, "release_day");
-            albums.push_back(album);
-        }
-        return albums;
+        return SqliteHelper::fetch_all(query, SqliteMappers::map_album);
     } catch (const std::exception &e) {
         return tl::unexpected(e.what());
     }
