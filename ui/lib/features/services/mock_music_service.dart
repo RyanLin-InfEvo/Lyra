@@ -14,104 +14,104 @@ class MockMusicService implements MusicService {
     const Track(
       id: 'trk-001',
       title: 'Hotel California (Live on MTV 1994)',
-      artist: 'Eagles',
-      album: 'Hell Freezes Over',
-      duration: Duration(minutes: 7, seconds: 12),
+      artistName: 'Eagles',
+      albumTitle: 'Hell Freezes Over',
+      durationMs: 432000,
       format: 'FLAC',
       sampleRate: 96000,
       bitDepth: 24,
-      casHash:
+      pcmHash:
           '7f83b1657ff1fc53b92dc18148a1d65dfc2d4b1fa3d677284addd200126d9069',
       verified: true,
     ),
     const Track(
       id: 'trk-002',
       title: 'So What',
-      artist: 'Miles Davis',
-      album: 'Kind of Blue',
-      duration: Duration(minutes: 9, seconds: 22),
+      artistName: 'Miles Davis',
+      albumTitle: 'Kind of Blue',
+      durationMs: 562000,
       format: 'FLAC',
       sampleRate: 192000,
       bitDepth: 24,
-      casHash:
+      pcmHash:
           'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855',
       verified: true,
     ),
     const Track(
       id: 'trk-003',
       title: 'Giorgio by Moroder',
-      artist: 'Daft Punk',
-      album: 'Random Access Memories',
-      duration: Duration(minutes: 9, seconds: 4),
+      artistName: 'Daft Punk',
+      albumTitle: 'Random Access Memories',
+      durationMs: 544000,
       format: 'FLAC',
       sampleRate: 88200,
       bitDepth: 24,
-      casHash:
+      pcmHash:
           'a591a6d40bf420404a011733cfb7b190d62c65bf0bcda32b57b277d9ad9f146e',
       verified: true,
     ),
     const Track(
       id: 'trk-004',
       title: 'Time',
-      artist: 'Pink Floyd',
-      album: 'The Dark Side of the Moon',
-      duration: Duration(minutes: 6, seconds: 53),
+      artistName: 'Pink Floyd',
+      albumTitle: 'The Dark Side of the Moon',
+      durationMs: 413000,
       format: 'WAV',
       sampleRate: 96000,
       bitDepth: 24,
-      casHash:
+      pcmHash:
           '2c26b46b68ffc68ff99b453c1d30413413422d706483bfa0f98a5e886266e7ae',
       verified: true,
     ),
     const Track(
       id: 'trk-005',
       title: 'Symphony No. 9 in D Minor, Op. 125',
-      artist: 'Berliner Philharmoniker & Herbert von Karajan',
-      album: 'Beethoven: 9 Symphonies',
-      duration: Duration(minutes: 24, seconds: 15),
+      artistName: 'Berliner Philharmoniker & Herbert von Karajan',
+      albumTitle: 'Beethoven: 9 Symphonies',
+      durationMs: 1455000,
       format: 'FLAC',
       sampleRate: 96000,
       bitDepth: 24,
-      casHash:
+      pcmHash:
           'fcde2b2edba56bf408601fb721fe9b5c338d10ee429ea04fae5511b68fbf8fb9',
       verified: true,
     ),
     const Track(
       id: 'trk-006',
       title: 'Aja',
-      artist: 'Steely Dan',
-      album: 'Aja',
-      duration: Duration(minutes: 7, seconds: 57),
+      artistName: 'Steely Dan',
+      albumTitle: 'Aja',
+      durationMs: 477000,
       format: 'FLAC',
       sampleRate: 96000,
       bitDepth: 24,
-      casHash:
+      pcmHash:
           'd2a5b672c22829af6ec173d5226b7ff33354972c50c4004383f80f6e5d439059',
       verified: true,
     ),
     const Track(
       id: 'trk-007',
       title: 'Brothers in Arms',
-      artist: 'Dire Straits',
-      album: 'Brothers in Arms',
-      duration: Duration(minutes: 6, seconds: 58),
+      artistName: 'Dire Straits',
+      albumTitle: 'Brothers in Arms',
+      durationMs: 418000,
       format: 'WAV',
       sampleRate: 44100,
       bitDepth: 16,
-      casHash:
+      pcmHash:
           'ef2d127de37b942baad06145e54b0c619a1f22327b2ebbcfbec78f5564afe39d',
       verified: true,
     ),
     const Track(
       id: 'trk-008',
       title: 'Blue in Green',
-      artist: 'Miles Davis',
-      album: 'Kind of Blue',
-      duration: Duration(minutes: 5, seconds: 37),
+      artistName: 'Miles Davis',
+      albumTitle: 'Kind of Blue',
+      durationMs: 337000,
       format: 'FLAC',
       sampleRate: 192000,
       bitDepth: 24,
-      casHash:
+      pcmHash:
           '8f434346648f6b96df89dda901c5176b10e6d83961dd3c1ac88b59b2dc327aa4',
       verified: true,
     ),
@@ -219,10 +219,10 @@ class MockMusicService implements MusicService {
     }
     final q = query.toLowerCase().trim();
     return _tracks.where((t) {
-      return t.title.toLowerCase().contains(q) ||
+      return t.displayTitle.toLowerCase().contains(q) ||
           t.artist.toLowerCase().contains(q) ||
           t.album.toLowerCase().contains(q) ||
-          t.format.toLowerCase().contains(q) ||
+          (t.format ?? '').toLowerCase().contains(q) ||
           t.casHash.toLowerCase().contains(q);
     }).toList();
   }
@@ -257,13 +257,13 @@ class MockMusicService implements MusicService {
     final track = Track(
       id: 'trk-${DateTime.now().millisecondsSinceEpoch}',
       title: title,
-      artist: artist,
-      album: album,
-      duration: const Duration(minutes: 4, seconds: 18),
+      artistName: artist,
+      albumTitle: album,
+      durationMs: 258000,
       format: format,
       sampleRate: sampleRate,
       bitDepth: bitDepth,
-      casHash: simulatedHash,
+      pcmHash: simulatedHash,
       verified: true,
     );
 

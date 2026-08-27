@@ -109,7 +109,7 @@ class LyraPlayerBar extends StatelessWidget {
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Text(
-                                currentTrack!.title,
+                                currentTrack!.displayTitle,
                                 style: LyraTypography.p(
                                   tokens,
                                 ).copyWith(fontWeight: FontWeight.w600),
@@ -134,7 +134,7 @@ class LyraPlayerBar extends StatelessWidget {
                                       vertical: 1.0,
                                     ),
                                     child: Text(
-                                      currentTrack!.format,
+                                      currentTrack!.displayFormat,
                                       style: LyraTypography.small(tokens)
                                           .copyWith(
                                             fontSize: 9.0,

@@ -57,13 +57,13 @@ void main() {
   const testTrack = Track(
     id: '1',
     title: 'Test Song',
-    artist: 'Test Artist',
-    album: 'Test Album',
+    artistName: 'Test Artist',
+    albumTitle: 'Test Album',
     format: 'FLAC 24/96',
-    duration: Duration(minutes: 3, seconds: 20),
+    durationMs: 200000,
     sampleRate: 96000,
     bitDepth: 24,
-    casHash: 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855',
+    pcmHash: 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855',
   );
 
   testWidgets('LyraPlayerBar displays track info and duration', (tester) async {

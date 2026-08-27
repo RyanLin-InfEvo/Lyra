@@ -50,25 +50,25 @@ void main() {
     Track(
       id: '1',
       title: 'Track One',
-      artist: 'Artist A',
-      album: 'Album X',
+      artistName: 'Artist A',
+      albumTitle: 'Album X',
       format: 'FLAC 24/96',
-      duration: Duration(minutes: 4, seconds: 12),
+      durationMs: 252000,
       sampleRate: 96000,
       bitDepth: 24,
-      casHash:
+      pcmHash:
           'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
     ),
     Track(
       id: '2',
       title: 'Track Two',
-      artist: 'Artist B',
-      album: 'Album Y',
+      artistName: 'Artist B',
+      albumTitle: 'Album Y',
       format: 'DSD 5.6MHz',
-      duration: Duration(minutes: 5, seconds: 30),
+      durationMs: 330000,
       sampleRate: 5644800,
       bitDepth: 1,
-      casHash:
+      pcmHash:
           'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
     ),
   ];

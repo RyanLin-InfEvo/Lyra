@@ -281,7 +281,7 @@ class _TrackRowState extends State<_TrackRow> {
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       Text(
-                        widget.track.title,
+                        widget.track.displayTitle,
                         style: LyraTypography.p(tokens).copyWith(
                           fontWeight: widget.isCurrent
                               ? FontWeight.w600
