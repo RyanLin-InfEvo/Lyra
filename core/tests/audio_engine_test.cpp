@@ -223,6 +223,22 @@ int main(int argc, char *argv[]) {
         assert(engine.seek(1.0) == true);
         assert(engine.get_position() >= 0.9);
 
+        // Relative seek forward
+        assert(engine.seek(0.5, true) == true);
+        assert(engine.get_position() >= 1.3);
+
+        // Relative seek backward
+        assert(engine.seek(-0.5, true) == true);
+        assert(engine.get_position() >= 0.8 && engine.get_position() <= 1.4);
+
+        // Relative seek clamp to 0
+        assert(engine.seek(-10.0, true) == true);
+        assert(engine.get_position() <= 0.2);
+
+        // Seek clamp to duration
+        assert(engine.seek(100.0, false) == true);
+        assert(engine.get_position() >= 1.8);
+
         // Set Volume
         assert(engine.set_volume(0.5f) == true);
         assert(std::abs(engine.get_volume() - 0.5f) < 0.01f);
@@ -231,6 +247,11 @@ int main(int argc, char *argv[]) {
         assert(engine.stop() == true);
         assert(engine.get_state_enum() == AudioEngineState::STOPPED);
         assert(engine.get_state_string() == "STOPPED");
+
+        // Play with start position
+        assert(engine.play(test_wav, 1.0) == true);
+        assert(engine.get_position() >= 0.9);
+        assert(engine.stop() == true);
 
         engine.set_event_callback(nullptr);
         std::cout << "  ✓ AudioEngine state machine and file playback test passed.\n";

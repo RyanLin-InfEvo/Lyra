@@ -64,7 +64,7 @@ void AudioEngine::close_decoder_unlocked() {
     }
 }
 
-bool AudioEngine::play(const std::string &file_path) {
+bool AudioEngine::play(const std::string &file_path, double start_position_seconds) {
     stop(); // Ensure clean state before starting new playback
 
     {
@@ -81,6 +81,18 @@ bool AudioEngine::play(const std::string &file_path) {
         m_current_frame = 0;
         m_current_file_path = file_path;
         m_decoder = std::move(decoder);
+
+        if (start_position_seconds > 0.0) {
+            double target = start_position_seconds;
+            if (target < 0.0) target = 0.0;
+            double dur = get_duration();
+            if (dur > 0.0 && target > dur) {
+                target = dur;
+            }
+            if (m_decoder->seek_seconds(target)) {
+                m_current_frame = m_decoder->get_current_frame();
+            }
+        }
 
         // If no sink or sink is a fallback NullAudioSink (and not explicitly set by set_sink), try to create/use LocalAudioSink
         if (!m_custom_sink_set && (!m_sink || m_sink_is_fallback)) {
@@ -182,18 +194,19 @@ bool AudioEngine::stop() {
     return true;
 }
 
-bool AudioEngine::seek(double position_seconds) {
+bool AudioEngine::seek(double position_seconds, bool relative) {
     {
         std::lock_guard<std::recursive_mutex> lock(m_mutex);
         if (!m_decoder || !m_decoder->is_open()) return false;
 
-        if (position_seconds < 0.0) position_seconds = 0.0;
+        double target_pos = relative ? (get_position() + position_seconds) : position_seconds;
+        if (target_pos < 0.0) target_pos = 0.0;
         double dur = get_duration();
-        if (dur > 0.0 && position_seconds > dur) {
-            position_seconds = dur;
+        if (dur > 0.0 && target_pos > dur) {
+            target_pos = dur;
         }
 
-        if (!m_decoder->seek_seconds(position_seconds)) {
+        if (!m_decoder->seek_seconds(target_pos)) {
             return false;
         }
         m_current_frame = m_decoder->get_current_frame();

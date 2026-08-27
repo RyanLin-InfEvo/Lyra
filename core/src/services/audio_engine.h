@@ -43,11 +43,11 @@ class AudioEngine {
     void set_event_callback(EventCallbackFunc callback);
 
     // Control operations
-    bool play(const std::string &file_path);
+    bool play(const std::string &file_path, double start_position_seconds = 0.0);
     bool pause();
     bool resume();
     bool stop();
-    bool seek(double position_seconds);
+    bool seek(double position_seconds, bool relative = false);
     bool set_volume(float volume);
 
     // Query operations

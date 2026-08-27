@@ -1172,7 +1172,14 @@ json Router::handleAudioPlay(const json &p) {
         return ApiResponse::error(Error{ErrorType::NotFound, "Audio file does not exist on disk: " + file_path});
     }
 
-    bool success = m_audio_engine->play(file_path);
+    double start_pos = 0.0;
+    if (p.contains("start_position") && p["start_position"].is_number()) {
+        start_pos = p["start_position"].get<double>();
+    } else if (p.contains("start_position_seconds") && p["start_position_seconds"].is_number()) {
+        start_pos = p["start_position_seconds"].get<double>();
+    }
+
+    bool success = m_audio_engine->play(file_path, start_pos);
     if (!success) {
         return ApiResponse::error(Error{ErrorType::InvalidValue, "Failed to initialize decoder for audio file: " + file_path});
     }
@@ -1192,11 +1199,21 @@ json Router::handleAudioResume(const json &p) {
 }
 
 json Router::handleAudioSeek(const json &p) {
-    if (!p.contains("position") || !p["position"].is_number()) {
-        return ApiResponse::error(Error{ErrorType::MissingParameter, "Missing or invalid 'position' parameter"});
+    double pos = 0.0;
+    if (p.contains("position") && p["position"].is_number()) {
+        pos = p["position"].get<double>();
+    } else if (p.contains("position_seconds") && p["position_seconds"].is_number()) {
+        pos = p["position_seconds"].get<double>();
+    } else {
+        return ApiResponse::error(Error{ErrorType::MissingParameter, "Missing or invalid 'position' or 'position_seconds' parameter"});
     }
-    double pos = p["position"].get<double>();
-    m_audio_engine->seek(pos);
+
+    bool relative = false;
+    if (p.contains("relative") && p["relative"].is_boolean()) {
+        relative = p["relative"].get<bool>();
+    }
+
+    m_audio_engine->seek(pos, relative);
     return ApiResponse::success(m_audio_engine->get_state_json());
 }
 

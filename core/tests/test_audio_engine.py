@@ -78,6 +78,70 @@ class TestAudioEngine(BaseLyraTestCase):
         self.assertResponseCode(res, 200)
         self.assertEqual(res["data"]["state"], "STOPPED")
 
+    def test_audio_seek_relative_and_absolute(self):
+        # 1. Play 3s audio
+        res = self.dispatch("audio.play", {"file_path": self.sample_wav_path})
+        self.assertResponseCode(res, 200)
+        self.assertEqual(res["data"]["state"], "PLAYING")
+
+        # 2. Absolute seek: position = 1.0, relative = False
+        res = self.dispatch("audio.seek", {"position": 1.0, "relative": False})
+        self.assertResponseCode(res, 200)
+        self.assertAlmostEqual(res["data"]["position"], 1.0, delta=0.2)
+
+        # 3. Parameter alias: position_seconds = 1.5
+        res = self.dispatch("audio.seek", {"position_seconds": 1.5})
+        self.assertResponseCode(res, 200)
+        self.assertAlmostEqual(res["data"]["position"], 1.5, delta=0.2)
+
+        # 4. Relative seek forward: position = 0.5, relative = True
+        res = self.dispatch("audio.seek", {"position": 0.5, "relative": True})
+        self.assertResponseCode(res, 200)
+        self.assertAlmostEqual(res["data"]["position"], 2.0, delta=0.2)
+
+        # 5. Relative seek backward: position = -0.8, relative = True
+        res = self.dispatch("audio.seek", {"position": -0.8, "relative": True})
+        self.assertResponseCode(res, 200)
+        self.assertAlmostEqual(res["data"]["position"], 1.2, delta=0.2)
+
+        # 6. Boundary clamp (lower): position = -10.0, relative = True -> 0.0
+        res = self.dispatch("audio.seek", {"position": -10.0, "relative": True})
+        self.assertResponseCode(res, 200)
+        self.assertAlmostEqual(res["data"]["position"], 0.0, delta=0.2)
+
+        # 7. Boundary clamp (upper): position = 100.0, relative = False -> duration (~3.0)
+        res = self.dispatch("audio.seek", {"position": 100.0, "relative": False})
+        self.assertResponseCode(res, 200)
+        self.assertAlmostEqual(res["data"]["position"], res["data"]["duration"], delta=0.2)
+
+        # 8. Stop audio
+        res = self.dispatch("audio.stop", {})
+        self.assertResponseCode(res, 200)
+        self.assertEqual(res["data"]["state"], "STOPPED")
+
+    def test_audio_play_with_start_position(self):
+        # 1. Play with start_position = 1.5
+        res = self.dispatch("audio.play", {"file_path": self.sample_wav_path, "start_position": 1.5})
+        self.assertResponseCode(res, 200)
+        self.assertEqual(res["data"]["state"], "PLAYING")
+        self.assertGreaterEqual(res["data"]["position"], 1.4)
+
+        # Stop
+        res = self.dispatch("audio.stop", {})
+        self.assertResponseCode(res, 200)
+        self.assertEqual(res["data"]["state"], "STOPPED")
+
+        # 2. Play with start_position_seconds = 2.0
+        res = self.dispatch("audio.play", {"file_path": self.sample_wav_path, "start_position_seconds": 2.0})
+        self.assertResponseCode(res, 200)
+        self.assertEqual(res["data"]["state"], "PLAYING")
+        self.assertGreaterEqual(res["data"]["position"], 1.9)
+
+        # Stop
+        res = self.dispatch("audio.stop", {})
+        self.assertResponseCode(res, 200)
+        self.assertEqual(res["data"]["state"], "STOPPED")
+
     def test_audio_play_with_track_id(self):
         # 1. Ingest asset
         res_ingest = self.dispatch("IngestAsset", {"source_path": self.sample_wav_path})
