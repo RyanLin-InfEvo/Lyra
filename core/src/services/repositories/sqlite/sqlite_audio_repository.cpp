@@ -3,6 +3,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 #include <SQLiteCpp/SQLiteCpp.h>
+#include <iostream>
 #include <vector>
 
 #include "../../../utils/sqlite_mappers.h"
@@ -163,6 +164,83 @@ tl::expected<PaginatedResult<Audio>, std::string> SqliteAudioRepository::list(
             .offset = offset,
             .limit = limit,
         };
+    } catch (const std::exception &e) {
+        return tl::unexpected(e.what());
+    }
+}
+
+tl::expected<std::vector<Audio>, std::string> SqliteAudioRepository::get_related_versions(
+    const std::string &pcm_hash) {
+    try {
+        auto &db = m_context.get_db();
+
+        std::string parent_hash;
+        bool has_parent = false;
+        {
+            SQLite::Statement p_query(db, "SELECT parent_hash FROM Audio WHERE pcm_hash = ?");
+            p_query.bind(1, pcm_hash);
+            if (!p_query.executeStep()) {
+                return tl::unexpected("Audio not found.");
+            }
+            if (!p_query.isColumnNull(0)) {
+                parent_hash = p_query.getColumn(0).getString();
+                if (!parent_hash.empty()) {
+                    has_parent = true;
+                }
+            }
+        }
+
+        std::string root_hash = pcm_hash;
+        if (has_parent) {
+            bool parent_exists = false;
+            {
+                SQLite::Statement check_parent(db, "SELECT 1 FROM Audio WHERE pcm_hash = ?");
+                check_parent.bind(1, parent_hash);
+                if (check_parent.executeStep()) {
+                    parent_exists = true;
+                }
+            }
+
+            if (parent_exists) {
+                root_hash = parent_hash;
+            } else {
+                std::cerr << "[Warning] Dangling parent_hash detected: Audio '" << pcm_hash
+                          << "' references non-existent parent '" << parent_hash
+                          << "'. Auto-healing database record..." << std::endl;
+                auto transaction = m_context.begin_transaction();
+                SQLite::Statement heal_stmt(db, "UPDATE Audio SET parent_hash = NULL WHERE parent_hash = ?");
+                heal_stmt.bind(1, parent_hash);
+                heal_stmt.exec();
+                transaction->commit();
+                root_hash = pcm_hash;
+            }
+        }
+
+        SQLite::Statement family_query(
+            db,
+            "SELECT pcm_hash FROM Audio WHERE pcm_hash = ? OR parent_hash = ? ORDER BY pcm_hash ASC");
+        family_query.bind(1, root_hash);
+        family_query.bind(2, root_hash);
+
+        std::vector<std::string> hashes;
+        while (family_query.executeStep()) {
+            hashes.push_back(family_query.getColumn(0).getString());
+        }
+
+        std::vector<Audio> results;
+        results.reserve(hashes.size());
+        for (const auto &h : hashes) {
+            auto audio_res = get(h);
+            if (audio_res) {
+                results.push_back(std::move(audio_res.value()));
+            }
+        }
+
+        if (results.empty()) {
+            return tl::unexpected("Audio not found.");
+        }
+
+        return results;
     } catch (const std::exception &e) {
         return tl::unexpected(e.what());
     }

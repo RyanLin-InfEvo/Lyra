@@ -6,13 +6,16 @@
 
 #pragma once
 
-#include <string>
-#include <vector>
-#include <optional>
 #include <cstdint>
+#include <optional>
+#include <string>
 #include <tl/expected.hpp>
+#include <vector>
 
 namespace lyra {
+
+struct Audio;
+
 namespace utils {
 
 struct MediaMetadata {
@@ -30,13 +33,24 @@ struct MediaMetadata {
     std::optional<std::string> track;
 };
 
+struct AudioQualityInfo {
+    int quality_score = 0;
+    bool is_lossless = false;
+    std::string format;
+    int64_t file_size = 0;
+};
+
 class AudioHelper {
-public:
-    static tl::expected<std::string, std::string> calculate_pcm_hash(const std::string& filepath);
-    static tl::expected<MediaMetadata, std::string> extract_metadata(const std::string& filepath);
-    static tl::expected<std::vector<uint8_t>, std::string> extract_cover_art(const std::string& filepath);
-    static tl::expected<void, std::string> extract_cover_art_to_file(const std::string& filepath, const std::string& output_image_path);
+  public:
+    static tl::expected<std::string, std::string> calculate_pcm_hash(const std::string &filepath);
+    static tl::expected<MediaMetadata, std::string> extract_metadata(const std::string &filepath);
+    static tl::expected<std::vector<uint8_t>, std::string> extract_cover_art(const std::string &filepath);
+    static tl::expected<void, std::string> extract_cover_art_to_file(const std::string &filepath, const std::string &output_image_path);
+    static AudioQualityInfo evaluate_quality(const Audio &audio);
 };
 
 } // namespace utils
+
+using utils::AudioQualityInfo;
+
 } // namespace lyra

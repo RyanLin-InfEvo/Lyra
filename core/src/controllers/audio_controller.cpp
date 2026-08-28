@@ -32,4 +32,8 @@ tl::expected<PaginatedResult<Audio>, std::string> AudioController::list(
     return m_repo.list(offset, limit, search);
 }
 
+tl::expected<std::vector<Audio>, std::string> AudioController::get_related_versions(const std::string &pcm_hash) {
+    return m_repo.get_related_versions(pcm_hash);
+}
+
 } // namespace lyra

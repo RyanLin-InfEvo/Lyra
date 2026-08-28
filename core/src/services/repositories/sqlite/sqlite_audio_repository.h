@@ -18,6 +18,8 @@ class SqliteAudioRepository : public IAudioRepository {
     tl::expected<Audio, std::string> get(const std::string &pcm_hash) override;
     tl::expected<PaginatedResult<Audio>, std::string> list(
         int offset, int limit, const std::optional<std::string> &search) override;
+    tl::expected<std::vector<Audio>, std::string> get_related_versions(
+        const std::string &pcm_hash) override;
 
   private:
     IDatabaseContext &m_context;

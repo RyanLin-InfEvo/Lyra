@@ -252,3 +252,388 @@ class TestAudioController(BaseLyraTestCase):
             "pcm_hash": "some-pcm"
         })
         self.assertValidationError(res, expected_type="InvalidValue")
+
+    def test_compare_versions_with_pcm_hashes(self):
+        """Test Case 1: Hi-Res FLAC (24bit/96kHz, stereo, lossless, size=52428800) and MP3 (16bit/44.1kHz, stereo, duration=180s, size=7200000 -> 320kbps)"""
+        # Create Audio 1: Lossless Hi-Res FLAC 24-bit 96kHz
+        self.dispatch("CreateAudio", {
+            "pcm_hash": "pcm-flac-24-96",
+            "bit_depth": 24,
+            "sample_rate": 96000,
+            "channels": 2,
+            "duration": 180.0
+        })
+        self.dispatch("CreateAsset", {
+            "file_hash": "file-flac",
+            "mime_type": "audio/flac",
+            "asset_type": "audio",
+            "file_size": 52428800
+        })
+
+        # Create Audio 2: High quality MP3 16-bit 44.1kHz (320kbps)
+        self.dispatch("CreateAudio", {
+            "pcm_hash": "pcm-mp3-320",
+            "bit_depth": 16,
+            "sample_rate": 44100,
+            "channels": 2,
+            "duration": 180.0
+        })
+        self.dispatch("CreateAsset", {
+            "file_hash": "file-mp3-320",
+            "mime_type": "audio/mpeg",
+            "asset_type": "audio",
+            "file_size": 7200000  # 7,200,000 * 8 / 180 = 320,000 bps
+        })
+
+        # Create Audio 3: Medium quality MP3 16-bit 44.1kHz (128kbps)
+        self.dispatch("CreateAudio", {
+            "pcm_hash": "pcm-mp3-128",
+            "bit_depth": 16,
+            "sample_rate": 44100,
+            "channels": 2,
+            "duration": 180.0
+        })
+        self.dispatch("CreateAsset", {
+            "file_hash": "file-mp3-128",
+            "mime_type": "audio/mp3",
+            "asset_type": "audio",
+            "file_size": 2880000  # 2,880,000 * 8 / 180 = 128,000 bps
+        })
+
+        db_path = os.path.join(self.test_db_dir, "lyra.db")
+        conn = sqlite3.connect(db_path)
+        cursor = conn.cursor()
+        cursor.execute("INSERT INTO Audio_Asset (pcm_hash, file_hash) VALUES (?, ?)", ("pcm-flac-24-96", "file-flac"))
+        cursor.execute("INSERT INTO Audio_Asset (pcm_hash, file_hash) VALUES (?, ?)", ("pcm-mp3-320", "file-mp3-320"))
+        cursor.execute("INSERT INTO Audio_Asset (pcm_hash, file_hash) VALUES (?, ?)", ("pcm-mp3-128", "file-mp3-128"))
+        conn.commit()
+        conn.close()
+
+        res = self.dispatch("audio.compare_versions", {
+            "pcm_hashes": ["pcm-mp3-128", "pcm-flac-24-96", "pcm-mp3-320"]
+        })
+        self.assertResponseCode(res, 200)
+        data = res["data"]
+        self.assertEqual(data["recommended_master"], "pcm-flac-24-96")
+        versions = data["versions"]
+        self.assertEqual(len(versions), 3)
+
+        # 1st: FLAC
+        self.assertEqual(versions[0]["pcm_hash"], "pcm-flac-24-96")
+        self.assertEqual(versions[0]["format"], "FLAC 24-bit / 96kHz")
+        self.assertEqual(versions[0]["quality_score"], 97)
+        self.assertTrue(versions[0]["is_lossless"])
+        self.assertEqual(versions[0]["file_size"], 52428800)
+        self.assertTrue(versions[0]["is_master"])
+
+        # 2nd: MP3 320k
+        self.assertEqual(versions[1]["pcm_hash"], "pcm-mp3-320")
+        self.assertEqual(versions[1]["format"], "MP3 16-bit / 44.1kHz")
+        self.assertEqual(versions[1]["quality_score"], 68)
+        self.assertFalse(versions[1]["is_lossless"])
+        self.assertEqual(versions[1]["file_size"], 7200000)
+        self.assertFalse(versions[1]["is_master"])
+
+        # 3rd: MP3 128k
+        self.assertEqual(versions[2]["pcm_hash"], "pcm-mp3-128")
+        self.assertEqual(versions[2]["format"], "MP3 16-bit / 44.1kHz")
+        self.assertEqual(versions[2]["quality_score"], 48)
+        self.assertFalse(versions[2]["is_lossless"])
+        self.assertEqual(versions[2]["file_size"], 2880000)
+        self.assertFalse(versions[2]["is_master"])
+
+    def test_compare_versions_with_track_id(self):
+        """Test Case 2: Comparison via track_id (parent-child relationship in Audio table)"""
+        root_pcm = "pcm-track-root"
+        child_pcm = "pcm-track-child"
+
+        # Create root audio and child audio
+        self.dispatch("CreateAudio", {
+            "pcm_hash": root_pcm,
+            "bit_depth": 24,
+            "sample_rate": 192000,
+            "channels": 2,
+            "duration": 240.0
+        })
+        self.dispatch("CreateAsset", {
+            "file_hash": "file-root-wav",
+            "mime_type": "audio/x-wav",
+            "asset_type": "audio",
+            "file_size": 90000000
+        })
+
+        self.dispatch("CreateAudio", {
+            "pcm_hash": child_pcm,
+            "parent_hash": root_pcm,
+            "bit_depth": 16,
+            "sample_rate": 44100,
+            "channels": 2,
+            "duration": 240.0
+        })
+        self.dispatch("CreateAsset", {
+            "file_hash": "file-child-aac",
+            "mime_type": "audio/aac",
+            "asset_type": "audio",
+            "file_size": 7680000  # 256kbps
+        })
+
+        db_path = os.path.join(self.test_db_dir, "lyra.db")
+        conn = sqlite3.connect(db_path)
+        cursor = conn.cursor()
+        cursor.execute("INSERT INTO Audio_Asset (pcm_hash, file_hash) VALUES (?, ?)", (root_pcm, "file-root-wav"))
+        cursor.execute("INSERT INTO Audio_Asset (pcm_hash, file_hash) VALUES (?, ?)", (child_pcm, "file-child-aac"))
+        conn.commit()
+        conn.close()
+
+        # Create Track linking to child audio
+        res_track = self.dispatch("CreateTrack", {
+            "title": "Masterpiece",
+            "pcm_hash": child_pcm
+        })
+        self.assertResponseCode(res_track, 201)
+        track_id = res_track["data"]["id"]
+
+        # Call compare_versions using track_id
+        res = self.dispatch("audio.compare_versions", {
+            "track_id": track_id
+        })
+        self.assertResponseCode(res, 200)
+        data = res["data"]
+        self.assertEqual(data["recommended_master"], root_pcm)
+        self.assertEqual(len(data["versions"]), 2)
+        self.assertEqual(data["versions"][0]["pcm_hash"], root_pcm)
+        self.assertEqual(data["versions"][0]["format"], "WAV 24-bit / 192kHz")
+        self.assertTrue(data["versions"][0]["is_master"])
+        self.assertEqual(data["versions"][1]["pcm_hash"], child_pcm)
+        self.assertEqual(data["versions"][1]["format"], "AAC 16-bit / 44.1kHz")
+        self.assertFalse(data["versions"][1]["is_master"])
+
+    def test_compare_versions_with_dangling_parent_auto_healing(self):
+        """Test audio.compare_versions with dangling parent_hash triggers auto-healing"""
+        dangling_pcm = "pcm-track-dangling"
+        self.dispatch("CreateAsset", {
+            "file_hash": "file-dangling-wav",
+            "mime_type": "audio/x-wav",
+            "asset_type": "audio",
+            "file_size": 20000000
+        })
+
+        db_path = os.path.join(self.test_db_dir, "lyra.db")
+        conn = sqlite3.connect(db_path)
+        cursor = conn.cursor()
+        cursor.execute("PRAGMA foreign_keys = OFF;")
+        cursor.execute(
+            "INSERT INTO Audio (pcm_hash, parent_hash, sample_rate, bit_depth, channels, duration) VALUES (?, ?, ?, ?, ?, ?)",
+            (dangling_pcm, "non-existent-master-hash", 44100, 16, 2, 120.0),
+        )
+        cursor.execute("INSERT INTO Audio_Asset (pcm_hash, file_hash) VALUES (?, ?)", (dangling_pcm, "file-dangling-wav"))
+        conn.commit()
+        conn.close()
+
+        res_track = self.dispatch("CreateTrack", {
+            "title": "Dangling Track",
+            "pcm_hash": dangling_pcm
+        })
+        self.assertResponseCode(res_track, 201)
+        track_id = res_track["data"]["id"]
+
+        res = self.dispatch("audio.compare_versions", {
+            "track_id": track_id
+        })
+        self.assertResponseCode(res, 200)
+        data = res["data"]
+        self.assertEqual(data["recommended_master"], dangling_pcm)
+        self.assertEqual(len(data["versions"]), 1)
+        self.assertEqual(data["versions"][0]["pcm_hash"], dangling_pcm)
+
+        # Check that parent_hash in database is now NULL
+        conn = sqlite3.connect(db_path)
+        cursor = conn.cursor()
+        cursor.execute("SELECT parent_hash FROM Audio WHERE pcm_hash = ?", (dangling_pcm,))
+        row = cursor.fetchone()
+        conn.close()
+        self.assertIsNone(row[0])
+
+    def test_compare_versions_sorting_tie_breaking(self):
+        """Test Case 5: Tie breaking (equal score -> lossless wins; equal score & both lossy/lossless -> larger file size wins)"""
+        # Part A: Equal score where lossless wins (Score 71: lossless 8-bit mono FLAC vs lossy 24-bit stereo MP3 256k)
+        # Lossless: bit_depth=8 (8) + sample_rate=48k (16) + lossless (45) + channels=1 (2) = 71
+        self.dispatch("CreateAudio", {
+            "pcm_hash": "pcm-tie-lossless-71",
+            "bit_depth": 8,
+            "sample_rate": 48000,
+            "channels": 1,
+            "duration": 100.0
+        })
+        self.dispatch("CreateAsset", {
+            "file_hash": "file-tie-lossless-71",
+            "mime_type": "audio/flac",
+            "file_size": 5000000
+        })
+
+        # Lossy: bit_depth=24 (25) + sample_rate=48k (16) + 256kbps (25) + channels=2 (5) = 71
+        self.dispatch("CreateAudio", {
+            "pcm_hash": "pcm-tie-lossy-71",
+            "bit_depth": 24,
+            "sample_rate": 48000,
+            "channels": 2,
+            "duration": 100.0
+        })
+        self.dispatch("CreateAsset", {
+            "file_hash": "file-tie-lossy-71",
+            "mime_type": "audio/mp3",
+            "file_size": 3200000  # 3,200,000 * 8 / 100 = 256,000 bps
+        })
+
+        # Part B: Equal score & both lossy -> larger file size wins (MP3 320k 7.5MB vs 7.2MB, Score 68)
+        self.dispatch("CreateAudio", {
+            "pcm_hash": "pcm-tie-lossy-small",
+            "bit_depth": 16,
+            "sample_rate": 44100,
+            "channels": 2,
+            "duration": 180.0
+        })
+        self.dispatch("CreateAsset", {
+            "file_hash": "file-tie-lossy-small",
+            "mime_type": "audio/mpeg",
+            "file_size": 7200000
+        })
+
+        self.dispatch("CreateAudio", {
+            "pcm_hash": "pcm-tie-lossy-large",
+            "bit_depth": 16,
+            "sample_rate": 44100,
+            "channels": 2,
+            "duration": 180.0
+        })
+        self.dispatch("CreateAsset", {
+            "file_hash": "file-tie-lossy-large",
+            "mime_type": "audio/mpeg",
+            "file_size": 7500000
+        })
+
+        # Part C: Equal score & both lossless -> larger file size wins (FLAC 97 score, 50MB vs 52.4MB)
+        self.dispatch("CreateAudio", {
+            "pcm_hash": "pcm-tie-lossless-small",
+            "bit_depth": 24,
+            "sample_rate": 96000,
+            "channels": 2,
+            "duration": 180.0
+        })
+        self.dispatch("CreateAsset", {
+            "file_hash": "file-tie-lossless-small",
+            "mime_type": "audio/flac",
+            "file_size": 50000000
+        })
+
+        self.dispatch("CreateAudio", {
+            "pcm_hash": "pcm-tie-lossless-large",
+            "bit_depth": 24,
+            "sample_rate": 96000,
+            "channels": 2,
+            "duration": 180.0
+        })
+        self.dispatch("CreateAsset", {
+            "file_hash": "file-tie-lossless-large",
+            "mime_type": "audio/flac",
+            "file_size": 52428800
+        })
+
+        db_path = os.path.join(self.test_db_dir, "lyra.db")
+        conn = sqlite3.connect(db_path)
+        cursor = conn.cursor()
+        cursor.execute("INSERT INTO Audio_Asset (pcm_hash, file_hash) VALUES (?, ?)", ("pcm-tie-lossless-71", "file-tie-lossless-71"))
+        cursor.execute("INSERT INTO Audio_Asset (pcm_hash, file_hash) VALUES (?, ?)", ("pcm-tie-lossy-71", "file-tie-lossy-71"))
+        cursor.execute("INSERT INTO Audio_Asset (pcm_hash, file_hash) VALUES (?, ?)", ("pcm-tie-lossy-small", "file-tie-lossy-small"))
+        cursor.execute("INSERT INTO Audio_Asset (pcm_hash, file_hash) VALUES (?, ?)", ("pcm-tie-lossy-large", "file-tie-lossy-large"))
+        cursor.execute("INSERT INTO Audio_Asset (pcm_hash, file_hash) VALUES (?, ?)", ("pcm-tie-lossless-small", "file-tie-lossless-small"))
+        cursor.execute("INSERT INTO Audio_Asset (pcm_hash, file_hash) VALUES (?, ?)", ("pcm-tie-lossless-large", "file-tie-lossless-large"))
+        conn.commit()
+        conn.close()
+
+        # Test A: Equal score (71) -> Lossless wins over Lossy
+        res_a = self.dispatch("audio.compare_versions", {
+            "pcm_hashes": ["pcm-tie-lossy-71", "pcm-tie-lossless-71"]
+        })
+        self.assertResponseCode(res_a, 200)
+        v_a = res_a["data"]["versions"]
+        self.assertEqual(v_a[0]["quality_score"], 71)
+        self.assertEqual(v_a[1]["quality_score"], 71)
+        self.assertEqual(v_a[0]["pcm_hash"], "pcm-tie-lossless-71")
+        self.assertTrue(v_a[0]["is_lossless"])
+        self.assertEqual(v_a[1]["pcm_hash"], "pcm-tie-lossy-71")
+        self.assertFalse(v_a[1]["is_lossless"])
+
+        # Test B: Equal score & both lossy -> Larger file size wins
+        res_b = self.dispatch("audio.compare_versions", {
+            "pcm_hashes": ["pcm-tie-lossy-small", "pcm-tie-lossy-large"]
+        })
+        self.assertResponseCode(res_b, 200)
+        v_b = res_b["data"]["versions"]
+        self.assertEqual(v_b[0]["pcm_hash"], "pcm-tie-lossy-large")
+        self.assertEqual(v_b[1]["pcm_hash"], "pcm-tie-lossy-small")
+
+        # Test C: Equal score & both lossless -> Larger file size wins
+        res_c = self.dispatch("audio.compare_versions", {
+            "pcm_hashes": ["pcm-tie-lossless-small", "pcm-tie-lossless-large"]
+        })
+        self.assertResponseCode(res_c, 200)
+        v_c = res_c["data"]["versions"]
+        self.assertEqual(v_c[0]["pcm_hash"], "pcm-tie-lossless-large")
+        self.assertEqual(v_c[1]["pcm_hash"], "pcm-tie-lossless-small")
+
+    def test_compare_versions_errors(self):
+        """Test all error cases for audio.compare_versions"""
+        # 1. Missing parameter
+        res = self.dispatch("audio.compare_versions", {})
+        self.assertResponseCode(res, 400)
+        self.assertEqual(res["error"]["type"], "MissingParameter")
+
+        # 2. Empty track_id
+        res = self.dispatch("audio.compare_versions", {"track_id": ""})
+        self.assertResponseCode(res, 400)
+        self.assertEqual(res["error"]["type"], "MissingParameter")
+
+        # 3. Invalid track_id type
+        res = self.dispatch("audio.compare_versions", {"track_id": 12345})
+        self.assertResponseCode(res, 400)
+        self.assertEqual(res["error"]["type"], "InvalidValue")
+
+        # 4. Non-existent track_id
+        res = self.dispatch("audio.compare_versions", {"track_id": "00000000-0000-0000-0000-000000000000"})
+        self.assertResponseCode(res, 404)
+        self.assertEqual(res["error"]["type"], "TrackNotFound")
+
+        # 5. Track has no associated audio
+        no_audio_track_id = "22222222-3333-4444-5555-666666666666"
+        db_path = os.path.join(self.test_db_dir, "lyra.db")
+        conn = sqlite3.connect(db_path)
+        cursor = conn.cursor()
+        cursor.execute("INSERT INTO Track (id, title, pcm_hash) VALUES (?, ?, ?)", (no_audio_track_id, "No Audio Track", ""))
+        conn.commit()
+        conn.close()
+
+        res = self.dispatch("audio.compare_versions", {"track_id": no_audio_track_id})
+        self.assertResponseCode(res, 404)
+        self.assertEqual(res["error"]["type"], "AudioNotFound")
+
+        # 6. Empty pcm_hashes list
+        res = self.dispatch("audio.compare_versions", {"pcm_hashes": []})
+        self.assertResponseCode(res, 400)
+        self.assertEqual(res["error"]["type"], "MissingParameter")
+
+        # 7. Invalid pcm_hashes type
+        res = self.dispatch("audio.compare_versions", {"pcm_hashes": "not-a-list"})
+        self.assertResponseCode(res, 400)
+        self.assertEqual(res["error"]["type"], "InvalidValue")
+
+        # 8. Non-string in pcm_hashes
+        res = self.dispatch("audio.compare_versions", {"pcm_hashes": ["valid", 123]})
+        self.assertResponseCode(res, 400)
+        self.assertEqual(res["error"]["type"], "InvalidValue")
+
+        # 9. Non-existent pcm_hash
+        res = self.dispatch("audio.compare_versions", {"pcm_hashes": ["non-existent-hash"]})
+        self.assertResponseCode(res, 404)
+        self.assertEqual(res["error"]["type"], "AudioNotFound")
+

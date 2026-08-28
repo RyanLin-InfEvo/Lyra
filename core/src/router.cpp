@@ -174,6 +174,7 @@ void Router::init_handlers() {
     m_handlers["audio.stop"] = [this](const json &p) { return handleAudioStop(p); };
     m_handlers["audio.set_volume"] = [this](const json &p) { return handleAudioSetVolume(p); };
     m_handlers["audio.get_state"] = [this](const json &p) { return handleAudioGetState(p); };
+    m_handlers["audio.compare_versions"] = [this](const json &p) { return handleAudioCompareVersions(p); };
 }
 
 
@@ -1235,6 +1236,120 @@ json Router::handleAudioSetVolume(const json &p) {
 json Router::handleAudioGetState(const json &p) {
     (void)p;
     return ApiResponse::success(m_audio_engine->get_state_json());
+}
+
+json Router::handleAudioCompareVersions(const json &p) {
+    std::vector<Audio> candidate_audios;
+
+    if (p.contains("track_id") && !p["track_id"].is_null()) {
+        if (!p["track_id"].is_string()) {
+            return ApiResponse::error({ErrorType::InvalidValue, "track_id must be a string"});
+        }
+        std::string track_id = p["track_id"].get<std::string>();
+        if (track_id.empty()) {
+            return ApiResponse::error({ErrorType::MissingParameter, "track_id cannot be empty"});
+        }
+        auto track_res = m_track_controller->get(track_id);
+        if (!track_res) {
+            return ApiResponse::error({ErrorType::TrackNotFound, "Track not found: " + track_id});
+        }
+        if (track_res->pcm_hash.empty()) {
+            return ApiResponse::error({ErrorType::AudioNotFound, "Track has no associated audio"});
+        }
+        auto versions_res = m_audio_controller->get_related_versions(track_res->pcm_hash);
+        if (!versions_res || versions_res->empty()) {
+            return ApiResponse::error({ErrorType::AudioNotFound, "Audio not found: " + track_res->pcm_hash});
+        }
+        candidate_audios = std::move(versions_res.value());
+    } else if (p.contains("pcm_hashes") && !p["pcm_hashes"].is_null()) {
+        if (!p["pcm_hashes"].is_array()) {
+            return ApiResponse::error({ErrorType::InvalidValue, "pcm_hashes must be an array"});
+        }
+        if (p["pcm_hashes"].empty()) {
+            return ApiResponse::error({ErrorType::MissingParameter, "pcm_hashes cannot be empty"});
+        }
+        for (const auto &item : p["pcm_hashes"]) {
+            if (!item.is_string()) {
+                return ApiResponse::error({ErrorType::InvalidValue, "pcm_hashes items must be strings"});
+            }
+        }
+        for (const auto &item : p["pcm_hashes"]) {
+            std::string hash = item.get<std::string>();
+            auto audio_res = m_audio_controller->get(hash);
+            if (!audio_res) {
+                return ApiResponse::error({ErrorType::AudioNotFound, "Audio not found: " + hash});
+            }
+            candidate_audios.push_back(std::move(audio_res.value()));
+        }
+    } else {
+        return ApiResponse::error({ErrorType::MissingParameter, "Missing 'pcm_hashes' or 'track_id' parameter"});
+    }
+
+    // Local data structure representing an audio version candidate and its quality metrics.
+    struct VersionItem {
+        std::string pcm_hash;
+        std::string format;
+        int quality_score = 0;
+        bool is_lossless = false;
+        int64_t file_size = 0;
+        bool is_master = false;
+    };
+
+    std::vector<VersionItem> versions;
+    versions.reserve(candidate_audios.size());
+
+    // Evaluate quality metrics for each candidate audio file.
+    for (const auto &audio : candidate_audios) {
+        auto qinfo = utils::AudioHelper::evaluate_quality(audio);
+        VersionItem item;
+        item.pcm_hash = audio.pcm_hash;
+        item.format = qinfo.format;
+        item.quality_score = qinfo.quality_score;
+        item.is_lossless = qinfo.is_lossless;
+        item.file_size = qinfo.file_size;
+        item.is_master = false;
+        versions.push_back(std::move(item));
+    }
+
+    // Sort candidates to determine the optimal master version using a hierarchical priority:
+    // 1. Quality score (higher score preferred)
+    // 2. Lossless preference (lossless preferred over lossy)
+    // 3. File size (larger file size preferred for tie-breaking fidelity)
+    // 4. PCM hash (lexicographical order for deterministic tie-breaking)
+    std::sort(versions.begin(), versions.end(), [](const VersionItem &a, const VersionItem &b) {
+        if (a.quality_score != b.quality_score) {
+            return a.quality_score > b.quality_score;
+        }
+        if (a.is_lossless != b.is_lossless) {
+            return a.is_lossless && !b.is_lossless;
+        }
+        if (a.file_size != b.file_size) {
+            return a.file_size > b.file_size;
+        }
+        return a.pcm_hash < b.pcm_hash;
+    });
+
+    // Mark the highest-ranking candidate as the recommended master.
+    if (!versions.empty()) {
+        versions[0].is_master = true;
+    }
+
+    std::string recommended_master = versions.empty() ? "" : versions[0].pcm_hash;
+
+    json versions_array = json::array();
+    for (const auto &v : versions) {
+        json item;
+        item["pcm_hash"] = v.pcm_hash;
+        item["format"] = v.format;
+        item["quality_score"] = v.quality_score;
+        item["is_lossless"] = v.is_lossless;
+        item["file_size"] = v.file_size;
+        item["is_master"] = v.is_master;
+        versions_array.push_back(item);
+    }
+
+    return ApiResponse::success({{"recommended_master", recommended_master},
+                                 {"versions", versions_array}});
 }
 
 json Router::handleGetArtistCover(const json &params) {

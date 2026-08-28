@@ -22,6 +22,8 @@ class AudioController {
     tl::expected<void, std::string> update(const AudioUpdate &audio_update);
     tl::expected<PaginatedResult<Audio>, std::string> list(
         int offset, int limit, const std::optional<std::string> &search);
+    tl::expected<std::vector<Audio>, std::string> get_related_versions(
+        const std::string &pcm_hash);
 
   private:
     IAudioRepository &m_repo;

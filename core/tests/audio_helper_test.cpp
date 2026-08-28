@@ -4,15 +4,16 @@
  * SPDX-License-Identifier: AGPL-3.0-or-later
  */
 
+#include "../src/models/audio.h"
 #include "../src/utils/audio_helper.h"
 #include <cassert>
-#include <iostream>
-#include <string>
-#include <vector>
-#include <fstream>
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
+#include <fstream>
+#include <iostream>
+#include <string>
+#include <vector>
 
 using namespace lyra::utils;
 
@@ -21,21 +22,27 @@ void setup_fixtures() {
     // Generate wav/flac files with identical content (44.1kHz, 2 channels, 2 seconds)
     int r1 = std::system("ffmpeg -y -f lavfi -i sine=frequency=1000:duration=2:sample_rate=44100 -ac 2 test_44k_stereo.wav > /dev/null 2>&1");
     int r2 = std::system("ffmpeg -y -i test_44k_stereo.wav test_44k_stereo.flac > /dev/null 2>&1");
-    
+
     // Generate different formats/qualities (48kHz, mono)
     int r3 = std::system("ffmpeg -y -f lavfi -i sine=frequency=1000:duration=2:sample_rate=48000 -ac 2 test_48k_stereo.wav > /dev/null 2>&1");
     int r4 = std::system("ffmpeg -y -f lavfi -i sine=frequency=1000:duration=2:sample_rate=44100 -ac 1 test_44k_mono.wav > /dev/null 2>&1");
-    
+
     // Generate a cover image
     int r5 = std::system("ffmpeg -y -f lavfi -i color=c=blue:s=100x100:d=1 -vframes 1 cover.jpg > /dev/null 2>&1");
-    
+
     // Generate an MP3 with the cover image attached (ID3v2) and tags
     int r6 = std::system("ffmpeg -y -i test_44k_stereo.wav -i cover.jpg -map 0:a -map 1:v -c:a libmp3lame -c:v copy -id3v2_version 3 -metadata:s:v title=\"Album cover\" -metadata:s:v comment=\"Cover (front)\" -metadata title=\"Test Title\" -metadata artist=\"Test Artist\" -metadata album=\"Test Album\" -metadata date=\"2026\" -metadata track=\"3\" test_with_cover.mp3 > /dev/null 2>&1");
 
     // Generate a video file (3 seconds duration, width 320, height 240, h264)
     int r7 = std::system("ffmpeg -y -f lavfi -i sine=frequency=1000:duration=3 -f lavfi -i color=c=red:s=320x240:duration=3 -c:a aac -c:v libx264 -pix_fmt yuv420p test_video.mp4 > /dev/null 2>&1");
 
-    (void)r1; (void)r2; (void)r3; (void)r4; (void)r5; (void)r6; (void)r7;
+    (void)r1;
+    (void)r2;
+    (void)r3;
+    (void)r4;
+    (void)r5;
+    (void)r6;
+    (void)r7;
 }
 
 void cleanup_fixtures() {
@@ -169,17 +176,17 @@ bool test_extract_metadata() {
         return false;
     }
     if (!meta_video->video_width.has_value() || meta_video->video_width.value() != 320) {
-        std::cerr << "MP4: Expected video width 320, got " 
+        std::cerr << "MP4: Expected video width 320, got "
                   << (meta_video->video_width ? std::to_string(meta_video->video_width.value()) : "none") << std::endl;
         return false;
     }
     if (!meta_video->video_height.has_value() || meta_video->video_height.value() != 240) {
-        std::cerr << "MP4: Expected video height 240, got " 
+        std::cerr << "MP4: Expected video height 240, got "
                   << (meta_video->video_height ? std::to_string(meta_video->video_height.value()) : "none") << std::endl;
         return false;
     }
     if (!meta_video->video_codec.has_value() || (meta_video->video_codec.value() != "h264" && meta_video->video_codec.value().find("264") == std::string::npos)) {
-        std::cerr << "MP4: Expected video codec h264, got " 
+        std::cerr << "MP4: Expected video codec h264, got "
                   << (meta_video->video_codec ? meta_video->video_codec.value() : "none") << std::endl;
         return false;
     }
@@ -295,6 +302,148 @@ bool test_extract_cover_art_from_wav_failure() {
     return true;
 }
 
+bool test_evaluate_quality() {
+    std::cout << "Running test_evaluate_quality..." << std::endl;
+
+    // 1. FLAC 24-bit 96kHz Lossless Stereo
+    {
+        lyra::Audio audio;
+        audio.pcm_hash = "flac-24-96";
+        audio.bit_depth = 24;
+        audio.sample_rate = 96000;
+        audio.channels = 2;
+        audio.duration = 180.0;
+
+        lyra::Asset asset;
+        asset.file_hash = "fhash-flac";
+        asset.mime_type = "audio/flac";
+        asset.file_size = 50000000;
+        audio.assets.push_back(asset);
+
+        auto q = AudioHelper::evaluate_quality(audio);
+        // Resolution: 25 + 22 = 47, Lossless: 45, Channels: 5 -> Total: 97
+        assert(q.quality_score == 97);
+        assert(q.is_lossless == true);
+        assert(q.format == "FLAC 24-bit / 96kHz");
+        assert(q.file_size == 50000000);
+    }
+
+    // 2. WAV 16-bit 44.1kHz Lossless Stereo
+    {
+        lyra::Audio audio;
+        audio.pcm_hash = "wav-16-44";
+        audio.bit_depth = 16;
+        audio.sample_rate = 44100;
+        audio.channels = 2;
+        audio.duration = 200.0;
+
+        lyra::Asset asset;
+        asset.file_hash = "fhash-wav";
+        asset.mime_type = "audio/wav";
+        asset.file_size = 35000000;
+        audio.assets.push_back(asset);
+
+        auto q = AudioHelper::evaluate_quality(audio);
+        // Resolution: 18 + 15 = 33, Lossless: 45, Channels: 5 -> Total: 83
+        assert(q.quality_score == 83);
+        assert(q.is_lossless == true);
+        assert(q.format == "WAV 16-bit / 44.1kHz");
+        assert(q.file_size == 35000000);
+    }
+
+    // 3. MP3 16-bit 44.1kHz Lossy Stereo (320kbps)
+    {
+        lyra::Audio audio;
+        audio.pcm_hash = "mp3-320";
+        audio.bit_depth = 16;
+        audio.sample_rate = 44100;
+        audio.channels = 2;
+        audio.duration = 100.0;
+
+        lyra::Asset asset;
+        asset.file_hash = "fhash-mp3";
+        asset.mime_type = "audio/mpeg";
+        asset.file_size = 4000000; // 4,000,000 * 8 / 100 = 320,000 bps
+        audio.assets.push_back(asset);
+
+        auto q = AudioHelper::evaluate_quality(audio);
+        // Resolution: 18 + 15 = 33, Bitrate >= 320k: 30, Channels: 5 -> Total: 68
+        assert(q.quality_score == 68);
+        assert(q.is_lossless == false);
+        assert(q.format == "MP3 16-bit / 44.1kHz");
+        assert(q.file_size == 4000000);
+    }
+
+    // 4. AAC 16-bit 48kHz Lossy Stereo (192kbps)
+    {
+        lyra::Audio audio;
+        audio.pcm_hash = "aac-192";
+        audio.bit_depth = 16;
+        audio.sample_rate = 48000;
+        audio.channels = 2;
+        audio.duration = 100.0;
+
+        lyra::Asset asset;
+        asset.file_hash = "fhash-aac";
+        asset.mime_type = "audio/aac";
+        asset.file_size = 2400000; // 2,400,000 * 8 / 100 = 192,000 bps
+        audio.assets.push_back(asset);
+
+        auto q = AudioHelper::evaluate_quality(audio);
+        // Resolution: 18 + 16 = 34, Bitrate >= 192k: 18, Channels: 5 -> Total: 57
+        assert(q.quality_score == 57);
+        assert(q.is_lossless == false);
+        assert(q.format == "AAC 16-bit / 48kHz");
+        assert(q.file_size == 2400000);
+    }
+
+    // 5. 24-bit 192kHz ALAC
+    {
+        lyra::Audio audio;
+        audio.pcm_hash = "alac-24-192";
+        audio.bit_depth = 24;
+        audio.sample_rate = 192000;
+        audio.channels = 2;
+        audio.duration = 60.0;
+
+        lyra::Asset asset;
+        asset.file_hash = "fhash-alac";
+        asset.mime_type = "audio/alac";
+        asset.file_size = 60000000;
+        audio.assets.push_back(asset);
+
+        auto q = AudioHelper::evaluate_quality(audio);
+        // Resolution: 25 + 25 = 50, Lossless: 45, Channels: 5 -> Total: 100
+        assert(q.quality_score == 100);
+        assert(q.is_lossless == true);
+        assert(q.format == "ALAC 24-bit / 192kHz");
+    }
+
+    // 6. Mono low sample rate lossy (< 128kbps, mono, < 16-bit, < 44.1kHz)
+    {
+        lyra::Audio audio;
+        audio.pcm_hash = "low-quality";
+        audio.bit_depth = 8;
+        audio.sample_rate = 22050;
+        audio.channels = 1;
+        audio.duration = 100.0;
+
+        lyra::Asset asset;
+        asset.file_hash = "fhash-low";
+        asset.mime_type = "audio/mp3";
+        asset.file_size = 800000; // 800,000 * 8 / 100 = 64,000 bps (< 128k)
+        audio.assets.push_back(asset);
+
+        auto q = AudioHelper::evaluate_quality(audio);
+        // Resolution: 8 + 10 = 18, Bitrate < 128k: 5, Channels: 2 -> Total: 25
+        assert(q.quality_score == 25);
+        assert(q.is_lossless == false);
+        assert(q.format == "MP3 8-bit / 22.05kHz");
+    }
+
+    return true;
+}
+
 int main() {
     setup_fixtures();
 
@@ -308,7 +457,8 @@ int main() {
         if (!test_extract_cover_art_to_file_invalid_path()) success = false;
         if (!test_extract_video_thumbnail()) success = false;
         if (!test_extract_cover_art_from_wav_failure()) success = false;
-    } catch (const std::exception& e) {
+        if (!test_evaluate_quality()) success = false;
+    } catch (const std::exception &e) {
         std::cerr << "Exception caught during tests: " << e.what() << std::endl;
         success = false;
     }

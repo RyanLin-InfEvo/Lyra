@@ -5,6 +5,7 @@
  */
 
 #include "audio_helper.h"
+#include "../models/audio.h"
 #include "process_runner.h"
 #include "sha256.h"
 #include <algorithm>
@@ -309,6 +310,204 @@ tl::expected<void, std::string> AudioHelper::extract_cover_art_to_file(const std
     }
 
     return {};
+}
+
+namespace {
+
+bool ends_with_case_insensitive(std::string_view str, std::string_view suffix) {
+    if (str.length() < suffix.length()) return false;
+    auto str_suffix = str.substr(str.length() - suffix.length());
+    return std::equal(str_suffix.begin(), str_suffix.end(), suffix.begin(), suffix.end(),
+                      [](char a, char b) {
+                          return std::tolower(static_cast<unsigned char>(a)) ==
+                                 std::tolower(static_cast<unsigned char>(b));
+                      });
+}
+
+bool contains_case_insensitive(std::string_view str, std::string_view sub) {
+    if (sub.empty()) return true;
+    if (str.length() < sub.length()) return false;
+    auto it = std::search(
+        str.begin(), str.end(),
+        sub.begin(), sub.end(),
+        [](char a, char b) {
+            return std::tolower(static_cast<unsigned char>(a)) ==
+                   std::tolower(static_cast<unsigned char>(b));
+        });
+    return it != str.end();
+}
+
+bool is_asset_lossless(const Asset &asset) {
+    const std::string &mime = asset.mime_type;
+    const std::string &hash = asset.file_hash;
+
+    if (contains_case_insensitive(mime, "audio/flac") ||
+        contains_case_insensitive(mime, "audio/x-wav") ||
+        contains_case_insensitive(mime, "audio/wav") ||
+        contains_case_insensitive(mime, "audio/alac") ||
+        contains_case_insensitive(mime, "audio/aiff") ||
+        contains_case_insensitive(mime, "audio/x-aiff")) {
+        return true;
+    }
+
+    if (ends_with_case_insensitive(mime, ".flac") || ends_with_case_insensitive(hash, ".flac") ||
+        ends_with_case_insensitive(mime, ".wav") || ends_with_case_insensitive(hash, ".wav") ||
+        ends_with_case_insensitive(mime, ".alac") || ends_with_case_insensitive(hash, ".alac") ||
+        ends_with_case_insensitive(mime, ".aiff") || ends_with_case_insensitive(hash, ".aiff") ||
+        ends_with_case_insensitive(mime, ".aif") || ends_with_case_insensitive(hash, ".aif")) {
+        return true;
+    }
+
+    return false;
+}
+
+std::string detect_asset_codec(const Asset *asset, bool is_lossless) {
+    if (asset) {
+        const std::string &mime = asset->mime_type;
+        const std::string &hash = asset->file_hash;
+
+        if (contains_case_insensitive(mime, "audio/flac") || ends_with_case_insensitive(mime, ".flac") || ends_with_case_insensitive(hash, ".flac")) {
+            return "FLAC";
+        }
+        if (contains_case_insensitive(mime, "audio/mp3") || contains_case_insensitive(mime, "audio/mpeg") || ends_with_case_insensitive(mime, ".mp3") || ends_with_case_insensitive(hash, ".mp3")) {
+            return "MP3";
+        }
+        if (contains_case_insensitive(mime, "audio/wav") || contains_case_insensitive(mime, "audio/x-wav") || ends_with_case_insensitive(mime, ".wav") || ends_with_case_insensitive(hash, ".wav")) {
+            return "WAV";
+        }
+        if (contains_case_insensitive(mime, "audio/alac") || ends_with_case_insensitive(mime, ".alac") || ends_with_case_insensitive(hash, ".alac")) {
+            return "ALAC";
+        }
+        if (contains_case_insensitive(mime, "audio/aiff") || contains_case_insensitive(mime, "audio/x-aiff") ||
+            ends_with_case_insensitive(mime, ".aiff") || ends_with_case_insensitive(hash, ".aiff") ||
+            ends_with_case_insensitive(mime, ".aif") || ends_with_case_insensitive(hash, ".aif")) {
+            return "AIFF";
+        }
+        if (contains_case_insensitive(mime, "audio/aac") || contains_case_insensitive(mime, "audio/mp4") || contains_case_insensitive(mime, "audio/m4a") ||
+            ends_with_case_insensitive(mime, ".aac") || ends_with_case_insensitive(hash, ".aac") ||
+            ends_with_case_insensitive(mime, ".m4a") || ends_with_case_insensitive(hash, ".m4a")) {
+            return "AAC";
+        }
+        if (contains_case_insensitive(mime, "audio/ogg") || contains_case_insensitive(mime, "audio/vorbis") ||
+            ends_with_case_insensitive(mime, ".ogg") || ends_with_case_insensitive(hash, ".ogg")) {
+            return "OGG";
+        }
+        if (contains_case_insensitive(mime, "audio/opus") || ends_with_case_insensitive(mime, ".opus") || ends_with_case_insensitive(hash, ".opus")) {
+            return "OPUS";
+        }
+    }
+    return is_lossless ? "FLAC" : "MP3";
+}
+
+} // namespace
+
+AudioQualityInfo AudioHelper::evaluate_quality(const Audio &audio) {
+    // 1. Bit Depth Score (0~25)
+    int bit_depth_score = 0;
+    if (audio.bit_depth >= 24) {
+        bit_depth_score = 25;
+    } else if (audio.bit_depth >= 16) {
+        bit_depth_score = 18;
+    } else {
+        bit_depth_score = 8;
+    }
+
+    // 2. Sample Rate Score (0~25)
+    int sample_rate_score = 0;
+    if (audio.sample_rate >= 192000) {
+        sample_rate_score = 25;
+    } else if (audio.sample_rate >= 96000) {
+        sample_rate_score = 22;
+    } else if (audio.sample_rate >= 88200) {
+        sample_rate_score = 20;
+    } else if (audio.sample_rate >= 48000) {
+        sample_rate_score = 16;
+    } else if (audio.sample_rate >= 44100) {
+        sample_rate_score = 15;
+    } else {
+        sample_rate_score = 10;
+    }
+
+    int resolution_score = bit_depth_score + sample_rate_score;
+
+    // 3. Lossless / Bitrate Score (0~45)
+    int64_t max_file_size = 0;
+    const Asset *primary_asset = nullptr;
+    bool is_lossless = false;
+
+    for (const auto &asset : audio.assets) {
+        if (asset.file_size > max_file_size) {
+            max_file_size = asset.file_size;
+        }
+        if (!primary_asset || asset.file_size > primary_asset->file_size) {
+            primary_asset = &asset;
+        }
+        if (!is_lossless && is_asset_lossless(asset)) {
+            is_lossless = true;
+        }
+    }
+    if (!audio.assets.empty() && !primary_asset) {
+        primary_asset = &audio.assets[0];
+    }
+
+    int lossless_bitrate_score = 0;
+    if (is_lossless) {
+        lossless_bitrate_score = 45;
+    } else {
+        double bitrate = 0.0;
+        if (audio.duration > 0.0 && max_file_size > 0) {
+            bitrate = (static_cast<double>(max_file_size) * 8.0) / audio.duration;
+        }
+        if (bitrate >= 320000.0) {
+            lossless_bitrate_score = 30;
+        } else if (bitrate >= 256000.0) {
+            lossless_bitrate_score = 25;
+        } else if (bitrate >= 192000.0) {
+            lossless_bitrate_score = 18;
+        } else if (bitrate >= 128000.0) {
+            lossless_bitrate_score = 10;
+        } else {
+            lossless_bitrate_score = 5;
+        }
+    }
+
+    // 4. Channels Score (0~5)
+    int channels_score = 0;
+    if (audio.channels >= 2) {
+        channels_score = 5;
+    } else if (audio.channels == 1) {
+        channels_score = 2;
+    } else {
+        channels_score = 0;
+    }
+
+    int total_quality_score = resolution_score + lossless_bitrate_score + channels_score;
+
+    // 5. Format string formatting
+    std::string codec = detect_asset_codec(primary_asset, is_lossless);
+
+    int bit_depth = audio.bit_depth > 0 ? audio.bit_depth : 16;
+    std::string bit_depth_str = std::to_string(bit_depth) + "-bit";
+
+    int sample_rate = audio.sample_rate > 0 ? audio.sample_rate : 44100;
+    std::string sample_rate_str;
+    if (sample_rate % 1000 == 0) {
+        sample_rate_str = std::to_string(sample_rate / 1000) + "kHz";
+    } else {
+        std::ostringstream ss;
+        ss << (sample_rate / 1000.0) << "kHz";
+        sample_rate_str = ss.str();
+    }
+
+    std::string format_str = codec + " " + bit_depth_str + " / " + sample_rate_str;
+
+    AudioQualityInfo result;
+    result.quality_score = total_quality_score;
+    result.is_lossless = is_lossless;
+    result.format = format_str;
+    result.file_size = max_file_size;
+
+    return result;
 }
 
 } // namespace utils

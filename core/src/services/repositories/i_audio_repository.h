@@ -4,11 +4,11 @@
 
 #pragma once
 
-#include <string>
-#include <tl/expected.hpp>
-#include <optional>
 #include "../../models/audio.h"
 #include "../../utils/paginated_result.h"
+#include <string>
+#include <tl/expected.hpp>
+#include <vector>
 
 namespace lyra {
 
@@ -21,6 +21,8 @@ class IAudioRepository {
     virtual tl::expected<Audio, std::string> get(const std::string &pcm_hash) = 0;
     virtual tl::expected<PaginatedResult<Audio>, std::string> list(
         int offset, int limit, const std::optional<std::string> &search) = 0;
+    virtual tl::expected<std::vector<Audio>, std::string> get_related_versions(
+        const std::string &pcm_hash) = 0;
 };
 
 } // namespace lyra

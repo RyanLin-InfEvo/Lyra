@@ -10,6 +10,7 @@
 #include "../src/services/repositories/sqlite/sqlite_album_repository.h"
 #include "../src/services/repositories/sqlite/sqlite_artist_repository.h"
 #include "../src/services/repositories/sqlite/sqlite_asset_repository.h"
+#include "../src/services/repositories/sqlite/sqlite_audio_repository.h"
 #include "../src/services/repositories/sqlite/sqlite_playlist_repository.h"
 #include "../src/services/repositories/sqlite/sqlite_track_repository.h"
 #include "../src/services/repositories/sqlite/sqlite_work_repository.h"
@@ -445,6 +446,95 @@ bool test_asset_repository_operations(SqliteDatabaseContext &ctx) {
     return true;
 }
 
+bool test_audio_get_related_versions(SqliteDatabaseContext &ctx) {
+    std::cout << "Running test_audio_get_related_versions..." << std::endl;
+    SqliteAudioRepository repo(ctx);
+
+    // 1. Non-existent audio -> error
+    auto err_res = repo.get_related_versions("non-existent-hash");
+    assert(!err_res.has_value());
+    assert(err_res.error() == "Audio not found.");
+
+    // 2. Standalone audio (root with no parent and no children)
+    Audio standalone;
+    standalone.pcm_hash = "standalone-pcm";
+    standalone.sample_rate = 44100;
+    assert(repo.insert(standalone).has_value());
+
+    auto standalone_res = repo.get_related_versions("standalone-pcm");
+    assert(standalone_res.has_value());
+    assert(standalone_res->size() == 1);
+    assert((*standalone_res)[0].pcm_hash == "standalone-pcm");
+
+    // 3. Audio family: root -> child1, child2
+    Audio root_audio;
+    root_audio.pcm_hash = "pcm-family-root";
+    root_audio.sample_rate = 96000;
+    root_audio.bit_depth = 24;
+    assert(repo.insert(root_audio).has_value());
+
+    Audio child1;
+    child1.pcm_hash = "pcm-family-child-1";
+    child1.parent_hash = "pcm-family-root";
+    child1.sample_rate = 44100;
+    child1.bit_depth = 16;
+    assert(repo.insert(child1).has_value());
+
+    Audio child2;
+    child2.pcm_hash = "pcm-family-child-2";
+    child2.parent_hash = "pcm-family-root";
+    child2.sample_rate = 48000;
+    child2.bit_depth = 16;
+    assert(repo.insert(child2).has_value());
+
+    // Query from child1 should return root and all children
+    auto family_from_child1 = repo.get_related_versions("pcm-family-child-1");
+    assert(family_from_child1.has_value());
+    assert(family_from_child1->size() == 3);
+
+    // Verify all 3 hashes are present
+    std::vector<std::string> returned_hashes;
+    for (const auto &a : family_from_child1.value()) {
+        returned_hashes.push_back(a.pcm_hash);
+    }
+    assert(std::find(returned_hashes.begin(), returned_hashes.end(), "pcm-family-root") != returned_hashes.end());
+    assert(std::find(returned_hashes.begin(), returned_hashes.end(), "pcm-family-child-1") != returned_hashes.end());
+    assert(std::find(returned_hashes.begin(), returned_hashes.end(), "pcm-family-child-2") != returned_hashes.end());
+
+    // Query from root
+    auto family_from_root = repo.get_related_versions("pcm-family-root");
+    assert(family_from_root.has_value());
+    assert(family_from_root->size() == 3);
+
+    // 4. Dangling parent_hash auto-healing (simulating corrupted / legacy imported data)
+    ctx.get_db().exec("PRAGMA foreign_keys = OFF;");
+    Audio dangling;
+    dangling.pcm_hash = "pcm-dangling-child";
+    dangling.parent_hash = "non-existent-master";
+    dangling.sample_rate = 44100;
+    dangling.bit_depth = 16;
+    assert(repo.insert(dangling).has_value());
+    ctx.get_db().exec("PRAGMA foreign_keys = ON;");
+
+    // Verify parent_hash is set before healing
+    auto dangling_before = repo.get("pcm-dangling-child");
+    assert(dangling_before.has_value());
+    assert(dangling_before->parent_hash == "non-existent-master");
+
+    // get_related_versions should detect dangling parent, auto-heal DB record to NULL, and return as standalone root
+    auto dangling_res = repo.get_related_versions("pcm-dangling-child");
+    assert(dangling_res.has_value());
+    assert(dangling_res->size() == 1);
+    assert((*dangling_res)[0].pcm_hash == "pcm-dangling-child");
+
+    // Verify in database that parent_hash is healed to NULL / empty
+    auto dangling_after = repo.get("pcm-dangling-child");
+    assert(dangling_after.has_value());
+    assert(dangling_after->parent_hash.empty());
+
+    return true;
+}
+
 int main() {
     std::string db_path = "test_repo.db";
     std::filesystem::remove(db_path);
@@ -459,6 +549,7 @@ int main() {
         if (!test_playlist_get_by_title(ctx)) success = false;
         if (!test_track_album_relationships(ctx)) success = false;
         if (!test_asset_repository_operations(ctx)) success = false;
+        if (!test_audio_get_related_versions(ctx)) success = false;
     } catch (const std::exception &e) {
         std::cerr << "Exception in repository tests: " << e.what() << std::endl;
         success = false;
