@@ -118,10 +118,15 @@ To maintain repository hygiene and ensure clean code integration, all agents mus
 ### E. Atomic Commit & Commit Style
 *   **Atomic Commits:** Break down tasks into small, logical increments. Pause and ask the user for review and commit after each logical unit is complete.
 *   **Commit Message Format:** Use the standard semantic commit style: `type(scope): description` (e.g., `feat(core): implement savepoint transaction model`).
+*   **Comprehensive Working Tree Scope:** When drafting and proposing commit messages, the agent MUST inspect the **complete set of uncommitted modifications in the working tree** (`git status` / `git diff`), rather than only summarizing the delta from the most recent conversational turn.
 *   **Approval:** Always propose the draft commit message to the user and wait for explicit approval before proceeding.
 
 ### F. Self-Correction & Subagent Review
 *   Perform a security review (checking SQLite query injection, resource cleanup, thread safety).
+*   Perform a data integrity & anti-bandaid review:
+    *   Verify that query or relational lookups do NOT use symptom-level bandaid patches (e.g. `if (!found) push_back(...)`) to artificially satisfy assertions.
+    *   Verify that broken references or dangling foreign keys are observable and properly self-healed (e.g. updating dangling references to `NULL`) or cleanly guarded.
+    *   Verify adherence to established relationship topologies (e.g. Single-Level Star Topology for audio versioning).
 *   Perform a UI architecture review (checking facade abstraction, design token usage, `RepaintBoundary` on shaders/blurs, controller lifecycle disposal, and presentation/core separation).
 *   Invoke a subagent (e.g., `self` or `codebase_investigator`) to verify modifications against architectural constraints before presenting the final work.
 

@@ -29,6 +29,11 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 *   **CMake Source Registration:** When adding any new `.cpp` source file, the agent MUST immediately update `core/CMakeLists.txt` to include it in the `add_library` target. Forgetting this step causes `undefined symbol` linker errors that only surface at test time.
 *   **C++ Code Formatting:** Run `clang-format` (auto format) on edited C++ source files after completing edits. If `clang-format` is not installed on the host system, execute it via the Nix shell wrapper: `nix-shell core/shell.nix --run "clang-format -i <file>"`.
 *   **Security & Data Integrity:** Maintain strict server-side authority as a non-negotiable standard. Critical identifiers (e.g., UUIDs) must be generated on the server to prevent collision or injection, and all client-provided data must be treated as untrusted and validated against server-side business logic.
+*   **No Bandaid Patching (Root-Cause First):** Strictly prohibit defensive bandaid patches when database queries or relational lookups yield unexpected results (such as `if (!found) list.push_back(...)` to artificially satisfy assertions). When query results conflict with domain expectations, the agent MUST trace and resolve the root cause in the SQL queries, relationship topology, or data model rather than masking defects with superficial symptom-level fixes.
+*   **Data Integrity, Observability & Self-Healing:** Maintain strict referential integrity. When encountering corrupted data or broken references (such as dangling foreign keys or orphan parent pointers):
+    *   **Diagnostic Observability:** Ensure anomalies are observable through appropriate diagnostic logging rather than silently swallowed or bypassed (`break;`).
+    *   **Self-Healing / Strict Guard:** Proactively self-heal database records (such as updating dangling references to `NULL`) to restore referential consistency, or reject the operation with an explicit integrity error. Never propagate ghost or invalid identifiers downstream as valid entities.
+*   **Domain Topology Adherence:** Rigorously adhere to established entity relationship topologies (e.g., Lyra's audio versioning utilizes a Single-Level Star Topology where all derived versions point directly to the Master entity). Avoid unverified assumptions of multi-level hierarchies, which introduce unnecessary traversal complexity and boundary defects.
 *   **Hardware Optimization:** Account for high-performance hardware (e.g., 64GB RAM) in system and environment configurations.
 *   **Performance & Platform Trade-offs:** When encountering potential performance bottlenecks or architectural choices that differ between Mobile, PC, or Server environments, the agent MUST proactively initiate a discussion with the user about these trade-offs before implementing a solution.
 
@@ -46,6 +51,7 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 *   **Commit Message Style:**
     *   Follow `type(scope): message` format based on repository history. (e.g., fix(core), chore(docs), feat(core))
     *   Prefer concise, one-line messages, but include a descriptive body if it helps clarify the rationale, design decisions, or complex modifications.
+    *   **Comprehensive Working Tree Scope:** When proposing a commit message, the agent MUST base it on the **totality of all uncommitted modifications** currently in the working tree (`git status` / `git diff`), rather than only describing the delta from the most recent conversational turn.
     *   Always propose a draft message and wait for approval before execution.
 *   **Repository Hygiene:** Proactively maintain `.gitignore`, remove build artifacts, and ensure no large binary or sensitive files are tracked.
 
