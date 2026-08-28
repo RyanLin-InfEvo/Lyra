@@ -4,8 +4,12 @@
 import 'package:flutter/widgets.dart';
 
 import '../models/album.dart';
+import '../models/artist.dart';
 import '../models/cas_object.dart';
+import '../models/playlist.dart';
+import '../models/tag.dart';
 import '../models/track.dart';
+import '../models/work.dart';
 import 'music_service.dart';
 
 /// Mock implementation providing a rich audiophile catalog and CAS storage simulation.
@@ -115,6 +119,140 @@ class MockMusicService implements MusicService {
           '8f434346648f6b96df89dda901c5176b10e6d83961dd3c1ac88b59b2dc327aa4',
       verified: true,
     ),
+  ];
+
+  final List<Work> _works = [
+    const Work(
+      id: 'wrk-001',
+      title: 'Symphony No. 9 in D minor, Op. 125 "Choral"',
+      compositionStartYear: 1822,
+      compositionEndYear: 1824,
+      iswc: 'T-070.240.123-1',
+      musicbrainzId: '0c72e276-8080-4965-9856-11f4864cbf7d',
+    ),
+    const Work(
+      id: 'wrk-002',
+      title: 'So What',
+      compositionStartYear: 1959,
+      compositionEndYear: 1959,
+      iswc: 'T-070.123.456-7',
+      musicbrainzId: '8d264585-e11a-4c28-bb8e-b8d910b8cf89',
+    ),
+    const Work(
+      id: 'wrk-003',
+      title: 'Hotel California',
+      compositionStartYear: 1976,
+      compositionEndYear: 1976,
+      iswc: 'T-070.789.012-3',
+      musicbrainzId: '47d79b90-1cfa-4db8-b593-9c86950280eb',
+    ),
+    const Work(
+      id: 'wrk-004',
+      title: 'Giorgio by Moroder',
+      compositionStartYear: 2013,
+      compositionEndYear: 2013,
+      iswc: 'T-070.345.678-9',
+      musicbrainzId: '7689de78-3a81-424d-bfe3-94c6f3708e1f',
+    ),
+    const Work(
+      id: 'wrk-005',
+      title: 'Time',
+      compositionStartYear: 1973,
+      compositionEndYear: 1973,
+      iswc: 'T-070.901.234-5',
+      musicbrainzId: 'b94b0d87-6e42-491c-b633-4fecbb5770b5',
+    ),
+    const Work(
+      id: 'wrk-006',
+      title: 'Aja',
+      compositionStartYear: 1977,
+      compositionEndYear: 1977,
+      iswc: 'T-070.567.890-1',
+      musicbrainzId: 'cd0214db-0a4d-488f-a953-333e9d8e75db',
+    ),
+  ];
+
+  final List<Artist> _artists = [
+    const Artist(
+      id: 'art-001',
+      name: 'Miles Davis',
+      role: 'Composer / Trumpet',
+      musicbrainzId: '561d854a-6a28-4aa7-8c99-323e6ce46c2a',
+      spotifyId: '0kbYTNQb4Pb1rYvBk69HG8',
+    ),
+    const Artist(
+      id: 'art-002',
+      name: 'Eagles',
+      role: 'Rock Band',
+      musicbrainzId: 'f4a31f0a-51dd-4fa7-986d-3095c40c5ed9',
+      spotifyId: '0ECwFtbIWEVNwjlrfc6xoL',
+    ),
+    const Artist(
+      id: 'art-003',
+      name: 'Daft Punk',
+      role: 'Electronic Duo',
+      musicbrainzId: '056e4f3e-d505-4dad-8ec1-d04f521cbb56',
+      spotifyId: '4tZwfgrHOc3mvqYxwDOiq0',
+    ),
+    const Artist(
+      id: 'art-004',
+      name: 'Pink Floyd',
+      role: 'Progressive Rock',
+      musicbrainzId: '83d91898-d30c-47c0-b424-9592e8b9b412',
+      spotifyId: '0k17h0D3J5VfsdmQ1iZtE9',
+    ),
+    const Artist(
+      id: 'art-005',
+      name: 'Herbert von Karajan',
+      role: 'Conductor',
+      musicbrainzId: 'd2dda26a-9204-406a-a996-fb9d95d4293b',
+    ),
+    const Artist(
+      id: 'art-006',
+      name: 'Steely Dan',
+      role: 'Jazz Rock Ensemble',
+      musicbrainzId: '9b28a9b2-3850-4ff6-8b2b-4ec404b85c18',
+    ),
+    const Artist(
+      id: 'art-007',
+      name: 'Dire Straits',
+      role: 'Rock Band',
+      musicbrainzId: '614e3804-7d34-41d9-8777-7da44f627049',
+    ),
+  ];
+
+  final List<Playlist> _playlists = [
+    Playlist(
+      id: 'pl-001',
+      title: 'Audiophile Reference Master',
+      description:
+          'Bit-perfect 24-bit / 96-192 kHz acoustic reference recordings',
+      trackIds: const ['trk-001', 'trk-002', 'trk-003', 'trk-006'],
+      createdAt: DateTime(2026, 1, 10),
+    ),
+    Playlist(
+      id: 'pl-002',
+      title: 'Late Night Jazz',
+      description: 'Modal and post-bop classics in ultra-high resolution',
+      trackIds: const ['trk-002', 'trk-008'],
+      createdAt: DateTime(2026, 1, 20),
+    ),
+    Playlist(
+      id: 'pl-003',
+      title: 'Hi-Res Direct Stream',
+      description: 'DSD and master tape transfers without lossy compression',
+      trackIds: const ['trk-004', 'trk-005', 'trk-007'],
+      createdAt: DateTime(2026, 2, 1),
+    ),
+  ];
+
+  final List<Tag> _tags = [
+    const Tag(id: 'tag-001', name: 'Audiophile', category: 'quality'),
+    const Tag(id: 'tag-002', name: 'Hi-Res', category: 'quality'),
+    const Tag(id: 'tag-003', name: 'DSD', category: 'format'),
+    const Tag(id: 'tag-004', name: 'Direct Stream', category: 'source'),
+    const Tag(id: 'tag-005', name: 'Live Recording', category: 'type'),
+    const Tag(id: 'tag-006', name: 'Reference Master', category: 'quality'),
   ];
 
   final List<Album> _albums = const [
@@ -228,6 +366,19 @@ class MockMusicService implements MusicService {
   }
 
   @override
+  Future<List<Work>> getWorks({String? query}) async {
+    if (query == null || query.trim().isEmpty) {
+      return List.unmodifiable(_works);
+    }
+    final q = query.toLowerCase().trim();
+    return _works.where((w) {
+      return w.title.toLowerCase().contains(q) ||
+          (w.iswc ?? '').toLowerCase().contains(q) ||
+          (w.musicbrainzId ?? '').toLowerCase().contains(q);
+    }).toList();
+  }
+
+  @override
   Future<List<Album>> getAlbums({String? query}) async {
     if (query == null || query.trim().isEmpty) {
       return List.unmodifiable(_albums);
@@ -237,6 +388,53 @@ class MockMusicService implements MusicService {
       return a.title.toLowerCase().contains(q) ||
           a.artist.toLowerCase().contains(q);
     }).toList();
+  }
+
+  @override
+  Future<List<Artist>> getArtists({String? query}) async {
+    if (query == null || query.trim().isEmpty) {
+      return List.unmodifiable(_artists);
+    }
+    final q = query.toLowerCase().trim();
+    return _artists.where((a) {
+      return a.name.toLowerCase().contains(q) ||
+          (a.role ?? '').toLowerCase().contains(q);
+    }).toList();
+  }
+
+  @override
+  Future<List<Playlist>> getPlaylists({String? query}) async {
+    if (query == null || query.trim().isEmpty) {
+      return List.unmodifiable(_playlists);
+    }
+    final q = query.toLowerCase().trim();
+    return _playlists.where((p) {
+      return p.title.toLowerCase().contains(q) ||
+          (p.description ?? '').toLowerCase().contains(q);
+    }).toList();
+  }
+
+  @override
+  Future<List<Tag>> getTags() async {
+    return List.unmodifiable(_tags);
+  }
+
+  @override
+  Future<Playlist> createPlaylist({
+    required String title,
+    String? description,
+    List<String> trackIds = const [],
+  }) async {
+    final playlist = Playlist(
+      id: 'pl-${DateTime.now().millisecondsSinceEpoch}',
+      title: title,
+      description: description,
+      trackIds: trackIds,
+      createdAt: DateTime.now(),
+      updatedAt: DateTime.now(),
+    );
+    _playlists.insert(0, playlist);
+    return playlist;
   }
 
   @override

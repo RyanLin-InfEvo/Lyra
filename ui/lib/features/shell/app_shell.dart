@@ -6,14 +6,21 @@ import 'package:flutter/material.dart';
 
 import '../../design_system/factory/lyra_design_system_scope.dart';
 import '../albums/albums_view.dart';
+import '../artists/artists_view.dart';
 import '../cas_pool/cas_view.dart';
 import '../import/import_modal.dart';
 import '../models/album.dart';
+import '../models/artist.dart';
 import '../models/cas_object.dart';
+import '../models/playlist.dart';
+import '../models/tag.dart';
 import '../models/track.dart';
+import '../models/work.dart';
+import '../playlists/playlists_view.dart';
 import '../services/music_service.dart';
 import '../settings/settings_view.dart';
 import '../tracks/tracks_view.dart';
+import '../works/works_view.dart';
 import 'header_bar.dart';
 import 'player_bar.dart';
 import 'sidebar.dart';
@@ -37,7 +44,13 @@ class _AppShellState extends State<AppShell> {
   // Catalog State
   List<Track> _tracks = [];
   List<Album> _albums = [];
+  List<Work> _works = [];
+  List<Artist> _artists = [];
+  List<Playlist> _playlists = [];
+  List<Tag> _tags = [];
   List<CasObject> _casObjects = [];
+  String? _selectedPlaylistId;
+  String? _selectedTagId;
   bool _isLoading = true;
 
   // Playback State
@@ -67,6 +80,10 @@ class _AppShellState extends State<AppShell> {
   Future<void> _loadCatalog({String? query}) async {
     final tracks = await widget.musicService.getTracks(query: query);
     final albums = await widget.musicService.getAlbums(query: query);
+    final works = await widget.musicService.getWorks(query: query);
+    final artists = await widget.musicService.getArtists(query: query);
+    final playlists = await widget.musicService.getPlaylists(query: query);
+    final tags = await widget.musicService.getTags();
     final casObjects = await widget.musicService.getCasObjects();
 
     if (!mounted) return;
@@ -74,6 +91,10 @@ class _AppShellState extends State<AppShell> {
     setState(() {
       _tracks = tracks;
       _albums = albums;
+      _works = works;
+      _artists = artists;
+      _playlists = playlists;
+      _tags = tags;
       _casObjects = casObjects;
       _isLoading = false;
 
@@ -151,6 +172,19 @@ class _AppShellState extends State<AppShell> {
     });
   }
 
+  Future<void> _handleNewPlaylist() async {
+    final newPl = await widget.musicService.createPlaylist(
+      title: 'New Playlist ${_playlists.length + 1}',
+      description: 'User curated collection',
+    );
+    await _loadCatalog();
+    if (!mounted) return;
+    setState(() {
+      _selectedPlaylistId = newPl.id;
+      _currentTab = AppTab.playlists;
+    });
+  }
+
   Widget _buildMainContent() {
     if (_isLoading) {
       return const Center(child: CircularProgressIndicator());
@@ -167,6 +201,17 @@ class _AppShellState extends State<AppShell> {
             onTogglePlay: _togglePlay,
           ),
         );
+      case AppTab.works:
+        return RepaintBoundary(
+          child: WorksView(
+            works: _works,
+            onWorkSelected: (work) {
+              _searchController.text = work.title;
+              _onSearchChanged(work.title);
+              setState(() => _currentTab = AppTab.tracks);
+            },
+          ),
+        );
       case AppTab.albums:
         return RepaintBoundary(
           child: AlbumsView(
@@ -180,12 +225,25 @@ class _AppShellState extends State<AppShell> {
         );
       case AppTab.artists:
         return RepaintBoundary(
-          child: TracksView(
-            tracks: _tracks,
-            currentTrack: _currentTrack,
-            isPlaying: _isPlaying,
-            onTrackSelected: _onTrackSelected,
-            onTogglePlay: _togglePlay,
+          child: ArtistsView(
+            artists: _artists,
+            onArtistSelected: (artist) {
+              _searchController.text = artist.name;
+              _onSearchChanged(artist.name);
+              setState(() => _currentTab = AppTab.tracks);
+            },
+          ),
+        );
+      case AppTab.playlists:
+        return RepaintBoundary(
+          child: PlaylistsView(
+            playlists: _playlists,
+            onNewPlaylist: _handleNewPlaylist,
+            onPlaylistSelected: (playlist) {
+              setState(() {
+                _selectedPlaylistId = playlist.id;
+              });
+            },
           ),
         );
       case AppTab.casStorage:
@@ -229,6 +287,24 @@ class _AppShellState extends State<AppShell> {
                     child: LyraSidebar(
                       currentTab: _currentTab,
                       isCollapsed: effectiveSidebarCollapsed,
+                      playlists: _playlists,
+                      selectedPlaylistId: _selectedPlaylistId,
+                      onPlaylistSelected: (pl) {
+                        setState(() {
+                          _selectedPlaylistId = pl.id;
+                          _currentTab = AppTab.playlists;
+                        });
+                      },
+                      tags: _tags,
+                      selectedTagId: _selectedTagId,
+                      onTagSelected: (tag) {
+                        setState(() {
+                          _selectedTagId = tag.id;
+                          _searchController.text = tag.name;
+                        });
+                        _onSearchChanged(tag.name);
+                        setState(() => _currentTab = AppTab.tracks);
+                      },
                       onTabSelected: (tab) => setState(() => _currentTab = tab),
                       onToggleCollapse: () => setState(
                         () => _isSidebarCollapsed = !_isSidebarCollapsed,
