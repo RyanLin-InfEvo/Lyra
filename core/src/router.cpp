@@ -30,6 +30,7 @@
 #include "services/repositories/sqlite/sqlite_playlist_repository.h"
 #include "services/repositories/sqlite/sqlite_track_repository.h"
 #include "services/repositories/sqlite/sqlite_work_repository.h"
+#include "services/waveform_service.h"
 #include "utils/audio_helper.h"
 #include "utils/json_helper.h"
 #include "utils/json_validator.h"
@@ -175,6 +176,7 @@ void Router::init_handlers() {
     m_handlers["audio.set_volume"] = [this](const json &p) { return handleAudioSetVolume(p); };
     m_handlers["audio.get_state"] = [this](const json &p) { return handleAudioGetState(p); };
     m_handlers["audio.compare_versions"] = [this](const json &p) { return handleAudioCompareVersions(p); };
+    m_handlers["audio.get_waveform"] = [this](const json &p) { return handleAudioGetWaveform(p); };
 }
 
 
@@ -1350,6 +1352,82 @@ json Router::handleAudioCompareVersions(const json &p) {
 
     return ApiResponse::success({{"recommended_master", recommended_master},
                                  {"versions", versions_array}});
+}
+
+json Router::handleAudioGetWaveform(const json &p) {
+    std::string pcm_hash;
+
+    if (p.contains("track_id") && !p["track_id"].is_null()) {
+        if (!p["track_id"].is_string()) {
+            return ApiResponse::error({ErrorType::InvalidValue, "track_id must be a string"});
+        }
+        std::string track_id = p["track_id"].get<std::string>();
+        if (track_id.empty()) {
+            return ApiResponse::error({ErrorType::MissingParameter, "track_id cannot be empty"});
+        }
+        auto track_res = m_track_controller->get(track_id);
+        if (!track_res) {
+            return ApiResponse::error({ErrorType::TrackNotFound, "Track not found: " + track_id});
+        }
+        if (track_res->pcm_hash.empty()) {
+            return ApiResponse::error({ErrorType::AudioNotFound, "Track has no associated audio"});
+        }
+        pcm_hash = track_res->pcm_hash;
+    } else if (p.contains("pcm_hash") && !p["pcm_hash"].is_null()) {
+        if (!p["pcm_hash"].is_string()) {
+            return ApiResponse::error({ErrorType::InvalidValue, "pcm_hash must be a string"});
+        }
+        pcm_hash = p["pcm_hash"].get<std::string>();
+        if (pcm_hash.empty()) {
+            return ApiResponse::error({ErrorType::MissingParameter, "pcm_hash cannot be empty"});
+        }
+        auto audio_res = m_audio_controller->get(pcm_hash);
+        if (!audio_res) {
+            return ApiResponse::error({ErrorType::AudioNotFound, "Audio not found: " + pcm_hash});
+        }
+    } else {
+        return ApiResponse::error({ErrorType::MissingParameter, "Missing 'pcm_hash' or 'track_id' parameter"});
+    }
+
+    uint32_t points = 300;
+    if (p.contains("points") && !p["points"].is_null()) {
+        if (!p["points"].is_number_integer()) {
+            return ApiResponse::error({ErrorType::InvalidValue, "points must be an integer"});
+        }
+        int64_t pts = p["points"].get<int64_t>();
+        if (pts < 50 || pts > 1000) {
+            return ApiResponse::error({ErrorType::OutOfRange, "points must be between 50 and 1000"});
+        }
+        points = static_cast<uint32_t>(pts);
+    }
+
+
+    auto assets_res = m_asset_controller->get_assets_by_audio(pcm_hash);
+    if (!assets_res || assets_res->empty()) {
+        return ApiResponse::error({ErrorType::AssetNotFound, "No assets found for audio: " + pcm_hash});
+    }
+
+    auto path_res = m_asset_controller->resolve_file_path((*assets_res)[0]);
+    if (!path_res || !std::filesystem::exists(*path_res)) {
+        return ApiResponse::error({ErrorType::AssetNotFound, "Asset file not found on disk for asset: " + (*assets_res)[0]});
+    }
+
+    auto wf_res = WaveformService::get_or_compute_waveform(m_storage_root, pcm_hash, *path_res, points);
+    if (!wf_res) {
+        return ApiResponse::error({ErrorType::NotFound, "Failed to compute waveform: " + wf_res.error()});
+    }
+
+    json data;
+    data["pcm_hash"] = pcm_hash;
+    data["points"] = wf_res->points;
+    json peaks_array = json::array();
+    for (const auto &pk : wf_res->peaks) {
+        peaks_array.push_back({pk.first, pk.second});
+    }
+    data["peaks"] = std::move(peaks_array);
+    data["rms"] = wf_res->rms;
+
+    return ApiResponse::success(data);
 }
 
 json Router::handleGetArtistCover(const json &params) {

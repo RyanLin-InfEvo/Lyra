@@ -4,6 +4,8 @@
 
 import os
 import sqlite3
+import subprocess
+import time
 import unittest
 from base_test_case import BaseLyraTestCase
 
@@ -636,4 +638,249 @@ class TestAudioController(BaseLyraTestCase):
         res = self.dispatch("audio.compare_versions", {"pcm_hashes": ["non-existent-hash"]})
         self.assertResponseCode(res, 404)
         self.assertEqual(res["error"]["type"], "AudioNotFound")
+
+    def _generate_wav_file(self, filename="sample.wav", duration=1.0):
+        filepath = os.path.abspath(os.path.join(self.test_db_dir, filename))
+        subprocess.run([
+            "ffmpeg", "-y", "-v", "error", "-f", "lavfi",
+            "-i", f"sine=frequency=440:duration={duration}",
+            "-c:a", "pcm_s16le", filepath
+        ], check=True)
+        return filepath
+
+    def test_get_waveform_via_track_id(self):
+        """Test audio.get_waveform using track_id with default points (300)"""
+        wav_path = self._generate_wav_file("track_waveform.wav", 1.5)
+        res_ingest = self.dispatch("IngestAsset", {"source_path": wav_path})
+        self.assertResponseCode(res_ingest, 200)
+        pcm_hash = res_ingest["data"]["audio"]["pcm_hash"]
+
+        res_track = self.dispatch("CreateTrack", {
+            "title": "Track with Waveform",
+            "pcm_hash": pcm_hash
+        })
+        self.assertResponseCode(res_track, 201)
+        track_id = res_track["data"]["id"]
+
+        res_wf = self.dispatch("audio.get_waveform", {"track_id": track_id})
+        self.assertResponseCode(res_wf, 200)
+        data = res_wf["data"]
+        self.assertEqual(data["pcm_hash"], pcm_hash)
+        self.assertEqual(data["points"], 300)
+        self.assertEqual(len(data["peaks"]), 300)
+        self.assertEqual(len(data["rms"]), 300)
+
+        for min_val, max_val in data["peaks"]:
+            self.assertLessEqual(min_val, 0.0)
+            self.assertGreaterEqual(max_val, 0.0)
+            self.assertGreaterEqual(min_val, -1.0)
+            self.assertLessEqual(max_val, 1.0)
+
+        for rms_val in data["rms"]:
+            self.assertGreaterEqual(rms_val, 0.0)
+            self.assertLessEqual(rms_val, 1.0)
+
+    def test_get_waveform_via_pcm_hash_custom_points(self):
+        """Test audio.get_waveform using pcm_hash and custom points (500)"""
+        wav_path = self._generate_wav_file("hash_waveform.wav", 1.0)
+        res_ingest = self.dispatch("IngestAsset", {"source_path": wav_path})
+        self.assertResponseCode(res_ingest, 200)
+        pcm_hash = res_ingest["data"]["audio"]["pcm_hash"]
+
+        res_wf = self.dispatch("audio.get_waveform", {"pcm_hash": pcm_hash, "points": 500})
+        self.assertResponseCode(res_wf, 200)
+        data = res_wf["data"]
+        self.assertEqual(data["pcm_hash"], pcm_hash)
+        self.assertEqual(data["points"], 500)
+        self.assertEqual(len(data["peaks"]), 500)
+        self.assertEqual(len(data["rms"]), 500)
+
+    def test_get_waveform_points_boundary_values(self):
+        """Test audio.get_waveform boundary values for points (50, 1000)"""
+        wav_path = self._generate_wav_file("boundary_waveform.wav", 1.0)
+        res_ingest = self.dispatch("IngestAsset", {"source_path": wav_path})
+        self.assertResponseCode(res_ingest, 200)
+        pcm_hash = res_ingest["data"]["audio"]["pcm_hash"]
+
+        # Lower boundary (50)
+        res_min = self.dispatch("audio.get_waveform", {"pcm_hash": pcm_hash, "points": 50})
+        self.assertResponseCode(res_min, 200)
+        self.assertEqual(res_min["data"]["points"], 50)
+        self.assertEqual(len(res_min["data"]["peaks"]), 50)
+        self.assertEqual(len(res_min["data"]["rms"]), 50)
+
+        # Upper boundary (1000)
+        res_max = self.dispatch("audio.get_waveform", {"pcm_hash": pcm_hash, "points": 1000})
+        self.assertResponseCode(res_max, 200)
+        self.assertEqual(res_max["data"]["points"], 1000)
+        self.assertEqual(len(res_max["data"]["peaks"]), 1000)
+        self.assertEqual(len(res_max["data"]["rms"]), 1000)
+
+    def test_get_waveform_cache_acceleration(self):
+        """Test waveform cache creation and cache hit performance acceleration"""
+        wav_path = self._generate_wav_file("cached_waveform.wav", 2.0)
+        res_ingest = self.dispatch("IngestAsset", {"source_path": wav_path})
+        self.assertResponseCode(res_ingest, 200)
+        pcm_hash = res_ingest["data"]["audio"]["pcm_hash"]
+
+        cache_file = os.path.join(self.test_db_dir, ".cache", "waveforms", f"{pcm_hash}.bin")
+        self.assertFalse(os.path.exists(cache_file))
+
+        # First call: computes and creates binary cache
+        res_1 = self.dispatch("audio.get_waveform", {"pcm_hash": pcm_hash})
+        self.assertResponseCode(res_1, 200)
+
+        self.assertTrue(os.path.exists(cache_file))
+        # 16 bytes header + 1000 points * 12 bytes = 12016 bytes
+        self.assertEqual(os.path.getsize(cache_file), 12016)
+
+        # Second call: cache hit
+        res_2 = self.dispatch("audio.get_waveform", {"pcm_hash": pcm_hash})
+        self.assertResponseCode(res_2, 200)
+
+        self.assertEqual(res_1["data"]["peaks"], res_2["data"]["peaks"])
+        self.assertEqual(res_1["data"]["rms"], res_2["data"]["rms"])
+
+    def test_get_waveform_cache_corruption_self_healing(self):
+        """Test that corrupted cache file is detected, removed, and self-healed"""
+        wav_path = self._generate_wav_file("corrupt_heal_waveform.wav", 1.0)
+        res_ingest = self.dispatch("IngestAsset", {"source_path": wav_path})
+        self.assertResponseCode(res_ingest, 200)
+        pcm_hash = res_ingest["data"]["audio"]["pcm_hash"]
+
+        cache_dir = os.path.join(self.test_db_dir, ".cache", "waveforms")
+        os.makedirs(cache_dir, exist_ok=True)
+        cache_file = os.path.join(cache_dir, f"{pcm_hash}.bin")
+
+        # Write corrupted garbage bytes
+        with open(cache_file, "wb") as f:
+            f.write(b"INVALID_HEADER_GARBAGE_DATA_12345678")
+
+        # API call should detect corrupt cache, remove it, recompute from audio file, and restore cache
+        res = self.dispatch("audio.get_waveform", {"pcm_hash": pcm_hash})
+        self.assertResponseCode(res, 200)
+        self.assertEqual(res["data"]["pcm_hash"], pcm_hash)
+        self.assertEqual(res["data"]["points"], 300)
+
+        # Verify cache file was self-healed and has valid size
+        self.assertTrue(os.path.exists(cache_file))
+        self.assertEqual(os.path.getsize(cache_file), 12016)
+
+        # Verify header is now valid LWAV
+        with open(cache_file, "rb") as f:
+            magic = f.read(4)
+            self.assertEqual(magic, b"LWAV")
+
+    def test_get_waveform_errors(self):
+        """Test all error cases for audio.get_waveform"""
+        # 1. Missing parameter
+        res = self.dispatch("audio.get_waveform", {})
+        self.assertResponseCode(res, 400)
+        self.assertEqual(res["error"]["type"], "MissingParameter")
+
+        # 2. Empty track_id
+        res = self.dispatch("audio.get_waveform", {"track_id": ""})
+        self.assertResponseCode(res, 400)
+        self.assertEqual(res["error"]["type"], "MissingParameter")
+
+        # 3. Invalid track_id type
+        res = self.dispatch("audio.get_waveform", {"track_id": 12345})
+        self.assertResponseCode(res, 400)
+        self.assertEqual(res["error"]["type"], "InvalidValue")
+
+        # 4. Non-existent track_id
+        res = self.dispatch("audio.get_waveform", {"track_id": "00000000-0000-0000-0000-000000000000"})
+        self.assertResponseCode(res, 404)
+        self.assertEqual(res["error"]["type"], "TrackNotFound")
+
+        # 5. Track has no associated audio
+        no_audio_track_id = "33333333-4444-5555-6666-777777777777"
+        db_path = os.path.join(self.test_db_dir, "lyra.db")
+        conn = sqlite3.connect(db_path)
+        cursor = conn.cursor()
+        cursor.execute("INSERT INTO Track (id, title, pcm_hash) VALUES (?, ?, ?)", (no_audio_track_id, "Track No Audio", ""))
+        conn.commit()
+        conn.close()
+
+        res = self.dispatch("audio.get_waveform", {"track_id": no_audio_track_id})
+        self.assertResponseCode(res, 404)
+        self.assertEqual(res["error"]["type"], "AudioNotFound")
+
+        # 6. Empty pcm_hash
+        res = self.dispatch("audio.get_waveform", {"pcm_hash": ""})
+        self.assertResponseCode(res, 400)
+        self.assertEqual(res["error"]["type"], "MissingParameter")
+
+        # 7. Invalid pcm_hash type
+        res = self.dispatch("audio.get_waveform", {"pcm_hash": True})
+        self.assertResponseCode(res, 400)
+        self.assertEqual(res["error"]["type"], "InvalidValue")
+
+        # 8. Non-existent pcm_hash
+        res = self.dispatch("audio.get_waveform", {"pcm_hash": "non-existent-pcm-hash"})
+        self.assertResponseCode(res, 404)
+        self.assertEqual(res["error"]["type"], "AudioNotFound")
+
+        # 9. Audio exists but has no linked assets
+        res_audio = self.dispatch("CreateAudio", {
+            "pcm_hash": "pcm-audio-no-assets",
+            "quality_score": 80,
+            "sample_rate": 44100
+        })
+        self.assertResponseCode(res_audio, 201)
+
+        res = self.dispatch("audio.get_waveform", {"pcm_hash": "pcm-audio-no-assets"})
+        self.assertResponseCode(res, 404)
+        self.assertEqual(res["error"]["type"], "AssetNotFound")
+
+        # 10. Audio and Asset exist in DB, but file is missing on disk
+        res_audio_2 = self.dispatch("CreateAudio", {
+            "pcm_hash": "pcm-audio-missing-file",
+            "quality_score": 80,
+            "sample_rate": 44100
+        })
+        self.assertResponseCode(res_audio_2, 201)
+        res_asset_2 = self.dispatch("CreateAsset", {
+            "file_hash": "file-missing-on-disk",
+            "mime_type": "audio/flac",
+            "asset_type": "audio",
+            "file_size": 1000
+        })
+        self.assertResponseCode(res_asset_2, 201)
+        conn = sqlite3.connect(db_path)
+        cursor = conn.cursor()
+        cursor.execute("INSERT INTO Audio_Asset (pcm_hash, file_hash) VALUES (?, ?)", ("pcm-audio-missing-file", "file-missing-on-disk"))
+        conn.commit()
+        conn.close()
+
+        res = self.dispatch("audio.get_waveform", {"pcm_hash": "pcm-audio-missing-file"})
+        self.assertResponseCode(res, 404)
+        self.assertEqual(res["error"]["type"], "AssetNotFound")
+
+        # 11. Valid audio ingested, but invalid points type / range
+        wav_path = self._generate_wav_file("valid_for_err.wav", 1.0)
+        res_ingest = self.dispatch("IngestAsset", {"source_path": wav_path})
+        self.assertResponseCode(res_ingest, 200)
+        valid_pcm = res_ingest["data"]["audio"]["pcm_hash"]
+
+        # Invalid points type (string)
+        res = self.dispatch("audio.get_waveform", {"pcm_hash": valid_pcm, "points": "three_hundred"})
+        self.assertResponseCode(res, 400)
+        self.assertEqual(res["error"]["type"], "InvalidValue")
+
+        # Invalid points type (float)
+        res = self.dispatch("audio.get_waveform", {"pcm_hash": valid_pcm, "points": 300.5})
+        self.assertResponseCode(res, 400)
+        self.assertEqual(res["error"]["type"], "InvalidValue")
+
+        # Out of range (points < 50)
+        res = self.dispatch("audio.get_waveform", {"pcm_hash": valid_pcm, "points": 49})
+        self.assertResponseCode(res, 400)
+        self.assertEqual(res["error"]["type"], "OutOfRange")
+
+        # Out of range (points > 1000)
+        res = self.dispatch("audio.get_waveform", {"pcm_hash": valid_pcm, "points": 1001})
+        self.assertResponseCode(res, 400)
+        self.assertEqual(res["error"]["type"], "OutOfRange")
+
 
