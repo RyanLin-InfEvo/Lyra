@@ -13,8 +13,11 @@ abstract class BaseRepository {
 
   /// Checks the bridge response and throws [LyraBridgeException] if an error occurred.
   Map<String, dynamic> checkResponse(Map<String, dynamic> response) {
-    final code = response['code'] as int?;
-    final status = response['status'] as String?;
+    final rawCode = response['code'];
+    final int? code = rawCode is num
+        ? rawCode.toInt()
+        : (rawCode is String ? int.tryParse(rawCode) : null);
+    final status = response['status']?.toString();
 
     if ((code != null && code >= 400) || status == 'error') {
       final errorMap = response['error'];
@@ -42,9 +45,14 @@ abstract class BaseRepository {
   /// Extracts a single entity map from a backend response.
   Map<String, dynamic> unpackMap(Map<String, dynamic> response) {
     checkResponse(response);
+    if (!response.containsKey('data')) {
+      return response;
+    }
     final dynamic data = response['data'];
     if (data is Map<String, dynamic>) return data;
-    if (data is Map) return data.cast<String, dynamic>();
-    return response;
+    if (data is Map) {
+      return data.map((k, v) => MapEntry(k.toString(), v));
+    }
+    return const <String, dynamic>{};
   }
 }

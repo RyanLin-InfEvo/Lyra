@@ -22,7 +22,7 @@ class AssetRepository extends BaseRepository {
     final items = unpackList(response);
     return items
         .whereType<Map>()
-        .map((item) => Asset.fromJson(item.cast<String, dynamic>()))
+        .map((item) => Asset.fromJson(Map<String, dynamic>.from(item)))
         .toList();
   }
 

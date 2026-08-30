@@ -16,6 +16,8 @@ class TracksView extends StatelessWidget {
   final bool isPlaying;
   final ValueChanged<Track> onTrackSelected;
   final VoidCallback onTogglePlay;
+  final String? filterLabel;
+  final VoidCallback? onClearFilter;
 
   const TracksView({
     super.key,
@@ -24,6 +26,8 @@ class TracksView extends StatelessWidget {
     required this.isPlaying,
     required this.onTrackSelected,
     required this.onTogglePlay,
+    this.filterLabel,
+    this.onClearFilter,
   });
 
   @override
@@ -37,12 +41,38 @@ class TracksView extends StatelessWidget {
           children: [
             Icon(LucideIcons.searchX, size: 48.0, color: tokens.textMuted),
             const SizedBox(height: LyraSpacing.md),
-            Text('No tracks found', style: LyraTypography.h3(tokens)),
+            Text(
+              filterLabel != null
+                  ? 'No matching tracks found'
+                  : 'No tracks found',
+              style: LyraTypography.h3(tokens),
+            ),
             const SizedBox(height: LyraSpacing.xs),
             Text(
-              'Try adjusting your search query or import new audio files.',
+              filterLabel != null
+                  ? 'No tracks found matching "$filterLabel".'
+                  : 'Try adjusting your search query or import new audio files.',
               style: LyraTypography.muted(tokens),
             ),
+            if (filterLabel != null && onClearFilter != null) ...[
+              const SizedBox(height: LyraSpacing.md),
+              MouseRegion(
+                cursor: SystemMouseCursors.click,
+                child: GestureDetector(
+                  onTap: onClearFilter,
+                  child: LyraBadge.secondary(
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: const [
+                        Icon(LucideIcons.x, size: 12.0),
+                        SizedBox(width: 4.0),
+                        Text('Clear filter'),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ],
           ],
         ),
       );
@@ -70,6 +100,41 @@ class TracksView extends StatelessWidget {
                   ),
                 ],
               ),
+              if (filterLabel != null) ...[
+                const SizedBox(width: LyraSpacing.lg),
+                LyraBadge.secondary(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8.0,
+                    vertical: 4.0,
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        filterLabel!,
+                        style: LyraTypography.small(
+                          tokens,
+                        ).copyWith(fontSize: 11.0, fontWeight: FontWeight.w500),
+                      ),
+                      if (onClearFilter != null) ...[
+                        const SizedBox(width: 6.0),
+                        MouseRegion(
+                          cursor: SystemMouseCursors.click,
+                          child: GestureDetector(
+                            behavior: HitTestBehavior.opaque,
+                            onTap: onClearFilter,
+                            child: Icon(
+                              LucideIcons.x,
+                              size: 12.0,
+                              color: tokens.textMuted,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+              ],
             ],
           ),
         ),

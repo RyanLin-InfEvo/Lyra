@@ -29,6 +29,12 @@ abstract class MusicService {
   /// Fetch catalog tags for quick library filtering.
   Future<List<Tag>> getTags();
 
+  /// Create a new tag entity.
+  Future<Tag> createTag({required String name, String category = 'general'});
+
+  /// Delete a tag entity by ID.
+  Future<void> deleteTag(String tagId);
+
   /// Create a new user or smart playlist.
   Future<Playlist> createPlaylist({
     required String title,

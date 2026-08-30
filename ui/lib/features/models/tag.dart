@@ -42,9 +42,9 @@ class Tag {
     }
 
     return Tag(
-      id: json['id'] as String? ?? '',
-      name: json['name'] as String? ?? '',
-      category: json['category'] as String? ?? 'general',
+      id: json['id']?.toString() ?? '',
+      name: json['name']?.toString() ?? '',
+      category: json['category']?.toString() ?? 'general',
       createdAt: parseDate(json['created_at'] ?? json['createdAt']),
     );
   }

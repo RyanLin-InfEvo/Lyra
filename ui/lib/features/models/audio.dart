@@ -78,6 +78,20 @@ class Audio {
 
   /// Creates an [Audio] instance from a JSON map.
   factory Audio.fromJson(Map<String, dynamic> json) {
+    int parseInt(dynamic val, {int defaultValue = 0}) {
+      if (val is int) return val;
+      if (val is num) return val.toInt();
+      if (val is String) return int.tryParse(val) ?? defaultValue;
+      return defaultValue;
+    }
+
+    double parseDouble(dynamic val, {double defaultValue = 0.0}) {
+      if (val is double) return val;
+      if (val is num) return val.toDouble();
+      if (val is String) return double.tryParse(val) ?? defaultValue;
+      return defaultValue;
+    }
+
     double parsedDurationMs = 0.0;
     final rawDuration =
         json['duration_ms'] ?? json['durationMs'] ?? json['duration'];
@@ -95,20 +109,17 @@ class Audio {
     }
 
     return Audio(
-      pcmHash: (json['pcm_hash'] ?? json['pcmHash']) as String? ?? '',
-      parentHash: (json['parent_hash'] ?? json['parentHash']) as String? ?? '',
-      qualityScore:
-          (json['quality_score'] ?? json['qualityScore']) as int? ?? 0,
-      bitDepth: (json['bit_depth'] ?? json['bitDepth']) as int? ?? 0,
-      sampleRate: (json['sample_rate'] ?? json['sampleRate']) as int? ?? 0,
-      channels: json['channels'] as int? ?? 0,
+      pcmHash: (json['pcm_hash'] ?? json['pcmHash'])?.toString() ?? '',
+      parentHash: (json['parent_hash'] ?? json['parentHash'])?.toString() ?? '',
+      qualityScore: parseInt(json['quality_score'] ?? json['qualityScore']),
+      bitDepth: parseInt(json['bit_depth'] ?? json['bitDepth']),
+      sampleRate: parseInt(json['sample_rate'] ?? json['sampleRate']),
+      channels: parseInt(json['channels']),
       durationMs: parsedDurationMs,
-      integratedLoudness:
-          ((json['integrated_loudness'] ?? json['integratedLoudness']) as num?)
-              ?.toDouble() ??
-          0.0,
-      truePeak:
-          ((json['true_peak'] ?? json['truePeak']) as num?)?.toDouble() ?? 0.0,
+      integratedLoudness: parseDouble(
+        json['integrated_loudness'] ?? json['integratedLoudness'],
+      ),
+      truePeak: parseDouble(json['true_peak'] ?? json['truePeak']),
     );
   }
 

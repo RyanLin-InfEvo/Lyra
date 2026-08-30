@@ -17,30 +17,51 @@ Widget _buildTracksViewTest({
   bool isPlaying = false,
   ValueChanged<Track>? onTrackSelected,
   VoidCallback? onTogglePlay,
+  String? filterLabel,
+  VoidCallback? onClearFilter,
+  ValueNotifier<ThemeMode>? themeNotifier,
 }) {
-  final themeModeNotifier = ValueNotifier<ThemeMode>(ThemeMode.dark);
+  final themeModeNotifier =
+      themeNotifier ?? ValueNotifier<ThemeMode>(ThemeMode.dark);
   const factory = ShadcnFactory();
-  final tokens = LyraThemeTokens.dark();
 
   return ShadApp(
-    themeMode: ThemeMode.dark,
-    darkTheme: ShadThemeData(
-      brightness: Brightness.dark,
-      colorScheme: const ShadZincColorScheme.dark(),
-    ),
-    home: LyraDesignSystemScope(
-      factory: factory,
-      tokens: tokens,
-      themeModeNotifier: themeModeNotifier,
-      child: Scaffold(
-        body: TracksView(
-          tracks: tracks,
-          currentTrack: currentTrack,
-          isPlaying: isPlaying,
-          onTrackSelected: onTrackSelected ?? (_) {},
-          onTogglePlay: onTogglePlay ?? () {},
-        ),
-      ),
+    title: 'Lyra Test',
+    debugShowCheckedModeBanner: false,
+    home: ValueListenableBuilder<ThemeMode>(
+      valueListenable: themeModeNotifier,
+      builder: (context, themeMode, _) {
+        final isDark = themeMode == ThemeMode.dark;
+        final tokens = isDark
+            ? LyraThemeTokens.dark()
+            : LyraThemeTokens.light();
+        final shadTheme = ShadThemeData(
+          brightness: isDark ? Brightness.dark : Brightness.light,
+          colorScheme: isDark
+              ? const ShadZincColorScheme.dark()
+              : const ShadZincColorScheme.light(),
+        );
+
+        return ShadTheme(
+          data: shadTheme,
+          child: LyraDesignSystemScope(
+            factory: factory,
+            tokens: tokens,
+            themeModeNotifier: themeModeNotifier,
+            child: Scaffold(
+              body: TracksView(
+                tracks: tracks,
+                currentTrack: currentTrack,
+                isPlaying: isPlaying,
+                onTrackSelected: onTrackSelected ?? (_) {},
+                onTogglePlay: onTogglePlay ?? () {},
+                filterLabel: filterLabel,
+                onClearFilter: onClearFilter,
+              ),
+            ),
+          ),
+        );
+      },
     ),
   );
 }
@@ -194,4 +215,92 @@ void main() {
     await tester.pumpAndSettle();
     expect(selectedTrack?.id, equals('2'));
   });
+
+  testWidgets(
+    'TracksView renders filterLabel badge and triggers onClearFilter',
+    (tester) async {
+      bool clearClicked = false;
+
+      await tester.pumpWidget(
+        _buildTracksViewTest(
+          tracks: sampleTracks,
+          filterLabel: 'Album: Test Album',
+          onClearFilter: () => clearClicked = true,
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('Tracks Library'), findsOneWidget);
+      expect(find.text('Album: Test Album'), findsOneWidget);
+
+      // Tap clear button (X icon)
+      await tester.tap(find.byIcon(LucideIcons.x));
+      await tester.pumpAndSettle();
+      expect(clearClicked, isTrue);
+    },
+  );
+
+  testWidgets('TracksView empty state with filterLabel renders clear button', (
+    tester,
+  ) async {
+    bool clearClicked = false;
+
+    await tester.pumpWidget(
+      _buildTracksViewTest(
+        tracks: const [],
+        filterLabel: 'Work: Unknown',
+        onClearFilter: () => clearClicked = true,
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('No matching tracks found'), findsOneWidget);
+    expect(
+      find.text('No tracks found matching "Work: Unknown".'),
+      findsOneWidget,
+    );
+
+    final clearBtn = find.text('Clear filter');
+    expect(clearBtn, findsOneWidget);
+    await tester.tap(clearBtn);
+    await tester.pumpAndSettle();
+    expect(clearClicked, isTrue);
+  });
+
+  testWidgets(
+    'TracksView table header and active row adapt dynamically to Light and Dark mode',
+    (tester) async {
+      final themeNotifier = ValueNotifier<ThemeMode>(ThemeMode.dark);
+      addTearDown(themeNotifier.dispose);
+
+      await tester.pumpWidget(
+        _buildTracksViewTest(
+          tracks: sampleTracks,
+          currentTrack: sampleTracks.first,
+          themeNotifier: themeNotifier,
+        ),
+      );
+      await tester.pump();
+
+      // 1. Dark Mode: table background & ShadTheme is dark
+      final tracksElementDark = find.byType(TracksView).evaluate().first;
+      final themeDark = ShadTheme.of(tracksElementDark);
+      expect(themeDark.brightness, equals(Brightness.dark));
+
+      final activeTitleTextDark = tester.widget<Text>(find.text('Track One'));
+      expect(activeTitleTextDark.style?.color, equals(LyraColors.zinc50));
+
+      // Switch to Light Mode (single frame 0ms)
+      themeNotifier.value = ThemeMode.light;
+      await tester.pump();
+
+      // 2. Light Mode: table background & ShadTheme is light
+      final tracksElementLight = find.byType(TracksView).evaluate().first;
+      final themeLight = ShadTheme.of(tracksElementLight);
+      expect(themeLight.brightness, equals(Brightness.light));
+
+      final activeTitleTextLight = tester.widget<Text>(find.text('Track One'));
+      expect(activeTitleTextLight.style?.color, equals(LyraColors.zinc900));
+    },
+  );
 }

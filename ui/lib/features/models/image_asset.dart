@@ -76,16 +76,30 @@ class ImageAsset {
 
   /// Creates an [ImageAsset] instance from a JSON map.
   factory ImageAsset.fromJson(Map<String, dynamic> json) {
+    int parseInt(dynamic val, {int defaultValue = 0}) {
+      if (val is int) return val;
+      if (val is num) return val.toInt();
+      if (val is String) return int.tryParse(val) ?? defaultValue;
+      return defaultValue;
+    }
+
+    int? parseNullableInt(dynamic val) {
+      if (val is int) return val;
+      if (val is num) return val.toInt();
+      if (val is String) return int.tryParse(val);
+      return null;
+    }
+
     return ImageAsset(
-      imageHash: (json['image_hash'] ?? json['imageHash']) as String? ?? '',
-      fileHash: (json['file_hash'] ?? json['fileHash']) as String? ?? '',
-      width: (json['width'] as num?)?.toInt() ?? 0,
-      height: (json['height'] as num?)?.toInt() ?? 0,
+      imageHash: (json['image_hash'] ?? json['imageHash'])?.toString() ?? '',
+      fileHash: (json['file_hash'] ?? json['fileHash'])?.toString() ?? '',
+      width: parseInt(json['width']),
+      height: parseInt(json['height']),
       dominantColor:
-          (json['dominant_color'] ?? json['dominantColor']) as String? ?? '',
-      role: json['role'] as String?,
-      mimeType: (json['mime_type'] ?? json['mimeType']) as String?,
-      fileSize: (json['file_size'] ?? json['fileSize']) as int?,
+          (json['dominant_color'] ?? json['dominantColor'])?.toString() ?? '',
+      role: json['role']?.toString(),
+      mimeType: (json['mime_type'] ?? json['mimeType'])?.toString(),
+      fileSize: parseNullableInt(json['file_size'] ?? json['fileSize']),
     );
   }
 

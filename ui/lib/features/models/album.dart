@@ -94,6 +94,13 @@ class Album {
 
   /// Creates an [Album] instance from a JSON map.
   factory Album.fromJson(Map<String, dynamic> json) {
+    int? parseInt(dynamic val) {
+      if (val is int) return val;
+      if (val is num) return val.toInt();
+      if (val is String) return int.tryParse(val);
+      return null;
+    }
+
     Color? parsedColor;
     final rawColor = json['cover_color'] ?? json['coverColor'];
     if (rawColor is int) {
@@ -107,30 +114,30 @@ class Album {
     }
 
     return Album(
-      id: json['id'] as String? ?? '',
-      title: json['title'] as String? ?? '',
-      releaseYear:
-          (json['release_year'] ?? json['releaseYear'] ?? json['year']) as int?,
-      releaseMonth: (json['release_month'] ?? json['releaseMonth']) as int?,
-      releaseDay: (json['release_day'] ?? json['releaseDay']) as int?,
-      artistName:
-          (json['artist_name'] ?? json['artistName'] ?? json['artist'])
-              as String?,
+      id: json['id']?.toString() ?? '',
+      title: json['title']?.toString() ?? '',
+      releaseYear: parseInt(
+        json['release_year'] ?? json['releaseYear'] ?? json['year'],
+      ),
+      releaseMonth: parseInt(json['release_month'] ?? json['releaseMonth']),
+      releaseDay: parseInt(json['release_day'] ?? json['releaseDay']),
+      artistName: (json['artist_name'] ?? json['artistName'] ?? json['artist'])
+          ?.toString(),
       coverArtHash:
           (json['cover_art_hash'] ??
                   json['coverArtHash'] ??
                   json['cover_hash'] ??
                   json['coverHash'])
-              as String?,
-      totalTracks:
-          (json['total_tracks'] ??
-                  json['totalTracks'] ??
-                  json['track_count'] ??
-                  json['trackCount'])
-              as int?,
-      totalDiscs: (json['total_discs'] ?? json['totalDiscs']) as int?,
+              ?.toString(),
+      totalTracks: parseInt(
+        json['total_tracks'] ??
+            json['totalTracks'] ??
+            json['track_count'] ??
+            json['trackCount'],
+      ),
+      totalDiscs: parseInt(json['total_discs'] ?? json['totalDiscs']),
       coverColor: parsedColor,
-      format: json['format'] as String? ?? 'FLAC',
+      format: json['format']?.toString() ?? 'FLAC',
     );
   }
 

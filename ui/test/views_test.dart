@@ -14,22 +14,38 @@ import 'package:ui/features/models/work.dart';
 import 'package:ui/features/playlists/playlists_view.dart';
 import 'package:ui/features/works/works_view.dart';
 
-Widget _buildViewTest(Widget child) {
-  final themeModeNotifier = ValueNotifier<ThemeMode>(ThemeMode.dark);
+Widget _buildViewTest(Widget child, {ValueNotifier<ThemeMode>? themeNotifier}) {
+  final themeModeNotifier =
+      themeNotifier ?? ValueNotifier<ThemeMode>(ThemeMode.dark);
   const factory = ShadcnFactory();
-  final tokens = LyraThemeTokens.dark();
 
   return ShadApp(
-    themeMode: ThemeMode.dark,
-    darkTheme: ShadThemeData(
-      brightness: Brightness.dark,
-      colorScheme: const ShadZincColorScheme.dark(),
-    ),
-    home: LyraDesignSystemScope(
-      factory: factory,
-      tokens: tokens,
-      themeModeNotifier: themeModeNotifier,
-      child: Scaffold(body: child),
+    title: 'Lyra Test',
+    debugShowCheckedModeBanner: false,
+    home: ValueListenableBuilder<ThemeMode>(
+      valueListenable: themeModeNotifier,
+      builder: (context, themeMode, _) {
+        final isDark = themeMode == ThemeMode.dark;
+        final tokens = isDark
+            ? LyraThemeTokens.dark()
+            : LyraThemeTokens.light();
+        final shadTheme = ShadThemeData(
+          brightness: isDark ? Brightness.dark : Brightness.light,
+          colorScheme: isDark
+              ? const ShadZincColorScheme.dark()
+              : const ShadZincColorScheme.light(),
+        );
+
+        return ShadTheme(
+          data: shadTheme,
+          child: LyraDesignSystemScope(
+            factory: factory,
+            tokens: tokens,
+            themeModeNotifier: themeModeNotifier,
+            child: Scaffold(body: child),
+          ),
+        );
+      },
     ),
   );
 }
@@ -215,6 +231,44 @@ void main() {
         await tester.tap(newPlaylistBtn);
         await tester.pumpAndSettle();
         expect(createClicked, isTrue);
+      },
+    );
+
+    testWidgets(
+      'PlaylistsView cards and icons adapt dynamically to Light and Dark mode',
+      (tester) async {
+        final themeNotifier = ValueNotifier<ThemeMode>(ThemeMode.dark);
+        addTearDown(themeNotifier.dispose);
+
+        await tester.pumpWidget(
+          _buildViewTest(
+            PlaylistsView(playlists: samplePlaylists),
+            themeNotifier: themeNotifier,
+          ),
+        );
+        await tester.pump();
+
+        // 1. Dark Mode: ShadTheme card is dark zinc900
+        final cardElementDark = find.byType(PlaylistsView).evaluate().first;
+        final themeDark = ShadTheme.of(cardElementDark);
+        expect(themeDark.brightness, equals(Brightness.dark));
+        expect(
+          themeDark.colorScheme.card,
+          equals(const ShadZincColorScheme.dark().card),
+        );
+
+        // Switch to Light Mode (single frame 0ms)
+        themeNotifier.value = ThemeMode.light;
+        await tester.pump();
+
+        // 2. Light Mode: ShadTheme card is light white
+        final cardElementLight = find.byType(PlaylistsView).evaluate().first;
+        final themeLight = ShadTheme.of(cardElementLight);
+        expect(themeLight.brightness, equals(Brightness.light));
+        expect(
+          themeLight.colorScheme.card,
+          equals(const ShadZincColorScheme.light().card),
+        );
       },
     );
   });

@@ -61,24 +61,26 @@ class Playlist {
 
     List<String> parseTrackIds(dynamic val) {
       if (val is List) {
-        return val.map((item) {
-          if (item is String) return item;
-          if (item is Map && item.containsKey('id')) {
-            return item['id'].toString();
-          }
-          if (item is Map && item.containsKey('track_id')) {
-            return item['track_id'].toString();
-          }
-          return item.toString();
-        }).toList();
+        return val
+            .where((item) => item != null)
+            .map((item) {
+              if (item is String) return item;
+              if (item is Map) {
+                final trackId = item['id'] ?? item['track_id'];
+                return trackId?.toString() ?? '';
+              }
+              return item.toString();
+            })
+            .where((id) => id.isNotEmpty)
+            .toList();
       }
       return const [];
     }
 
     return Playlist(
-      id: json['id'] as String? ?? '',
-      title: json['title'] as String? ?? '',
-      description: json['description'] as String?,
+      id: json['id']?.toString() ?? '',
+      title: json['title']?.toString() ?? '',
+      description: json['description']?.toString(),
       trackIds: parseTrackIds(
         json['track_ids'] ?? json['trackIds'] ?? json['tracks'],
       ),
@@ -89,7 +91,7 @@ class Playlist {
                   json['coverArtHash'] ??
                   json['cover_hash'] ??
                   json['coverHash'])
-              as String?,
+              ?.toString(),
     );
   }
 

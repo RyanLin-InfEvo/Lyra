@@ -41,20 +41,28 @@ class Work {
 
   /// Creates a [Work] instance from a JSON map.
   factory Work.fromJson(Map<String, dynamic> json) {
+    int? parseInt(dynamic val) {
+      if (val is int) return val;
+      if (val is num) return val.toInt();
+      if (val is String) return int.tryParse(val);
+      return null;
+    }
+
     return Work(
-      id: json['id'] as String? ?? '',
-      title: json['title'] as String? ?? '',
-      compositionStartYear:
-          (json['composition_start_year'] ?? json['compositionStartYear'])
-              as int?,
-      compositionEndYear:
-          (json['composition_end_year'] ?? json['compositionEndYear']) as int?,
+      id: json['id']?.toString() ?? '',
+      title: json['title']?.toString() ?? '',
+      compositionStartYear: parseInt(
+        json['composition_start_year'] ?? json['compositionStartYear'],
+      ),
+      compositionEndYear: parseInt(
+        json['composition_end_year'] ?? json['compositionEndYear'],
+      ),
       compositionDateText:
           (json['composition_date_text'] ?? json['compositionDateText'])
-              as String?,
-      iswc: json['iswc'] as String?,
-      musicbrainzId:
-          (json['musicbrainz_id'] ?? json['musicbrainzId']) as String?,
+              ?.toString(),
+      iswc: json['iswc']?.toString(),
+      musicbrainzId: (json['musicbrainz_id'] ?? json['musicbrainzId'])
+          ?.toString(),
     );
   }
 

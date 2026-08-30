@@ -22,7 +22,7 @@ class TrackRepository extends BaseRepository {
     final items = unpackList(response);
     return items
         .whereType<Map>()
-        .map((item) => Track.fromJson(item.cast<String, dynamic>()))
+        .map((item) => Track.fromJson(Map<String, dynamic>.from(item)))
         .toList();
   }
 
@@ -41,7 +41,7 @@ class TrackRepository extends BaseRepository {
     final items = unpackList(response);
     return items
         .whereType<Map>()
-        .map((item) => Track.fromJson(item.cast<String, dynamic>()))
+        .map((item) => Track.fromJson(Map<String, dynamic>.from(item)))
         .toList();
   }
 

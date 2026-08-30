@@ -23,7 +23,7 @@ class AlbumRepository extends BaseRepository {
     final items = unpackList(response);
     return items
         .whereType<Map>()
-        .map((item) => Album.fromJson(item.cast<String, dynamic>()))
+        .map((item) => Album.fromJson(Map<String, dynamic>.from(item)))
         .toList();
   }
 
@@ -42,7 +42,7 @@ class AlbumRepository extends BaseRepository {
     final items = unpackList(response);
     return items
         .whereType<Map>()
-        .map((item) => Album.fromJson(item.cast<String, dynamic>()))
+        .map((item) => Album.fromJson(Map<String, dynamic>.from(item)))
         .toList();
   }
 

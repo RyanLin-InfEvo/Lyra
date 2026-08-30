@@ -23,7 +23,7 @@ class PlaylistRepository extends BaseRepository {
     final items = unpackList(response);
     return items
         .whereType<Map>()
-        .map((item) => Playlist.fromJson(item.cast<String, dynamic>()))
+        .map((item) => Playlist.fromJson(Map<String, dynamic>.from(item)))
         .toList();
   }
 
@@ -42,7 +42,7 @@ class PlaylistRepository extends BaseRepository {
     final items = unpackList(response);
     return items
         .whereType<Map>()
-        .map((item) => Playlist.fromJson(item.cast<String, dynamic>()))
+        .map((item) => Playlist.fromJson(Map<String, dynamic>.from(item)))
         .toList();
   }
 
@@ -93,13 +93,18 @@ class PlaylistRepository extends BaseRepository {
       'playlist_id': playlistId,
     });
     final items = unpackList(response);
-    return items.map((item) {
-      if (item is String) return item;
-      if (item is Map) {
-        return (item['track_id'] ?? item['id'] ?? item.toString()).toString();
-      }
-      return item.toString();
-    }).toList();
+    return items
+        .where((item) => item != null)
+        .map((item) {
+          if (item is String) return item;
+          if (item is Map) {
+            final id = item['track_id'] ?? item['id'];
+            return id?.toString() ?? '';
+          }
+          return item.toString();
+        })
+        .where((id) => id.isNotEmpty)
+        .toList();
   }
 
   /// Resolves the cover art image asset for the specified [playlistId].

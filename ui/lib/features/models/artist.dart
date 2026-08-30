@@ -47,16 +47,16 @@ class Artist {
   /// Creates an [Artist] instance from a JSON map.
   factory Artist.fromJson(Map<String, dynamic> json) {
     return Artist(
-      id: json['id'] as String? ?? '',
+      id: json['id']?.toString() ?? '',
       name:
           (json['name'] ?? json['artist_name'] ?? json['artistName'])
-              as String? ??
+              ?.toString() ??
           '',
-      musicbrainzId:
-          (json['musicbrainz_id'] ?? json['musicbrainzId']) as String?,
-      role: json['role'] as String?,
-      spotifyId: (json['spotify_id'] ?? json['spotifyId']) as String?,
-      ytmId: (json['ytm_id'] ?? json['ytmId']) as String?,
+      musicbrainzId: (json['musicbrainz_id'] ?? json['musicbrainzId'])
+          ?.toString(),
+      role: json['role']?.toString(),
+      spotifyId: (json['spotify_id'] ?? json['spotifyId'])?.toString(),
+      ytmId: (json['ytm_id'] ?? json['ytmId'])?.toString(),
     );
   }
 

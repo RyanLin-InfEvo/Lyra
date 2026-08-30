@@ -15,32 +15,37 @@ import 'package:ui/design_system/widgets/lyra_input.dart';
 Widget _buildTestApp({
   required Widget child,
   ThemeMode initialThemeMode = ThemeMode.dark,
+  ValueNotifier<ThemeMode>? themeNotifier,
 }) {
-  final themeModeNotifier = ValueNotifier<ThemeMode>(initialThemeMode);
+  final themeModeNotifier =
+      themeNotifier ?? ValueNotifier<ThemeMode>(initialThemeMode);
   const factory = ShadcnFactory();
 
   return ShadApp(
-    themeMode: initialThemeMode,
-    theme: ShadThemeData(
-      brightness: Brightness.light,
-      colorScheme: const ShadZincColorScheme.light(),
-    ),
-    darkTheme: ShadThemeData(
-      brightness: Brightness.dark,
-      colorScheme: const ShadZincColorScheme.dark(),
-    ),
+    title: 'Lyra Test',
+    debugShowCheckedModeBanner: false,
     home: ValueListenableBuilder<ThemeMode>(
       valueListenable: themeModeNotifier,
       builder: (context, themeMode, _) {
-        final tokens = themeMode == ThemeMode.dark
+        final isDark = themeMode == ThemeMode.dark;
+        final tokens = isDark
             ? LyraThemeTokens.dark()
             : LyraThemeTokens.light();
+        final shadTheme = ShadThemeData(
+          brightness: isDark ? Brightness.dark : Brightness.light,
+          colorScheme: isDark
+              ? const ShadZincColorScheme.dark()
+              : const ShadZincColorScheme.light(),
+        );
 
-        return LyraDesignSystemScope(
-          factory: factory,
-          tokens: tokens,
-          themeModeNotifier: themeModeNotifier,
-          child: Scaffold(body: child),
+        return ShadTheme(
+          data: shadTheme,
+          child: LyraDesignSystemScope(
+            factory: factory,
+            tokens: tokens,
+            themeModeNotifier: themeModeNotifier,
+            child: Scaffold(body: child),
+          ),
         );
       },
     ),
@@ -176,5 +181,78 @@ void main() {
       expect(controller.text, equals('FLAC 24/96'));
       expect(changedText, equals('FLAC 24/96'));
     });
+  });
+
+  group('Dynamic Theme Switching', () {
+    testWidgets(
+      'Toggling theme switches tokens and ShadTheme brightness and colors synchronously in a single frame',
+      (tester) async {
+        final themeNotifier = ValueNotifier<ThemeMode>(ThemeMode.dark);
+        addTearDown(themeNotifier.dispose);
+
+        late LyraThemeTokens currentTokens;
+        late ShadThemeData currentShadTheme;
+
+        final testWidget = Builder(
+          builder: (context) {
+            currentTokens = LyraDesignSystemScope.of(context).tokens;
+            currentShadTheme = ShadTheme.of(context);
+            return Column(
+              children: [
+                LyraButton.secondary(child: Text('Active Selection Item')),
+                LyraCard(child: Text('Card Content')),
+              ],
+            );
+          },
+        );
+
+        await tester.pumpWidget(
+          _buildTestApp(child: testWidget, themeNotifier: themeNotifier),
+        );
+        await tester.pump();
+
+        // Verify initial Dark Theme
+        expect(currentTokens.isDark, isTrue);
+        expect(currentTokens.background, equals(LyraColors.zinc950));
+        expect(currentTokens.card, equals(LyraColors.zinc900));
+        expect(currentTokens.secondary, equals(LyraColors.zinc800));
+        expect(currentShadTheme.brightness, equals(Brightness.dark));
+        expect(
+          currentShadTheme.colorScheme.secondary,
+          equals(const ShadZincColorScheme.dark().secondary),
+        );
+        expect(
+          currentShadTheme.colorScheme.card,
+          equals(const ShadZincColorScheme.dark().card),
+        );
+
+        // Switch to Light Theme (single frame 0ms)
+        themeNotifier.value = ThemeMode.light;
+        await tester.pump();
+
+        // Verify updated Light Theme synchronously in the exact same frame
+        expect(currentTokens.isDark, isFalse);
+        expect(currentTokens.background, equals(const Color(0xFFFFFFFF)));
+        expect(currentTokens.card, equals(const Color(0xFFFFFFFF)));
+        expect(currentTokens.secondary, equals(LyraColors.zinc100));
+        expect(currentTokens.text, equals(LyraColors.zinc950));
+        expect(currentShadTheme.brightness, equals(Brightness.light));
+        expect(
+          currentShadTheme.colorScheme.secondary,
+          equals(const ShadZincColorScheme.light().secondary),
+        );
+        expect(
+          currentShadTheme.colorScheme.card,
+          equals(const ShadZincColorScheme.light().card),
+        );
+
+        // Switch back to Dark Theme (single frame 0ms)
+        themeNotifier.value = ThemeMode.dark;
+        await tester.pump();
+
+        expect(currentTokens.isDark, isTrue);
+        expect(currentShadTheme.brightness, equals(Brightness.dark));
+      },
+    );
   });
 }

@@ -21,34 +21,51 @@ Widget _buildPlayerBarTest({
   VoidCallback? onPrevious,
   ValueChanged<Duration>? onSeek,
   ValueChanged<double>? onVolumeChanged,
+  ValueNotifier<ThemeMode>? themeNotifier,
 }) {
-  final themeModeNotifier = ValueNotifier<ThemeMode>(ThemeMode.dark);
+  final themeModeNotifier =
+      themeNotifier ?? ValueNotifier<ThemeMode>(ThemeMode.dark);
   const factory = ShadcnFactory();
-  final tokens = LyraThemeTokens.dark();
 
   return ShadApp(
-    themeMode: ThemeMode.dark,
-    darkTheme: ShadThemeData(
-      brightness: Brightness.dark,
-      colorScheme: const ShadZincColorScheme.dark(),
-    ),
-    home: LyraDesignSystemScope(
-      factory: factory,
-      tokens: tokens,
-      themeModeNotifier: themeModeNotifier,
-      child: Scaffold(
-        body: LyraPlayerBar(
-          currentTrack: currentTrack,
-          isPlaying: isPlaying,
-          currentPosition: currentPosition,
-          volume: volume,
-          onTogglePlay: onTogglePlay ?? () {},
-          onNext: onNext ?? () {},
-          onPrevious: onPrevious ?? () {},
-          onSeek: onSeek ?? (_) {},
-          onVolumeChanged: onVolumeChanged ?? (_) {},
-        ),
-      ),
+    title: 'Lyra Test',
+    debugShowCheckedModeBanner: false,
+    home: ValueListenableBuilder<ThemeMode>(
+      valueListenable: themeModeNotifier,
+      builder: (context, themeMode, _) {
+        final isDark = themeMode == ThemeMode.dark;
+        final tokens = isDark
+            ? LyraThemeTokens.dark()
+            : LyraThemeTokens.light();
+        final shadTheme = ShadThemeData(
+          brightness: isDark ? Brightness.dark : Brightness.light,
+          colorScheme: isDark
+              ? const ShadZincColorScheme.dark()
+              : const ShadZincColorScheme.light(),
+        );
+
+        return ShadTheme(
+          data: shadTheme,
+          child: LyraDesignSystemScope(
+            factory: factory,
+            tokens: tokens,
+            themeModeNotifier: themeModeNotifier,
+            child: Scaffold(
+              body: LyraPlayerBar(
+                currentTrack: currentTrack,
+                isPlaying: isPlaying,
+                currentPosition: currentPosition,
+                volume: volume,
+                onTogglePlay: onTogglePlay ?? () {},
+                onNext: onNext ?? () {},
+                onPrevious: onPrevious ?? () {},
+                onSeek: onSeek ?? (_) {},
+                onVolumeChanged: onVolumeChanged ?? (_) {},
+              ),
+            ),
+          ),
+        );
+      },
     ),
   );
 }
@@ -163,4 +180,38 @@ void main() {
     await gesture.moveTo(Offset.zero);
     await tester.pump(const Duration(milliseconds: 150));
   });
+
+  testWidgets(
+    'LyraPlayerBar adapts background and controls dynamically in a single frame',
+    (tester) async {
+      final themeNotifier = ValueNotifier<ThemeMode>(ThemeMode.dark);
+      addTearDown(themeNotifier.dispose);
+
+      await tester.pumpWidget(
+        _buildPlayerBarTest(
+          currentTrack: testTrack,
+          themeNotifier: themeNotifier,
+        ),
+      );
+      await tester.pump();
+
+      // 1. Dark Mode: PlayerBar container background is zinc900 (tokens.card)
+      final playerBarContainerDark = tester.widget<Container>(
+        find.byType(Container).first,
+      );
+      final darkDeco = playerBarContainerDark.decoration as BoxDecoration;
+      expect(darkDeco.color, equals(LyraColors.zinc900));
+
+      // Switch to Light Mode (single frame 0ms)
+      themeNotifier.value = ThemeMode.light;
+      await tester.pump();
+
+      // 2. Light Mode: PlayerBar container background is white (Color(0xFFFFFFFF))
+      final playerBarContainerLight = tester.widget<Container>(
+        find.byType(Container).first,
+      );
+      final lightDeco = playerBarContainerLight.decoration as BoxDecoration;
+      expect(lightDeco.color, equals(const Color(0xFFFFFFFF)));
+    },
+  );
 }

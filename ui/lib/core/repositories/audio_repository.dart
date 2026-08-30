@@ -22,7 +22,7 @@ class AudioRepository extends BaseRepository {
     final items = unpackList(response);
     return items
         .whereType<Map>()
-        .map((item) => Audio.fromJson(item.cast<String, dynamic>()))
+        .map((item) => Audio.fromJson(Map<String, dynamic>.from(item)))
         .toList();
   }
 

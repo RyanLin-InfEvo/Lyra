@@ -22,7 +22,7 @@ class WorkRepository extends BaseRepository {
     final items = unpackList(response);
     return items
         .whereType<Map>()
-        .map((item) => Work.fromJson(item.cast<String, dynamic>()))
+        .map((item) => Work.fromJson(Map<String, dynamic>.from(item)))
         .toList();
   }
 
@@ -41,7 +41,7 @@ class WorkRepository extends BaseRepository {
     final items = unpackList(response);
     return items
         .whereType<Map>()
-        .map((item) => Work.fromJson(item.cast<String, dynamic>()))
+        .map((item) => Work.fromJson(Map<String, dynamic>.from(item)))
         .toList();
   }
 

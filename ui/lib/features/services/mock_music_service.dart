@@ -420,6 +420,26 @@ class MockMusicService implements MusicService {
   }
 
   @override
+  Future<Tag> createTag({
+    required String name,
+    String category = 'general',
+  }) async {
+    final tag = Tag(
+      id: 'tag-${DateTime.now().millisecondsSinceEpoch}',
+      name: name,
+      category: category,
+      createdAt: DateTime.now(),
+    );
+    _tags.add(tag);
+    return tag;
+  }
+
+  @override
+  Future<void> deleteTag(String tagId) async {
+    _tags.removeWhere((t) => t.id == tagId);
+  }
+
+  @override
   Future<Playlist> createPlaylist({
     required String title,
     String? description,

@@ -16,31 +16,44 @@ import 'package:ui/features/settings/settings_view.dart';
 import 'package:ui/features/shell/app_shell.dart';
 import 'package:ui/features/shell/player_bar.dart';
 import 'package:ui/features/shell/sidebar.dart';
+import 'package:ui/features/tags/tags_view.dart';
 import 'package:ui/features/tracks/tracks_view.dart';
 import 'package:ui/features/works/works_view.dart';
 
-Widget _buildAppShellTest({MockMusicService? service}) {
-  final themeModeNotifier = ValueNotifier<ThemeMode>(ThemeMode.dark);
+Widget _buildAppShellTest({
+  MockMusicService? service,
+  ValueNotifier<ThemeMode>? themeNotifier,
+}) {
+  final themeModeNotifier =
+      themeNotifier ?? ValueNotifier<ThemeMode>(ThemeMode.dark);
   const factory = ShadcnFactory();
   final musicService = service ?? MockMusicService();
 
   return ShadApp(
-    themeMode: ThemeMode.dark,
-    darkTheme: ShadThemeData(
-      brightness: Brightness.dark,
-      colorScheme: const ShadZincColorScheme.dark(),
-    ),
+    title: 'Lyra Test',
+    debugShowCheckedModeBanner: false,
     home: ValueListenableBuilder<ThemeMode>(
       valueListenable: themeModeNotifier,
       builder: (context, themeMode, _) {
-        final tokens = themeMode == ThemeMode.dark
+        final isDark = themeMode == ThemeMode.dark;
+        final tokens = isDark
             ? LyraThemeTokens.dark()
             : LyraThemeTokens.light();
-        return LyraDesignSystemScope(
-          factory: factory,
-          tokens: tokens,
-          themeModeNotifier: themeModeNotifier,
-          child: AppShell(musicService: musicService),
+        final shadTheme = ShadThemeData(
+          brightness: isDark ? Brightness.dark : Brightness.light,
+          colorScheme: isDark
+              ? const ShadZincColorScheme.dark()
+              : const ShadZincColorScheme.light(),
+        );
+
+        return ShadTheme(
+          data: shadTheme,
+          child: LyraDesignSystemScope(
+            factory: factory,
+            tokens: tokens,
+            themeModeNotifier: themeModeNotifier,
+            child: AppShell(musicService: musicService),
+          ),
         );
       },
     ),
@@ -64,7 +77,8 @@ void main() {
     expect(find.text('Works'), findsOneWidget);
     expect(find.text('Albums'), findsOneWidget);
     expect(find.text('Artists'), findsOneWidget);
-    expect(find.text('PLAYLISTS'), findsOneWidget);
+    expect(find.text('Playlists'), findsOneWidget);
+    expect(find.text('Tags'), findsOneWidget);
     expect(find.text('All Playlists'), findsNothing);
     expect(find.text('CAS Storage'), findsOneWidget);
     expect(find.text('Settings'), findsOneWidget);
@@ -126,27 +140,35 @@ void main() {
     expect(find.text('Pink Floyd'), findsWidgets);
 
     // 4. Switch to Playlists
-    await tester.tap(find.text('PLAYLISTS'));
+    await tester.tap(find.text('Playlists'));
     await tester.pumpAndSettle();
     expect(find.byType(PlaylistsView), findsOneWidget);
     expect(find.text('Audiophile Reference Master'), findsWidgets);
     expect(find.text('Late Night Jazz'), findsWidgets);
 
-    // 5. Switch to CAS Storage
+    // 5. Switch to Tags
+    await tester.tap(find.text('Tags'));
+    await tester.pumpAndSettle();
+    expect(find.byType(TagsView), findsOneWidget);
+    expect(find.text('Tags'), findsWidgets);
+    expect(find.text('Audiophile'), findsWidgets);
+    expect(find.text('Hi-Res'), findsWidgets);
+
+    // 6. Switch to CAS Storage
     await tester.tap(find.text('CAS Storage'));
     await tester.pumpAndSettle();
     expect(find.byType(CasView), findsOneWidget);
     expect(find.text('Content Addressable Storage'), findsOneWidget);
     expect(find.text('INTEGRITY HASH'), findsOneWidget);
 
-    // 6. Switch to Settings
+    // 7. Switch to Settings
     await tester.tap(find.text('Settings'));
     await tester.pumpAndSettle();
     expect(find.byType(SettingsView), findsOneWidget);
     expect(find.text('Audio Output'), findsOneWidget);
     expect(find.text('Zinc Dark'), findsOneWidget);
 
-    // 7. Switch back to Tracks
+    // 8. Switch back to Tracks
     await tester.tap(find.text('Tracks'));
     await tester.pumpAndSettle();
     expect(find.byType(TracksView), findsOneWidget);
@@ -184,29 +206,48 @@ void main() {
     );
   });
 
-  testWidgets('AppShell sidebar tag click filters tracks library', (
-    tester,
-  ) async {
-    tester.view.physicalSize = const Size(1280, 800);
-    tester.view.devicePixelRatio = 1.0;
-    addTearDown(tester.view.resetPhysicalSize);
+  testWidgets(
+    'AppShell sidebar tag click filters tracks library with badge and Tags header opens TagsView',
+    (tester) async {
+      tester.view.physicalSize = const Size(1280, 800);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
 
-    await tester.pumpWidget(_buildAppShellTest());
-    await tester.pumpAndSettle();
+      await tester.pumpWidget(_buildAppShellTest());
+      await tester.pumpAndSettle();
 
-    // Switch to Albums first
-    await tester.tap(find.text('Albums'));
-    await tester.pumpAndSettle();
-    expect(find.byType(AlbumsView), findsOneWidget);
+      // Switch to Albums first
+      await tester.tap(find.text('Albums'));
+      await tester.pumpAndSettle();
+      expect(find.byType(AlbumsView), findsOneWidget);
 
-    // Click 'Audiophile' tag in sidebar
-    expect(find.text('Audiophile'), findsOneWidget);
-    await tester.tap(find.text('Audiophile'));
-    await tester.pumpAndSettle();
+      // Click 'Audiophile' tag in sidebar
+      expect(find.text('Audiophile'), findsOneWidget);
+      await tester.tap(find.text('Audiophile'));
+      await tester.pumpAndSettle();
 
-    // Should navigate to TracksView with query updated
-    expect(find.byType(TracksView), findsOneWidget);
-  });
+      // Should navigate to TracksView with filter badge 'Tag: Audiophile'
+      expect(find.byType(TracksView), findsOneWidget);
+      expect(find.text('Tag: Audiophile'), findsOneWidget);
+
+      // Search controller must NOT be mutated
+      final searchInput = tester.widget<EditableText>(
+        find.byType(EditableText).first,
+      );
+      expect(searchInput.controller.text, isEmpty);
+
+      // Clear filter via X button
+      await tester.tap(find.byIcon(LucideIcons.x));
+      await tester.pumpAndSettle();
+      expect(find.text('Tag: Audiophile'), findsNothing);
+
+      // Click 'Tags' header in sidebar -> navigates to TagsView
+      await tester.tap(find.text('Tags'));
+      await tester.pumpAndSettle();
+      expect(find.byType(TagsView), findsOneWidget);
+      expect(find.text('Tags'), findsWidgets);
+    },
+  );
 
   testWidgets(
     'AppShell PlaylistsView "New Playlist" action creates playlist and sidebar has no redundant button',
@@ -222,7 +263,7 @@ void main() {
       expect(find.text('+ New Playlist'), findsNothing);
 
       // Navigate to Playlists tab
-      await tester.tap(find.text('PLAYLISTS'));
+      await tester.tap(find.text('Playlists'));
       await tester.pumpAndSettle();
       expect(find.byType(PlaylistsView), findsOneWidget);
 
@@ -253,7 +294,7 @@ void main() {
 
       expect(find.text('Lyra Audio'), findsOneWidget);
       expect(find.text('LIBRARY'), findsOneWidget);
-      expect(find.text('PLAYLISTS'), findsOneWidget);
+      expect(find.text('Playlists'), findsOneWidget);
       expect(find.text('Collapse'), findsOneWidget);
 
       // 2. Toggle collapse manually on wide desktop
@@ -261,7 +302,7 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('LIBRARY'), findsNothing);
-      expect(find.text('PLAYLISTS'), findsNothing);
+      expect(find.text('Playlists'), findsNothing);
       expect(find.text('Collapse'), findsNothing);
 
       // 3. Small Screen (< 900px, e.g. 800px) -> Effective collapsed
@@ -269,7 +310,7 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('LIBRARY'), findsNothing);
-      expect(find.text('PLAYLISTS'), findsNothing);
+      expect(find.text('Playlists'), findsNothing);
       expect(find.text('Collapse'), findsNothing);
     },
   );
@@ -373,6 +414,310 @@ void main() {
       expect(find.text('Albums'), findsNothing);
       expect(find.text('Artists'), findsNothing);
       expect(find.text('Collapse'), findsNothing);
+    },
+  );
+
+  testWidgets(
+    'AppShell search bar query does not filter or wipe out left sidebar playlists',
+    (tester) async {
+      tester.view.physicalSize = const Size(1280, 800);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+
+      await tester.pumpWidget(_buildAppShellTest());
+      await tester.pumpAndSettle();
+
+      // Verify sidebar contains initial playlists
+      final sidebarFinder = find.byType(LyraSidebar);
+      expect(
+        find.descendant(
+          of: sidebarFinder,
+          matching: find.text('Audiophile Reference Master'),
+        ),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(
+          of: sidebarFinder,
+          matching: find.text('Late Night Jazz'),
+        ),
+        findsOneWidget,
+      );
+
+      // Perform a search query that matches a track but NO playlist
+      final searchInput = find.byType(EditableText).first;
+      await tester.enterText(searchInput, 'Daft Punk');
+      await tester.pumpAndSettle();
+
+      // Main content filtered
+      expect(
+        find.descendant(
+          of: find.byType(TracksView),
+          matching: find.text('Giorgio by Moroder'),
+        ),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(
+          of: find.byType(TracksView),
+          matching: find.text('Hotel California (Live on MTV 1994)'),
+        ),
+        findsNothing,
+      );
+
+      // Left sidebar navigation playlists remain intact and visible
+      expect(
+        find.descendant(
+          of: sidebarFinder,
+          matching: find.text('Audiophile Reference Master'),
+        ),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(
+          of: sidebarFinder,
+          matching: find.text('Late Night Jazz'),
+        ),
+        findsOneWidget,
+      );
+    },
+  );
+
+  testWidgets(
+    'AppShell AlbumsView navigation to TracksView scopes tracks cleanly without mutating search input',
+    (tester) async {
+      tester.view.physicalSize = const Size(1280, 800);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+
+      await tester.pumpWidget(_buildAppShellTest());
+      await tester.pumpAndSettle();
+
+      // Navigate to Albums
+      await tester.tap(find.text('Albums'));
+      await tester.pumpAndSettle();
+      expect(find.byType(AlbumsView), findsOneWidget);
+
+      // Click 'Hell Freezes Over' album card
+      await tester.tap(find.text('Hell Freezes Over'));
+      await tester.pumpAndSettle();
+
+      // Should be in TracksView
+      expect(find.byType(TracksView), findsOneWidget);
+      expect(
+        find.descendant(
+          of: find.byType(TracksView),
+          matching: find.text('Hotel California (Live on MTV 1994)'),
+        ),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(
+          of: find.byType(TracksView),
+          matching: find.text('So What'),
+        ),
+        findsNothing,
+      );
+      expect(find.text('Album: Hell Freezes Over'), findsOneWidget);
+
+      // Search controller must NOT be mutated
+      final searchInput = tester.widget<EditableText>(
+        find.byType(EditableText).first,
+      );
+      expect(searchInput.controller.text, isEmpty);
+
+      // Clear filter via X button
+      await tester.tap(find.byIcon(LucideIcons.x));
+      await tester.pumpAndSettle();
+
+      // All tracks restored
+      expect(
+        find.descendant(
+          of: find.byType(TracksView),
+          matching: find.text('Hotel California (Live on MTV 1994)'),
+        ),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(
+          of: find.byType(TracksView),
+          matching: find.text('So What'),
+        ),
+        findsOneWidget,
+      );
+      expect(find.text('Album: Hell Freezes Over'), findsNothing);
+    },
+  );
+
+  testWidgets(
+    'AppShell WorksView and ArtistsView navigation to TracksView scopes tracks cleanly',
+    (tester) async {
+      tester.view.physicalSize = const Size(1280, 800);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+
+      await tester.pumpWidget(_buildAppShellTest());
+      await tester.pumpAndSettle();
+
+      // 1. Works navigation
+      await tester.tap(find.text('Works'));
+      await tester.pumpAndSettle();
+      expect(find.byType(WorksView), findsOneWidget);
+
+      await tester.tap(find.text('Hotel California'));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(TracksView), findsOneWidget);
+      expect(
+        find.descendant(
+          of: find.byType(TracksView),
+          matching: find.text('Hotel California (Live on MTV 1994)'),
+        ),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(
+          of: find.byType(TracksView),
+          matching: find.text('So What'),
+        ),
+        findsNothing,
+      );
+      expect(find.text('Work: Hotel California'), findsOneWidget);
+
+      // Search text still empty
+      var searchInput = tester.widget<EditableText>(
+        find.byType(EditableText).first,
+      );
+      expect(searchInput.controller.text, isEmpty);
+
+      // 2. Artists navigation
+      await tester.tap(find.text('Artists'));
+      await tester.pumpAndSettle();
+      expect(find.byType(ArtistsView), findsOneWidget);
+
+      await tester.tap(find.text('Miles Davis'));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(TracksView), findsOneWidget);
+      expect(
+        find.descendant(
+          of: find.byType(TracksView),
+          matching: find.text('So What'),
+        ),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(
+          of: find.byType(TracksView),
+          matching: find.text('Blue in Green'),
+        ),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(
+          of: find.byType(TracksView),
+          matching: find.text('Hotel California (Live on MTV 1994)'),
+        ),
+        findsNothing,
+      );
+      expect(find.text('Artist: Miles Davis'), findsOneWidget);
+
+      // Search text still empty
+      searchInput = tester.widget<EditableText>(
+        find.byType(EditableText).first,
+      );
+      expect(searchInput.controller.text, isEmpty);
+
+      // 3. Clicking Tracks in sidebar clears scoped filter
+      await tester.tap(find.text('Tracks'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Artist: Miles Davis'), findsNothing);
+      expect(
+        find.descendant(
+          of: find.byType(TracksView),
+          matching: find.text('Hotel California (Live on MTV 1994)'),
+        ),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(
+          of: find.byType(TracksView),
+          matching: find.text('So What'),
+        ),
+        findsOneWidget,
+      );
+    },
+  );
+
+  testWidgets(
+    'Toggling theme from header updates background, sidebar, playlist cards, and tags in real-time',
+    (tester) async {
+      tester.view.physicalSize = const Size(1280, 800);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+
+      final themeNotifier = ValueNotifier<ThemeMode>(ThemeMode.dark);
+      addTearDown(themeNotifier.dispose);
+
+      await tester.pumpWidget(_buildAppShellTest(themeNotifier: themeNotifier));
+      await tester.pumpAndSettle();
+
+      // 1. Initial dark mode
+      expect(themeNotifier.value, equals(ThemeMode.dark));
+      final scaffoldDark = tester.widget<Scaffold>(find.byType(Scaffold));
+      expect(scaffoldDark.backgroundColor, equals(LyraColors.zinc950));
+
+      // Toggle to Light Mode via theme button in HeaderBar (shows sun icon in dark mode)
+      final themeToggleBtn = find.byIcon(LucideIcons.sun);
+      expect(themeToggleBtn, findsOneWidget);
+      await tester.tap(themeToggleBtn);
+      await tester.pumpAndSettle();
+
+      expect(themeNotifier.value, equals(ThemeMode.light));
+      expect(find.byIcon(LucideIcons.moon), findsOneWidget);
+      final scaffoldLight = tester.widget<Scaffold>(find.byType(Scaffold));
+      expect(scaffoldLight.backgroundColor, equals(const Color(0xFFFFFFFF)));
+
+      // 2. Check PlaylistsView in Light Mode
+      await tester.tap(find.text('Playlists').first);
+      await tester.pumpAndSettle();
+      expect(find.byType(PlaylistsView), findsOneWidget);
+
+      // Verify that ShadTheme inside PlaylistsView is light
+      final playlistsElement = find.byType(PlaylistsView).evaluate().first;
+      final playlistsShadTheme = ShadTheme.of(playlistsElement);
+      expect(playlistsShadTheme.brightness, equals(Brightness.light));
+      expect(
+        playlistsShadTheme.colorScheme.card,
+        equals(const ShadZincColorScheme.light().card),
+      );
+
+      // 3. Check TagsView in Light Mode
+      await tester.tap(find.text('Tags').first);
+      await tester.pumpAndSettle();
+      expect(find.byType(TagsView), findsOneWidget);
+
+      final tagsElement = find.byType(TagsView).evaluate().first;
+      final tagsShadTheme = ShadTheme.of(tagsElement);
+      expect(tagsShadTheme.brightness, equals(Brightness.light));
+      expect(
+        tagsShadTheme.colorScheme.card,
+        equals(const ShadZincColorScheme.light().card),
+      );
+
+      // 4. Check SettingsView and switch back to Dark Mode via Settings card
+      await tester.tap(find.text('Settings'));
+      await tester.pumpAndSettle();
+      expect(find.byType(SettingsView), findsOneWidget);
+
+      // Tap the Zinc Dark theme option card
+      await tester.tap(find.text('Zinc Dark'));
+      await tester.pumpAndSettle();
+
+      expect(themeNotifier.value, equals(ThemeMode.dark));
+      final scaffoldBackDark = tester.widget<Scaffold>(find.byType(Scaffold));
+      expect(scaffoldBackDark.backgroundColor, equals(LyraColors.zinc950));
     },
   );
 }

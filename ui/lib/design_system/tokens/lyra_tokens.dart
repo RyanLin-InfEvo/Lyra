@@ -154,6 +154,62 @@ class LyraThemeTokens {
       warningForeground: Color(0xFFFFFFFF),
     );
   }
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is LyraThemeTokens &&
+          runtimeType == other.runtimeType &&
+          isDark == other.isDark &&
+          background == other.background &&
+          foreground == other.foreground &&
+          card == other.card &&
+          cardForeground == other.cardForeground &&
+          border == other.border &&
+          text == other.text &&
+          textMuted == other.textMuted &&
+          primary == other.primary &&
+          primaryForeground == other.primaryForeground &&
+          secondary == other.secondary &&
+          secondaryForeground == other.secondaryForeground &&
+          muted == other.muted &&
+          mutedForeground == other.mutedForeground &&
+          accent == other.accent &&
+          accentForeground == other.accentForeground &&
+          destructive == other.destructive &&
+          destructiveForeground == other.destructiveForeground &&
+          ring == other.ring &&
+          success == other.success &&
+          successForeground == other.successForeground &&
+          warning == other.warning &&
+          warningForeground == other.warningForeground;
+
+  @override
+  int get hashCode => Object.hashAll([
+    isDark,
+    background,
+    foreground,
+    card,
+    cardForeground,
+    border,
+    text,
+    textMuted,
+    primary,
+    primaryForeground,
+    secondary,
+    secondaryForeground,
+    muted,
+    mutedForeground,
+    accent,
+    accentForeground,
+    destructive,
+    destructiveForeground,
+    ring,
+    success,
+    successForeground,
+    warning,
+    warningForeground,
+  ]);
 }
 
 /// Spacing tokens based on standard 4px/8px grid system.

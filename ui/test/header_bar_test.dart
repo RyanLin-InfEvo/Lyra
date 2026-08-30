@@ -20,26 +20,34 @@ Widget _buildHeaderBarTest({
   const factory = ShadcnFactory();
 
   return ShadApp(
-    themeMode: ThemeMode.dark,
-    darkTheme: ShadThemeData(
-      brightness: Brightness.dark,
-      colorScheme: const ShadZincColorScheme.dark(),
-    ),
+    title: 'Lyra Test',
+    debugShowCheckedModeBanner: false,
     home: ValueListenableBuilder<ThemeMode>(
       valueListenable: themeModeNotifier,
       builder: (context, themeMode, _) {
-        final tokens = themeMode == ThemeMode.dark
+        final isDark = themeMode == ThemeMode.dark;
+        final tokens = isDark
             ? LyraThemeTokens.dark()
             : LyraThemeTokens.light();
-        return LyraDesignSystemScope(
-          factory: factory,
-          tokens: tokens,
-          themeModeNotifier: themeModeNotifier,
-          child: Scaffold(
-            body: LyraHeaderBar(
-              searchController: searchController,
-              onSearchChanged: onSearchChanged ?? (_) {},
-              onImportPressed: onImportPressed ?? () {},
+        final shadTheme = ShadThemeData(
+          brightness: isDark ? Brightness.dark : Brightness.light,
+          colorScheme: isDark
+              ? const ShadZincColorScheme.dark()
+              : const ShadZincColorScheme.light(),
+        );
+
+        return ShadTheme(
+          data: shadTheme,
+          child: LyraDesignSystemScope(
+            factory: factory,
+            tokens: tokens,
+            themeModeNotifier: themeModeNotifier,
+            child: Scaffold(
+              body: LyraHeaderBar(
+                searchController: searchController,
+                onSearchChanged: onSearchChanged ?? (_) {},
+                onImportPressed: onImportPressed ?? () {},
+              ),
             ),
           ),
         );
@@ -93,10 +101,14 @@ void main() {
 
     // Verify Theme toggle toggles dark/light theme
     expect(themeNotifier.value, equals(ThemeMode.dark));
-    // The theme button is the outline button
     final themeButton = find.byType(ShadButton).first;
     await tester.tap(themeButton);
     await tester.pumpAndSettle();
     expect(themeNotifier.value, equals(ThemeMode.light));
+
+    // Toggle back to dark
+    await tester.tap(themeButton);
+    await tester.pumpAndSettle();
+    expect(themeNotifier.value, equals(ThemeMode.dark));
   });
 }

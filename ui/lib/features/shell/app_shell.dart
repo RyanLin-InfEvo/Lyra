@@ -19,11 +19,20 @@ import '../models/work.dart';
 import '../playlists/playlists_view.dart';
 import '../services/music_service.dart';
 import '../settings/settings_view.dart';
+import '../tags/tags_view.dart';
 import '../tracks/tracks_view.dart';
 import '../works/works_view.dart';
 import 'header_bar.dart';
 import 'player_bar.dart';
 import 'sidebar.dart';
+
+/// Scoped filter applied to the tracks library view without mutating global search input.
+class TrackFilter {
+  final String label;
+  final bool Function(Track track) predicate;
+
+  const TrackFilter({required this.label, required this.predicate});
+}
 
 /// Main Desktop App Shell orchestrating 3-pane layout, playback state, and navigation.
 class AppShell extends StatefulWidget {
@@ -46,11 +55,13 @@ class _AppShellState extends State<AppShell> {
   List<Album> _albums = [];
   List<Work> _works = [];
   List<Artist> _artists = [];
+  List<Playlist> _sidebarPlaylists = [];
   List<Playlist> _playlists = [];
   List<Tag> _tags = [];
   List<CasObject> _casObjects = [];
   String? _selectedPlaylistId;
   String? _selectedTagId;
+  TrackFilter? _activeTrackFilter;
   bool _isLoading = true;
 
   // Playback State
@@ -94,6 +105,9 @@ class _AppShellState extends State<AppShell> {
       _works = works;
       _artists = artists;
       _playlists = playlists;
+      if (query == null || query.isEmpty) {
+        _sidebarPlaylists = playlists;
+      }
       _tags = tags;
       _casObjects = casObjects;
       _isLoading = false;
@@ -105,6 +119,10 @@ class _AppShellState extends State<AppShell> {
   }
 
   void _onSearchChanged(String query) {
+    if (query.isNotEmpty) {
+      _activeTrackFilter = null;
+      _selectedTagId = null;
+    }
     _loadCatalog(query: query);
   }
 
@@ -151,14 +169,16 @@ class _AppShellState extends State<AppShell> {
   void _onNextTrack() {
     if (_tracks.isEmpty || _currentTrack == null) return;
     final currentIndex = _tracks.indexWhere((t) => t.id == _currentTrack!.id);
-    final nextIndex = (currentIndex + 1) % _tracks.length;
+    final validIndex = currentIndex >= 0 ? currentIndex : -1;
+    final nextIndex = (validIndex + 1) % _tracks.length;
     _onTrackSelected(_tracks[nextIndex]);
   }
 
   void _onPreviousTrack() {
     if (_tracks.isEmpty || _currentTrack == null) return;
     final currentIndex = _tracks.indexWhere((t) => t.id == _currentTrack!.id);
-    final prevIndex = (currentIndex - 1 + _tracks.length) % _tracks.length;
+    final validIndex = currentIndex >= 0 ? currentIndex : 0;
+    final prevIndex = (validIndex - 1 + _tracks.length) % _tracks.length;
     _onTrackSelected(_tracks[prevIndex]);
   }
 
@@ -172,9 +192,37 @@ class _AppShellState extends State<AppShell> {
     });
   }
 
+  void _filterByTag(Tag tag) {
+    setState(() {
+      _selectedTagId = tag.id;
+      _selectedPlaylistId = null;
+      _activeTrackFilter = TrackFilter(
+        label: 'Tag: ${tag.name}',
+        predicate: (track) {
+          final tagLower = tag.name.toLowerCase();
+          if (tagLower == 'hi-res') {
+            return (track.bitDepth != null && track.bitDepth! >= 24) ||
+                (track.sampleRate != null && track.sampleRate! > 48000);
+          }
+          if (tagLower == 'audiophile' ||
+              tagLower == 'reference master' ||
+              tagLower == 'direct stream') {
+            return track.verified ||
+                (track.bitDepth != null && track.bitDepth! >= 24);
+          }
+          return (track.format ?? '').toLowerCase().contains(tagLower) ||
+              track.displayTitle.toLowerCase().contains(tagLower) ||
+              track.artist.toLowerCase().contains(tagLower) ||
+              track.album.toLowerCase().contains(tagLower);
+        },
+      );
+      _currentTab = AppTab.tracks;
+    });
+  }
+
   Future<void> _handleNewPlaylist() async {
     final newPl = await widget.musicService.createPlaylist(
-      title: 'New Playlist ${_playlists.length + 1}',
+      title: 'New Playlist ${_sidebarPlaylists.length + 1}',
       description: 'User curated collection',
     );
     await _loadCatalog();
@@ -192,11 +240,19 @@ class _AppShellState extends State<AppShell> {
 
     switch (_currentTab) {
       case AppTab.tracks:
+        final effectiveTracks = _activeTrackFilter != null
+            ? _tracks.where(_activeTrackFilter!.predicate).toList()
+            : _tracks;
         return RepaintBoundary(
           child: TracksView(
-            tracks: _tracks,
+            tracks: effectiveTracks,
             currentTrack: _currentTrack,
             isPlaying: _isPlaying,
+            filterLabel: _activeTrackFilter?.label,
+            onClearFilter: () => setState(() {
+              _activeTrackFilter = null;
+              _selectedTagId = null;
+            }),
             onTrackSelected: _onTrackSelected,
             onTogglePlay: _togglePlay,
           ),
@@ -206,9 +262,19 @@ class _AppShellState extends State<AppShell> {
           child: WorksView(
             works: _works,
             onWorkSelected: (work) {
-              _searchController.text = work.title;
-              _onSearchChanged(work.title);
-              setState(() => _currentTab = AppTab.tracks);
+              setState(() {
+                _activeTrackFilter = TrackFilter(
+                  label: 'Work: ${work.title}',
+                  predicate: (track) =>
+                      track.displayTitle.toLowerCase().contains(
+                        work.title.toLowerCase(),
+                      ) ||
+                      work.title.toLowerCase().contains(
+                        track.displayTitle.toLowerCase(),
+                      ),
+                );
+                _currentTab = AppTab.tracks;
+              });
             },
           ),
         );
@@ -217,9 +283,14 @@ class _AppShellState extends State<AppShell> {
           child: AlbumsView(
             albums: _albums,
             onAlbumSelected: (album) {
-              _searchController.text = album.title;
-              _onSearchChanged(album.title);
-              setState(() => _currentTab = AppTab.tracks);
+              setState(() {
+                _activeTrackFilter = TrackFilter(
+                  label: 'Album: ${album.title}',
+                  predicate: (track) =>
+                      track.album.toLowerCase() == album.title.toLowerCase(),
+                );
+                _currentTab = AppTab.tracks;
+              });
             },
           ),
         );
@@ -228,9 +299,15 @@ class _AppShellState extends State<AppShell> {
           child: ArtistsView(
             artists: _artists,
             onArtistSelected: (artist) {
-              _searchController.text = artist.name;
-              _onSearchChanged(artist.name);
-              setState(() => _currentTab = AppTab.tracks);
+              setState(() {
+                _activeTrackFilter = TrackFilter(
+                  label: 'Artist: ${artist.name}',
+                  predicate: (track) => track.artist.toLowerCase().contains(
+                    artist.name.toLowerCase(),
+                  ),
+                );
+                _currentTab = AppTab.tracks;
+              });
             },
           ),
         );
@@ -243,6 +320,46 @@ class _AppShellState extends State<AppShell> {
               setState(() {
                 _selectedPlaylistId = playlist.id;
               });
+            },
+          ),
+        );
+      case AppTab.tags:
+        final Map<String, int> tagTrackCounts = {};
+        for (final tag in _tags) {
+          final tagLower = tag.name.toLowerCase();
+          tagTrackCounts[tag.id] = _tracks.where((track) {
+            if (tagLower == 'hi-res') {
+              return (track.bitDepth != null && track.bitDepth! >= 24) ||
+                  (track.sampleRate != null && track.sampleRate! > 48000);
+            }
+            if (tagLower == 'audiophile' ||
+                tagLower == 'reference master' ||
+                tagLower == 'direct stream') {
+              return track.verified ||
+                  (track.bitDepth != null && track.bitDepth! >= 24);
+            }
+            return (track.format ?? '').toLowerCase().contains(tagLower) ||
+                track.displayTitle.toLowerCase().contains(tagLower) ||
+                track.artist.toLowerCase().contains(tagLower) ||
+                track.album.toLowerCase().contains(tagLower);
+          }).length;
+        }
+        return RepaintBoundary(
+          child: TagsView(
+            tags: _tags,
+            tagTrackCounts: tagTrackCounts,
+            onTagSelected: _filterByTag,
+            onCreateTag:
+                ({required String name, required String category}) async {
+                  await widget.musicService.createTag(
+                    name: name,
+                    category: category,
+                  );
+                  await _loadCatalog();
+                },
+            onDeleteTag: (tag) async {
+              await widget.musicService.deleteTag(tag.id);
+              await _loadCatalog();
             },
           ),
         );
@@ -287,25 +404,36 @@ class _AppShellState extends State<AppShell> {
                     child: LyraSidebar(
                       currentTab: _currentTab,
                       isCollapsed: effectiveSidebarCollapsed,
-                      playlists: _playlists,
+                      playlists: _sidebarPlaylists,
                       selectedPlaylistId: _selectedPlaylistId,
                       onPlaylistSelected: (pl) {
                         setState(() {
                           _selectedPlaylistId = pl.id;
+                          _selectedTagId = null;
                           _currentTab = AppTab.playlists;
                         });
                       },
                       tags: _tags,
                       selectedTagId: _selectedTagId,
-                      onTagSelected: (tag) {
+                      onTagSelected: _filterByTag,
+                      onTagsHeaderSelected: () {
                         setState(() {
-                          _selectedTagId = tag.id;
-                          _searchController.text = tag.name;
+                          _selectedTagId = null;
+                          _selectedPlaylistId = null;
+                          _currentTab = AppTab.tags;
                         });
-                        _onSearchChanged(tag.name);
-                        setState(() => _currentTab = AppTab.tracks);
                       },
-                      onTabSelected: (tab) => setState(() => _currentTab = tab),
+                      onTabSelected: (tab) => setState(() {
+                        if (tab == AppTab.tracks) {
+                          _activeTrackFilter = null;
+                          _selectedTagId = null;
+                        } else if (tab != AppTab.playlists &&
+                            tab != AppTab.tags) {
+                          _selectedPlaylistId = null;
+                          _selectedTagId = null;
+                        }
+                        _currentTab = tab;
+                      }),
                       onToggleCollapse: () => setState(
                         () => _isSidebarCollapsed = !_isSidebarCollapsed,
                       ),

@@ -23,7 +23,7 @@ class ArtistRepository extends BaseRepository {
     final items = unpackList(response);
     return items
         .whereType<Map>()
-        .map((item) => Artist.fromJson(item.cast<String, dynamic>()))
+        .map((item) => Artist.fromJson(Map<String, dynamic>.from(item)))
         .toList();
   }
 
@@ -42,7 +42,7 @@ class ArtistRepository extends BaseRepository {
     final items = unpackList(response);
     return items
         .whereType<Map>()
-        .map((item) => Artist.fromJson(item.cast<String, dynamic>()))
+        .map((item) => Artist.fromJson(Map<String, dynamic>.from(item)))
         .toList();
   }
 

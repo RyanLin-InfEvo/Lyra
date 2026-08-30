@@ -375,9 +375,11 @@ class _ProgressSliderState extends State<_ProgressSlider> {
                       duration: const Duration(milliseconds: 150),
                       height: isActive ? 6.0 : 4.0,
                       width: double.infinity,
-                      decoration: BoxDecoration(
-                        color: widget.tokens.secondary,
-                        borderRadius: LyraRadius.fullRadius,
+                      child: Container(
+                        decoration: BoxDecoration(
+                          color: widget.tokens.secondary,
+                          borderRadius: LyraRadius.fullRadius,
+                        ),
                       ),
                     ),
                     FractionallySizedBox(
@@ -385,9 +387,11 @@ class _ProgressSliderState extends State<_ProgressSlider> {
                       child: AnimatedContainer(
                         duration: const Duration(milliseconds: 150),
                         height: isActive ? 6.0 : 4.0,
-                        decoration: BoxDecoration(
-                          color: widget.tokens.primary,
-                          borderRadius: LyraRadius.fullRadius,
+                        child: Container(
+                          decoration: BoxDecoration(
+                            color: widget.tokens.primary,
+                            borderRadius: LyraRadius.fullRadius,
+                          ),
                         ),
                       ),
                     ),
@@ -496,9 +500,11 @@ class _VolumeSliderState extends State<_VolumeSlider> {
                       duration: const Duration(milliseconds: 150),
                       height: isActive ? 5.0 : 4.0,
                       width: double.infinity,
-                      decoration: BoxDecoration(
-                        color: widget.tokens.secondary,
-                        borderRadius: LyraRadius.fullRadius,
+                      child: Container(
+                        decoration: BoxDecoration(
+                          color: widget.tokens.secondary,
+                          borderRadius: LyraRadius.fullRadius,
+                        ),
                       ),
                     ),
                     FractionallySizedBox(
@@ -506,9 +512,11 @@ class _VolumeSliderState extends State<_VolumeSlider> {
                       child: AnimatedContainer(
                         duration: const Duration(milliseconds: 150),
                         height: isActive ? 5.0 : 4.0,
-                        decoration: BoxDecoration(
-                          color: widget.tokens.primary,
-                          borderRadius: LyraRadius.fullRadius,
+                        child: Container(
+                          decoration: BoxDecoration(
+                            color: widget.tokens.primary,
+                            borderRadius: LyraRadius.fullRadius,
+                          ),
                         ),
                       ),
                     ),

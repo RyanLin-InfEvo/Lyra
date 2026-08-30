@@ -228,6 +228,7 @@ class _ImportAudioModalState extends State<ImportAudioModal> {
 
               // Format & Resolution
               Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Expanded(
                     child: Column(
@@ -241,27 +242,25 @@ class _ImportAudioModalState extends State<ImportAudioModal> {
                           ),
                         ),
                         const SizedBox(height: LyraSpacing.xs),
-                        Row(
+                        Wrap(
+                          spacing: LyraSpacing.xs,
+                          runSpacing: LyraSpacing.xs,
                           children: ['FLAC', 'WAV', 'AAC'].map((fmt) {
                             final isSel = _format == fmt;
-                            return Padding(
-                              padding: const EdgeInsets.only(
-                                right: LyraSpacing.xs,
-                              ),
-                              child: LyraButton(
-                                variant: isSel
-                                    ? LyraButtonVariant.primary
-                                    : LyraButtonVariant.outline,
-                                size: LyraButtonSize.sm,
-                                onPressed: () => setState(() => _format = fmt),
-                                child: Text(fmt),
-                              ),
+                            return LyraButton(
+                              variant: isSel
+                                  ? LyraButtonVariant.primary
+                                  : LyraButtonVariant.outline,
+                              size: LyraButtonSize.sm,
+                              onPressed: () => setState(() => _format = fmt),
+                              child: Text(fmt),
                             );
                           }).toList(),
                         ),
                       ],
                     ),
                   ),
+                  const SizedBox(width: LyraSpacing.md),
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -274,7 +273,9 @@ class _ImportAudioModalState extends State<ImportAudioModal> {
                           ),
                         ),
                         const SizedBox(height: LyraSpacing.xs),
-                        Row(
+                        Wrap(
+                          spacing: LyraSpacing.xs,
+                          runSpacing: LyraSpacing.xs,
                           children:
                               [
                                 (sr: 96000, bd: 24, label: '24/96'),
@@ -284,23 +285,18 @@ class _ImportAudioModalState extends State<ImportAudioModal> {
                                 final isSel =
                                     _sampleRate == res.sr &&
                                     _bitDepth == res.bd;
-                                return Padding(
-                                  padding: const EdgeInsets.only(
-                                    right: LyraSpacing.xs,
-                                  ),
-                                  child: LyraButton(
-                                    variant: isSel
-                                        ? LyraButtonVariant.primary
-                                        : LyraButtonVariant.outline,
-                                    size: LyraButtonSize.sm,
-                                    onPressed: () {
-                                      setState(() {
-                                        _sampleRate = res.sr;
-                                        _bitDepth = res.bd;
-                                      });
-                                    },
-                                    child: Text(res.label),
-                                  ),
+                                return LyraButton(
+                                  variant: isSel
+                                      ? LyraButtonVariant.primary
+                                      : LyraButtonVariant.outline,
+                                  size: LyraButtonSize.sm,
+                                  onPressed: () {
+                                    setState(() {
+                                      _sampleRate = res.sr;
+                                      _bitDepth = res.bd;
+                                    });
+                                  },
+                                  child: Text(res.label),
                                 );
                               }).toList(),
                         ),

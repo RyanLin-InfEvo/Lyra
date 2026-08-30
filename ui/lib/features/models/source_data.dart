@@ -57,15 +57,15 @@ class SourceData {
     }
 
     return SourceData(
-      id: json['id'] as String? ?? '',
+      id: json['id']?.toString() ?? '',
       fileHash:
-          (json['file_hash'] ?? json['fileHash'] ?? json['hash']) as String? ??
+          (json['file_hash'] ?? json['fileHash'] ?? json['hash'])?.toString() ??
           '',
-      sourceType: (json['source_type'] ?? json['sourceType']) as String? ?? '',
+      sourceType: (json['source_type'] ?? json['sourceType'])?.toString() ?? '',
       originalPath:
-          (json['original_path'] ?? json['originalPath']) as String? ?? '',
+          (json['original_path'] ?? json['originalPath'])?.toString() ?? '',
       createdAt: parsedCreatedAt,
-      note: json['note'] as String? ?? '',
+      note: json['note']?.toString() ?? '',
     );
   }
 

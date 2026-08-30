@@ -40,27 +40,28 @@ class _LyraAppState extends State<LyraApp> {
     return ShadApp(
       title: 'Lyra Desktop',
       debugShowCheckedModeBanner: false,
-      themeMode: _themeModeNotifier.value,
-      theme: ShadThemeData(
-        brightness: Brightness.light,
-        colorScheme: const ShadZincColorScheme.light(),
-      ),
-      darkTheme: ShadThemeData(
-        brightness: Brightness.dark,
-        colorScheme: const ShadZincColorScheme.dark(),
-      ),
       home: ValueListenableBuilder<ThemeMode>(
         valueListenable: _themeModeNotifier,
         builder: (context, themeMode, _) {
-          final tokens = themeMode == ThemeMode.dark
+          final isDark = themeMode == ThemeMode.dark;
+          final tokens = isDark
               ? LyraThemeTokens.dark()
               : LyraThemeTokens.light();
+          final shadTheme = ShadThemeData(
+            brightness: isDark ? Brightness.dark : Brightness.light,
+            colorScheme: isDark
+                ? const ShadZincColorScheme.dark()
+                : const ShadZincColorScheme.light(),
+          );
 
-          return LyraDesignSystemScope(
-            factory: _shadcnFactory,
-            tokens: tokens,
-            themeModeNotifier: _themeModeNotifier,
-            child: AppShell(musicService: _musicService),
+          return ShadTheme(
+            data: shadTheme,
+            child: LyraDesignSystemScope(
+              factory: _shadcnFactory,
+              tokens: tokens,
+              themeModeNotifier: _themeModeNotifier,
+              child: AppShell(musicService: _musicService),
+            ),
           );
         },
       ),

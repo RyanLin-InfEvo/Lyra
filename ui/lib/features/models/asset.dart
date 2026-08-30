@@ -76,22 +76,39 @@ class Asset {
       parsedCreatedAt = DateTime.now();
     }
 
+    int parseInt(dynamic val, {int defaultValue = 0}) {
+      if (val is int) return val;
+      if (val is num) return val.toInt();
+      if (val is String) return int.tryParse(val) ?? defaultValue;
+      return defaultValue;
+    }
+
+    bool parseBool(dynamic val, {bool defaultValue = true}) {
+      if (val is bool) return val;
+      if (val is num) return val != 0;
+      if (val is String) {
+        final lower = val.toLowerCase();
+        if (lower == 'true' || lower == '1') return true;
+        if (lower == 'false' || lower == '0') return false;
+      }
+      return defaultValue;
+    }
+
     return Asset(
       fileHash:
-          (json['file_hash'] ?? json['fileHash'] ?? json['hash']) as String? ??
+          (json['file_hash'] ?? json['fileHash'] ?? json['hash'])?.toString() ??
           '',
-      mimeType: (json['mime_type'] ?? json['mimeType']) as String? ?? '',
+      mimeType: (json['mime_type'] ?? json['mimeType'])?.toString() ?? '',
       assetType:
-          (json['asset_type'] ?? json['assetType']) as String? ?? 'audio',
-      fileSize:
-          (json['file_size'] ??
-                  json['fileSize'] ??
-                  json['size_bytes'] ??
-                  json['sizeBytes'])
-              as int? ??
-          0,
+          (json['asset_type'] ?? json['assetType'])?.toString() ?? 'audio',
+      fileSize: parseInt(
+        json['file_size'] ??
+            json['fileSize'] ??
+            json['size_bytes'] ??
+            json['sizeBytes'],
+      ),
       createdAt: parsedCreatedAt,
-      verified: (json['verified'] as bool?) ?? true,
+      verified: parseBool(json['verified'], defaultValue: true),
     );
   }
 

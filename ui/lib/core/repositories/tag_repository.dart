@@ -24,7 +24,7 @@ class TagRepository extends BaseRepository {
     final items = unpackList(response);
     return items
         .whereType<Map>()
-        .map((item) => Tag.fromJson(item.cast<String, dynamic>()))
+        .map((item) => Tag.fromJson(Map<String, dynamic>.from(item)))
         .toList();
   }
 
@@ -73,7 +73,7 @@ class TagRepository extends BaseRepository {
     final items = unpackList(response);
     return items
         .whereType<Map>()
-        .map((item) => Tag.fromJson(item.cast<String, dynamic>()))
+        .map((item) => Tag.fromJson(Map<String, dynamic>.from(item)))
         .toList();
   }
 }

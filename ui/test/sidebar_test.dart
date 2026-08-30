@@ -22,39 +22,59 @@ Widget _buildSidebarTest({
   List<Tag> tags = const [],
   String? selectedTagId,
   ValueChanged<Tag>? onTagSelected,
+  VoidCallback? onTagsHeaderSelected,
   bool defaultPlaylistsExpanded = true,
   bool defaultTagsExpanded = true,
+  ThemeMode themeMode = ThemeMode.dark,
+  ValueNotifier<ThemeMode>? themeNotifier,
 }) {
-  final themeModeNotifier = ValueNotifier<ThemeMode>(ThemeMode.dark);
+  final themeModeNotifier =
+      themeNotifier ?? ValueNotifier<ThemeMode>(themeMode);
   const factory = ShadcnFactory();
-  final tokens = LyraThemeTokens.dark();
 
   return ShadApp(
-    themeMode: ThemeMode.dark,
-    darkTheme: ShadThemeData(
-      brightness: Brightness.dark,
-      colorScheme: const ShadZincColorScheme.dark(),
-    ),
-    home: LyraDesignSystemScope(
-      factory: factory,
-      tokens: tokens,
-      themeModeNotifier: themeModeNotifier,
-      child: Scaffold(
-        body: LyraSidebar(
-          currentTab: currentTab,
-          isCollapsed: isCollapsed,
-          onTabSelected: onTabSelected ?? (_) {},
-          onToggleCollapse: onToggleCollapse ?? () {},
-          playlists: playlists,
-          selectedPlaylistId: selectedPlaylistId,
-          onPlaylistSelected: onPlaylistSelected,
-          tags: tags,
-          selectedTagId: selectedTagId,
-          onTagSelected: onTagSelected,
-          defaultPlaylistsExpanded: defaultPlaylistsExpanded,
-          defaultTagsExpanded: defaultTagsExpanded,
-        ),
-      ),
+    title: 'Lyra Test',
+    debugShowCheckedModeBanner: false,
+    home: ValueListenableBuilder<ThemeMode>(
+      valueListenable: themeModeNotifier,
+      builder: (context, currentMode, _) {
+        final isDark = currentMode == ThemeMode.dark;
+        final tokens = isDark
+            ? LyraThemeTokens.dark()
+            : LyraThemeTokens.light();
+        final shadTheme = ShadThemeData(
+          brightness: isDark ? Brightness.dark : Brightness.light,
+          colorScheme: isDark
+              ? const ShadZincColorScheme.dark()
+              : const ShadZincColorScheme.light(),
+        );
+
+        return ShadTheme(
+          data: shadTheme,
+          child: LyraDesignSystemScope(
+            factory: factory,
+            tokens: tokens,
+            themeModeNotifier: themeModeNotifier,
+            child: Scaffold(
+              body: LyraSidebar(
+                currentTab: currentTab,
+                isCollapsed: isCollapsed,
+                onTabSelected: onTabSelected ?? (_) {},
+                onToggleCollapse: onToggleCollapse ?? () {},
+                playlists: playlists,
+                selectedPlaylistId: selectedPlaylistId,
+                onPlaylistSelected: onPlaylistSelected,
+                tags: tags,
+                selectedTagId: selectedTagId,
+                onTagSelected: onTagSelected,
+                onTagsHeaderSelected: onTagsHeaderSelected,
+                defaultPlaylistsExpanded: defaultPlaylistsExpanded,
+                defaultTagsExpanded: defaultTagsExpanded,
+              ),
+            ),
+          ),
+        );
+      },
     ),
   );
 }
@@ -85,8 +105,6 @@ void main() {
 
     // Section headers
     expect(find.text('LIBRARY'), findsOneWidget);
-    expect(find.text('PLAYLISTS'), findsOneWidget);
-    expect(find.text('TAGS'), findsOneWidget);
     expect(find.text('SYSTEM'), findsOneWidget);
 
     // Library items
@@ -94,6 +112,8 @@ void main() {
     expect(find.text('Works'), findsOneWidget);
     expect(find.text('Albums'), findsOneWidget);
     expect(find.text('Artists'), findsOneWidget);
+    expect(find.text('Playlists'), findsOneWidget);
+    expect(find.text('Tags'), findsOneWidget);
 
     // Playlists items
     expect(find.text('All Playlists'), findsNothing);
@@ -115,7 +135,7 @@ void main() {
   });
 
   testWidgets(
-    'LyraSidebar PLAYLISTS and TAGS sections are expandable and collapsible',
+    'LyraSidebar Playlists and Tags sections are expandable and collapsible',
     (tester) async {
       tester.view.physicalSize = const Size(1280, 800);
       tester.view.devicePixelRatio = 1.0;
@@ -150,8 +170,8 @@ void main() {
       expect(find.text('Favorites'), findsOneWidget);
       expect(find.text('Studio Master'), findsOneWidget);
 
-      // Collapse TAGS section by tapping header
-      await tester.tap(find.text('TAGS'));
+      // Collapse TAGS section by tapping chevron button
+      await tester.tap(find.byKey(const Key('tags_header_chevron')));
       await tester.pumpAndSettle();
 
       expect(find.text('Audiophile'), findsNothing);
@@ -161,7 +181,7 @@ void main() {
       expect(find.text('Favorites'), findsOneWidget);
 
       // Re-expand TAGS section
-      await tester.tap(find.text('TAGS'));
+      await tester.tap(find.byKey(const Key('tags_header_chevron')));
       await tester.pumpAndSettle();
 
       expect(find.text('Audiophile'), findsOneWidget);
@@ -188,42 +208,54 @@ void main() {
     await tester.pumpAndSettle();
     expect(selectedTab, equals(AppTab.artists));
 
-    await tester.tap(find.text('PLAYLISTS'));
+    await tester.tap(find.text('Playlists'));
     await tester.pumpAndSettle();
     expect(selectedTab, equals(AppTab.playlists));
+
+    await tester.tap(find.text('Tags'));
+    await tester.pumpAndSettle();
+    expect(selectedTab, equals(AppTab.tags));
   });
 
   testWidgets(
-    'LyraSidebar PLAYLISTS header title navigates to tab while chevron toggles collapse independently',
+    'LyraSidebar Playlists and Tags headers navigate to tab/overview while chevrons toggle collapse independently',
     (tester) async {
       AppTab? selectedTab;
+      bool tagsHeaderClicked = false;
 
       await tester.pumpWidget(
         _buildSidebarTest(
           playlists: samplePlaylists,
+          tags: sampleTags,
           onTabSelected: (tab) => selectedTab = tab,
+          onTagsHeaderSelected: () => tagsHeaderClicked = true,
         ),
       );
       await tester.pumpAndSettle();
 
-      // 1. Tapping PLAYLISTS title navigates to AppTab.playlists without collapsing list
-      await tester.tap(find.text('PLAYLISTS'));
+      // 1. Tapping Playlists title navigates to AppTab.playlists without collapsing list
+      await tester.tap(find.text('Playlists'));
       await tester.pumpAndSettle();
       expect(selectedTab, equals(AppTab.playlists));
       expect(find.text('Favorites'), findsOneWidget);
 
-      // 2. Tapping chevron toggles collapse without firing onTabSelected
+      // 2. Tapping Playlists chevron toggles collapse without firing onTabSelected
       selectedTab = null;
       await tester.tap(find.byKey(const Key('playlists_header_chevron')));
       await tester.pumpAndSettle();
       expect(selectedTab, isNull);
       expect(find.text('Favorites'), findsNothing);
 
-      // 3. Tapping chevron again re-expands list
-      await tester.tap(find.byKey(const Key('playlists_header_chevron')));
+      // 3. Tapping Tags title calls onTagsHeaderSelected without collapsing tags list
+      await tester.tap(find.text('Tags'));
       await tester.pumpAndSettle();
-      expect(selectedTab, isNull);
-      expect(find.text('Favorites'), findsOneWidget);
+      expect(tagsHeaderClicked, isTrue);
+      expect(find.text('Audiophile'), findsOneWidget);
+
+      // 4. Tapping Tags chevron toggles collapse
+      await tester.tap(find.byKey(const Key('tags_header_chevron')));
+      await tester.pumpAndSettle();
+      expect(find.text('Audiophile'), findsNothing);
     },
   );
 
@@ -248,11 +280,46 @@ void main() {
     await tester.pumpAndSettle();
     expect(clickedPlaylist?.id, equals('pl-1'));
 
-    // Click tag chip
+    // Click tag item
     await tester.tap(find.text('Hi-Res'));
     await tester.pumpAndSettle();
     expect(clickedTag?.name, equals('Hi-Res'));
   });
+
+  testWidgets(
+    'LyraSidebar items (Nav, Playlists, Tags) have consistent button sizing and layout',
+    (tester) async {
+      await tester.pumpWidget(
+        _buildSidebarTest(
+          playlists: samplePlaylists,
+          tags: sampleTags,
+          selectedTagId: 't-1',
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final tracksItem = find.text('Tracks');
+      final playlistsItem = find.text('Playlists');
+      final tagsItem = find.text('Tags');
+      final playlistSubItem = find.text('Favorites');
+      final tagSubItem = find.text('Audiophile');
+
+      expect(tracksItem, findsOneWidget);
+      expect(playlistsItem, findsOneWidget);
+      expect(tagsItem, findsOneWidget);
+      expect(playlistSubItem, findsOneWidget);
+      expect(tagSubItem, findsOneWidget);
+
+      // All main item texts share 13.0 font size
+      final tracksText = tester.widget<Text>(tracksItem);
+      final playlistsText = tester.widget<Text>(playlistsItem);
+      final tagsText = tester.widget<Text>(tagsItem);
+
+      expect(tracksText.style?.fontSize, equals(13.0));
+      expect(playlistsText.style?.fontSize, equals(13.0));
+      expect(tagsText.style?.fontSize, equals(13.0));
+    },
+  );
 
   testWidgets('LyraSidebar collapse toggle callback triggers on click', (
     tester,
@@ -352,6 +419,46 @@ void main() {
         matching: find.byIcon(LucideIcons.chevronRight),
       );
       expect(tester.getCenter(toggleIcon).dx, 31.5);
+    },
+  );
+
+  testWidgets(
+    'LyraSidebar active selection item adapts dynamically between Dark and Light mode in a single frame',
+    (tester) async {
+      final themeNotifier = ValueNotifier<ThemeMode>(ThemeMode.dark);
+      addTearDown(themeNotifier.dispose);
+
+      await tester.pumpWidget(
+        _buildSidebarTest(
+          currentTab: AppTab.tracks,
+          themeNotifier: themeNotifier,
+        ),
+      );
+      await tester.pump();
+
+      // 1. Dark Mode: Inner Sidebar container background is zinc900 (tokens.card), active item text is zinc50
+      final darkInnerContainer = tester.widget<Container>(
+        find.byKey(const Key('sidebar_inner_container')),
+      );
+      final darkDecoration = darkInnerContainer.decoration as BoxDecoration;
+      expect(darkDecoration.color, equals(LyraColors.zinc900));
+
+      final activeTextDark = tester.widget<Text>(find.text('Tracks'));
+      expect(activeTextDark.style?.color, equals(LyraColors.zinc50));
+
+      // Switch to Light Mode (single frame 0ms)
+      themeNotifier.value = ThemeMode.light;
+      await tester.pump();
+
+      // 2. Light Mode: Sidebar background is white (Color(0xFFFFFFFF)), active item text is zinc950
+      final lightInnerContainer = tester.widget<Container>(
+        find.byKey(const Key('sidebar_inner_container')),
+      );
+      final lightDecoration = lightInnerContainer.decoration as BoxDecoration;
+      expect(lightDecoration.color, equals(const Color(0xFFFFFFFF)));
+
+      final activeTextLight = tester.widget<Text>(find.text('Tracks'));
+      expect(activeTextLight.style?.color, equals(LyraColors.zinc950));
     },
   );
 }

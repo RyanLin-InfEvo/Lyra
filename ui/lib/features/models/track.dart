@@ -186,54 +186,75 @@ class Track {
 
   /// Creates a [Track] instance from a JSON map.
   factory Track.fromJson(Map<String, dynamic> json) {
+    int? parseInt(dynamic val) {
+      if (val is int) return val;
+      if (val is num) return val.toInt();
+      if (val is String) return int.tryParse(val);
+      return null;
+    }
+
+    bool parseBool(dynamic val, {bool defaultValue = true}) {
+      if (val is bool) return val;
+      if (val is num) return val != 0;
+      if (val is String) {
+        final lower = val.toLowerCase();
+        if (lower == 'true' || lower == '1') return true;
+        if (lower == 'false' || lower == '0') return false;
+      }
+      return defaultValue;
+    }
+
     int? parsedDurationMs;
     final rawDuration =
         json['duration_ms'] ?? json['durationMs'] ?? json['duration'];
     if (rawDuration != null) {
       if (rawDuration is int) {
         parsedDurationMs = rawDuration;
-      } else if (rawDuration is double) {
-        parsedDurationMs = rawDuration > 10000
-            ? rawDuration.round()
-            : (rawDuration * 1000).round();
+      } else if (rawDuration is num) {
+        final val = rawDuration.toDouble();
+        parsedDurationMs = val > 10000 ? val.round() : (val * 1000).round();
       } else if (rawDuration is String) {
-        parsedDurationMs = int.tryParse(rawDuration);
+        final parsed = double.tryParse(rawDuration);
+        if (parsed != null) {
+          parsedDurationMs = parsed > 10000
+              ? parsed.round()
+              : (parsed * 1000).round();
+        }
       }
     }
 
     return Track(
-      id: json['id'] as String? ?? '',
+      id: json['id']?.toString() ?? '',
       pcmHash:
           (json['pcm_hash'] ??
                   json['pcmHash'] ??
                   json['cas_hash'] ??
                   json['casHash'])
-              as String? ??
+              ?.toString() ??
           '',
-      workId: (json['work_id'] ?? json['workId']) as String?,
-      title: json['title'] as String?,
-      recordingYear: (json['recording_year'] ?? json['recordingYear']) as int?,
-      recordingMonth:
-          (json['recording_month'] ?? json['recordingMonth']) as int?,
-      recordingDay: (json['recording_day'] ?? json['recordingDay']) as int?,
+      workId: (json['work_id'] ?? json['workId'])?.toString(),
+      title: json['title']?.toString(),
+      recordingYear: parseInt(json['recording_year'] ?? json['recordingYear']),
+      recordingMonth: parseInt(
+        json['recording_month'] ?? json['recordingMonth'],
+      ),
+      recordingDay: parseInt(json['recording_day'] ?? json['recordingDay']),
       recordingLocation:
-          (json['recording_location'] ?? json['recordingLocation']) as String?,
+          (json['recording_location'] ?? json['recordingLocation'])?.toString(),
       durationMs: parsedDurationMs,
-      isrc: json['isrc'] as String?,
-      musicbrainzId:
-          (json['musicbrainz_id'] ?? json['musicbrainzId']) as String?,
-      spotifyId: (json['spotify_id'] ?? json['spotifyId']) as String?,
-      ytmId: (json['ytm_id'] ?? json['ytmId']) as String?,
-      artistName:
-          (json['artist_name'] ?? json['artistName'] ?? json['artist'])
-              as String?,
-      albumTitle:
-          (json['album_title'] ?? json['albumTitle'] ?? json['album'])
-              as String?,
-      format: json['format'] as String?,
-      sampleRate: (json['sample_rate'] ?? json['sampleRate']) as int?,
-      bitDepth: (json['bit_depth'] ?? json['bitDepth']) as int?,
-      verified: (json['verified'] as bool?) ?? true,
+      isrc: json['isrc']?.toString(),
+      musicbrainzId: (json['musicbrainz_id'] ?? json['musicbrainzId'])
+          ?.toString(),
+      spotifyId: (json['spotify_id'] ?? json['spotifyId'])?.toString(),
+      ytmId: (json['ytm_id'] ?? json['ytmId'])?.toString(),
+      artistName: (json['artist_name'] ?? json['artistName'] ?? json['artist'])
+          ?.toString(),
+      albumTitle: (json['album_title'] ?? json['albumTitle'] ?? json['album'])
+          ?.toString(),
+      format: json['format']?.toString(),
+      sampleRate: parseInt(json['sample_rate'] ?? json['sampleRate']),
+      bitDepth: parseInt(json['bit_depth'] ?? json['bitDepth']),
+      verified: parseBool(json['verified'], defaultValue: true),
     );
   }
 
