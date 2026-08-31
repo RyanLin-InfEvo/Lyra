@@ -504,12 +504,30 @@ json Router::handleListAlbums(const json &params) {
 
 json Router::handleCreateAsset(const json &params) {
     auto err = JsonValidator::validate(params, {{"file_hash", Type::String, true},
+                                                {"pcm_hash", Type::String, false},
                                                 {"mime_type", Type::String, false},
                                                 {"asset_type", Type::String, false},
                                                 {"file_size", Type::Integer, false}});
     if (err) return *err;
 
     Asset asset = params.get<Asset>();
+    // When a `pcm_hash` is provided, link this physical file asset to the logical audio entity
+    // via the Audio_Asset junction table within an atomic transaction.
+    if (params.contains("pcm_hash") && !params["pcm_hash"].get<std::string>().empty()) {
+        Audio audio;
+        audio.pcm_hash = params["pcm_hash"].get<std::string>();
+        auto res = m_asset_repo->insert_asset_with_audio(asset, audio);
+        if (res) {
+            json response;
+            response["code"] = 201;
+            response["data"]["file_hash"] = asset.file_hash;
+            response["message"] = "Create Asset success.";
+            return response;
+        }
+        return ApiResponse::error({ErrorType::DatabaseError, res.error()});
+    }
+
+    // Otherwise, insert standalone non-audio asset (e.g. cover art, lyrics) without Audio relationship.
     auto res = m_asset_controller->create(asset);
     if (res) {
         json response;
@@ -1373,6 +1391,11 @@ json Router::handleAudioGetWaveform(const json &p) {
             return ApiResponse::error({ErrorType::AudioNotFound, "Track has no associated audio"});
         }
         pcm_hash = track_res->pcm_hash;
+        // Verify referential integrity: ensure the referenced Audio entity exists in the database.
+        auto audio_res = m_audio_controller->get(pcm_hash);
+        if (!audio_res) {
+            return ApiResponse::error({ErrorType::AudioNotFound, "Audio not found for track: " + pcm_hash});
+        }
     } else if (p.contains("pcm_hash") && !p["pcm_hash"].is_null()) {
         if (!p["pcm_hash"].is_string()) {
             return ApiResponse::error({ErrorType::InvalidValue, "pcm_hash must be a string"});
@@ -1381,6 +1404,7 @@ json Router::handleAudioGetWaveform(const json &p) {
         if (pcm_hash.empty()) {
             return ApiResponse::error({ErrorType::MissingParameter, "pcm_hash cannot be empty"});
         }
+        // Verify that the requested Audio entity exists before attempting asset resolution and waveform generation.
         auto audio_res = m_audio_controller->get(pcm_hash);
         if (!audio_res) {
             return ApiResponse::error({ErrorType::AudioNotFound, "Audio not found: " + pcm_hash});
