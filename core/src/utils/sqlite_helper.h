@@ -52,8 +52,11 @@ template <typename Mapper>
 inline auto fetch_one(SQLite::Statement &query, Mapper &&mapper) {
     using ResultType = std::decay_t<std::invoke_result_t<Mapper, SQLite::Statement &>>;
     if (query.executeStep()) {
-        return std::optional<ResultType>(mapper(query));
+        auto result = mapper(query);
+        query.reset();
+        return std::optional<ResultType>(std::move(result));
     }
+    query.reset();
     return std::optional<ResultType>(std::nullopt);
 }
 
@@ -69,6 +72,7 @@ inline auto fetch_all(SQLite::Statement &query, Mapper &&mapper, size_t reserve_
     while (query.executeStep()) {
         items.push_back(mapper(query));
     }
+    query.reset();
     return items;
 }
 

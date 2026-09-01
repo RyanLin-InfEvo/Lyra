@@ -56,7 +56,7 @@ class SqliteDatabaseContext : public IDatabaseContext {
         SqliteTransaction(SQLite::Database &db, int &depth)
             : m_db(db), m_depth(depth) {
             if (m_depth == 0) {
-                m_transaction = std::make_unique<SQLite::Transaction>(m_db);
+                m_db.exec("BEGIN IMMEDIATE;");
             } else {
                 m_savepoint_name = "sp_" + std::to_string(m_depth);
                 m_db.exec("SAVEPOINT " + m_savepoint_name + ";");
@@ -67,7 +67,9 @@ class SqliteDatabaseContext : public IDatabaseContext {
         ~SqliteTransaction() {
             if (!m_committed) {
                 try {
-                    if (!m_transaction) {
+                    if (m_savepoint_name.empty()) {
+                        m_db.exec("ROLLBACK;");
+                    } else {
                         m_db.exec("ROLLBACK TO SAVEPOINT " + m_savepoint_name + ";");
                         m_db.exec("RELEASE SAVEPOINT " + m_savepoint_name + ";");
                     }
@@ -79,10 +81,13 @@ class SqliteDatabaseContext : public IDatabaseContext {
         }
 
         void commit() override {
-            if (m_transaction) {
-                m_transaction->commit();
-                m_db.exec("PRAGMA wal_checkpoint(PASSIVE);");
-                // Commit & flash *.-wal changes to *.db for the readers
+            if (m_committed) return;
+            if (m_savepoint_name.empty()) {
+                m_db.exec("COMMIT;");
+                try {
+                    m_db.exec("PRAGMA wal_checkpoint(PASSIVE);");
+                } catch (...) {
+                }
             } else {
                 m_db.exec("RELEASE SAVEPOINT " + m_savepoint_name + ";");
             }
@@ -92,7 +97,6 @@ class SqliteDatabaseContext : public IDatabaseContext {
       private:
         SQLite::Database &m_db;
         int &m_depth;
-        std::unique_ptr<SQLite::Transaction> m_transaction;
         std::string m_savepoint_name;
         bool m_committed = false;
     };

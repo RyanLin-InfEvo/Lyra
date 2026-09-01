@@ -5,8 +5,9 @@
 import ctypes
 import json
 import os
-import unittest
 import shutil
+import sqlite3
+import unittest
 
 class BaseLyraTestCase(unittest.TestCase):
     @classmethod
@@ -95,3 +96,24 @@ class BaseLyraTestCase(unittest.TestCase):
                 expected_message_content, error_msg,
                 f"Expected '{expected_message_content}' in error message, but got: '{error_msg}'"
             )
+
+    def execute_raw_sql(self, sql: str, params=()):
+        db_path = os.path.join(self.test_db_dir, "lyra.db")
+        conn = sqlite3.connect(db_path)
+        conn.execute("PRAGMA journal_mode=WAL;")
+        cursor = conn.cursor()
+        cursor.execute(sql, params)
+        conn.commit()
+        conn.execute("PRAGMA wal_checkpoint(TRUNCATE);")
+        conn.close()
+
+    def execute_raw_sqls(self, operations):
+        db_path = os.path.join(self.test_db_dir, "lyra.db")
+        conn = sqlite3.connect(db_path)
+        conn.execute("PRAGMA journal_mode=WAL;")
+        cursor = conn.cursor()
+        for sql, params in operations:
+            cursor.execute(sql, params)
+        conn.commit()
+        conn.execute("PRAGMA wal_checkpoint(TRUNCATE);")
+        conn.close()

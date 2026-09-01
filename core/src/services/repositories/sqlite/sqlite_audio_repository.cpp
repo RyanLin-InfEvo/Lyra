@@ -4,6 +4,7 @@
 
 #include <SQLiteCpp/SQLiteCpp.h>
 #include <iostream>
+#include <sqlite3.h>
 #include <vector>
 
 #include "../../../utils/sqlite_mappers.h"

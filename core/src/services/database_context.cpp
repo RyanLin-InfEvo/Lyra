@@ -7,20 +7,26 @@
 
 namespace lyra {
 
+namespace {
+thread_local std::unordered_map<std::string, std::unique_ptr<SQLite::Database>> tl_conns;
+thread_local std::unordered_map<std::string, int> tl_depths;
+} // namespace
+
 SqliteDatabaseContext::SqliteDatabaseContext(const std::string &db_path)
     : m_db_path(db_path) {
     init_schema();
 }
 
 SQLite::Database &SqliteDatabaseContext::get_db() {
-    thread_local std::unordered_map<std::string, std::unique_ptr<SQLite::Database>> tl_conns;
     auto &db_ptr = tl_conns[m_db_path];
 
     if (!db_ptr) {
         db_ptr = std::make_unique<SQLite::Database>(m_db_path, SQLite::OPEN_READWRITE | SQLite::OPEN_CREATE);
         db_ptr->exec("PRAGMA journal_mode=WAL;");
+        db_ptr->exec("PRAGMA wal_autocheckpoint=1;");
+        db_ptr->exec("PRAGMA synchronous=NORMAL;");
         db_ptr->exec("PRAGMA foreign_keys=ON;");
-        db_ptr->setBusyTimeout(5000);
+        db_ptr->setBusyTimeout(30000);
     }
     return *db_ptr;
 }
@@ -292,7 +298,6 @@ void SqliteDatabaseContext::init_schema() {
 }
 
 std::unique_ptr<ITransaction> SqliteDatabaseContext::begin_transaction() {
-    thread_local std::unordered_map<std::string, int> tl_depths;
     int &depth = tl_depths[m_db_path];
     return std::make_unique<SqliteTransaction>(get_db(), depth);
 }
