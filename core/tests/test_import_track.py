@@ -11,19 +11,25 @@ from base_test_case import BaseLyraTestCase
 
 class TestImportTrack(BaseLyraTestCase):
 
-    def write_dummy_wav(self, filepath, duration=1.0, sample_rate=44100, channels=2):
+    def write_dummy_wav(self, filepath, duration=1.0, sample_rate=44100, channels=2, freq=440.0):
+        import math
         with wave.open(filepath, 'wb') as wav_file:
             wav_file.setnchannels(channels)
             wav_file.setsampwidth(2) # 16-bit
             wav_file.setframerate(sample_rate)
             num_frames = int(duration * sample_rate)
-            data = struct.pack('<' + 'h' * num_frames * channels, *([0] * num_frames * channels))
+            samples = []
+            for i in range(num_frames):
+                sample_val = int(30000.0 * math.sin(2.0 * math.pi * freq * (i / sample_rate)))
+                for _ in range(channels):
+                    samples.append(sample_val)
+            data = struct.pack('<' + 'h' * len(samples), *samples)
             wav_file.writeframes(data)
 
-    def create_tagged_wav(self, filepath, tags: dict, duration=1.0):
+    def create_tagged_wav(self, filepath, tags: dict, duration=1.0, freq=440.0):
         # First write a temp untagged wav
         temp_wav = filepath + ".temp.wav"
-        self.write_dummy_wav(temp_wav, duration=duration)
+        self.write_dummy_wav(temp_wav, duration=duration, freq=freq)
         
         # Build ffmpeg command
         cmd = ["ffmpeg", "-y", "-i", temp_wav]
@@ -50,7 +56,7 @@ class TestImportTrack(BaseLyraTestCase):
             "date": "2026-07-14",
             "track": "3/12"
         }
-        self.create_tagged_wav(wav_path, tags, duration=1.5)
+        self.create_tagged_wav(wav_path, tags, duration=1.5, freq=550.0)
         self.assertTrue(os.path.exists(wav_path))
 
         res = self.dispatch("ImportTrack", {"source_path": wav_path})
@@ -69,6 +75,7 @@ class TestImportTrack(BaseLyraTestCase):
         # Check values in SQLite database directly
         db_path = os.path.join(self.test_db_dir, "lyra.db")
         conn = sqlite3.connect(db_path)
+        conn.execute("PRAGMA wal_checkpoint(PASSIVE);")
         cursor = conn.cursor()
 
         # Check Track
@@ -121,9 +128,9 @@ class TestImportTrack(BaseLyraTestCase):
             "artist": "Shared Artist",
             "album": "Shared Album",
             "date": "2026",
-            "track": "5"
+            "track": "1"
         }
-        self.create_tagged_wav(wav_path, tags, duration=1.0)
+        self.create_tagged_wav(wav_path, tags, duration=1.0, freq=770.0)
 
         # First import
         res1 = self.dispatch("ImportTrack", {"source_path": wav_path})
@@ -132,21 +139,23 @@ class TestImportTrack(BaseLyraTestCase):
         artist_id1 = res1["data"]["artist_id"]
         album_id1 = res1["data"]["album_id"]
 
-        # Create a second wav file with the same tags and content
+        # Second import from the same path
         res2 = self.dispatch("ImportTrack", {"source_path": wav_path})
         self.assertResponseCode(res2, 200)
         track_id2 = res2["data"]["track_id"]
         artist_id2 = res2["data"]["artist_id"]
         album_id2 = res2["data"]["album_id"]
 
-        # Track IDs should be different (creating new Track instance)
+        # Track IDs should be different (new track instance)
         self.assertNotEqual(track_id1, track_id2)
+        # Artist and Album IDs should be the same (deduplicated)
         self.assertEqual(artist_id1, artist_id2)
         self.assertEqual(album_id1, album_id2)
 
         # Verify database only has one Artist and one Album with those names
         db_path = os.path.join(self.test_db_dir, "lyra.db")
         conn = sqlite3.connect(db_path)
+        conn.execute("PRAGMA wal_checkpoint(PASSIVE);")
         cursor = conn.cursor()
 
         cursor.execute("SELECT COUNT(*) FROM Artist WHERE name = ?", ("Shared Artist",))
@@ -160,7 +169,7 @@ class TestImportTrack(BaseLyraTestCase):
     def test_import_track_no_tags(self):
         """Imports a file with no tags, verifying it falls back to using the filename as the track title."""
         wav_path = os.path.join(self.test_db_dir, "no_tags_test_filename.wav")
-        self.write_dummy_wav(wav_path, duration=1.0)
+        self.write_dummy_wav(wav_path, duration=1.0, freq=660.0)
         self.assertTrue(os.path.exists(wav_path))
 
         res = self.dispatch("ImportTrack", {"source_path": wav_path})

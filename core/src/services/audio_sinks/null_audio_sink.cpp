@@ -5,8 +5,10 @@
  */
 
 #include "services/audio_sinks/null_audio_sink.h"
+#include <chrono>
 #include <cstdlib>
 #include <cstring>
+#include <thread>
 
 namespace lyra {
 
@@ -42,6 +44,13 @@ int NullAudioSinkImpl::write_pcm(const void *pcm_data, uint32_t frame_count) {
     (void)pcm_data;
     if (!m_open) return -1;
     m_written_frames += frame_count;
+    if (m_spec.sample_rate > 0) {
+        // Pace at approx 10x real-time speed to simulate asynchronous audio buffer consumption
+        uint64_t micros = (static_cast<uint64_t>(frame_count) * 100000ULL) / m_spec.sample_rate;
+        if (micros > 0) {
+            std::this_thread::sleep_for(std::chrono::microseconds(micros));
+        }
+    }
     return static_cast<int>(frame_count);
 }
 
