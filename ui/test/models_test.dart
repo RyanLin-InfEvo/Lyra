@@ -106,7 +106,7 @@ void main() {
       expect(track.album, 'Hell Freezes Over');
       expect(track.duration, const Duration(minutes: 7, seconds: 12));
       expect(track.formattedDuration, '7:12');
-      expect(track.formattedQuality, 'Hi-Res 24-bit/96kHz');
+      expect(track.formattedQuality, '24-bit/96kHz');
       expect(track.casHash, track.pcmHash);
       expect(track.shortCasHash, '7f83b1...9069');
       expect(track.verified, isTrue);
@@ -210,7 +210,7 @@ void main() {
       expect(audio.truePeak, -0.8);
       expect(audio.duration, const Duration(minutes: 7, seconds: 12));
       expect(audio.formattedDuration, '7:12');
-      expect(audio.formattedQuality, 'Hi-Res 24-bit/96kHz');
+      expect(audio.formattedQuality, '24-bit/96kHz');
       expect(audio.shortPcmHash, '7f83b1...9069');
     });
 

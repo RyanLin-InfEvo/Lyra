@@ -22,6 +22,9 @@ class LyraPlayerBar extends StatelessWidget {
   final VoidCallback onPrevious;
   final ValueChanged<Duration> onSeek;
   final ValueChanged<double> onVolumeChanged;
+  final VoidCallback? onInspectTrack;
+  final VoidCallback? onInspectAudio;
+  final bool isInspectorOpen;
 
   const LyraPlayerBar({
     super.key,
@@ -34,6 +37,9 @@ class LyraPlayerBar extends StatelessWidget {
     required this.onPrevious,
     required this.onSeek,
     required this.onVolumeChanged,
+    this.onInspectTrack,
+    this.onInspectAudio,
+    this.isInspectorOpen = false,
   });
 
   String _formatDuration(Duration d) {
@@ -128,18 +134,33 @@ class LyraPlayerBar extends StatelessWidget {
                                     ),
                                   ),
                                   const SizedBox(width: LyraSpacing.xs),
-                                  LyraBadge.secondary(
-                                    padding: const EdgeInsets.symmetric(
-                                      horizontal: 4.0,
-                                      vertical: 1.0,
-                                    ),
-                                    child: Text(
-                                      currentTrack!.displayFormat,
-                                      style: LyraTypography.small(tokens)
-                                          .copyWith(
-                                            fontSize: 9.0,
-                                            fontWeight: FontWeight.bold,
-                                          ),
+                                  MouseRegion(
+                                    cursor:
+                                        (onInspectAudio ?? onInspectTrack) !=
+                                            null
+                                        ? SystemMouseCursors.click
+                                        : SystemMouseCursors.basic,
+                                    child: Listener(
+                                      behavior: HitTestBehavior.opaque,
+                                      onPointerUp: (_) {
+                                        final callback =
+                                            onInspectAudio ?? onInspectTrack;
+                                        callback?.call();
+                                      },
+                                      child: LyraBadge.secondary(
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 4.0,
+                                          vertical: 1.0,
+                                        ),
+                                        child: Text(
+                                          currentTrack!.displayFormat,
+                                          style: LyraTypography.small(tokens)
+                                              .copyWith(
+                                                fontSize: 9.0,
+                                                fontWeight: FontWeight.bold,
+                                              ),
+                                        ),
+                                      ),
                                     ),
                                   ),
                                 ],
@@ -281,6 +302,20 @@ class LyraPlayerBar extends StatelessWidget {
                         onChanged: onVolumeChanged,
                         tokens: tokens,
                       ),
+                    ),
+                  ),
+                  const SizedBox(width: LyraSpacing.md),
+                  LyraButton.ghost(
+                    size: LyraButtonSize.sm,
+                    onPressed: currentTrack == null ? null : onInspectTrack,
+                    child: Icon(
+                      LucideIcons.fileSearch,
+                      size: 18.0,
+                      color: isInspectorOpen
+                          ? tokens.primary
+                          : currentTrack == null
+                          ? tokens.textMuted
+                          : tokens.text,
                     ),
                   ),
                 ],

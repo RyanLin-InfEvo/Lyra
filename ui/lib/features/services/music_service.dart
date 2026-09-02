@@ -3,8 +3,10 @@
 
 import '../models/album.dart';
 import '../models/artist.dart';
+import '../models/audio.dart';
 import '../models/cas_object.dart';
 import '../models/playlist.dart';
+import '../models/source_data.dart';
 import '../models/tag.dart';
 import '../models/track.dart';
 import '../models/work.dart';
@@ -58,4 +60,19 @@ abstract class MusicService {
 
   /// Verify CAS hash integrity on the server/storage engine.
   Future<bool> verifyCasHash(String hash);
+
+  /// Fetch acoustic specifications (Tier 3) for a given decoded PCM hash.
+  Future<Audio?> getAudioDetails(String pcmHash);
+
+  /// Fetch source provenance and notarization record for a given physical file hash.
+  Future<SourceData?> getSourceData(String fileHash);
+
+  /// Fetch physical file asset (Tier 4) for a given file hash.
+  Future<Asset?> getAsset(String fileHash);
+
+  /// Fetch all Audio versions associated with a given PCM stream hash (Single-Level Star Topology).
+  Future<List<Audio>> getAudioVersions(String pcmHash);
+
+  /// Switch the active Audio version for a given track in the catalog.
+  Future<void> switchTrackAudio(String trackId, String newPcmHash);
 }

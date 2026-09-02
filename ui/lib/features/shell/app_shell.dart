@@ -9,6 +9,7 @@ import '../albums/albums_view.dart';
 import '../artists/artists_view.dart';
 import '../cas_pool/cas_view.dart';
 import '../import/import_modal.dart';
+import '../inspector/audio_inspector_drawer.dart';
 import '../models/album.dart';
 import '../models/artist.dart';
 import '../models/cas_object.dart';
@@ -50,8 +51,14 @@ class _AppShellState extends State<AppShell> {
   bool _isSidebarCollapsed = false;
   bool _showImportModal = false;
 
+  // Inspector Drawer State (Phase 4.3)
+  bool _isInspectorOpen = false;
+  Track? _inspectedTrack;
+  Asset? _inspectedAsset;
+
   // Catalog State
   List<Track> _tracks = [];
+  Map<String, int> _audioVersionCounts = {};
   List<Album> _albums = [];
   List<Work> _works = [];
   List<Artist> _artists = [];
@@ -97,10 +104,24 @@ class _AppShellState extends State<AppShell> {
     final tags = await widget.musicService.getTags();
     final casObjects = await widget.musicService.getCasObjects();
 
+    final versionCounts = <String, int>{};
+    for (final t in tracks) {
+      if (t.pcmHash.isNotEmpty) {
+        try {
+          final versions = await widget.musicService.getAudioVersions(
+            t.pcmHash,
+          );
+          versionCounts[t.id] = versions.length;
+          versionCounts[t.pcmHash] = versions.length;
+        } catch (_) {}
+      }
+    }
+
     if (!mounted) return;
 
     setState(() {
       _tracks = tracks;
+      _audioVersionCounts = versionCounts;
       _albums = albums;
       _works = works;
       _artists = artists;
@@ -114,6 +135,13 @@ class _AppShellState extends State<AppShell> {
 
       if (_currentTrack == null && tracks.isNotEmpty) {
         _currentTrack = tracks.first;
+      } else if (_currentTrack != null) {
+        for (final t in tracks) {
+          if (t.id == _currentTrack!.id) {
+            _currentTrack = t;
+            break;
+          }
+        }
       }
     });
   }
@@ -130,6 +158,10 @@ class _AppShellState extends State<AppShell> {
     setState(() {
       _currentTrack = track;
       _isPlaying = true;
+      if (_isInspectorOpen) {
+        _inspectedTrack = track;
+        _inspectedAsset = null;
+      }
     });
     _positionNotifier.value = Duration.zero;
     _startPlaybackTimer();
@@ -233,6 +265,48 @@ class _AppShellState extends State<AppShell> {
     });
   }
 
+  void _openInspectorForTrack(Track track) {
+    setState(() {
+      _inspectedTrack = track;
+      _inspectedAsset = null;
+      _isInspectorOpen = true;
+    });
+  }
+
+  void _openInspectorForAudio(Track track) {
+    setState(() {
+      _inspectedTrack = track;
+      _inspectedAsset = null;
+      _isInspectorOpen = true;
+    });
+  }
+
+  void _openInspectorForAsset(Asset asset) {
+    setState(() {
+      _inspectedAsset = asset;
+      _inspectedTrack = null;
+      _isInspectorOpen = true;
+    });
+  }
+
+  void _closeInspector() {
+    setState(() {
+      _isInspectorOpen = false;
+    });
+  }
+
+  void _toggleInspector() {
+    setState(() {
+      _isInspectorOpen = !_isInspectorOpen;
+      if (_isInspectorOpen &&
+          _inspectedTrack == null &&
+          _inspectedAsset == null &&
+          _currentTrack != null) {
+        _inspectedTrack = _currentTrack;
+      }
+    });
+  }
+
   Widget _buildMainContent() {
     if (_isLoading) {
       return const Center(child: CircularProgressIndicator());
@@ -249,12 +323,15 @@ class _AppShellState extends State<AppShell> {
             currentTrack: _currentTrack,
             isPlaying: _isPlaying,
             filterLabel: _activeTrackFilter?.label,
+            audioVersionCounts: _audioVersionCounts,
             onClearFilter: () => setState(() {
               _activeTrackFilter = null;
               _selectedTagId = null;
             }),
             onTrackSelected: _onTrackSelected,
             onTogglePlay: _togglePlay,
+            onInspectTrack: _openInspectorForTrack,
+            onInspectAudio: _openInspectorForAudio,
           ),
         );
       case AppTab.works:
@@ -367,6 +444,7 @@ class _AppShellState extends State<AppShell> {
         return RepaintBoundary(
           child: CasView(
             casObjects: _casObjects,
+            onInspectAsset: (obj) => _openInspectorForAsset(obj),
             onVerifyAll: () async {
               ScaffoldMessenger.maybeOf(context)?.showSnackBar(
                 const SnackBar(
@@ -454,11 +532,35 @@ class _AppShellState extends State<AppShell> {
                           ),
                         ),
 
-                        // Main View Content (Center)
+                        // Main View Content + Docked Inspector Drawer (Center)
                         Expanded(
-                          child: Container(
-                            color: tokens.background,
-                            child: _buildMainContent(),
+                          child: Row(
+                            children: [
+                              Expanded(
+                                child: Container(
+                                  color: tokens.background,
+                                  child: _buildMainContent(),
+                                ),
+                              ),
+                              if (_isInspectorOpen)
+                                RepaintBoundary(
+                                  child: AudioInspectorDrawer(
+                                    track:
+                                        _inspectedTrack ??
+                                        (_inspectedAsset != null
+                                            ? null
+                                            : _currentTrack),
+                                    asset: _inspectedAsset,
+                                    musicService: widget.musicService,
+                                    onClose: _closeInspector,
+                                    onActiveAudioChanged: (newPcmHash) {
+                                      _loadCatalog();
+                                    },
+                                    onVerifyIntegrity: (hash) =>
+                                        widget.musicService.verifyCasHash(hash),
+                                  ),
+                                ),
+                            ],
                           ),
                         ),
 
@@ -472,6 +574,15 @@ class _AppShellState extends State<AppShell> {
                                 isPlaying: _isPlaying,
                                 currentPosition: currentPosition,
                                 volume: _volume,
+                                isInspectorOpen: _isInspectorOpen,
+                                onInspectTrack: _toggleInspector,
+                                onInspectAudio: () {
+                                  if (_currentTrack != null) {
+                                    _openInspectorForAudio(_currentTrack!);
+                                  } else {
+                                    _toggleInspector();
+                                  }
+                                },
                                 onTogglePlay: _togglePlay,
                                 onNext: _onNextTrack,
                                 onPrevious: _onPreviousTrack,

@@ -4,7 +4,6 @@
 import 'package:flutter/widgets.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
-import '../../design_system/contracts/lyra_contracts.dart';
 import '../../design_system/factory/lyra_design_system_scope.dart';
 import '../../design_system/tokens/lyra_tokens.dart';
 import '../../design_system/widgets/lyra_badge.dart';
@@ -16,8 +15,14 @@ import '../models/cas_object.dart';
 class CasView extends StatelessWidget {
   final List<CasObject> casObjects;
   final VoidCallback? onVerifyAll;
+  final ValueChanged<CasObject>? onInspectAsset;
 
-  const CasView({super.key, required this.casObjects, this.onVerifyAll});
+  const CasView({
+    super.key,
+    required this.casObjects,
+    this.onVerifyAll,
+    this.onInspectAsset,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -39,54 +44,79 @@ class CasView extends StatelessWidget {
             vertical: LyraSpacing.lg,
           ),
           child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Content Addressable Storage',
-                    style: LyraTypography.h2(tokens),
-                  ),
-                  const SizedBox(height: LyraSpacing.xs),
-                  Text(
-                    'Immutable, cryptographic SHA-256 chunk storage pool',
-                    style: LyraTypography.muted(tokens),
-                  ),
-                ],
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Content Addressable Storage',
+                      style: LyraTypography.h2(tokens),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    const SizedBox(height: LyraSpacing.xs),
+                    Text(
+                      'Cryptographically verified, immutable SHA-256 block repository.',
+                      style: LyraTypography.muted(tokens),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ],
+                ),
               ),
-              const Spacer(),
-              LyraButton.outline(
-                size: LyraButtonSize.sm,
-                onPressed: onVerifyAll,
-                leading: const Icon(LucideIcons.shieldCheck, size: 16.0),
-                child: const Text('Verify All Blobs'),
-              ),
+              if (onVerifyAll != null) ...[
+                const SizedBox(width: LyraSpacing.sm),
+                LyraButton.outline(
+                  onPressed: onVerifyAll,
+                  leading: const Icon(LucideIcons.shieldCheck, size: 16.0),
+                  child: const Text('Verify All Blobs'),
+                ),
+              ],
             ],
           ),
         ),
 
-        // Storage Metrics Cards
+        // CAS Summary Cards
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: LyraSpacing.xl),
           child: Row(
             children: [
               Expanded(
                 child: LyraCard(
-                  padding: const EdgeInsets.all(LyraSpacing.lg),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+                  child: Row(
                     children: [
-                      Text(
-                        'TOTAL BLOBS',
-                        style: LyraTypography.small(tokens).copyWith(
-                          color: tokens.textMuted,
-                          fontWeight: FontWeight.bold,
+                      Container(
+                        padding: const EdgeInsets.all(LyraSpacing.sm),
+                        decoration: BoxDecoration(
+                          color: tokens.secondary,
+                          borderRadius: LyraRadius.mdRadius,
+                        ),
+                        child: Icon(
+                          LucideIcons.database,
+                          color: tokens.primary,
+                          size: 20.0,
                         ),
                       ),
-                      const SizedBox(height: LyraSpacing.xs),
-                      Text(
-                        '${casObjects.length}',
-                        style: LyraTypography.h2(tokens),
+                      const SizedBox(width: LyraSpacing.md),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'TOTAL BLOBS',
+                              style: LyraTypography.small(tokens).copyWith(
+                                color: tokens.textMuted,
+                                fontWeight: FontWeight.bold,
+                              ),
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                            Text(
+                              '${casObjects.length}',
+                              style: LyraTypography.h3(tokens),
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ],
+                        ),
                       ),
                     ],
                   ),
@@ -95,19 +125,41 @@ class CasView extends StatelessWidget {
               const SizedBox(width: LyraSpacing.md),
               Expanded(
                 child: LyraCard(
-                  padding: const EdgeInsets.all(LyraSpacing.lg),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+                  child: Row(
                     children: [
-                      Text(
-                        'TOTAL CAS SIZE',
-                        style: LyraTypography.small(tokens).copyWith(
-                          color: tokens.textMuted,
-                          fontWeight: FontWeight.bold,
+                      Container(
+                        padding: const EdgeInsets.all(LyraSpacing.sm),
+                        decoration: BoxDecoration(
+                          color: tokens.secondary,
+                          borderRadius: LyraRadius.mdRadius,
+                        ),
+                        child: Icon(
+                          LucideIcons.hardDrive,
+                          color: tokens.primary,
+                          size: 20.0,
                         ),
                       ),
-                      const SizedBox(height: LyraSpacing.xs),
-                      Text('$totalSizeMb MB', style: LyraTypography.h2(tokens)),
+                      const SizedBox(width: LyraSpacing.md),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'TOTAL STORAGE SIZE',
+                              style: LyraTypography.small(tokens).copyWith(
+                                color: tokens.textMuted,
+                                fontWeight: FontWeight.bold,
+                              ),
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                            Text(
+                              '$totalSizeMb MB',
+                              style: LyraTypography.h3(tokens),
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ],
+                        ),
+                      ),
                     ],
                   ),
                 ),
@@ -115,21 +167,42 @@ class CasView extends StatelessWidget {
               const SizedBox(width: LyraSpacing.md),
               Expanded(
                 child: LyraCard(
-                  padding: const EdgeInsets.all(LyraSpacing.lg),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+                  child: Row(
                     children: [
-                      Text(
-                        'INTEGRITY HASH',
-                        style: LyraTypography.small(tokens).copyWith(
-                          color: tokens.textMuted,
-                          fontWeight: FontWeight.bold,
+                      Container(
+                        padding: const EdgeInsets.all(LyraSpacing.sm),
+                        decoration: BoxDecoration(
+                          color: tokens.secondary,
+                          borderRadius: LyraRadius.mdRadius,
+                        ),
+                        child: Icon(
+                          LucideIcons.shieldCheck,
+                          color: tokens.success,
+                          size: 20.0,
                         ),
                       ),
-                      const SizedBox(height: LyraSpacing.xs),
-                      Text(
-                        'SHA-256 (Bit-Perfect)',
-                        style: LyraTypography.h3(tokens),
+                      const SizedBox(width: LyraSpacing.md),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'IMMUTABILITY STATUS',
+                              style: LyraTypography.small(tokens).copyWith(
+                                color: tokens.textMuted,
+                                fontWeight: FontWeight.bold,
+                              ),
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                            Text(
+                              '100% Bit-Perfect',
+                              style: LyraTypography.h3(
+                                tokens,
+                              ).copyWith(color: tokens.success),
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ],
+                        ),
                       ),
                     ],
                   ),
@@ -148,8 +221,10 @@ class CasView extends StatelessWidget {
             vertical: LyraSpacing.sm,
           ),
           decoration: BoxDecoration(
+            color: tokens.secondary.withValues(alpha: 0.5),
             border: Border(
-              bottom: BorderSide(color: tokens.border, width: 1.0),
+              top: BorderSide(color: tokens.border),
+              bottom: BorderSide(color: tokens.border),
             ),
           ),
           child: Row(
@@ -157,7 +232,7 @@ class CasView extends StatelessWidget {
               Expanded(
                 flex: 5,
                 child: Text(
-                  'SHA-256 CONTENT ADDRESS',
+                  'INTEGRITY HASH',
                   style: LyraTypography.small(tokens).copyWith(
                     color: tokens.textMuted,
                     fontWeight: FontWeight.bold,
@@ -167,7 +242,7 @@ class CasView extends StatelessWidget {
               Expanded(
                 flex: 2,
                 child: Text(
-                  'SIZE',
+                  'FILE SIZE',
                   style: LyraTypography.small(tokens).copyWith(
                     color: tokens.textMuted,
                     fontWeight: FontWeight.bold,
@@ -213,77 +288,91 @@ class CasView extends StatelessWidget {
             itemBuilder: (context, index) {
               final obj = casObjects[index];
               return RepaintBoundary(
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: LyraSpacing.xl,
-                    vertical: LyraSpacing.md,
-                  ),
-                  child: Row(
-                    children: [
-                      Expanded(
-                        flex: 5,
-                        child: Row(
-                          children: [
-                            Icon(
-                              LucideIcons.fileCode,
-                              size: 16.0,
-                              color: tokens.textMuted,
-                            ),
-                            const SizedBox(width: LyraSpacing.sm),
-                            Expanded(
-                              child: Text(
-                                obj.hash,
-                                style: LyraTypography.mono(
-                                  tokens,
-                                  fontSize: 12.0,
-                                ),
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            ),
-                          ],
-                        ),
+                child: MouseRegion(
+                  cursor: onInspectAsset != null
+                      ? SystemMouseCursors.click
+                      : SystemMouseCursors.basic,
+                  child: GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onTap: onInspectAsset != null
+                        ? () => onInspectAsset!(obj)
+                        : null,
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: LyraSpacing.xl,
+                        vertical: LyraSpacing.md,
                       ),
-                      Expanded(
-                        flex: 2,
-                        child: Text(
-                          obj.formattedSize,
-                          style: LyraTypography.small(tokens),
-                        ),
-                      ),
-                      Expanded(
-                        flex: 2,
-                        child: Text(
-                          obj.mimeType,
-                          style: LyraTypography.small(
-                            tokens,
-                          ).copyWith(color: tokens.textMuted),
-                        ),
-                      ),
-                      Expanded(
-                        flex: 2,
-                        child: Align(
-                          alignment: Alignment.centerRight,
-                          child: LyraBadge.success(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 6.0,
-                              vertical: 2.0,
-                            ),
-                            child: const Row(
-                              mainAxisSize: MainAxisSize.min,
+                      child: Row(
+                        children: [
+                          Expanded(
+                            flex: 5,
+                            child: Row(
                               children: [
                                 Icon(
-                                  LucideIcons.check,
-                                  size: 10.0,
-                                  color: Color(0xFFFFFFFF),
+                                  LucideIcons.fileCode,
+                                  size: 16.0,
+                                  color: tokens.textMuted,
                                 ),
-                                SizedBox(width: 4.0),
-                                Text('Verified'),
+                                const SizedBox(width: LyraSpacing.sm),
+                                Expanded(
+                                  child: Text(
+                                    obj.hash,
+                                    style: LyraTypography.mono(
+                                      tokens,
+                                      fontSize: 12.0,
+                                    ),
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
                               ],
                             ),
                           ),
-                        ),
+                          Expanded(
+                            flex: 2,
+                            child: Text(
+                              obj.formattedSize,
+                              style: LyraTypography.small(tokens),
+                            ),
+                          ),
+                          Expanded(
+                            flex: 2,
+                            child: Text(
+                              obj.mimeType,
+                              style: LyraTypography.small(
+                                tokens,
+                              ).copyWith(color: tokens.textMuted),
+                            ),
+                          ),
+                          Expanded(
+                            flex: 2,
+                            child: Align(
+                              alignment: Alignment.centerRight,
+                              child: FittedBox(
+                                fit: BoxFit.scaleDown,
+                                child: LyraBadge.success(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 6.0,
+                                    vertical: 2.0,
+                                  ),
+                                  child: const Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Icon(
+                                        LucideIcons.check,
+                                        size: 10.0,
+                                        color: Color(0xFFFFFFFF),
+                                      ),
+                                      SizedBox(width: 4.0),
+                                      Text('Verified'),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
-                    ],
+                    ),
                   ),
                 ),
               );

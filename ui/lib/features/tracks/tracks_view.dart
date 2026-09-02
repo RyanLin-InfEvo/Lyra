@@ -16,6 +16,9 @@ class TracksView extends StatelessWidget {
   final bool isPlaying;
   final ValueChanged<Track> onTrackSelected;
   final VoidCallback onTogglePlay;
+  final ValueChanged<Track>? onInspectTrack;
+  final ValueChanged<Track>? onInspectAudio;
+  final Map<String, int>? audioVersionCounts;
   final String? filterLabel;
   final VoidCallback? onClearFilter;
 
@@ -26,6 +29,9 @@ class TracksView extends StatelessWidget {
     required this.isPlaying,
     required this.onTrackSelected,
     required this.onTogglePlay,
+    this.onInspectTrack,
+    this.onInspectAudio,
+    this.audioVersionCounts,
     this.filterLabel,
     this.onClearFilter,
   });
@@ -234,6 +240,10 @@ class TracksView extends StatelessWidget {
             itemBuilder: (context, index) {
               final track = tracks[index];
               final isCurrent = currentTrack?.id == track.id;
+              final versionCount =
+                  audioVersionCounts?[track.id] ??
+                  audioVersionCounts?[track.pcmHash] ??
+                  1;
 
               return RepaintBoundary(
                 child: _TrackRow(
@@ -241,6 +251,7 @@ class TracksView extends StatelessWidget {
                   track: track,
                   isCurrent: isCurrent,
                   isPlaying: isCurrent && isPlaying,
+                  versionCount: versionCount,
                   onTap: () {
                     if (isCurrent) {
                       onTogglePlay();
@@ -248,6 +259,14 @@ class TracksView extends StatelessWidget {
                       onTrackSelected(track);
                     }
                   },
+                  onInspect: onInspectTrack != null
+                      ? () => onInspectTrack!(track)
+                      : null,
+                  onInspectAudio: onInspectAudio != null
+                      ? () => onInspectAudio!(track)
+                      : (onInspectTrack != null
+                            ? () => onInspectTrack!(track)
+                            : null),
                   tokens: tokens,
                 ),
               );
@@ -265,7 +284,10 @@ class _TrackRow extends StatefulWidget {
   final Track track;
   final bool isCurrent;
   final bool isPlaying;
+  final int versionCount;
   final VoidCallback onTap;
+  final VoidCallback? onInspect;
+  final VoidCallback? onInspectAudio;
   final LyraThemeTokens tokens;
 
   const _TrackRow({
@@ -273,7 +295,10 @@ class _TrackRow extends StatefulWidget {
     required this.track,
     required this.isCurrent,
     required this.isPlaying,
+    this.versionCount = 1,
     required this.onTap,
+    this.onInspect,
+    this.onInspectAudio,
     required this.tokens,
   });
 
@@ -295,6 +320,7 @@ class _TrackRowState extends State<_TrackRow> {
         child: GestureDetector(
           behavior: HitTestBehavior.opaque,
           onTap: widget.onTap,
+          onSecondaryTap: widget.onInspectAudio ?? widget.onInspect,
           child: Container(
             padding: const EdgeInsets.symmetric(
               horizontal: LyraSpacing.xl,
@@ -380,40 +406,95 @@ class _TrackRowState extends State<_TrackRow> {
                   ),
                 ),
 
-                // Resolution Badge
+                // Resolution / Version Badge (Interactive)
                 Expanded(
                   flex: 2,
                   child: Align(
                     alignment: Alignment.centerLeft,
-                    child: LyraBadge.secondary(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 6.0,
-                        vertical: 2.0,
-                      ),
-                      child: Text(
-                        widget.track.formattedQuality,
-                        style: LyraTypography.small(
-                          tokens,
-                        ).copyWith(fontSize: 10.0, fontWeight: FontWeight.w600),
+                    child: MouseRegion(
+                      cursor:
+                          (widget.onInspectAudio ?? widget.onInspect) != null
+                          ? SystemMouseCursors.click
+                          : SystemMouseCursors.basic,
+                      child: GestureDetector(
+                        behavior: HitTestBehavior.opaque,
+                        onTap: widget.onInspectAudio ?? widget.onInspect,
+                        child: LyraBadge.secondary(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 6.0,
+                            vertical: 2.0,
+                          ),
+                          child: Text(
+                            widget.versionCount > 1
+                                ? '${widget.track.formattedQuality} · ${widget.versionCount} versions'
+                                : widget.track.formattedQuality,
+                            style: LyraTypography.small(tokens).copyWith(
+                              fontSize: 10.0,
+                              fontWeight: FontWeight.w600,
+                            ),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
                       ),
                     ),
                   ),
                 ),
 
-                // CAS Hash Tag
+                // CAS Hash Tag & Inspect Action
                 Expanded(
                   flex: 2,
                   child: Align(
                     alignment: Alignment.centerLeft,
-                    child: LyraBadge.outline(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 6.0,
-                        vertical: 2.0,
-                      ),
-                      child: Text(
-                        widget.track.shortCasHash,
-                        style: LyraTypography.mono(tokens, fontSize: 10.0),
-                      ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Flexible(
+                          child: MouseRegion(
+                            cursor: widget.onInspect != null
+                                ? SystemMouseCursors.click
+                                : SystemMouseCursors.basic,
+                            child: GestureDetector(
+                              behavior: HitTestBehavior.opaque,
+                              onTap: widget.onInspect,
+                              child: LyraBadge.outline(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 6.0,
+                                  vertical: 2.0,
+                                ),
+                                child: Text(
+                                  widget.track.shortCasHash,
+                                  style: LyraTypography.mono(
+                                    tokens,
+                                    fontSize: 10.0,
+                                  ),
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                        if (widget.onInspectAudio != null ||
+                            widget.onInspect != null) ...[
+                          const SizedBox(width: 4.0),
+                          MouseRegion(
+                            cursor: SystemMouseCursors.click,
+                            child: GestureDetector(
+                              behavior: HitTestBehavior.opaque,
+                              onTap: widget.onInspectAudio ?? widget.onInspect,
+                              child: Padding(
+                                padding: const EdgeInsets.all(2.0),
+                                child: Icon(
+                                  LucideIcons.info,
+                                  size: 14.0,
+                                  color: _isHovered
+                                      ? tokens.primary
+                                      : tokens.textMuted,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ],
                     ),
                   ),
                 ),

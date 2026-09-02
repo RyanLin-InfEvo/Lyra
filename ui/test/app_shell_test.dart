@@ -10,6 +10,7 @@ import 'package:ui/design_system/tokens/lyra_tokens.dart';
 import 'package:ui/features/albums/albums_view.dart';
 import 'package:ui/features/artists/artists_view.dart';
 import 'package:ui/features/cas_pool/cas_view.dart';
+import 'package:ui/features/inspector/asset_inspector_drawer.dart';
 import 'package:ui/features/playlists/playlists_view.dart';
 import 'package:ui/features/services/mock_music_service.dart';
 import 'package:ui/features/settings/settings_view.dart';
@@ -718,6 +719,122 @@ void main() {
       expect(themeNotifier.value, equals(ThemeMode.dark));
       final scaffoldBackDark = tester.widget<Scaffold>(find.byType(Scaffold));
       expect(scaffoldBackDark.backgroundColor, equals(LyraColors.zinc950));
+    },
+  );
+
+  testWidgets(
+    'AppShell opens AssetInspectorDrawer from PlayerBar, track info icon, track CAS badge, and dynamically updates on track switch',
+    (tester) async {
+      tester.view.physicalSize = const Size(1280, 800);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+
+      await tester.pumpWidget(_buildAppShellTest());
+      await tester.pumpAndSettle();
+
+      // 1. Initial State: Inspector is closed
+      expect(find.byType(AssetInspectorDrawer), findsNothing);
+
+      // 2. Open Inspector via PlayerBar inspect button
+      final playerBarFinder = find.byType(LyraPlayerBar);
+      final playerBarInspectBtn = find.descendant(
+        of: playerBarFinder,
+        matching: find.byIcon(LucideIcons.fileSearch),
+      );
+      expect(playerBarInspectBtn, findsOneWidget);
+      await tester.tap(playerBarInspectBtn);
+      await tester.pumpAndSettle();
+
+      // Drawer is opened
+      expect(find.byType(AssetInspectorDrawer), findsOneWidget);
+      expect(find.text('Inspector'), findsOneWidget);
+      expect(find.text('Acoustic Specifications'), findsOneWidget);
+      expect(find.text('Digital Provenance'), findsOneWidget);
+
+      // 3. Dynamic track update: while inspector is open, select a different track ('So What')
+      final soWhatTrack = find.descendant(
+        of: find.byType(TracksView),
+        matching: find.text('So What'),
+      );
+      expect(soWhatTrack, findsOneWidget);
+      await tester.tap(soWhatTrack);
+      await tester.pumpAndSettle();
+
+      // Inspector dynamically updates to 'So What'
+      expect(find.byType(AssetInspectorDrawer), findsOneWidget);
+      expect(
+        find.descendant(
+          of: find.byType(AssetInspectorDrawer),
+          matching: find.text('So What'),
+        ),
+        findsWidgets,
+      );
+
+      // 4. Toggle Inspector off via PlayerBar button
+      await tester.tap(playerBarInspectBtn);
+      await tester.pumpAndSettle();
+      expect(find.byType(AssetInspectorDrawer), findsNothing);
+
+      // 5. Open Inspector via Track row info icon
+      final trackInfoIcons = find.descendant(
+        of: find.byType(TracksView),
+        matching: find.byIcon(LucideIcons.info),
+      );
+      expect(trackInfoIcons, findsWidgets);
+      await tester.tap(trackInfoIcons.first);
+      await tester.pumpAndSettle();
+
+      expect(find.byType(AssetInspectorDrawer), findsOneWidget);
+      expect(find.text('Hotel California (Live on MTV 1994)'), findsWidgets);
+
+      // 6. Close Drawer via X button in header
+      final drawerCloseBtn = find.descendant(
+        of: find.byType(AssetInspectorDrawer),
+        matching: find.byIcon(LucideIcons.x),
+      );
+      expect(drawerCloseBtn, findsOneWidget);
+      await tester.tap(drawerCloseBtn);
+      await tester.pumpAndSettle();
+
+      expect(find.byType(AssetInspectorDrawer), findsNothing);
+
+      // 7. Open Inspector via PlayerBar inspect button again
+      await tester.tap(playerBarInspectBtn);
+      await tester.pumpAndSettle();
+
+      expect(find.byType(AssetInspectorDrawer), findsOneWidget);
+
+      // 8. Close Drawer again
+      await tester.tap(drawerCloseBtn);
+      await tester.pumpAndSettle();
+      expect(find.byType(AssetInspectorDrawer), findsNothing);
+
+      // 9. Open Inspector by clicking on a Track CAS Hash Badge
+      final trackCasBadge = find.text('7f83b1...9069');
+      expect(trackCasBadge, findsWidgets);
+      await tester.tap(trackCasBadge.first);
+      await tester.pumpAndSettle();
+
+      expect(find.byType(AssetInspectorDrawer), findsOneWidget);
+      expect(find.text('Hotel California (Live on MTV 1994)'), findsWidgets);
+      expect(find.text('CD-Rip'), findsOneWidget);
+
+      // 10. Navigate to CAS Storage and click a blob to inspect
+      await tester.tap(find.text('CAS Storage'));
+      await tester.pumpAndSettle();
+      expect(find.byType(CasView), findsOneWidget);
+
+      // Tap on a CAS object row in CasView
+      final casRow = find.text(
+        'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855',
+      );
+      expect(casRow, findsOneWidget);
+      await tester.tap(casRow);
+      await tester.pumpAndSettle();
+
+      // Verify inspector switches to CAS Physical File Blob mode
+      expect(find.byType(AssetInspectorDrawer), findsOneWidget);
+      expect(find.text('CAS Physical File Blob'), findsOneWidget);
     },
   );
 }

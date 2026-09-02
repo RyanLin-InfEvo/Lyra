@@ -24,6 +24,7 @@ import 'package:ui/features/models/audio.dart';
 import 'package:ui/features/models/cas_object.dart';
 import 'package:ui/features/models/image_asset.dart';
 import 'package:ui/features/models/playlist.dart';
+import 'package:ui/features/models/source_data.dart';
 import 'package:ui/features/models/tag.dart';
 import 'package:ui/features/models/track.dart';
 import 'package:ui/features/models/work.dart';
@@ -126,6 +127,21 @@ class EmptyMusicService implements MusicService {
 
   @override
   Future<bool> verifyCasHash(String hash) async => true;
+
+  @override
+  Future<Audio?> getAudioDetails(String pcmHash) async => null;
+
+  @override
+  Future<SourceData?> getSourceData(String fileHash) async => null;
+
+  @override
+  Future<Asset?> getAsset(String fileHash) async => null;
+
+  @override
+  Future<List<Audio>> getAudioVersions(String pcmHash) async => [];
+
+  @override
+  Future<void> switchTrackAudio(String trackId, String newPcmHash) async {}
 }
 
 void main() {
@@ -280,6 +296,85 @@ void main() {
       expect(image.parsedDominantColor, const Color(0xFF1E3A8A));
     });
 
+    test('CasObject.fromJson safely parses nulls, booleans, and formats', () {
+      // Empty map
+      final c1 = CasObject.fromJson({});
+      expect(c1.fileHash, '');
+      expect(c1.hash, '');
+      expect(c1.fileSize, 0);
+      expect(c1.sizeBytes, 0);
+      expect(c1.mimeType, '');
+      expect(c1.assetType, 'audio');
+      expect(c1.verified, isTrue);
+
+      // Explicit null verified
+      final c2 = CasObject.fromJson({
+        'file_hash':
+            'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855',
+        'file_size': 1048576,
+        'mime_type': 'audio/flac',
+        'verified': null,
+      });
+      expect(c2.verified, isTrue);
+      expect(c2.formattedSize, '1.0 MB');
+      expect(c2.shortHash, 'e3b0c442...52b855');
+
+      // False string and int boolean
+      final c3 = CasObject.fromJson({
+        'hash': '1234567890abcdef1234567890abcdef',
+        'size_bytes': 512,
+        'verified': 'false',
+      });
+      expect(c3.verified, isFalse);
+      expect(c3.formattedSize, '512 B');
+
+      final c4 = CasObject.fromJson({'hash': 'abcdef', 'verified': 0});
+      expect(c4.verified, isFalse);
+
+      final c5 = CasObject.fromJson({'hash': 'abcdef', 'verified': 1});
+      expect(c5.verified, isTrue);
+    });
+
+    test('Tag.fromJson and SourceData.fromJson handle nulls and types', () {
+      final tag1 = Tag.fromJson({});
+      expect(tag1.id, '');
+      expect(tag1.name, '');
+      expect(tag1.category, 'general');
+      expect(tag1.displayName, 'Untitled Tag');
+      expect(tag1.displayCategory, 'general');
+      expect(tag1.createdAt, isNull);
+
+      final tag2 = Tag.fromJson({
+        'id': 999,
+        'name': 888,
+        'category': 'genre',
+        'created_at': '2026-01-01T12:00:00.000Z',
+      });
+      expect(tag2.id, '999');
+      expect(tag2.name, '888');
+      expect(tag2.category, 'genre');
+      expect(tag2.createdAt, isNotNull);
+
+      final src1 = SourceData.fromJson({});
+      expect(src1.id, '');
+      expect(src1.fileHash, '');
+      expect(src1.sourceType, '');
+      expect(src1.originalPath, '');
+      expect(src1.note, '');
+      expect(src1.hasNote, isFalse);
+
+      final src2 = SourceData.fromJson({
+        'id': 123,
+        'file_hash': 456,
+        'source_type': 'vinyl_rip',
+        'note': 'EAC AccurateRip log: 100% confidence',
+      });
+      expect(src2.id, '123');
+      expect(src2.fileHash, '456');
+      expect(src2.sourceType, 'vinyl_rip');
+      expect(src2.hasNote, isTrue);
+    });
+
     test('Audio.fromJson handles nulls and numeric conversions', () {
       final audio = Audio.fromJson({
         'pcm_hash': 'hash1',
@@ -296,6 +391,89 @@ void main() {
       expect(audio.integratedLoudness, -14.0);
       expect(audio.truePeak, -0.1);
     });
+
+    test(
+      'Comprehensive boolean null-safety sweep (no Null is not a subtype of bool)',
+      () {
+        // Test Asset with null, boolean, num, string, and malformed verified values
+        final assetNull = Asset.fromJson({'verified': null});
+        expect(assetNull.verified, isTrue);
+
+        final assetFalseBool = Asset.fromJson({'verified': false});
+        expect(assetFalseBool.verified, isFalse);
+
+        final assetTrueBool = Asset.fromJson({'verified': true});
+        expect(assetTrueBool.verified, isTrue);
+
+        final assetZeroNum = Asset.fromJson({'verified': 0});
+        expect(assetZeroNum.verified, isFalse);
+
+        final assetOneNum = Asset.fromJson({'verified': 1});
+        expect(assetOneNum.verified, isTrue);
+
+        final assetFalseStr = Asset.fromJson({'verified': 'false'});
+        expect(assetFalseStr.verified, isFalse);
+
+        final assetTrueStr = Asset.fromJson({'verified': 'true'});
+        expect(assetTrueStr.verified, isTrue);
+
+        final assetZeroStr = Asset.fromJson({'verified': '0'});
+        expect(assetZeroStr.verified, isFalse);
+
+        final assetOneStr = Asset.fromJson({'verified': '1'});
+        expect(assetOneStr.verified, isTrue);
+
+        final assetMalformedStr = Asset.fromJson({'verified': 'unrecognized'});
+        expect(assetMalformedStr.verified, isTrue); // fallback to default
+
+        // Test Track with identical matrix
+        final trackNull = Track.fromJson({'verified': null});
+        expect(trackNull.verified, isTrue);
+
+        final trackFalseBool = Track.fromJson({'verified': false});
+        expect(trackFalseBool.verified, isFalse);
+
+        final trackZeroNum = Track.fromJson({'verified': 0});
+        expect(trackZeroNum.verified, isFalse);
+
+        final trackFalseStr = Track.fromJson({'verified': 'false'});
+        expect(trackFalseStr.verified, isFalse);
+
+        final trackZeroStr = Track.fromJson({'verified': '0'});
+        expect(trackZeroStr.verified, isFalse);
+
+        final trackOneStr = Track.fromJson({'verified': '1'});
+        expect(trackOneStr.verified, isTrue);
+
+        // Test CasObject with identical matrix
+        final casNull = CasObject.fromJson({'verified': null});
+        expect(casNull.verified, isTrue);
+
+        final casFalse = CasObject.fromJson({'verified': false});
+        expect(casFalse.verified, isFalse);
+
+        // Verify copyWith with null parameter preserves existing boolean value
+        final assetCopyNull = assetFalseBool.copyWith(verified: null);
+        expect(assetCopyNull.verified, isFalse);
+
+        final trackCopyNull = trackFalseBool.copyWith(verified: null);
+        expect(trackCopyNull.verified, isFalse);
+
+        // Verify getters returning bool do not fail on empty/null models
+        final emptyArtist = Artist.fromJson({});
+        expect(emptyArtist.hasExternalIds, isFalse);
+
+        final emptyPlaylist = Playlist.fromJson({});
+        expect(emptyPlaylist.isEmpty, isTrue);
+        expect(emptyPlaylist.isNotEmpty, isFalse);
+
+        final emptySource = SourceData.fromJson({});
+        expect(emptySource.hasNote, isFalse);
+
+        final emptyImage = ImageAsset.fromJson({});
+        expect(emptyImage.isSquare, isFalse);
+      },
+    );
   });
 
   group('BaseRepository Response Unpacking & Null Safety', () {

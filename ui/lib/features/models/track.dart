@@ -165,16 +165,13 @@ class Track {
     return '$minutes:$seconds';
   }
 
-  /// Formatted audio resolution string (e.g., "Hi-Res 24-bit/96kHz" or "16-bit/44.1kHz").
+  /// Formatted audio resolution string (e.g., "24-bit/96kHz" or "16-bit/44.1kHz").
   String get formattedQuality {
     if (bitDepth == null || sampleRate == null) {
       return format ?? 'Audio';
     }
     final rate = sampleRate!;
     final khz = (rate / 1000).toStringAsFixed(rate % 1000 == 0 ? 0 : 1);
-    if (bitDepth! >= 24 || rate > 48000) {
-      return 'Hi-Res $bitDepth-bit/${khz}kHz';
-    }
     return '$bitDepth-bit/${khz}kHz';
   }
 

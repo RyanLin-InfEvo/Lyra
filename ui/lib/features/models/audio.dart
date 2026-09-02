@@ -3,6 +3,8 @@
 
 import 'package:flutter/foundation.dart';
 
+import 'asset.dart';
+
 /// Decoded raw audio stream entity (Tier 3 of Lyra 4-tier audio model).
 ///
 /// Represents bit-perfect decoded PCM audio stream properties.
@@ -12,8 +14,12 @@ class Audio {
   /// Cryptographic SHA-256 hash of the decoded raw PCM stream.
   final String pcmHash;
 
-  /// Parent file CAS hash from which this audio stream was decoded.
+  /// Parent Master Audio pcmHash for derived audio versions in the Single-Level Star Topology.
+  /// Points to the Master Audio's [pcmHash], or is empty if this [Audio] is the Master.
   final String parentHash;
+
+  /// Physical CAS storage file assets backing this decoded audio stream.
+  final List<Asset> assets;
 
   /// Quality score metric computed by the ingestion pipeline (0-100).
   final int qualityScore;
@@ -39,6 +45,7 @@ class Audio {
   const Audio({
     required this.pcmHash,
     this.parentHash = '',
+    this.assets = const [],
     this.qualityScore = 0,
     this.bitDepth = 0,
     this.sampleRate = 0,
@@ -51,14 +58,11 @@ class Audio {
   /// Backward-compatible [Duration] accessor.
   Duration get duration => Duration(milliseconds: durationMs.round());
 
-  /// Formatted audio resolution string (e.g., "Hi-Res 24-bit/96kHz" or "16-bit/44.1kHz").
+  /// Formatted audio resolution string (e.g., "24-bit/96kHz" or "16-bit/44.1kHz").
   String get formattedQuality {
     final khz = (sampleRate / 1000).toStringAsFixed(
       sampleRate % 1000 == 0 ? 0 : 1,
     );
-    if (bitDepth >= 24 || sampleRate > 48000) {
-      return 'Hi-Res $bitDepth-bit/${khz}kHz';
-    }
     return '$bitDepth-bit/${khz}kHz';
   }
 
@@ -108,9 +112,19 @@ class Audio {
       }
     }
 
+    final rawAssets = json['assets'];
+    List<Asset> parsedAssets = const [];
+    if (rawAssets is List) {
+      parsedAssets = rawAssets
+          .whereType<Map>()
+          .map((e) => Asset.fromJson(Map<String, dynamic>.from(e)))
+          .toList();
+    }
+
     return Audio(
       pcmHash: (json['pcm_hash'] ?? json['pcmHash'])?.toString() ?? '',
       parentHash: (json['parent_hash'] ?? json['parentHash'])?.toString() ?? '',
+      assets: parsedAssets,
       qualityScore: parseInt(json['quality_score'] ?? json['qualityScore']),
       bitDepth: parseInt(json['bit_depth'] ?? json['bitDepth']),
       sampleRate: parseInt(json['sample_rate'] ?? json['sampleRate']),
@@ -128,6 +142,7 @@ class Audio {
     return {
       'pcm_hash': pcmHash,
       'parent_hash': parentHash,
+      'assets': assets.map((a) => a.toJson()).toList(),
       'quality_score': qualityScore,
       'bit_depth': bitDepth,
       'sample_rate': sampleRate,
@@ -142,6 +157,7 @@ class Audio {
   Audio copyWith({
     String? pcmHash,
     String? parentHash,
+    List<Asset>? assets,
     int? qualityScore,
     int? bitDepth,
     int? sampleRate,
@@ -153,6 +169,7 @@ class Audio {
     return Audio(
       pcmHash: pcmHash ?? this.pcmHash,
       parentHash: parentHash ?? this.parentHash,
+      assets: assets ?? this.assets,
       qualityScore: qualityScore ?? this.qualityScore,
       bitDepth: bitDepth ?? this.bitDepth,
       sampleRate: sampleRate ?? this.sampleRate,
@@ -169,6 +186,7 @@ class Audio {
     return other is Audio &&
         other.pcmHash == pcmHash &&
         other.parentHash == parentHash &&
+        listEquals(other.assets, assets) &&
         other.qualityScore == qualityScore &&
         other.bitDepth == bitDepth &&
         other.sampleRate == sampleRate &&
@@ -189,6 +207,7 @@ class Audio {
     durationMs,
     integratedLoudness,
     truePeak,
+    Object.hashAll(assets),
   );
 
   @override
@@ -196,6 +215,7 @@ class Audio {
     return 'Audio('
         'pcmHash: $pcmHash, '
         'parentHash: $parentHash, '
+        'assets: $assets, '
         'qualityScore: $qualityScore, '
         'bitDepth: $bitDepth, '
         'sampleRate: $sampleRate, '

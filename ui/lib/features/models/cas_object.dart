@@ -27,4 +27,9 @@ class CasObject extends Asset {
       assetType: asset.assetType,
     );
   }
+
+  /// Creates a [CasObject] instance from a JSON map with safe fallbacks.
+  factory CasObject.fromJson(Map<String, dynamic> json) {
+    return CasObject.fromAsset(Asset.fromJson(json));
+  }
 }

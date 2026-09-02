@@ -17,6 +17,9 @@ Widget _buildTracksViewTest({
   bool isPlaying = false,
   ValueChanged<Track>? onTrackSelected,
   VoidCallback? onTogglePlay,
+  ValueChanged<Track>? onInspectTrack,
+  ValueChanged<Track>? onInspectAudio,
+  Map<String, int>? audioVersionCounts,
   String? filterLabel,
   VoidCallback? onClearFilter,
   ValueNotifier<ThemeMode>? themeNotifier,
@@ -55,6 +58,9 @@ Widget _buildTracksViewTest({
                 isPlaying: isPlaying,
                 onTrackSelected: onTrackSelected ?? (_) {},
                 onTogglePlay: onTogglePlay ?? () {},
+                onInspectTrack: onInspectTrack,
+                onInspectAudio: onInspectAudio,
+                audioVersionCounts: audioVersionCounts,
                 filterLabel: filterLabel,
                 onClearFilter: onClearFilter,
               ),
@@ -301,6 +307,92 @@ void main() {
 
       final activeTitleTextLight = tester.widget<Text>(find.text('Track One'));
       expect(activeTitleTextLight.style?.color, equals(LyraColors.zinc900));
+    },
+  );
+
+  testWidgets(
+    'TracksView triggers onInspectTrack callback when clicking CAS hash badge and info icon',
+    (tester) async {
+      Track? inspectedTrack;
+
+      await tester.pumpWidget(
+        _buildTracksViewTest(
+          tracks: sampleTracks,
+          onInspectTrack: (t) => inspectedTrack = t,
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      // 1. Find CAS hash badge for Track One (shortCasHash: "aaaaaa...aaaa")
+      final casBadgeFinder = find.text('aaaaaa...aaaa');
+      expect(casBadgeFinder, findsOneWidget);
+
+      await tester.tap(casBadgeFinder);
+      await tester.pumpAndSettle();
+
+      expect(inspectedTrack?.id, equals('1'));
+
+      // Reset
+      inspectedTrack = null;
+
+      // 2. Click the explicit info icon for Track Two
+      final infoIcons = find.byIcon(LucideIcons.info);
+      expect(infoIcons, findsNWidgets(2));
+
+      await tester.tap(infoIcons.at(1));
+      await tester.pumpAndSettle();
+
+      expect(inspectedTrack?.id, equals('2'));
+    },
+  );
+
+  testWidgets(
+    'TracksView displays audio version counts and triggers onInspectAudio on badge tap',
+    (tester) async {
+      tester.view.physicalSize = const Size(1280, 800);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+
+      Track? inspectedAudioTrack;
+
+      await tester.pumpWidget(
+        _buildTracksViewTest(
+          tracks: sampleTracks,
+          audioVersionCounts: {'1': 3, '2': 1},
+          onInspectAudio: (track) {
+            inspectedAudioTrack = track;
+          },
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      // Track 1 should display '24-bit/96kHz · 3 versions'
+      final multiVersionBadge = find.text('24-bit/96kHz · 3 versions');
+      expect(multiVersionBadge, findsOneWidget);
+
+      // Track 2 (single version) should display standard '1-bit/5644.8kHz'
+      expect(find.text('1-bit/5644.8kHz'), findsOneWidget);
+
+      // Tap multi-version badge
+      await tester.tap(multiVersionBadge);
+      await tester.pumpAndSettle();
+
+      expect(inspectedAudioTrack?.id, equals('1'));
+
+      // Reset
+      inspectedAudioTrack = null;
+
+      // Verify audioWaveform is no longer rendered in the row
+      expect(find.byIcon(LucideIcons.audioWaveform), findsNothing);
+
+      // Tap info icon for track 2
+      final infoIcons = find.byIcon(LucideIcons.info);
+      expect(infoIcons, findsNWidgets(2));
+
+      await tester.tap(infoIcons.at(1));
+      await tester.pumpAndSettle();
+
+      expect(inspectedAudioTrack?.id, equals('2'));
     },
   );
 }
