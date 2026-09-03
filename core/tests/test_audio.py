@@ -840,3 +840,144 @@ class TestAudioController(BaseLyraTestCase):
         self.assertResponseCode(res, 400)
         self.assertEqual(res["error"]["type"], "OutOfRange")
 
+    def test_audio_list_devices(self):
+        """Test enumerating audio output devices via audio.list_devices"""
+        res = self.dispatch("audio.list_devices", {})
+        self.assertResponseCode(res, 200)
+        self.assertIn("devices", res["data"])
+        self.assertIn("current_device_id", res["data"])
+        self.assertIsInstance(res["data"]["devices"], list)
+        self.assertGreaterEqual(len(res["data"]["devices"]), 1)
+
+        # Check first device structure
+        dev = res["data"]["devices"][0]
+        self.assertIn("id", dev)
+        self.assertIn("name", dev)
+        self.assertIn("is_default", dev)
+        self.assertIn("min_channels", dev)
+        self.assertIn("max_channels", dev)
+        self.assertIn("min_sample_rate", dev)
+        self.assertIn("max_sample_rate", dev)
+
+    def test_audio_set_output_device_success(self):
+        """Test setting output device via audio.set_output_device"""
+        # Set to default device
+        res = self.dispatch("audio.set_output_device", {"device_id": "default"})
+        self.assertResponseCode(res, 200)
+        self.assertEqual(res["data"]["device_id"], "default")
+        self.assertTrue(res["data"]["success"])
+
+        # Verify state reflects current device
+        state_res = self.dispatch("audio.get_state", {})
+        self.assertResponseCode(state_res, 200)
+        self.assertEqual(state_res["data"]["device_id"], "default")
+
+    def test_audio_set_output_device_errors(self):
+        """Test setting output device with missing or invalid parameters"""
+        # Missing device_id
+        res = self.dispatch("audio.set_output_device", {})
+        self.assertValidationError(res, expected_type="MissingParameter")
+
+        # Invalid type
+        res = self.dispatch("audio.set_output_device", {"device_id": 12345})
+        self.assertValidationError(res, expected_type="InvalidValue")
+
+        # Empty string
+        res = self.dispatch("audio.set_output_device", {"device_id": ""})
+        self.assertValidationError(res, expected_type="InvalidValue")
+
+        # Non-hex non-default device id
+        res = self.dispatch("audio.set_output_device", {"device_id": "invalid-device-id"})
+        self.assertResponseCode(res, 400)
+        self.assertEqual(res["error"]["type"], "InvalidValue")
+
+    def test_audio_queue_next_with_file_path(self):
+        """Test preloading next track via file_path and verifying get_state"""
+        wav1 = self._generate_wav_file("queue_track1.wav", 10.0, freq=440.0)
+        wav2 = self._generate_wav_file("queue_track2.wav", 10.0, freq=880.0)
+
+        # Play track 1
+        res_play = self.dispatch("audio.play", {"file_path": wav1})
+        self.assertResponseCode(res_play, 200)
+
+        # Queue track 2
+        res_queue = self.dispatch("audio.queue_next", {"file_path": wav2})
+        self.assertResponseCode(res_queue, 200)
+        self.assertEqual(res_queue["data"]["next_file_path"], wav2)
+        self.assertTrue(res_queue["data"]["queued"])
+
+        # Check state contains next_file_path
+        res_state = self.dispatch("audio.get_state", {})
+        self.assertResponseCode(res_state, 200)
+        self.assertEqual(res_state["data"]["next_file_path"], wav2)
+
+        self.dispatch("audio.stop", {})
+
+    def test_audio_queue_next_with_track_id(self):
+        """Test preloading next track via track_id and verifying resolution"""
+        wav1 = self._generate_wav_file("queue_track_initial.wav", 10.0, freq=330.0)
+        self.dispatch("audio.play", {"file_path": wav1})
+
+        wav = self._generate_wav_file("queue_track_id.wav", 10.0, freq=550.0)
+        res_import = self.dispatch("ImportTrack", {"source_path": wav})
+        self.assertResponseCode(res_import, 200)
+        track_id = res_import["data"]["track_id"]
+
+        # Queue track by track_id
+        res_queue = self.dispatch("audio.queue_next", {"track_id": track_id})
+        self.assertResponseCode(res_queue, 200)
+        self.assertTrue(res_queue["data"]["queued"])
+        self.assertTrue(len(res_queue["data"]["next_file_path"]) > 0)
+        self.assertTrue(os.path.exists(res_queue["data"]["next_file_path"]))
+
+        # Check state
+        res_state = self.dispatch("audio.get_state", {})
+        self.assertResponseCode(res_state, 200)
+        self.assertEqual(res_state["data"]["next_file_path"], res_queue["data"]["next_file_path"])
+
+        self.dispatch("audio.stop", {})
+
+    def test_audio_queue_next_clear(self):
+        """Test clearing preloaded next track by passing empty params or empty string"""
+        wav1 = self._generate_wav_file("queue_clear1.wav", 10.0, freq=440.0)
+        wav2 = self._generate_wav_file("queue_clear2.wav", 10.0, freq=880.0)
+
+        self.dispatch("audio.play", {"file_path": wav1})
+        self.dispatch("audio.queue_next", {"file_path": wav2})
+
+        # Clear queue
+        res_clear = self.dispatch("audio.queue_next", {})
+        self.assertResponseCode(res_clear, 200)
+        self.assertEqual(res_clear["data"]["next_file_path"], "")
+        self.assertFalse(res_clear["data"]["queued"])
+
+        res_state = self.dispatch("audio.get_state", {})
+        self.assertEqual(res_state["data"]["next_file_path"], "")
+
+        self.dispatch("audio.stop", {})
+
+    def test_gapless_playback_seamless_transition(self):
+        """Test gapless playback seamless transition when track 1 ends"""
+        wav1 = self._generate_wav_file("gapless1.wav", 0.5, freq=440.0)
+        wav2 = self._generate_wav_file("gapless2.wav", 1.0, freq=880.0)
+
+        res_play = self.dispatch("audio.play", {"file_path": wav1})
+        self.assertResponseCode(res_play, 200)
+
+        res_queue = self.dispatch("audio.queue_next", {"file_path": wav2})
+        self.assertResponseCode(res_queue, 200)
+
+        # Poll for transition to track 2
+        transitioned = False
+        for _ in range(100):
+            res_state = self.dispatch("audio.get_state", {})
+            if res_state["data"]["file_path"] == wav2:
+                transitioned = True
+                break
+            time.sleep(0.02)
+
+        self.assertTrue(transitioned, "Playback did not seamlessly transition to queued track 2")
+        self.dispatch("audio.stop", {})
+
+
+

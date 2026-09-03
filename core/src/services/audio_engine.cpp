@@ -186,12 +186,61 @@ bool AudioEngine::stop() {
             if (m_sink->stop) m_sink->stop(m_sink);
         }
         close_decoder_unlocked();
+        m_next_decoder.reset();
+        m_next_file_path.clear();
         m_current_frame = 0;
         m_current_file_path.clear();
     }
 
     emit_state_event("audio_state_changed");
     return true;
+}
+
+bool AudioEngine::preload_next(const std::string &file_path) {
+    std::lock_guard<std::recursive_mutex> lock(m_mutex);
+    if (file_path.empty()) {
+        m_next_decoder.reset();
+        m_next_file_path.clear();
+        return true;
+    }
+
+    auto next_dec = std::make_unique<AudioDecoder>();
+    if (!next_dec->open(file_path)) {
+        return false;
+    }
+
+    m_next_decoder = std::move(next_dec);
+    m_next_file_path = file_path;
+    return true;
+}
+
+std::string AudioEngine::get_next_file_path() const {
+    std::lock_guard<std::recursive_mutex> lock(m_mutex);
+    return m_next_file_path;
+}
+
+std::vector<AudioDeviceInfo> AudioEngine::list_devices() const {
+    return LocalAudioSinkImpl::list_devices();
+}
+
+bool AudioEngine::set_output_device(const std::string &device_id) {
+    std::lock_guard<std::recursive_mutex> lock(m_mutex);
+    if (!LocalAudioSinkImpl::is_valid_device_id(device_id)) {
+        return false;
+    }
+    if (!m_custom_sink_set && m_sink && !m_sink_is_fallback && m_sink->user_data) {
+        auto *local_sink = static_cast<LocalAudioSinkImpl *>(m_sink->user_data);
+        if (!local_sink->set_output_device(device_id)) {
+            return false;
+        }
+    }
+    m_current_device_id = device_id.empty() ? "default" : device_id;
+    return true;
+}
+
+std::string AudioEngine::get_output_device() const {
+    std::lock_guard<std::recursive_mutex> lock(m_mutex);
+    return m_current_device_id;
 }
 
 bool AudioEngine::seek(double position_seconds, bool relative) {
@@ -291,6 +340,8 @@ nlohmann::json AudioEngine::get_state_json() const {
             break;
     }
     j["file_path"] = m_current_file_path;
+    j["next_file_path"] = m_next_file_path;
+    j["device_id"] = m_current_device_id;
     j["position"] = get_position();
     j["duration"] = get_duration();
     j["volume"] = m_volume;
@@ -342,27 +393,75 @@ void AudioEngine::pump_loop() {
         }
 
         if (frames_read == 0) {
-            // EOF reached or decode error:
-            // If sink has pending buffered frames, wait for buffer to drain to hardware output
+            bool has_next = false;
+            {
+                std::lock_guard<std::recursive_mutex> lock(m_mutex);
+                if (m_next_decoder && m_next_decoder->is_open()) {
+                    m_decoder = std::move(m_next_decoder);
+                    m_current_file_path = m_next_file_path;
+                    m_next_file_path.clear();
+                    m_sample_rate = m_decoder->get_sample_rate();
+                    m_channels = m_decoder->get_channels();
+                    m_total_frames = m_decoder->get_total_frames();
+                    m_current_frame = 0;
+                    m_seek_epoch++;
+                    has_next = true;
+                    if (buffer.size() < chunk_frames * m_channels) {
+                        buffer.resize(chunk_frames * m_channels);
+                    }
+                }
+            }
+
+            if (has_next) {
+                emit_state_event("audio_track_changed");
+                continue;
+            }
+
+            // If no next track yet, wait for buffer to drain to hardware output,
+            // but check if m_next_decoder gets preloaded while draining
             while (m_pump_running) {
                 {
                     std::lock_guard<std::recursive_mutex> lock(m_mutex);
                     if (m_state != AudioEngineState::PLAYING) break;
+                    if (m_next_decoder && m_next_decoder->is_open()) {
+                        m_decoder = std::move(m_next_decoder);
+                        m_current_file_path = m_next_file_path;
+                        m_next_file_path.clear();
+                        m_sample_rate = m_decoder->get_sample_rate();
+                        m_channels = m_decoder->get_channels();
+                        m_total_frames = m_decoder->get_total_frames();
+                        m_current_frame = 0;
+                        m_seek_epoch++;
+                        has_next = true;
+                        if (buffer.size() < chunk_frames * m_channels) {
+                            buffer.resize(chunk_frames * m_channels);
+                        }
+                        break;
+                    }
                     if (!m_sink || !m_sink->get_buffered_frames) break;
                     uint32_t remaining = m_sink->get_buffered_frames(m_sink);
                     if (remaining == 0) break;
                 }
-                std::this_thread::sleep_for(std::chrono::milliseconds(10));
+                std::this_thread::sleep_for(std::chrono::milliseconds(5));
             }
 
+            if (has_next) {
+                emit_state_event("audio_track_changed");
+                continue;
+            }
+
+            bool should_emit_ended = false;
             {
                 std::lock_guard<std::recursive_mutex> lock(m_mutex);
                 if (m_pump_running && m_state == AudioEngineState::PLAYING) {
                     m_state = AudioEngineState::STOPPED;
                     m_pump_running = false;
                     if (m_sink && m_sink->stop) m_sink->stop(m_sink);
-                    emit_state_event("audio_ended");
+                    should_emit_ended = true;
                 }
+            }
+            if (should_emit_ended) {
+                emit_state_event("audio_ended");
             }
             break;
         }

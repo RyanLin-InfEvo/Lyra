@@ -452,8 +452,64 @@ int main(int argc, char *argv[]) {
         std::cout << "  ✓ Test 4 (Opus playback via AudioEngine) passed.\n";
     }
 
+    // 8. Test 5: Audio Output Device Enumeration & Selection
+    {
+        AudioEngine engine;
+        auto devices = engine.list_devices();
+        assert(!devices.empty());
+        assert(!devices[0].name.empty());
+        assert(!devices[0].id.empty());
+        assert(engine.get_output_device() == "default");
+
+        // Set output device
+        assert(engine.set_output_device("default") == true);
+        assert(engine.get_output_device() == "default");
+
+        std::cout << "  ✓ Test 5 (Audio Output Device Enumeration & Selection: "
+                  << devices.size() << " devices found) passed.\n";
+    }
+
+    // 9. Test 6: Gapless Preload & Seamless Transition
+    std::string gapless1 = base_dir + "/temp_engine_gapless1.wav";
+    std::string gapless2 = base_dir + "/temp_engine_gapless2.wav";
+    generate_test_wav(gapless1, 0.4, 44100);
+    generate_test_wav(gapless2, 0.5, 44100);
+    {
+        AudioEngine engine;
+        engine.set_sink(create_null_audio_sink(), destroy_null_audio_sink);
+
+        // Preload next track before play
+        assert(engine.preload_next(gapless2) == true);
+        assert(engine.get_next_file_path() == gapless2);
+
+        // Clear next track
+        assert(engine.preload_next("") == true);
+        assert(engine.get_next_file_path().empty());
+
+        // Play track 1
+        assert(engine.play(gapless1) == true);
+        assert(engine.preload_next(gapless2) == true);
+        assert(engine.get_next_file_path() == gapless2);
+
+        // Poll for seamless transition to track 2
+        auto start = std::chrono::steady_clock::now();
+        bool transitioned = false;
+        while (std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - start).count() < 3000) {
+            if (engine.get_current_file_path() == gapless2) {
+                transitioned = true;
+                break;
+            }
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        }
+
+        assert(transitioned == true);
+        assert(engine.stop() == true);
+
+        std::cout << "  ✓ Test 6 (Gapless Playback & Seamless Track Transition) passed.\n";
+    }
+
     // Clean up temporary test files
-    for (const auto &f : {test_wav, short_wav, chaos_wav, backpressure_wav, test_opus}) {
+    for (const auto &f : {test_wav, short_wav, chaos_wav, backpressure_wav, test_opus, gapless1, gapless2}) {
         if (std::filesystem::exists(f)) {
             std::filesystem::remove(f);
         }

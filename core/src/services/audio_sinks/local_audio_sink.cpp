@@ -20,9 +20,43 @@ struct LocalAudioSinkImpl::InternalState {
     ma_pcm_rb ring_buffer{};
     bool device_inited{false};
     bool rb_inited{false};
+    std::optional<ma_device_id> target_device_id{std::nullopt};
+    std::string target_device_id_str{"default"};
 };
 
 namespace {
+
+std::string device_id_to_hex(const ma_device_id &id) {
+    const uint8_t *bytes = reinterpret_cast<const uint8_t *>(&id);
+    std::string hex;
+    hex.reserve(sizeof(ma_device_id) * 2);
+    const char hex_chars[] = "0123456789abcdef";
+    for (size_t i = 0; i < sizeof(ma_device_id); ++i) {
+        hex.push_back(hex_chars[(bytes[i] >> 4) & 0x0F]);
+        hex.push_back(hex_chars[bytes[i] & 0x0F]);
+    }
+    return hex;
+}
+
+bool hex_to_device_id(const std::string &hex, ma_device_id &id) {
+    if (hex.length() != sizeof(ma_device_id) * 2) return false;
+    uint8_t *bytes = reinterpret_cast<uint8_t *>(&id);
+    for (size_t i = 0; i < sizeof(ma_device_id); ++i) {
+        char h1 = hex[i * 2];
+        char h2 = hex[i * 2 + 1];
+        auto char_to_nibble = [](char c) -> int {
+            if (c >= '0' && c <= '9') return c - '0';
+            if (c >= 'a' && c <= 'f') return c - 'a' + 10;
+            if (c >= 'A' && c <= 'F') return c - 'A' + 10;
+            return -1;
+        };
+        int n1 = char_to_nibble(h1);
+        int n2 = char_to_nibble(h2);
+        if (n1 < 0 || n2 < 0) return false;
+        bytes[i] = static_cast<uint8_t>((n1 << 4) | n2);
+    }
+    return true;
+}
 
 ma_format lyra_format_to_ma(uint8_t format) {
     switch (format) {
@@ -70,6 +104,22 @@ void ma_data_callback(ma_device *pDevice, void *pOutput, const void *pInput, ma_
     }
 }
 
+std::mutex g_context_mutex;
+ma_context g_shared_context;
+bool g_shared_context_inited = false;
+
+ma_context *get_shared_ma_context() {
+    std::lock_guard<std::mutex> lock(g_context_mutex);
+    if (!g_shared_context_inited) {
+        if (ma_context_init(NULL, 0, NULL, &g_shared_context) == MA_SUCCESS) {
+            g_shared_context_inited = true;
+        } else {
+            return nullptr;
+        }
+    }
+    return &g_shared_context;
+}
+
 } // namespace
 
 LocalAudioSinkImpl::LocalAudioSinkImpl() : m_state(new InternalState()) {}
@@ -115,8 +165,12 @@ int LocalAudioSinkImpl::open(const LyraAudioSpec *spec) {
     config.sampleRate = sample_rate;
     config.dataCallback = ma_data_callback;
     config.pUserData = m_state;
+    if (m_state->target_device_id.has_value()) {
+        config.playback.pDeviceID = &(*m_state->target_device_id);
+    }
 
-    result = ma_device_init(NULL, &config, &m_state->device);
+    ma_context *ctx = get_shared_ma_context();
+    result = ma_device_init(ctx, &config, &m_state->device);
     if (result != MA_SUCCESS) {
         ma_pcm_rb_uninit(&m_state->ring_buffer);
         m_state->rb_inited = false;
@@ -209,6 +263,109 @@ int LocalAudioSinkImpl::set_volume(float volume) {
         ma_device_set_master_volume(&m_state->device, volume);
     }
     return 0;
+}
+
+bool LocalAudioSinkImpl::set_output_device(const std::string &device_id) {
+    if (device_id == "default" || device_id.empty()) {
+        m_state->target_device_id = std::nullopt;
+        m_state->target_device_id_str = "default";
+    } else {
+        ma_device_id id{};
+        if (!hex_to_device_id(device_id, id)) {
+            return false;
+        }
+        m_state->target_device_id = id;
+        m_state->target_device_id_str = device_id;
+    }
+
+    if (m_open) {
+        bool was_playing = m_playing;
+        LyraAudioSpec saved_spec = m_spec;
+        close();
+        if (open(&saved_spec) != 0) {
+            return false;
+        }
+        if (was_playing) {
+            start();
+        }
+    }
+    return true;
+}
+
+std::string LocalAudioSinkImpl::get_output_device() const {
+    return m_state ? m_state->target_device_id_str : "default";
+}
+
+std::vector<AudioDeviceInfo> LocalAudioSinkImpl::list_devices() {
+    std::vector<AudioDeviceInfo> devices;
+    ma_context *context = get_shared_ma_context();
+    if (!context) {
+        // Fallback default device
+        devices.push_back({"default", "Default Audio Device", true, 1, 2, 44100, 192000});
+        return devices;
+    }
+
+    ma_device_info *pPlaybackDeviceInfos = nullptr;
+    ma_uint32 playbackDeviceCount = 0;
+    ma_device_info *pCaptureDeviceInfos = nullptr;
+    ma_uint32 captureDeviceCount = 0;
+
+    std::lock_guard<std::mutex> lock(g_context_mutex);
+    if (ma_context_get_devices(context, &pPlaybackDeviceInfos, &playbackDeviceCount,
+                               &pCaptureDeviceInfos, &captureDeviceCount) == MA_SUCCESS) {
+        for (ma_uint32 i = 0; i < playbackDeviceCount; ++i) {
+            AudioDeviceInfo info;
+            info.id = device_id_to_hex(pPlaybackDeviceInfos[i].id);
+            info.name = pPlaybackDeviceInfos[i].name;
+            info.is_default = (pPlaybackDeviceInfos[i].isDefault != 0);
+
+            ma_device_info fullInfo{};
+            if (ma_context_get_device_info(context, ma_device_type_playback, &pPlaybackDeviceInfos[i].id, &fullInfo) == MA_SUCCESS) {
+                if (fullInfo.nativeDataFormatCount > 0) {
+                    int min_ch = 8;
+                    int max_ch = 1;
+                    int min_sr = 192000;
+                    int max_sr = 44100;
+                    bool has_valid_format = false;
+                    for (ma_uint32 f = 0; f < fullInfo.nativeDataFormatCount; ++f) {
+                        int ch = fullInfo.nativeDataFormats[f].channels;
+                        int sr = fullInfo.nativeDataFormats[f].sampleRate;
+                        if (ch > 0) {
+                            min_ch = std::min(min_ch, ch);
+                            max_ch = std::max(max_ch, ch);
+                            has_valid_format = true;
+                        }
+                        if (sr > 0) {
+                            min_sr = std::min(min_sr, sr);
+                            max_sr = std::max(max_sr, sr);
+                            has_valid_format = true;
+                        }
+                    }
+                    if (has_valid_format) {
+                        info.min_channels = min_ch;
+                        info.max_channels = max_ch;
+                        info.min_sample_rate = min_sr;
+                        info.max_sample_rate = max_sr;
+                    }
+                }
+            }
+            devices.push_back(std::move(info));
+        }
+    }
+
+    if (devices.empty()) {
+        devices.push_back({"default", "Default Audio Device", true, 1, 2, 44100, 192000});
+    }
+
+    return devices;
+}
+
+bool LocalAudioSinkImpl::is_valid_device_id(const std::string &device_id) {
+    if (device_id == "default" || device_id.empty()) {
+        return true;
+    }
+    ma_device_id id{};
+    return hex_to_device_id(device_id, id);
 }
 
 namespace {

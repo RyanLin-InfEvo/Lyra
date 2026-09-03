@@ -177,6 +177,10 @@ void Router::init_handlers() {
     m_handlers["audio.get_state"] = [this](const json &p) { return handleAudioGetState(p); };
     m_handlers["audio.compare_versions"] = [this](const json &p) { return handleAudioCompareVersions(p); };
     m_handlers["audio.get_waveform"] = [this](const json &p) { return handleAudioGetWaveform(p); };
+    m_handlers["audio.list_devices"] = [this](const json &p) { return handleAudioListDevices(p); };
+    m_handlers["audio.set_output_device"] = [this](const json &p) { return handleAudioSetOutputDevice(p); };
+    m_handlers["audio.preload_next"] = [this](const json &p) { return handleAudioQueueNext(p); };
+    m_handlers["audio.queue_next"] = [this](const json &p) { return handleAudioQueueNext(p); };
 }
 
 
@@ -1529,6 +1533,81 @@ json Router::handleGetEntityImages(const json &params) {
     json response = ApiResponse::success(result_list);
     response["status"] = "success";
     return response;
+}
+
+json Router::handleAudioListDevices([[maybe_unused]] const json &params) {
+    auto devices = m_audio_engine->list_devices();
+    json data;
+    data["devices"] = devices;
+    data["current_device_id"] = m_audio_engine->get_output_device();
+    return ApiResponse::success(data);
+}
+
+json Router::handleAudioSetOutputDevice(const json &params) {
+    auto err = JsonValidator::validate(params, {{"device_id", Type::String, true}});
+    if (err) return *err;
+
+    std::string device_id = params["device_id"].get<std::string>();
+    if (device_id.empty()) {
+        return ApiResponse::error({ErrorType::MissingParameter, "device_id cannot be empty"});
+    }
+
+    if (!m_audio_engine->set_output_device(device_id)) {
+        return ApiResponse::error({ErrorType::InvalidValue, "Failed to set audio output device: " + device_id});
+    }
+
+    json data;
+    data["device_id"] = device_id;
+    data["success"] = true;
+    json response = ApiResponse::success(data);
+    response["message"] = "Output device updated successfully.";
+    return response;
+}
+
+json Router::handleAudioQueueNext(const json &params) {
+    if (params.empty() || (params.contains("file_path") && params["file_path"].is_null() && !params.contains("track_id") && !params.contains("pcm_hash"))) {
+        m_audio_engine->preload_next("");
+        json data;
+        data["next_file_path"] = "";
+        data["queued"] = false;
+        return ApiResponse::success(data);
+    }
+
+    std::string file_path;
+    if (params.contains("file_path") && !params["file_path"].is_null()) {
+        if (!params["file_path"].is_string()) {
+            return ApiResponse::error({ErrorType::InvalidValue, "file_path must be a string"});
+        }
+        file_path = params["file_path"].get<std::string>();
+        if (file_path.empty()) {
+            m_audio_engine->preload_next("");
+            json data;
+            data["next_file_path"] = "";
+            data["queued"] = false;
+            return ApiResponse::success(data);
+        }
+    } else if (params.contains("track_id") || params.contains("pcm_hash")) {
+        auto file_hash_res = resolveFileHash(params, *m_track_controller, *m_asset_controller);
+        if (!file_hash_res) {
+            return file_hash_res.error();
+        }
+        auto path_res = m_asset_controller->resolve_file_path(file_hash_res.value());
+        if (!path_res || !std::filesystem::exists(*path_res)) {
+            return ApiResponse::error({ErrorType::AssetNotFound, "Audio file not found on disk for hash: " + file_hash_res.value()});
+        }
+        file_path = *path_res;
+    } else {
+        return ApiResponse::error({ErrorType::MissingParameter, "Missing 'file_path', 'track_id', or 'pcm_hash' parameter"});
+    }
+
+    if (!m_audio_engine->preload_next(file_path)) {
+        return ApiResponse::error({ErrorType::InvalidValue, "Failed to preload next audio track: " + file_path});
+    }
+
+    json data;
+    data["next_file_path"] = file_path;
+    data["queued"] = true;
+    return ApiResponse::success(data);
 }
 
 json Router::route(const json &request) {

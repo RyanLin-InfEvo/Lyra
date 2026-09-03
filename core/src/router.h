@@ -123,6 +123,9 @@ class Router {
     json handleAudioGetState(const json &p);
     json handleAudioCompareVersions(const json &p);
     json handleAudioGetWaveform(const json &p);
+    json handleAudioListDevices(const json &p);
+    json handleAudioSetOutputDevice(const json &p);
+    json handleAudioQueueNext(const json &p);
 
     // Dependencies
     std::string m_storage_root;
