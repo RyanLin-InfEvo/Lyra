@@ -3,9 +3,9 @@ SPDX-FileCopyrightText: 2026 Tzu-Ting Lin
 
 SPDX-License-Identifier: AGPL-3.0-or-later
 -->
-# Lyra Project Agent Guidelines & Workflow
+# Lyra Technical Standards & Engineering Playbook (技術規範與操作手冊)
 
-This document defines the rules, development workflows, and standard procedures for agents working on the **Lyra** project.
+This document serves as the Single Source of Truth (SSOT) for all technical, engineering, testing, and implementation standards in the **Lyra** project. For high-level orchestration, interaction workflows, and agent delegation discipline, refer to [GEMINI.md](GEMINI.md).
 
 ---
 
@@ -73,10 +73,10 @@ You can run the Flutter test suite from the workspace root directory using the w
 *   **Platform-Neutral Search & Shortcuts:** Avoid hardcoding platform-specific shortcut strings (e.g. `⌘K` or `cmd + K`) into generic input placeholders.
 
 ### Testing Internal C++ Modules (Without C FFI)
-For C++ modules and utility classes (such as [sha256.cpp](file:///home/ryan/Documents/Lyra/core/src/utils/sha256.cpp)) that do not have a public FFI/C-API:
-1. **Do NOT pollute FFI**: Do not add FFI functions in [lyra_c_api.h](file:///home/ryan/Documents/Lyra/core/include/lyra_c_api.h) solely for testing.
+For C++ modules and utility classes (such as [sha256.cpp](core/src/utils/sha256.cpp)) that do not have a public FFI/C-API:
+1. **Do NOT pollute FFI**: Do not add FFI functions in [lyra_c_api.h](core/include/lyra_c_api.h) solely for testing.
 2. **C++ Unit Test Binary**: Create a standalone C++ test file in `core/tests/` containing `int main()` (e.g. `core/tests/sha256_test.cpp`). Ensure it includes the class header, tests the functionality, and returns `0` on success or non-zero on failure.
-3. **Register in CMake**: Register the test executable inside the `if(BUILD_TESTING)` block in [core/CMakeLists.txt](file:///home/ryan/Documents/Lyra/core/CMakeLists.txt):
+3. **Register in CMake**: Register the test executable inside the `if(BUILD_TESTING)` block in [core/CMakeLists.txt](core/CMakeLists.txt):
    ```cmake
    add_executable(sha256_test tests/sha256_test.cpp)
    target_link_libraries(sha256_test PRIVATE lyra_core nlohmann_json::nlohmann_json fmt::fmt)
@@ -91,15 +91,15 @@ For C++ modules and utility classes (such as [sha256.cpp](file:///home/ryan/Docu
 To maintain repository hygiene and ensure clean code integration, all agents must follow these steps:
 
 ### A. Worktree Isolation
-*   **NEVER** modify the codebase directly on the primary branch/workspace.
-*   All changes must be done inside a dedicated Git Worktree located in the `.worktrees/` directory of the workspace.
+*   All code modifications must be performed in a dedicated Git worktree inside the `.worktrees/` directory of the workspace root (creating worktrees outside the workspace causes tool permission errors).
 *   **Command:**
     ```bash
     git worktree add -b <branch-name> .worktrees/<branch-name>
     ```
+*   *Note:* Orchestration rules, worktree lifecycles, and exceptions are governed by [GEMINI.md](GEMINI.md).
 
 ### B. CMake Source Registration
-*   When adding any new `.cpp` file to `core/src/`, you **MUST** immediately register it in [core/CMakeLists.txt](file:///home/ryan/Documents/Lyra/core/CMakeLists.txt) under the `add_library(lyra_core ...)` target. Failure to do so will result in linker errors (`undefined symbols`) during test execution.
+*   When adding any new `.cpp` file to `core/src/`, you **MUST** immediately register it in [core/CMakeLists.txt](core/CMakeLists.txt) under the `add_library(lyra_core ...)` target. Failure to do so will result in linker errors (`undefined symbols`) during test execution.
 
 ### C. C++ Code Formatting
 *   Run `clang-format` (auto format) on edited C++ source files after completing edits.
@@ -115,11 +115,10 @@ To maintain repository hygiene and ensure clean code integration, all agents mus
     ```
     *or `nix-shell ui/shell.nix --run "cd ui && dart format ."`.*
 
-### E. Atomic Commit & Commit Style
-*   **Atomic Commits:** Break down tasks into small, logical increments. Pause and ask the user for review and commit after each logical unit is complete.
-*   **Commit Message Format:** Use the standard semantic commit style: `type(scope): description` (e.g., `feat(core): implement savepoint transaction model`).
-*   **Comprehensive Working Tree Scope:** When drafting and proposing commit messages, the agent MUST inspect the **complete set of uncommitted modifications in the working tree** (`git status` / `git diff`), rather than only summarizing the delta from the most recent conversational turn.
-*   **Approval:** Always propose the draft commit message to the user and wait for explicit approval before proceeding.
+### E. Commit Message Format & Working Tree Scope
+*   **Commit Message Style:** Use the standard semantic commit format: `type(scope): description` (e.g., `feat(core): implement savepoint transaction model`).
+*   **Comprehensive Working Tree Scope:** When drafting and proposing commit messages, the agent MUST inspect the **complete set of uncommitted modifications across the working tree** (`git status` / `git diff`), rather than only summarizing the delta from the most recent conversational turn.
+*   *Note:* The atomic commit gating workflow, approval cadence, and manual commit pause points are governed by [GEMINI.md](GEMINI.md).
 
 ### F. Self-Correction & Subagent Review
 *   Perform a security review (checking SQLite query injection, resource cleanup, thread safety).
@@ -134,4 +133,4 @@ To maintain repository hygiene and ensure clean code integration, all agents mus
 
 ## 📁 4. Project Structure Quick Reference
 
-See [CONTEXT.md](file:///home/ryan/Documents/Lyra/CONTEXT.md) for a detailed breakdown of the system architecture and files.
+See [CONTEXT.md](CONTEXT.md) for a detailed breakdown of the system architecture and files.

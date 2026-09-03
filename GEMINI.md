@@ -3,58 +3,57 @@ SPDX-FileCopyrightText: 2026 Tzu-Ting Lin
 
 SPDX-License-Identifier: AGPL-3.0-or-later
 -->
-# User Interaction Habits & Agent Guidelines
+# Interaction & Orchestrator Meta-Rules (互動流程與調度中樞指南)
 
 ## 1. Interaction Workflow & Methodology
 *   **Atomic Commit Principle:** The agent must pause after logical units of work to allow for user review and manual `git commit` before proceeding.
-*   **Worktree Isolation:** All code modifications MUST be performed in a separate Git Worktree (e.g., using `git worktree add`). The agent should not modify the primary workspace directly. The user will perform the final merge after review.
-*   **Worktree Location:** The worktree MUST be created **inside** the primary workspace directory (e.g., `.worktrees/<type>-<name>`, `.worktrees/<feat>-<>`) rather than outside it (e.g., `../Lyra-<name>`). Creating worktrees outside the workspace causes tool permission failures because the agent's file-system access is scoped to the workspace root.
-*   **Test-Driven Development (TDD):** Verification is mandatory. Automated unit tests must be written and executed (e.g., Python `unittest` for C++ components) before finalizing changes.
+*   **Worktree Isolation:** All code modifications MUST be performed in a separate Git Worktree (e.g., using `git worktree add`). The agent should not modify the primary workspace directly. The user will perform the final merge after review. (*Exception:* Direct modifications in the primary workspace are strictly prohibited unless explicitly instructed by the user for special operational reasons, such as meta-document configuration updates).
+*   **Worktree Location:** The worktree MUST be created **inside** the primary workspace directory (e.g., `.worktrees/<branch-name>`) rather than outside it (e.g., `../Lyra-<name>`). Creating worktrees outside the workspace causes tool permission failures because the agent's file-system access is scoped to the workspace root.
+*   **Test-Driven Development (TDD):** Verification is mandatory before finalizing changes. Automated unit and integration tests must be written and executed.
 *   **Inquiry before Action:** For complex tasks (e.g., security audits or architectural changes), provide a comprehensive report or plan first. Wait for a directive before implementation.
 *   **Surgical Feedback:** Address user feedback on specific code selections precisely using the provided context.
-*   **Proactive Subagent Delegation (Orchestrator Mode):** The primary session should act primarily as a coordinator, orchestrator, and reporter to the user. All actual implementation, codebase exploration, or code modification tasks MUST be delegated to sub-agents (e.g., `self` or specialized agents). The primary session will only synthesize and report the final results to the user, ensuring the primary context window remains clean and focused.
 *   **Security & Efficiency Automation:** The project-level `.gemini/settings.json` enables `security.enableConseca` for context-aware security checking. Low-risk operations (e.g., `git worktree add`, `ls`, `git status`) are pre-authorized in `tools.allowed` to streamline the development loop.
 
-## 2. Post-Implementation Quality Assurance
+## 2. Orchestrator Architecture & Subagent Delegation Discipline (任務拆解與派工紀律)
+*   **Proactive Subagent Delegation (Orchestrator Mode):** The primary session acts primarily as a coordinator, orchestrator, and reporter to the user. All actual implementation, codebase exploration, or code modification tasks MUST be delegated to subagents (e.g., `self` or specialized agents). The primary session will only synthesize and report the final results to the user, ensuring the primary context window remains clean and focused.
+*   **No Wholesale Pass-Through (禁止直通轉發):** The primary orchestrator must never forward user requests wholesale to subagents without structural analysis, scope definition, and task decomposition.
+*   **Dependency Analysis (任務相依性與順序分析):** Before delegating work, the orchestrator must analyze dependencies between subtasks to establish whether they must proceed sequentially or can run concurrently.
+*   **Single-Responsibility Subtasks (單一職責子任務):** Break down broad features or modifications into discrete, single-responsibility subtasks with crisp acceptance criteria.
+*   **Sequential Gating Workflow (循序閘門控制):** When tasks involve sequential deliverables or cross-dependencies (e.g., "first modify/commit A, then implement B"):
+    1. Dispatch a subagent to address subtask A.
+    2. Receive subagent report, synthesize progress, and propose a draft commit message for A.
+    3. Pause and await explicit user review and commit confirmation.
+    4. Only after user confirmation, proceed to dispatch the subsequent subagent for task B.
+*   **Parallel Dispatch (平行分流條件):** Concurrent subagent dispatch is permissible ONLY when tasks are completely orthogonal and independent, with no shared file modifications or causal order dependencies.
+*   **Subagent Hierarchy & Depth Control (子代理階層深度限制):**
+    *   Default to flat coordination by the Primary Agent.
+    *   If a subagent invokes its own subagent, the maximum hierarchy depth is strictly limited to 1 nested level (Primary -> Subagent -> Nested Subagent; recursive generation of deeper descendants is strictly prohibited).
+    *   The final commit gating and user-facing reporting interface must strictly remain anchored to the Primary Agent.
+
+## 3. Post-Implementation Quality Assurance
 *   **Self-Correction Phase:** After completing any modification, the agent MUST proactively check for:
     *   Security vulnerabilities (e.g., credential leaks, unsafe memory usage, input validation).
+    *   Data integrity & anti-bandaid checks (root-cause resolution, diagnostic observability, self-healing references, and domain topology adherence).
     *   Violations of project-specific best practices.
-    *   Unreasonable design patterns or API usage.
-*   **Subagent Final Review:** Once potential issues are resolved (or if none are found), the agent MUST invoke a subagent (e.g., `codebase_investigator` or `generalist`) to perform a "final confirmation" (會後確認) to ensure overall system integrity and adherence to standards.
+*   **Subagent Final Review:** Once potential issues are resolved (or if none are found), the agent MUST invoke a subagent (e.g., `codebase_investigator` or `self`) to perform a "final confirmation" (會後確認) to ensure overall system integrity and adherence to standards.
 
-## 3. Coding & Engineering Standards
+## 4. Engineering & Implementation Standards Reference
+*   **Implementation Standards Authority:** All concrete C++ engineering rules (including CMake source registration and code formatting), Flutter UI modular design system standards (facade contracts, semantic tokens, layout safety, controller lifecycle, and elimination of redundant status badges), and test suite execution workflows MUST strictly adhere to .agents/AGENTS.md
+*   **Core Architectural Principles:**
+    *   *Strict Server-Side Authority:* Critical identifiers and validation logic belong entirely to the core engine; client inputs are untrusted.
+    *   *Root-Cause First (No Bandaid Patching):* Strictly prohibit symptom-level masking fixes when queries or relational lookups yield unexpected results. Resolve underlying data or query issues directly.
+    *   *Domain Topology Adherence:* Adhere to established relationship topologies (e.g., Single-Level Star Topology for audio versioning) without unverified hierarchical complexity.
+    *   *Performance & Platform Trade-offs:* Proactively discuss Mobile, PC, and Server trade-offs with the user prior to implementing performance-sensitive architectural paths.
 
-### Core & C++ Engineering Standards
-*   **Pattern Adherence:** Rigorously analyze and replicate established implementation patterns, naming conventions (e.g., snake_case for members, CamelCase for classes), and architectural structures found in the codebase. Use standard libraries (e.g., `nlohmann/json`, `std::optional`) as the primary toolset whenever they are established as the idiomatic choice in existing modules.
-*   **CMake Source Registration:** When adding any new `.cpp` source file, the agent MUST immediately update `core/CMakeLists.txt` to include it in the `add_library` target. Forgetting this step causes `undefined symbol` linker errors that only surface at test time.
-*   **C++ Code Formatting:** Run `clang-format` (auto format) on edited C++ source files after completing edits. If `clang-format` is not installed on the host system, execute it via the Nix shell wrapper: `nix-shell core/shell.nix --run "clang-format -i <file>"`.
-*   **Security & Data Integrity:** Maintain strict server-side authority as a non-negotiable standard. Critical identifiers (e.g., UUIDs) must be generated on the server to prevent collision or injection, and all client-provided data must be treated as untrusted and validated against server-side business logic.
-*   **No Bandaid Patching (Root-Cause First):** Strictly prohibit defensive bandaid patches when database queries or relational lookups yield unexpected results (such as `if (!found) list.push_back(...)` to artificially satisfy assertions). When query results conflict with domain expectations, the agent MUST trace and resolve the root cause in the SQL queries, relationship topology, or data model rather than masking defects with superficial symptom-level fixes.
-*   **Data Integrity, Observability & Self-Healing:** Maintain strict referential integrity. When encountering corrupted data or broken references (such as dangling foreign keys or orphan parent pointers):
-    *   **Diagnostic Observability:** Ensure anomalies are observable through appropriate diagnostic logging rather than silently swallowed or bypassed (`break;`).
-    *   **Self-Healing / Strict Guard:** Proactively self-heal database records (such as updating dangling references to `NULL`) to restore referential consistency, or reject the operation with an explicit integrity error. Never propagate ghost or invalid identifiers downstream as valid entities.
-*   **Domain Topology Adherence:** Rigorously adhere to established entity relationship topologies (e.g., Lyra's audio versioning utilizes a Single-Level Star Topology where all derived versions point directly to the Master entity). Avoid unverified assumptions of multi-level hierarchies, which introduce unnecessary traversal complexity and boundary defects.
-*   **Hardware Optimization:** Account for high-performance hardware (e.g., 64GB RAM) in system and environment configurations.
-*   **Performance & Platform Trade-offs:** When encountering potential performance bottlenecks or architectural choices that differ between Mobile, PC, or Server environments, the agent MUST proactively initiate a discussion with the user about these trade-offs before implementing a solution.
-
-### Flutter UI & Modular Design System Standards
-*   **Contract & Facade Abstraction:** Screens and feature widgets MUST consume abstract facade widgets (e.g., `LyraButton`, `LyraCard`, `LyraTextField`) instead of directly coupling to concrete Material or Cupertino widgets. This architecture enables hot-swappable, pluggable Design Systems (such as Shadcn or Liquid Glass) behind unified facade contracts.
-*   **Design Token Semantics:** Hardcoded color hex values (`Color(0xFF...)`), fixed magic dimensions, or arbitrary paddings/margins are strictly prohibited. All visual styling, spacing, typography, and color schemes must derive from semantic Design Tokens and theme extensions (e.g., `Theme.of(context)`, `LyraTheme`).
-*   **Layout Safety & Responsiveness:** Always design defensively against `RenderFlex` overflow errors across dynamic window sizes and display densities. Use adaptive and flexible layout primitives (`Expanded`, `Flexible`, `LayoutBuilder`, `SingleChildScrollView`) to guarantee responsive constraints.
-*   **Performance & Shader/Blur Isolation:** Isolate computationally intensive GPU operations (such as `BackdropFilter`, custom fragment shaders, and heavy vector effects) using `RepaintBoundary` widgets. Never place live, un-cached blur filters or complex shaders inside unoptimized scrolling lists or rapidly repainting viewports.
-*   **Controller Lifecycle Management:** Stateful resources and event listeners (`TextEditingController`, `ScrollController`, `AnimationController`, streams) must have deterministic lifecycles. Ensure all controllers are explicitly disposed of in the `State.dispose()` method to prevent memory leaks and dangling listeners.
-*   **Server/Core Authority:** The UI layer functions strictly as a presentation and interaction surface. All business logic, state transitions, validation rules, and data integrity guarantees belong entirely to the C++ core engine.
-*   **Avoid Redundant Status Badges & AI Clutter (消除 AI 味標籤):** Do not add frivolous, redundant status capsules/badges to headers, toolbars, or table headers (such as "Bit-Perfect Engine", "CAS Validated", "AI Verified", or repetitive shortcut tags). Keep the UI clean, purposeful, and uncluttered like professional desktop applications.
-*   **Platform-Neutral Search & Shortcuts:** Avoid hardcoding platform-specific shortcut strings (e.g. `⌘K` or `cmd + K`) into generic input placeholders.
-
-## 4. Git & Commit Habits
+## 5. Git & Commit Habits
 *   **Commit Message Style:**
-    *   Follow `type(scope): message` format based on repository history. (e.g., fix(core), chore(docs), feat(core))
-    *   Prefer concise, one-line messages, but include a descriptive body if it helps clarify the rationale, design decisions, or complex modifications.
+    *   Follow `type(scope): message` format based on repository history (e.g., `fix(core)`, `chore(docs)`, `feat(core)`).
+    *   Prefer concise, one-line messages, but include a descriptive body if it helps clarify rationale, design decisions, or complex modifications.
     *   **Comprehensive Working Tree Scope:** When proposing a commit message, the agent MUST base it on the **totality of all uncommitted modifications** currently in the working tree (`git status` / `git diff`), rather than only describing the delta from the most recent conversational turn.
     *   Always propose a draft message and wait for approval before execution.
 *   **Repository Hygiene:** Proactively maintain `.gitignore`, remove build artifacts, and ensure no large binary or sensitive files are tracked.
 
-## 5. Environment & Context
-*   **Nix/NixOS Proficiency:** The agent must be comfortable working with `nix-shell`, `flake.nix`, and NixOS-specific configurations.
-*   **Mandatory nix-shell Wrapper:** All build, test, and execution commands (e.g., `cmake`, `python -m unittest`, `flutter`) MUST be executed inside the Nix environment. Directly executing C++ or Flutter commands on the host will fail due to missing dependencies. You should prioritize using the root-level `./build.sh`, `./test.sh`, and `./flutter.sh` scripts for convenience (e.g., `./flutter.sh test`, `./flutter.sh run -d linux`, `./flutter.sh pub get`), or execute them through the wrapper: `nix-shell core/shell.nix --run "..."` or `nix-shell ui/shell.nix --run "cd ui && flutter ..."`. Direct host-level execution will fail.
+## 6. Environment & Tooling Execution
+*   **Nix Environment Prerequisite:** Lyra relies on Nix for deterministic compilation and testing environments. All builds, tests, formatting, and analysis must run inside the Nix shell environment.
+*   **Tooling Reference:** Consult [.agents/AGENTS.md](.agents/AGENTS.md) for the authoritative wrapper scripts (`./build.sh`, `./test.sh`, `./flutter.sh`) and specific `nix-shell` commands.
+
