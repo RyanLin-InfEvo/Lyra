@@ -15,6 +15,7 @@
 namespace lyra {
 
 struct Audio;
+struct Asset;
 
 namespace utils {
 
@@ -47,6 +48,8 @@ class AudioHelper {
     static tl::expected<std::vector<uint8_t>, std::string> extract_cover_art(const std::string &filepath);
     static tl::expected<void, std::string> extract_cover_art_to_file(const std::string &filepath, const std::string &output_image_path);
     static AudioQualityInfo evaluate_quality(const Audio &audio);
+    static AudioQualityInfo evaluate_quality(const Audio &audio, const Asset &asset);
+    static bool matches_format(const Asset &asset, const std::string &preferred_format);
 };
 
 } // namespace utils

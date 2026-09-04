@@ -7,11 +7,13 @@
 #include <algorithm>
 #include <cctype>
 #include <filesystem>
+#include <iostream>
 #include <string>
 #include <utility>
 #include <vector>
 
 #include "../models/asset.h"
+#include "../utils/audio_helper.h"
 #include "../utils/storage_helper.h"
 
 namespace lyra {
@@ -60,6 +62,76 @@ tl::expected<std::string, std::string> AssetController::resolve_file_path(const 
 
 tl::expected<std::vector<std::string>, std::string> AssetController::get_assets_by_audio(const std::string &pcm_hash) {
     return m_repo.get_assets_by_audio(pcm_hash);
+}
+
+tl::expected<std::vector<Asset>, std::string> AssetController::get_assets_by_pcm(const std::string &pcm_hash) {
+    return m_repo.get_assets_by_pcm(pcm_hash);
+}
+
+tl::expected<ResolvedAsset, std::string> AssetController::resolve_best_audio_asset(
+    const std::string &pcm_hash,
+    const std::optional<std::string> &preferred_format,
+    const std::optional<Audio> &audio_entity) {
+    auto assets_res = m_repo.get_assets_by_pcm(pcm_hash);
+    if (!assets_res || assets_res->empty()) {
+        return tl::unexpected("No assets found for audio: " + pcm_hash);
+    }
+
+    Audio audio;
+    if (audio_entity.has_value()) {
+        audio = *audio_entity;
+    } else {
+        audio.pcm_hash = pcm_hash;
+    }
+
+    struct CandidateItem {
+        Asset asset;
+        int quality_score = 0;
+        bool is_lossless = false;
+        int64_t file_size = 0;
+        std::string file_hash;
+    };
+
+    std::vector<CandidateItem> candidates;
+    candidates.reserve(assets_res->size());
+
+    for (const auto &asset : *assets_res) {
+        auto qinfo = utils::AudioHelper::evaluate_quality(audio, asset);
+        int score = qinfo.quality_score;
+        if (preferred_format.has_value() && !preferred_format->empty() &&
+            utils::AudioHelper::matches_format(asset, *preferred_format)) {
+            score += 1000;
+        }
+        candidates.push_back(CandidateItem{
+            .asset = asset,
+            .quality_score = score,
+            .is_lossless = qinfo.is_lossless,
+            .file_size = asset.file_size,
+            .file_hash = asset.file_hash});
+    }
+
+    std::sort(candidates.begin(), candidates.end(), [](const CandidateItem &a, const CandidateItem &b) {
+        if (a.quality_score != b.quality_score) {
+            return a.quality_score > b.quality_score;
+        }
+        if (a.is_lossless != b.is_lossless) {
+            return a.is_lossless && !b.is_lossless;
+        }
+        if (a.file_size != b.file_size) {
+            return a.file_size > b.file_size;
+        }
+        return a.file_hash < b.file_hash;
+    });
+
+    for (const auto &candidate : candidates) {
+        auto path_res = resolve_file_path(candidate.asset.file_hash);
+        if (path_res && std::filesystem::exists(*path_res)) {
+            return ResolvedAsset{candidate.asset, *path_res};
+        }
+        std::cerr << "[WARN] CAS physical file missing for asset: " << candidate.asset.file_hash << std::endl;
+    }
+
+    return tl::unexpected("Asset not found on disk");
 }
 
 } // namespace lyra

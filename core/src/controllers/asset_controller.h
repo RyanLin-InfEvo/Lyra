@@ -17,6 +17,11 @@ namespace lyra {
 
 using json = nlohmann::json;
 
+struct ResolvedAsset {
+    Asset asset;
+    std::string file_path;
+};
+
 class AssetController {
   public:
     AssetController(IAssetRepository &repo, const std::string &storage_root);
@@ -29,6 +34,12 @@ class AssetController {
 
     tl::expected<std::string, std::string> resolve_file_path(const std::string &file_hash);
     tl::expected<std::vector<std::string>, std::string> get_assets_by_audio(const std::string &pcm_hash);
+    tl::expected<std::vector<Asset>, std::string> get_assets_by_pcm(const std::string &pcm_hash);
+
+    tl::expected<ResolvedAsset, std::string> resolve_best_audio_asset(
+        const std::string &pcm_hash,
+        const std::optional<std::string> &preferred_format = std::nullopt,
+        const std::optional<Audio> &audio_entity = std::nullopt);
 
   private:
     IAssetRepository &m_repo;

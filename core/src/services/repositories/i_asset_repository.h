@@ -25,6 +25,7 @@ class IAssetRepository {
 
     virtual tl::expected<void, std::string> insert_asset_with_audio(const Asset &asset, const Audio &audio) = 0;
     virtual tl::expected<std::vector<std::string>, std::string> get_assets_by_audio(const std::string &pcm_hash) = 0;
+    virtual tl::expected<std::vector<Asset>, std::string> get_assets_by_pcm(const std::string &pcm_hash) = 0;
     virtual tl::expected<std::vector<std::string>, std::string> get_audio_by_asset(const std::string &file_hash) = 0;
 };
 

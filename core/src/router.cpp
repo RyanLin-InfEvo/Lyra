@@ -237,34 +237,78 @@ tl::expected<PaginationParams, json> parse_pagination(const json &params) {
     return PaginationParams{offset, limit, search};
 }
 
-tl::expected<std::string, json> resolveFileHash(
+tl::expected<ResolvedAsset, json> resolveAudioAsset(
     const json &params,
     TrackController &track_controller,
+    AudioController &audio_controller,
     AssetController &asset_controller) {
     if (params.contains("file_hash") && !params["file_hash"].is_null()) {
-        return params["file_hash"].get<std::string>();
-    } else if (params.contains("pcm_hash") && !params["pcm_hash"].is_null()) {
-        std::string pcm_hash = params["pcm_hash"].get<std::string>();
-        auto assets_res = asset_controller.get_assets_by_audio(pcm_hash);
-        if (!assets_res || assets_res.value().empty()) {
-            return tl::unexpected(ApiResponse::error({ErrorType::AssetNotFound, "No assets found for the PCM hash"}));
+        if (!params["file_hash"].is_string()) {
+            return tl::unexpected(ApiResponse::error({ErrorType::InvalidValue, "file_hash must be a string"}));
         }
-        return assets_res.value()[0];
-    } else if (params.contains("track_id") && !params["track_id"].is_null()) {
+        std::string file_hash = params["file_hash"].get<std::string>();
+        if (file_hash.empty()) {
+            return tl::unexpected(ApiResponse::error({ErrorType::MissingParameter, "file_hash cannot be empty"}));
+        }
+        auto asset_res = asset_controller.get(file_hash);
+        if (!asset_res) {
+            return tl::unexpected(ApiResponse::error({ErrorType::AssetNotFound, asset_res.error()}));
+        }
+        auto path_res = asset_controller.resolve_file_path(file_hash);
+        if (!path_res) {
+            return tl::unexpected(ApiResponse::error({ErrorType::AssetNotFound, path_res.error()}));
+        }
+        if (!std::filesystem::exists(*path_res)) {
+            return tl::unexpected(ApiResponse::error({ErrorType::AssetNotFound, "Asset file not found in storage: " + file_hash}));
+        }
+        return ResolvedAsset{*asset_res, *path_res};
+    }
+
+    std::optional<std::string> preferred_format;
+    if (params.contains("preferred_format") && !params["preferred_format"].is_null() && params["preferred_format"].is_string()) {
+        preferred_format = params["preferred_format"].get<std::string>();
+    } else if (params.contains("format") && !params["format"].is_null() && params["format"].is_string()) {
+        preferred_format = params["format"].get<std::string>();
+    }
+
+    std::string pcm_hash;
+    if (params.contains("track_id") && !params["track_id"].is_null()) {
+        if (!params["track_id"].is_string()) {
+            return tl::unexpected(ApiResponse::error({ErrorType::InvalidValue, "track_id must be a string"}));
+        }
         std::string track_id = params["track_id"].get<std::string>();
+        if (track_id.empty()) {
+            return tl::unexpected(ApiResponse::error({ErrorType::MissingParameter, "track_id cannot be empty"}));
+        }
         auto track_res = track_controller.get(track_id);
         if (!track_res) {
             return tl::unexpected(ApiResponse::error({ErrorType::TrackNotFound, track_res.error()}));
         }
-        std::string pcm_hash = track_res.value().pcm_hash;
-        auto assets_res = asset_controller.get_assets_by_audio(pcm_hash);
-        if (!assets_res || assets_res.value().empty()) {
-            return tl::unexpected(ApiResponse::error({ErrorType::AssetNotFound, "No assets found for the track's audio"}));
+        pcm_hash = track_res.value().pcm_hash;
+        if (pcm_hash.empty()) {
+            return tl::unexpected(ApiResponse::error({ErrorType::AudioNotFound, "Track has no associated audio"}));
         }
-        return assets_res.value()[0];
+    } else if (params.contains("pcm_hash") && !params["pcm_hash"].is_null()) {
+        if (!params["pcm_hash"].is_string()) {
+            return tl::unexpected(ApiResponse::error({ErrorType::InvalidValue, "pcm_hash must be a string"}));
+        }
+        pcm_hash = params["pcm_hash"].get<std::string>();
+        if (pcm_hash.empty()) {
+            return tl::unexpected(ApiResponse::error({ErrorType::MissingParameter, "pcm_hash cannot be empty"}));
+        }
+    } else {
+        return tl::unexpected(ApiResponse::error({ErrorType::MissingParameter, "Must provide track_id, pcm_hash, or file_hash"}));
     }
 
-    return tl::unexpected(ApiResponse::error({ErrorType::MissingParameter, "Must provide track_id, pcm_hash, or file_hash"}));
+    auto audio_res = audio_controller.get(pcm_hash);
+    std::optional<Audio> audio_entity = audio_res ? std::make_optional(*audio_res) : std::nullopt;
+
+    auto best_res = asset_controller.resolve_best_audio_asset(pcm_hash, preferred_format, audio_entity);
+    if (!best_res) {
+        return tl::unexpected(ApiResponse::error({ErrorType::AssetNotFound, best_res.error()}));
+    }
+
+    return best_res.value();
 }
 
 } // namespace
@@ -612,28 +656,19 @@ json Router::handleIngestAsset(const json &params) {
 json Router::handleGetResourcePath(const json &params) {
     auto err = JsonValidator::validate(params, {{"track_id", Type::String, false, StringFormat::UUID},
                                                 {"file_hash", Type::String, false},
-                                                {"pcm_hash", Type::String, false}});
+                                                {"pcm_hash", Type::String, false},
+                                                {"preferred_format", Type::String, false},
+                                                {"format", Type::String, false}});
     if (err) return *err;
 
-    auto file_hash_res = resolveFileHash(params, *m_track_controller, *m_asset_controller);
-    if (!file_hash_res) {
-        return file_hash_res.error();
-    }
-    std::string file_hash = file_hash_res.value();
-
-    auto asset_info_res = m_asset_controller->get(file_hash);
-    if (!asset_info_res) {
-        return ApiResponse::error({ErrorType::AssetNotFound, asset_info_res.error()});
-    }
-
-    auto path_res = m_asset_controller->resolve_file_path(file_hash);
-    if (!path_res) {
-        return ApiResponse::error({ErrorType::AssetNotFound, path_res.error()});
+    auto resolved_res = resolveAudioAsset(params, *m_track_controller, *m_audio_controller, *m_asset_controller);
+    if (!resolved_res) {
+        return resolved_res.error();
     }
 
     json response_data;
-    response_data["path"] = path_res.value();
-    response_data["mime_type"] = asset_info_res.value().mime_type;
+    response_data["path"] = resolved_res->file_path;
+    response_data["mime_type"] = resolved_res->asset.mime_type;
 
     return ApiResponse::success(response_data);
 }
@@ -1137,64 +1172,32 @@ json Router::handleGetTrackCover(const json &params) {
 json Router::handleAudioPlay(const json &p) {
     // Play a file_path, track_id, id, asset_id, or audio_id
     std::string file_path;
-    if (p.contains("file_path") && p["file_path"].is_string()) {
+    if (p.contains("file_path") && !p["file_path"].is_null() && p["file_path"].is_string()) {
         file_path = p["file_path"].get<std::string>();
-    } else if (p.contains("track_id") && p["track_id"].is_string()) {
-        std::string track_id = p["track_id"].get<std::string>();
-        auto track_res = m_track_controller->get(track_id);
-        if (!track_res) {
-            return ApiResponse::error(Error{ErrorType::TrackNotFound, "Track not found: " + track_id});
+        if (!std::filesystem::exists(file_path)) {
+            return ApiResponse::error(Error{ErrorType::NotFound, "Audio file does not exist on disk: " + file_path});
         }
-        std::string pcm_hash = track_res.value().pcm_hash;
-        auto assets_res = m_asset_controller->get_assets_by_audio(pcm_hash);
-        if (!assets_res || assets_res->empty()) {
-            return ApiResponse::error(Error{ErrorType::AssetNotFound, "No assets found for track's audio: " + track_id});
-        }
-        auto path_res = m_asset_controller->resolve_file_path((*assets_res)[0]);
-        if (!path_res) {
-            return ApiResponse::error(Error{ErrorType::NotFound, "File path not found for asset: " + (*assets_res)[0]});
-        }
-        file_path = *path_res;
-    } else if (p.contains("id") && p["id"].is_string()) {
-        std::string track_id = p["id"].get<std::string>();
-        auto track_res = m_track_controller->get(track_id);
-        if (!track_res) {
-            return ApiResponse::error(Error{ErrorType::TrackNotFound, "Track not found: " + track_id});
-        }
-        std::string pcm_hash = track_res.value().pcm_hash;
-        auto assets_res = m_asset_controller->get_assets_by_audio(pcm_hash);
-        if (!assets_res || assets_res->empty()) {
-            return ApiResponse::error(Error{ErrorType::AssetNotFound, "No assets found for track's audio: " + track_id});
-        }
-        auto path_res = m_asset_controller->resolve_file_path((*assets_res)[0]);
-        if (!path_res) {
-            return ApiResponse::error(Error{ErrorType::NotFound, "File path not found for asset: " + (*assets_res)[0]});
-        }
-        file_path = *path_res;
-    } else if (p.contains("asset_id") && p["asset_id"].is_string()) {
-        std::string asset_id = p["asset_id"].get<std::string>();
-        auto path_res = m_asset_controller->resolve_file_path(asset_id);
-        if (!path_res) {
-            return ApiResponse::error(Error{ErrorType::NotFound, "File path not found for asset: " + asset_id});
-        }
-        file_path = *path_res;
-    } else if (p.contains("audio_id") && p["audio_id"].is_string()) {
-        std::string pcm_hash = p["audio_id"].get<std::string>();
-        auto assets_res = m_asset_controller->get_assets_by_audio(pcm_hash);
-        if (!assets_res || assets_res->empty()) {
-            return ApiResponse::error(Error{ErrorType::AudioNotFound, "No assets found for audio: " + pcm_hash});
-        }
-        auto path_res = m_asset_controller->resolve_file_path((*assets_res)[0]);
-        if (!path_res) {
-            return ApiResponse::error(Error{ErrorType::NotFound, "File path not found for asset: " + (*assets_res)[0]});
-        }
-        file_path = *path_res;
     } else {
-        return ApiResponse::error(Error{ErrorType::MissingParameter, "Missing 'file_path', 'track_id', 'id', 'asset_id', or 'audio_id' parameter"});
-    }
+        json params = p;
+        if (!params.contains("track_id") && params.contains("id") && !params["id"].is_null()) {
+            params["track_id"] = params["id"];
+        }
+        if (!params.contains("pcm_hash") && params.contains("audio_id") && !params["audio_id"].is_null()) {
+            params["pcm_hash"] = params["audio_id"];
+        }
+        if (!params.contains("file_hash") && params.contains("asset_id") && !params["asset_id"].is_null()) {
+            params["file_hash"] = params["asset_id"];
+        }
 
-    if (!std::filesystem::exists(file_path)) {
-        return ApiResponse::error(Error{ErrorType::NotFound, "Audio file does not exist on disk: " + file_path});
+        if (!params.contains("track_id") && !params.contains("pcm_hash") && !params.contains("file_hash")) {
+            return ApiResponse::error(Error{ErrorType::MissingParameter, "Missing 'file_path', 'track_id', 'id', 'asset_id', or 'audio_id' parameter"});
+        }
+
+        auto resolved_res = resolveAudioAsset(params, *m_track_controller, *m_audio_controller, *m_asset_controller);
+        if (!resolved_res) {
+            return resolved_res.error();
+        }
+        file_path = resolved_res->file_path;
     }
 
     double start_pos = 0.0;
@@ -1430,17 +1433,21 @@ json Router::handleAudioGetWaveform(const json &p) {
     }
 
 
-    auto assets_res = m_asset_controller->get_assets_by_audio(pcm_hash);
-    if (!assets_res || assets_res->empty()) {
-        return ApiResponse::error({ErrorType::AssetNotFound, "No assets found for audio: " + pcm_hash});
+    std::optional<std::string> preferred_format;
+    if (p.contains("preferred_format") && !p["preferred_format"].is_null() && p["preferred_format"].is_string()) {
+        preferred_format = p["preferred_format"].get<std::string>();
+    } else if (p.contains("format") && !p["format"].is_null() && p["format"].is_string()) {
+        preferred_format = p["format"].get<std::string>();
     }
 
-    auto path_res = m_asset_controller->resolve_file_path((*assets_res)[0]);
-    if (!path_res || !std::filesystem::exists(*path_res)) {
-        return ApiResponse::error({ErrorType::AssetNotFound, "Asset file not found on disk for asset: " + (*assets_res)[0]});
+    auto audio_entity = m_audio_controller->get(pcm_hash);
+    auto resolved_res = m_asset_controller->resolve_best_audio_asset(
+        pcm_hash, preferred_format, audio_entity ? std::make_optional(*audio_entity) : std::nullopt);
+    if (!resolved_res) {
+        return ApiResponse::error({ErrorType::AssetNotFound, resolved_res.error()});
     }
 
-    auto wf_res = WaveformService::get_or_compute_waveform(m_storage_root, pcm_hash, *path_res, points);
+    auto wf_res = WaveformService::get_or_compute_waveform(m_storage_root, pcm_hash, resolved_res->file_path, points);
     if (!wf_res) {
         return ApiResponse::error({ErrorType::NotFound, "Failed to compute waveform: " + wf_res.error()});
     }
@@ -1565,7 +1572,7 @@ json Router::handleAudioSetOutputDevice(const json &params) {
 }
 
 json Router::handleAudioQueueNext(const json &params) {
-    if (params.empty() || (params.contains("file_path") && params["file_path"].is_null() && !params.contains("track_id") && !params.contains("pcm_hash"))) {
+    if (params.empty() || (params.contains("file_path") && params["file_path"].is_null() && !params.contains("track_id") && !params.contains("pcm_hash") && !params.contains("file_hash") && !params.contains("asset_id") && !params.contains("id") && !params.contains("audio_id"))) {
         m_audio_engine->preload_next("");
         json data;
         data["next_file_path"] = "";
@@ -1586,16 +1593,20 @@ json Router::handleAudioQueueNext(const json &params) {
             data["queued"] = false;
             return ApiResponse::success(data);
         }
-    } else if (params.contains("track_id") || params.contains("pcm_hash")) {
-        auto file_hash_res = resolveFileHash(params, *m_track_controller, *m_asset_controller);
-        if (!file_hash_res) {
-            return file_hash_res.error();
+        if (!std::filesystem::exists(file_path)) {
+            return ApiResponse::error({ErrorType::NotFound, "Audio file does not exist on disk: " + file_path});
         }
-        auto path_res = m_asset_controller->resolve_file_path(file_hash_res.value());
-        if (!path_res || !std::filesystem::exists(*path_res)) {
-            return ApiResponse::error({ErrorType::AssetNotFound, "Audio file not found on disk for hash: " + file_hash_res.value()});
+    } else if (params.contains("track_id") || params.contains("pcm_hash") || params.contains("file_hash") || params.contains("asset_id") || params.contains("id") || params.contains("audio_id")) {
+        json p = params;
+        if (!p.contains("track_id") && p.contains("id") && !p["id"].is_null()) p["track_id"] = p["id"];
+        if (!p.contains("pcm_hash") && p.contains("audio_id") && !p["audio_id"].is_null()) p["pcm_hash"] = p["audio_id"];
+        if (!p.contains("file_hash") && p.contains("asset_id") && !p["asset_id"].is_null()) p["file_hash"] = p["asset_id"];
+
+        auto resolved_res = resolveAudioAsset(p, *m_track_controller, *m_audio_controller, *m_asset_controller);
+        if (!resolved_res) {
+            return resolved_res.error();
         }
-        file_path = *path_res;
+        file_path = resolved_res->file_path;
     } else {
         return ApiResponse::error({ErrorType::MissingParameter, "Missing 'file_path', 'track_id', or 'pcm_hash' parameter"});
     }

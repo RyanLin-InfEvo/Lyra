@@ -441,6 +441,133 @@ bool test_evaluate_quality() {
         assert(q.format == "MP3 8-bit / 22.05kHz");
     }
 
+    // 7. Empty assets handling
+    {
+        lyra::Audio audio;
+        audio.pcm_hash = "empty-assets";
+        audio.bit_depth = 16;
+        audio.sample_rate = 44100;
+        audio.channels = 2;
+        audio.duration = 100.0;
+
+        auto q = AudioHelper::evaluate_quality(audio);
+        assert(q.is_lossless == false);
+        assert(q.quality_score > 0);
+        assert(q.file_size == 0);
+        assert(q.format == "MP3 16-bit / 44.1kHz");
+    }
+
+    // 8. Multi-assets prioritization (lossless asset prioritized over larger lossy asset)
+    {
+        lyra::Audio audio;
+        audio.pcm_hash = "multi-assets";
+        audio.bit_depth = 24;
+        audio.sample_rate = 96000;
+        audio.channels = 2;
+        audio.duration = 100.0;
+
+        lyra::Asset mp3_asset;
+        mp3_asset.file_hash = "fhash-mp3-large";
+        mp3_asset.mime_type = "audio/mpeg";
+        mp3_asset.file_size = 10000000; // 10MB
+        audio.assets.push_back(mp3_asset);
+
+        lyra::Asset flac_asset;
+        flac_asset.file_hash = "fhash-flac-small";
+        flac_asset.mime_type = "audio/flac";
+        flac_asset.file_size = 8000000; // 8MB
+        audio.assets.push_back(flac_asset);
+
+        auto q = AudioHelper::evaluate_quality(audio);
+        assert(q.is_lossless == true);
+        assert(q.format == "FLAC 24-bit / 96kHz");
+        assert(q.file_size == 8000000);
+        assert(q.quality_score == 97);
+    }
+
+    return true;
+}
+
+bool test_evaluate_asset_quality() {
+    std::cout << "Running test_evaluate_asset_quality..." << std::endl;
+
+    lyra::Audio audio;
+    audio.pcm_hash = "pcm-test-asset-quality";
+    audio.bit_depth = 24;
+    audio.sample_rate = 96000;
+    audio.channels = 2;
+    audio.duration = 100.0;
+
+    lyra::Asset flac_asset;
+    flac_asset.file_hash = "fhash-flac";
+    flac_asset.mime_type = "audio/flac";
+    flac_asset.file_size = 50000000;
+
+    auto q_flac = AudioHelper::evaluate_quality(audio, flac_asset);
+    assert(q_flac.quality_score == 97);
+    assert(q_flac.is_lossless == true);
+    assert(q_flac.format == "FLAC 24-bit / 96kHz");
+    assert(q_flac.file_size == 50000000);
+
+    lyra::Asset mp3_asset;
+    mp3_asset.file_hash = "fhash-mp3";
+    mp3_asset.mime_type = "audio/mpeg";
+    mp3_asset.file_size = 4000000; // 320 kbps
+
+    auto q_mp3 = AudioHelper::evaluate_quality(audio, mp3_asset);
+    assert(q_mp3.quality_score == 82);
+    assert(q_mp3.is_lossless == false);
+    assert(q_mp3.format == "MP3 24-bit / 96kHz");
+    assert(q_mp3.file_size == 4000000);
+
+    return true;
+}
+
+bool test_matches_format() {
+    std::cout << "Running test_matches_format..." << std::endl;
+
+    lyra::Asset asset;
+    asset.file_hash = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef.flac";
+    asset.mime_type = "audio/flac";
+
+    assert(AudioHelper::matches_format(asset, "flac"));
+    assert(AudioHelper::matches_format(asset, "FLAC"));
+    assert(AudioHelper::matches_format(asset, ".flac"));
+    assert(AudioHelper::matches_format(asset, "audio/flac"));
+    assert(!AudioHelper::matches_format(asset, "mp3"));
+
+    asset.mime_type = "audio/mpeg";
+    asset.file_hash = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef.mp3";
+    assert(AudioHelper::matches_format(asset, "mp3"));
+    assert(AudioHelper::matches_format(asset, "mpeg"));
+
+    asset.mime_type = "audio/wav";
+    asset.file_hash = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef.wav";
+    assert(AudioHelper::matches_format(asset, "wav"));
+
+    asset.mime_type = "audio/aac";
+    asset.file_hash = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef.aac";
+    assert(AudioHelper::matches_format(asset, "aac"));
+
+    asset.mime_type = "audio/m4a";
+    asset.file_hash = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef.m4a";
+    assert(AudioHelper::matches_format(asset, "m4a"));
+    assert(AudioHelper::matches_format(asset, "aac"));
+
+    asset.mime_type = "audio/ogg";
+    asset.file_hash = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef.ogg";
+    assert(AudioHelper::matches_format(asset, "ogg"));
+    assert(AudioHelper::matches_format(asset, "vorbis"));
+
+    asset.mime_type = "audio/alac";
+    asset.file_hash = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef.alac";
+    assert(AudioHelper::matches_format(asset, "alac"));
+
+    asset.mime_type = "audio/aiff";
+    asset.file_hash = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef.aiff";
+    assert(AudioHelper::matches_format(asset, "aiff"));
+    assert(AudioHelper::matches_format(asset, "aif"));
+
     return true;
 }
 
@@ -458,6 +585,8 @@ int main() {
         if (!test_extract_video_thumbnail()) success = false;
         if (!test_extract_cover_art_from_wav_failure()) success = false;
         if (!test_evaluate_quality()) success = false;
+        if (!test_evaluate_asset_quality()) success = false;
+        if (!test_matches_format()) success = false;
     } catch (const std::exception &e) {
         std::cerr << "Exception caught during tests: " << e.what() << std::endl;
         success = false;

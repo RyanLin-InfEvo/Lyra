@@ -5,6 +5,7 @@
 import os
 import sqlite3
 import subprocess
+import sys
 import time
 import unittest
 from base_test_case import BaseLyraTestCase
@@ -978,6 +979,249 @@ class TestAudioController(BaseLyraTestCase):
 
         self.assertTrue(transitioned, "Playback did not seamlessly transition to queued track 2")
         self.dispatch("audio.stop", {})
+
+    def test_multi_asset_quality_selection(self):
+        """Test that the asset with higher quality score (FLAC) is selected over MP3 for same pcm_hash"""
+        pcm_hash = "pcm-multi-asset-quality-test"
+        res_audio = self.dispatch("CreateAudio", {
+            "pcm_hash": pcm_hash,
+            "bit_depth": 24,
+            "sample_rate": 96000,
+            "channels": 2,
+            "duration": 60.0
+        })
+        self.assertResponseCode(res_audio, 201)
+
+        flac_hash = "1" * 64
+        mp3_hash = "2" * 64
+
+        flac_dir = os.path.join(self.test_db_dir, "objects", flac_hash[:2], flac_hash[2:4])
+        os.makedirs(flac_dir, exist_ok=True)
+        flac_file = os.path.join(flac_dir, f"{flac_hash}.flac")
+        with open(flac_file, "wb") as f:
+            f.write(b"dummy flac content")
+
+        mp3_dir = os.path.join(self.test_db_dir, "objects", mp3_hash[:2], mp3_hash[2:4])
+        os.makedirs(mp3_dir, exist_ok=True)
+        mp3_file = os.path.join(mp3_dir, f"{mp3_hash}.mp3")
+        with open(mp3_file, "wb") as f:
+            f.write(b"dummy mp3 content")
+
+        res_flac = self.dispatch("CreateAsset", {
+            "file_hash": flac_hash,
+            "pcm_hash": pcm_hash,
+            "mime_type": "audio/flac",
+            "asset_type": "audio",
+            "file_size": 30000000
+        })
+        self.assertResponseCode(res_flac, 201)
+
+        res_mp3 = self.dispatch("CreateAsset", {
+            "file_hash": mp3_hash,
+            "pcm_hash": pcm_hash,
+            "mime_type": "audio/mpeg",
+            "asset_type": "audio",
+            "file_size": 2000000
+        })
+        self.assertResponseCode(res_mp3, 201)
+
+        res = self.dispatch("GetResourcePath", {"pcm_hash": pcm_hash})
+        self.assertResponseCode(res, 200)
+        self.assertEqual(res["data"]["mime_type"], "audio/flac")
+        self.assertEqual(res["data"]["path"], flac_file)
+
+    def test_multi_asset_format_preference(self):
+        """Test that format preference (+1000 pts) prefers requested format over natural quality score"""
+        pcm_hash = "pcm-multi-asset-pref-test"
+        res_audio = self.dispatch("CreateAudio", {
+            "pcm_hash": pcm_hash,
+            "bit_depth": 24,
+            "sample_rate": 96000,
+            "channels": 2,
+            "duration": 60.0
+        })
+        self.assertResponseCode(res_audio, 201)
+
+        flac_hash = "3" * 64
+        mp3_hash = "4" * 64
+
+        flac_dir = os.path.join(self.test_db_dir, "objects", flac_hash[:2], flac_hash[2:4])
+        os.makedirs(flac_dir, exist_ok=True)
+        flac_file = os.path.join(flac_dir, f"{flac_hash}.flac")
+        with open(flac_file, "wb") as f:
+            f.write(b"dummy flac content")
+
+        mp3_dir = os.path.join(self.test_db_dir, "objects", mp3_hash[:2], mp3_hash[2:4])
+        os.makedirs(mp3_dir, exist_ok=True)
+        mp3_file = os.path.join(mp3_dir, f"{mp3_hash}.mp3")
+        with open(mp3_file, "wb") as f:
+            f.write(b"dummy mp3 content")
+
+        self.dispatch("CreateAsset", {
+            "file_hash": flac_hash,
+            "pcm_hash": pcm_hash,
+            "mime_type": "audio/flac",
+            "asset_type": "audio",
+            "file_size": 30000000
+        })
+        self.dispatch("CreateAsset", {
+            "file_hash": mp3_hash,
+            "pcm_hash": pcm_hash,
+            "mime_type": "audio/mpeg",
+            "asset_type": "audio",
+            "file_size": 2000000
+        })
+
+        # Request mp3 preference via preferred_format
+        res_pref_mp3 = self.dispatch("GetResourcePath", {
+            "pcm_hash": pcm_hash,
+            "preferred_format": "mp3"
+        })
+        self.assertResponseCode(res_pref_mp3, 200)
+        self.assertEqual(res_pref_mp3["data"]["mime_type"], "audio/mpeg")
+        self.assertEqual(res_pref_mp3["data"]["path"], mp3_file)
+
+        # Request mp3 preference via format
+        res_fmt_mp3 = self.dispatch("GetResourcePath", {
+            "pcm_hash": pcm_hash,
+            "format": "mp3"
+        })
+        self.assertResponseCode(res_fmt_mp3, 200)
+        self.assertEqual(res_fmt_mp3["data"]["mime_type"], "audio/mpeg")
+        self.assertEqual(res_fmt_mp3["data"]["path"], mp3_file)
+
+        # Request flac preference
+        res_pref_flac = self.dispatch("GetResourcePath", {
+            "pcm_hash": pcm_hash,
+            "preferred_format": "flac"
+        })
+        self.assertResponseCode(res_pref_flac, 200)
+        self.assertEqual(res_pref_flac["data"]["mime_type"], "audio/flac")
+        self.assertEqual(res_pref_flac["data"]["path"], flac_file)
+
+    def test_multi_asset_disk_fallback(self):
+        """Test disk fallback when top asset is missing on disk and verify diagnostic warning is logged"""
+        pcm_hash = "pcm-multi-asset-fallback-test"
+        res_audio = self.dispatch("CreateAudio", {
+            "pcm_hash": pcm_hash,
+            "bit_depth": 24,
+            "sample_rate": 96000,
+            "channels": 2,
+            "duration": 60.0
+        })
+        self.assertResponseCode(res_audio, 201)
+
+        flac_hash = "5" * 64
+        mp3_hash = "6" * 64
+
+        flac_dir = os.path.join(self.test_db_dir, "objects", flac_hash[:2], flac_hash[2:4])
+        os.makedirs(flac_dir, exist_ok=True)
+        flac_file = os.path.join(flac_dir, f"{flac_hash}.flac")
+        with open(flac_file, "wb") as f:
+            f.write(b"dummy flac content")
+
+        mp3_dir = os.path.join(self.test_db_dir, "objects", mp3_hash[:2], mp3_hash[2:4])
+        os.makedirs(mp3_dir, exist_ok=True)
+        mp3_file = os.path.join(mp3_dir, f"{mp3_hash}.mp3")
+        with open(mp3_file, "wb") as f:
+            f.write(b"dummy mp3 content")
+
+        self.dispatch("CreateAsset", {
+            "file_hash": flac_hash,
+            "pcm_hash": pcm_hash,
+            "mime_type": "audio/flac",
+            "asset_type": "audio",
+            "file_size": 30000000
+        })
+        self.dispatch("CreateAsset", {
+            "file_hash": mp3_hash,
+            "pcm_hash": pcm_hash,
+            "mime_type": "audio/mpeg",
+            "asset_type": "audio",
+            "file_size": 2000000
+        })
+
+        # Delete the top asset file from disk
+        os.remove(flac_file)
+        self.assertFalse(os.path.exists(flac_file))
+
+        # Capture stderr to assert the warning message
+        stderr_fd = 2
+        saved_stderr = os.dup(stderr_fd)
+        pipe_r, pipe_w = os.pipe()
+        os.dup2(pipe_w, stderr_fd)
+        os.close(pipe_w)
+
+        try:
+            res = self.dispatch("GetResourcePath", {"pcm_hash": pcm_hash})
+        finally:
+            sys.stderr.flush()
+            os.dup2(saved_stderr, stderr_fd)
+            os.close(saved_stderr)
+
+        captured_warning = os.read(pipe_r, 4096).decode("utf-8", errors="ignore")
+        os.close(pipe_r)
+
+        # Fallback should cleanly select the MP3 asset
+        self.assertResponseCode(res, 200)
+        self.assertEqual(res["data"]["mime_type"], "audio/mpeg")
+        self.assertEqual(res["data"]["path"], mp3_file)
+
+        # Warning should be observable
+        self.assertIn(f"[WARN] CAS physical file missing for asset: {flac_hash}", captured_warning)
+
+    def test_multi_asset_all_missing_returns_404(self):
+        """Test that 404 is returned when all physical assets are missing on disk, and pinning semantics"""
+        pcm_hash = "pcm-multi-asset-all-missing-test"
+        res_audio = self.dispatch("CreateAudio", {
+            "pcm_hash": pcm_hash,
+            "bit_depth": 16,
+            "sample_rate": 44100,
+            "channels": 2,
+            "duration": 60.0
+        })
+        self.assertResponseCode(res_audio, 201)
+
+        hash1 = "7" * 64
+        hash2 = "8" * 64
+
+        self.dispatch("CreateAsset", {
+            "file_hash": hash1,
+            "pcm_hash": pcm_hash,
+            "mime_type": "audio/flac",
+            "asset_type": "audio",
+            "file_size": 20000000
+        })
+        self.dispatch("CreateAsset", {
+            "file_hash": hash2,
+            "pcm_hash": pcm_hash,
+            "mime_type": "audio/mpeg",
+            "asset_type": "audio",
+            "file_size": 3000000
+        })
+
+        # Neither hash1 nor hash2 exists on disk
+        res = self.dispatch("GetResourcePath", {"pcm_hash": pcm_hash})
+        self.assertResponseCode(res, 404)
+        self.assertEqual(res["error"]["type"], "AssetNotFound")
+        self.assertIn("Asset not found on disk", res["error"]["message"])
+
+        # Pinning semantics test: if hash2 exists on disk but hash1 is requested directly, it must return 404
+        hash2_dir = os.path.join(self.test_db_dir, "objects", hash2[:2], hash2[2:4])
+        os.makedirs(hash2_dir, exist_ok=True)
+        hash2_file = os.path.join(hash2_dir, f"{hash2}.mp3")
+        with open(hash2_file, "wb") as f:
+            f.write(b"dummy mp3")
+
+        # hash2 is on disk, hash1 is missing
+        res_pinned_missing = self.dispatch("GetResourcePath", {"file_hash": hash1})
+        self.assertResponseCode(res_pinned_missing, 404)
+        self.assertEqual(res_pinned_missing["error"]["type"], "AssetNotFound")
+
+        # hash2 requested directly succeeds
+        res_pinned_exists = self.dispatch("GetResourcePath", {"file_hash": hash2})
+        self.assertResponseCode(res_pinned_exists, 200)
+        self.assertEqual(res_pinned_exists["data"]["path"], hash2_file)
 
 
 

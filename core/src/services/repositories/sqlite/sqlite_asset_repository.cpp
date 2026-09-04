@@ -237,6 +237,22 @@ tl::expected<std::vector<std::string>, std::string> SqliteAssetRepository::get_a
     }
 }
 
+tl::expected<std::vector<Asset>, std::string> SqliteAssetRepository::get_assets_by_pcm(const std::string &pcm_hash) {
+    try {
+        auto &db = m_context.get_db();
+        SQLite::Statement query(
+            db,
+            "SELECT a.file_hash, a.mime_type, a.asset_type, a.file_size, a.created_at "
+            "FROM Audio_Asset aa JOIN Asset a ON aa.file_hash = a.file_hash "
+            "WHERE aa.pcm_hash = ?");
+        query.bind(1, pcm_hash);
+
+        return SqliteHelper::fetch_all(query, SqliteMappers::map_asset);
+    } catch (const std::exception &e) {
+        return tl::unexpected(e.what());
+    }
+}
+
 tl::expected<std::vector<std::string>, std::string> SqliteAssetRepository::get_audio_by_asset(const std::string &file_hash) {
     // Get the pcm_hash by given file_hash
     try {

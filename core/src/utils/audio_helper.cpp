@@ -401,7 +401,7 @@ std::string detect_asset_codec(const Asset *asset, bool is_lossless) {
 
 } // namespace
 
-AudioQualityInfo AudioHelper::evaluate_quality(const Audio &audio) {
+AudioQualityInfo AudioHelper::evaluate_quality(const Audio &audio, const Asset &asset) {
     // 1. Bit Depth Score (0~25)
     int bit_depth_score = 0;
     if (audio.bit_depth >= 24) {
@@ -431,32 +431,14 @@ AudioQualityInfo AudioHelper::evaluate_quality(const Audio &audio) {
     int resolution_score = bit_depth_score + sample_rate_score;
 
     // 3. Lossless / Bitrate Score (0~45)
-    int64_t max_file_size = 0;
-    const Asset *primary_asset = nullptr;
-    bool is_lossless = false;
-
-    for (const auto &asset : audio.assets) {
-        if (asset.file_size > max_file_size) {
-            max_file_size = asset.file_size;
-        }
-        if (!primary_asset || asset.file_size > primary_asset->file_size) {
-            primary_asset = &asset;
-        }
-        if (!is_lossless && is_asset_lossless(asset)) {
-            is_lossless = true;
-        }
-    }
-    if (!audio.assets.empty() && !primary_asset) {
-        primary_asset = &audio.assets[0];
-    }
-
+    bool is_lossless = is_asset_lossless(asset);
     int lossless_bitrate_score = 0;
     if (is_lossless) {
         lossless_bitrate_score = 45;
     } else {
         double bitrate = 0.0;
-        if (audio.duration > 0.0 && max_file_size > 0) {
-            bitrate = (static_cast<double>(max_file_size) * 8.0) / audio.duration;
+        if (audio.duration > 0.0 && asset.file_size > 0) {
+            bitrate = (static_cast<double>(asset.file_size) * 8.0) / audio.duration;
         }
         if (bitrate >= 320000.0) {
             lossless_bitrate_score = 30;
@@ -484,7 +466,7 @@ AudioQualityInfo AudioHelper::evaluate_quality(const Audio &audio) {
     int total_quality_score = resolution_score + lossless_bitrate_score + channels_score;
 
     // 5. Format string formatting
-    std::string codec = detect_asset_codec(primary_asset, is_lossless);
+    std::string codec = detect_asset_codec(&asset, is_lossless);
 
     int bit_depth = audio.bit_depth > 0 ? audio.bit_depth : 16;
     std::string bit_depth_str = std::to_string(bit_depth) + "-bit";
@@ -505,9 +487,124 @@ AudioQualityInfo AudioHelper::evaluate_quality(const Audio &audio) {
     result.quality_score = total_quality_score;
     result.is_lossless = is_lossless;
     result.format = format_str;
-    result.file_size = max_file_size;
+    result.file_size = asset.file_size;
 
     return result;
+}
+
+AudioQualityInfo AudioHelper::evaluate_quality(const Audio &audio) {
+    if (audio.assets.empty()) {
+        Asset default_asset;
+        return evaluate_quality(audio, default_asset);
+    }
+
+    const Asset *primary_asset = nullptr;
+    bool any_lossless = false;
+
+    for (const auto &asset : audio.assets) {
+        bool current_lossless = is_asset_lossless(asset);
+        if (current_lossless) {
+            any_lossless = true;
+        }
+
+        if (!primary_asset) {
+            primary_asset = &asset;
+            continue;
+        }
+
+        bool primary_is_lossless = is_asset_lossless(*primary_asset);
+        if (current_lossless && !primary_is_lossless) {
+            primary_asset = &asset;
+        } else if (current_lossless == primary_is_lossless) {
+            if (asset.file_size > primary_asset->file_size) {
+                primary_asset = &asset;
+            }
+        }
+    }
+
+    auto qinfo = evaluate_quality(audio, *primary_asset);
+    if (any_lossless) {
+        qinfo.is_lossless = true;
+    }
+    return qinfo;
+}
+
+bool AudioHelper::matches_format(const Asset &asset, const std::string &preferred_format) {
+    if (preferred_format.empty()) {
+        return false;
+    }
+    std::string fmt = preferred_format;
+    std::transform(fmt.begin(), fmt.end(), fmt.begin(), [](unsigned char c) {
+        return std::tolower(c);
+    });
+    if (!fmt.empty() && fmt.front() == '.') {
+        fmt.erase(0, 1);
+    }
+    if (fmt.rfind("audio/", 0) == 0) {
+        fmt.erase(0, 6);
+    }
+    if (fmt.rfind("x-", 0) == 0) {
+        fmt.erase(0, 2);
+    }
+
+    const std::string &mime = asset.mime_type;
+    const std::string &hash = asset.file_hash;
+
+    if (fmt == "flac") {
+        return contains_case_insensitive(mime, "audio/flac") ||
+               ends_with_case_insensitive(mime, ".flac") ||
+               ends_with_case_insensitive(hash, ".flac");
+    }
+    if (fmt == "wav") {
+        return contains_case_insensitive(mime, "audio/wav") ||
+               contains_case_insensitive(mime, "audio/x-wav") ||
+               ends_with_case_insensitive(mime, ".wav") ||
+               ends_with_case_insensitive(hash, ".wav");
+    }
+    if (fmt == "mp3" || fmt == "mpeg") {
+        return contains_case_insensitive(mime, "audio/mp3") ||
+               contains_case_insensitive(mime, "audio/mpeg") ||
+               ends_with_case_insensitive(mime, ".mp3") ||
+               ends_with_case_insensitive(hash, ".mp3");
+    }
+    if (fmt == "alac") {
+        return contains_case_insensitive(mime, "audio/alac") ||
+               ends_with_case_insensitive(mime, ".alac") ||
+               ends_with_case_insensitive(hash, ".alac");
+    }
+    if (fmt == "aiff" || fmt == "aif") {
+        return contains_case_insensitive(mime, "audio/aiff") ||
+               contains_case_insensitive(mime, "audio/x-aiff") ||
+               ends_with_case_insensitive(mime, ".aiff") ||
+               ends_with_case_insensitive(hash, ".aiff") ||
+               ends_with_case_insensitive(mime, ".aif") ||
+               ends_with_case_insensitive(hash, ".aif");
+    }
+    if (fmt == "ogg" || fmt == "vorbis") {
+        return contains_case_insensitive(mime, "audio/ogg") ||
+               contains_case_insensitive(mime, "audio/vorbis") ||
+               ends_with_case_insensitive(mime, ".ogg") ||
+               ends_with_case_insensitive(hash, ".ogg");
+    }
+    if (fmt == "m4a") {
+        return contains_case_insensitive(mime, "audio/m4a") ||
+               contains_case_insensitive(mime, "audio/mp4") ||
+               ends_with_case_insensitive(mime, ".m4a") ||
+               ends_with_case_insensitive(hash, ".m4a");
+    }
+    if (fmt == "aac") {
+        return contains_case_insensitive(mime, "audio/aac") ||
+               contains_case_insensitive(mime, "audio/m4a") ||
+               contains_case_insensitive(mime, "audio/mp4") ||
+               ends_with_case_insensitive(mime, ".aac") ||
+               ends_with_case_insensitive(hash, ".aac") ||
+               ends_with_case_insensitive(mime, ".m4a") ||
+               ends_with_case_insensitive(hash, ".m4a");
+    }
+
+    return contains_case_insensitive(mime, fmt) ||
+           ends_with_case_insensitive(mime, "." + fmt) ||
+           ends_with_case_insensitive(hash, "." + fmt);
 }
 
 } // namespace utils
