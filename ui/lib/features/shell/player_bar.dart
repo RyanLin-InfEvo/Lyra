@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Tzu-Ting Lin
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import 'package:flutter/material.dart' show Tooltip;
 import 'package:flutter/widgets.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
@@ -25,6 +26,8 @@ class LyraPlayerBar extends StatelessWidget {
   final VoidCallback? onInspectTrack;
   final VoidCallback? onInspectAudio;
   final bool isInspectorOpen;
+  final bool isNowPlayingExpanded;
+  final VoidCallback? onExpandNowPlaying;
 
   const LyraPlayerBar({
     super.key,
@@ -40,6 +43,8 @@ class LyraPlayerBar extends StatelessWidget {
     this.onInspectTrack,
     this.onInspectAudio,
     this.isInspectorOpen = false,
+    this.isNowPlayingExpanded = false,
+    this.onExpandNowPlaying,
   });
 
   String _formatDuration(Duration d) {
@@ -93,18 +98,27 @@ class LyraPlayerBar extends StatelessWidget {
                     )
                   : Row(
                       children: [
-                        Container(
-                          width: 44.0,
-                          height: 44.0,
-                          decoration: BoxDecoration(
-                            color: tokens.primary,
-                            borderRadius: LyraRadius.mdRadius,
-                          ),
-                          child: Center(
-                            child: Icon(
-                              LucideIcons.music,
-                              size: 22.0,
-                              color: tokens.primaryForeground,
+                        MouseRegion(
+                          cursor: onExpandNowPlaying != null
+                              ? SystemMouseCursors.click
+                              : SystemMouseCursors.basic,
+                          child: Listener(
+                            behavior: HitTestBehavior.opaque,
+                            onPointerUp: (_) => onExpandNowPlaying?.call(),
+                            child: Container(
+                              width: 44.0,
+                              height: 44.0,
+                              decoration: BoxDecoration(
+                                color: tokens.primary,
+                                borderRadius: LyraRadius.mdRadius,
+                              ),
+                              child: Center(
+                                child: Icon(
+                                  LucideIcons.music,
+                                  size: 22.0,
+                                  color: tokens.primaryForeground,
+                                ),
+                              ),
                             ),
                           ),
                         ),
@@ -114,12 +128,22 @@ class LyraPlayerBar extends StatelessWidget {
                             mainAxisAlignment: MainAxisAlignment.center,
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Text(
-                                currentTrack!.displayTitle,
-                                style: LyraTypography.p(
-                                  tokens,
-                                ).copyWith(fontWeight: FontWeight.w600),
-                                overflow: TextOverflow.ellipsis,
+                              MouseRegion(
+                                cursor: onExpandNowPlaying != null
+                                    ? SystemMouseCursors.click
+                                    : SystemMouseCursors.basic,
+                                child: Listener(
+                                  behavior: HitTestBehavior.opaque,
+                                  onPointerUp: (_) =>
+                                      onExpandNowPlaying?.call(),
+                                  child: Text(
+                                    currentTrack!.displayTitle,
+                                    style: LyraTypography.p(
+                                      tokens,
+                                    ).copyWith(fontWeight: FontWeight.w600),
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
                               ),
                               const SizedBox(height: 2.0),
                               Row(
@@ -316,6 +340,25 @@ class LyraPlayerBar extends StatelessWidget {
                           : currentTrack == null
                           ? tokens.textMuted
                           : tokens.text,
+                    ),
+                  ),
+                  const SizedBox(width: LyraSpacing.xs),
+                  Tooltip(
+                    message: isNowPlayingExpanded
+                        ? 'Collapse Now Playing'
+                        : 'Expand Now Playing',
+                    child: LyraButton.ghost(
+                      size: LyraButtonSize.sm,
+                      onPressed: onExpandNowPlaying,
+                      child: Icon(
+                        isNowPlayingExpanded
+                            ? LucideIcons.chevronDown
+                            : LucideIcons.chevronUp,
+                        size: 18.0,
+                        color: onExpandNowPlaying == null
+                            ? tokens.textMuted
+                            : tokens.text,
+                      ),
                     ),
                   ),
                 ],

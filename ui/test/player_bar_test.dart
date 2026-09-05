@@ -22,6 +22,8 @@ Widget _buildPlayerBarTest({
   ValueChanged<Duration>? onSeek,
   ValueChanged<double>? onVolumeChanged,
   ValueNotifier<ThemeMode>? themeNotifier,
+  bool isNowPlayingExpanded = false,
+  VoidCallback? onExpandNowPlaying,
 }) {
   final themeModeNotifier =
       themeNotifier ?? ValueNotifier<ThemeMode>(ThemeMode.dark);
@@ -56,11 +58,13 @@ Widget _buildPlayerBarTest({
                 isPlaying: isPlaying,
                 currentPosition: currentPosition,
                 volume: volume,
+                isNowPlayingExpanded: isNowPlayingExpanded,
                 onTogglePlay: onTogglePlay ?? () {},
                 onNext: onNext ?? () {},
                 onPrevious: onPrevious ?? () {},
                 onSeek: onSeek ?? (_) {},
                 onVolumeChanged: onVolumeChanged ?? (_) {},
+                onExpandNowPlaying: onExpandNowPlaying,
               ),
             ),
           ),
@@ -212,6 +216,46 @@ void main() {
       );
       final lightDeco = playerBarContainerLight.decoration as BoxDecoration;
       expect(lightDeco.color, equals(const Color(0xFFFFFFFF)));
+    },
+  );
+
+  testWidgets(
+    'LyraPlayerBar toggle button reflects isNowPlayingExpanded state and tooltips',
+    (tester) async {
+      bool toggled = false;
+
+      // 1. When isNowPlayingExpanded is false: displays chevronUp and 'Expand Now Playing' tooltip
+      await tester.pumpWidget(
+        _buildPlayerBarTest(
+          currentTrack: testTrack,
+          isNowPlayingExpanded: false,
+          onExpandNowPlaying: () => toggled = true,
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.byIcon(LucideIcons.chevronUp), findsOneWidget);
+      expect(find.byIcon(LucideIcons.chevronDown), findsNothing);
+      expect(find.byTooltip('Expand Now Playing'), findsOneWidget);
+
+      // Tap toggle button
+      await tester.tap(find.byIcon(LucideIcons.chevronUp));
+      await tester.pumpAndSettle();
+      expect(toggled, isTrue);
+
+      // 2. When isNowPlayingExpanded is true: displays chevronDown and 'Collapse Now Playing' tooltip
+      await tester.pumpWidget(
+        _buildPlayerBarTest(
+          currentTrack: testTrack,
+          isNowPlayingExpanded: true,
+          onExpandNowPlaying: () {},
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.byIcon(LucideIcons.chevronDown), findsOneWidget);
+      expect(find.byIcon(LucideIcons.chevronUp), findsNothing);
+      expect(find.byTooltip('Collapse Now Playing'), findsOneWidget);
     },
   );
 }

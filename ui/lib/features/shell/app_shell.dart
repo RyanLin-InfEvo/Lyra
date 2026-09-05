@@ -17,6 +17,8 @@ import '../models/playlist.dart';
 import '../models/tag.dart';
 import '../models/track.dart';
 import '../models/work.dart';
+import '../player/controllers/playback_queue_controller.dart';
+import '../player/views/now_playing_view.dart';
 import '../playlists/playlists_view.dart';
 import '../services/music_service.dart';
 import '../settings/settings_view.dart';
@@ -38,8 +40,13 @@ class TrackFilter {
 /// Main Desktop App Shell orchestrating 3-pane layout, playback state, and navigation.
 class AppShell extends StatefulWidget {
   final MusicService musicService;
+  final PlaybackQueueController? playbackController;
 
-  const AppShell({super.key, required this.musicService});
+  const AppShell({
+    super.key,
+    required this.musicService,
+    this.playbackController,
+  });
 
   @override
   State<AppShell> createState() => _AppShellState();
@@ -47,9 +54,11 @@ class AppShell extends StatefulWidget {
 
 class _AppShellState extends State<AppShell> {
   late final TextEditingController _searchController;
+  late final PlaybackQueueController _playbackController;
   AppTab _currentTab = AppTab.tracks;
   bool _isSidebarCollapsed = false;
   bool _showImportModal = false;
+  bool _isNowPlayingExpanded = false;
 
   // Inspector Drawer State (Phase 4.3)
   bool _isInspectorOpen = false;
@@ -71,27 +80,37 @@ class _AppShellState extends State<AppShell> {
   TrackFilter? _activeTrackFilter;
   bool _isLoading = true;
 
-  // Playback State
-  Track? _currentTrack;
-  bool _isPlaying = false;
-  final ValueNotifier<Duration> _positionNotifier = ValueNotifier<Duration>(
-    Duration.zero,
-  );
+  // Playback State delegation
+  Track? get _currentTrack => _playbackController.currentTrack;
+  bool get _isPlaying => _playbackController.isPlaying;
+  ValueNotifier<Duration> get _positionNotifier =>
+      _playbackController.positionNotifier;
   double _volume = 0.85;
-  Timer? _playbackTimer;
 
   @override
   void initState() {
     super.initState();
     _searchController = TextEditingController();
+    _playbackController =
+        widget.playbackController ??
+        PlaybackQueueController(timerInterval: const Duration(seconds: 1));
+    _playbackController.addListener(_onPlaybackChanged);
     _loadCatalog();
+  }
+
+  void _onPlaybackChanged() {
+    if (mounted) {
+      setState(() {});
+    }
   }
 
   @override
   void dispose() {
-    _playbackTimer?.cancel();
+    _playbackController.removeListener(_onPlaybackChanged);
+    if (widget.playbackController == null) {
+      _playbackController.dispose();
+    }
     _searchController.dispose();
-    _positionNotifier.dispose();
     super.dispose();
   }
 
@@ -133,14 +152,9 @@ class _AppShellState extends State<AppShell> {
       _casObjects = casObjects;
       _isLoading = false;
 
-      if (_currentTrack == null && tracks.isNotEmpty) {
-        _currentTrack = tracks.first;
-      } else if (_currentTrack != null) {
+      if (_playbackController.queue.isEmpty && tracks.isNotEmpty) {
         for (final t in tracks) {
-          if (t.id == _currentTrack!.id) {
-            _currentTrack = t;
-            break;
-          }
+          _playbackController.addToQueue(t);
         }
       }
     });
@@ -155,67 +169,47 @@ class _AppShellState extends State<AppShell> {
   }
 
   void _onTrackSelected(Track track) {
-    setState(() {
-      _currentTrack = track;
-      _isPlaying = true;
-      if (_isInspectorOpen) {
+    final effectiveTracks = _activeTrackFilter != null
+        ? _tracks.where(_activeTrackFilter!.predicate).toList()
+        : _tracks;
+    _playbackController.play(
+      track,
+      contextQueue: effectiveTracks.isNotEmpty ? effectiveTracks : _tracks,
+    );
+    if (_isInspectorOpen) {
+      setState(() {
         _inspectedTrack = track;
         _inspectedAsset = null;
-      }
-    });
-    _positionNotifier.value = Duration.zero;
-    _startPlaybackTimer();
-  }
-
-  void _togglePlay() {
-    if (_currentTrack == null) return;
-    setState(() {
-      _isPlaying = !_isPlaying;
-    });
-
-    if (_isPlaying) {
-      _startPlaybackTimer();
-    } else {
-      _playbackTimer?.cancel();
+      });
     }
   }
 
-  void _startPlaybackTimer() {
-    _playbackTimer?.cancel();
-    _playbackTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
-      if (!mounted || !_isPlaying || _currentTrack == null) {
-        timer.cancel();
-        return;
-      }
-
-      if (_positionNotifier.value.inSeconds >=
-          _currentTrack!.duration.inSeconds) {
-        _positionNotifier.value = Duration.zero;
-        _onNextTrack();
-      } else {
-        _positionNotifier.value += const Duration(seconds: 1);
-      }
-    });
+  void _togglePlay() {
+    _playbackController.togglePlay();
   }
 
   void _onNextTrack() {
-    if (_tracks.isEmpty || _currentTrack == null) return;
-    final currentIndex = _tracks.indexWhere((t) => t.id == _currentTrack!.id);
-    final validIndex = currentIndex >= 0 ? currentIndex : -1;
-    final nextIndex = (validIndex + 1) % _tracks.length;
-    _onTrackSelected(_tracks[nextIndex]);
+    _playbackController.next();
   }
 
   void _onPreviousTrack() {
-    if (_tracks.isEmpty || _currentTrack == null) return;
-    final currentIndex = _tracks.indexWhere((t) => t.id == _currentTrack!.id);
-    final validIndex = currentIndex >= 0 ? currentIndex : 0;
-    final prevIndex = (validIndex - 1 + _tracks.length) % _tracks.length;
-    _onTrackSelected(_tracks[prevIndex]);
+    _playbackController.previous();
   }
 
   void _onSeek(Duration position) {
-    _positionNotifier.value = position;
+    _playbackController.seek(position);
+  }
+
+  void _collapseNowPlaying() {
+    setState(() {
+      _isNowPlayingExpanded = false;
+    });
+  }
+
+  void _toggleNowPlaying() {
+    setState(() {
+      _isNowPlayingExpanded = !_isNowPlayingExpanded;
+    });
   }
 
   void _onVolumeChanged(double volume) {
@@ -532,32 +526,73 @@ class _AppShellState extends State<AppShell> {
                           ),
                         ),
 
-                        // Main View Content + Docked Inspector Drawer (Center)
+                        // Main View Content + Docked Inspector Drawer + Now Playing Overlay (Center)
                         Expanded(
-                          child: Row(
+                          child: Stack(
                             children: [
-                              Expanded(
-                                child: Container(
-                                  color: tokens.background,
-                                  child: _buildMainContent(),
-                                ),
+                              Row(
+                                children: [
+                                  Expanded(
+                                    child: Container(
+                                      color: tokens.background,
+                                      child: _buildMainContent(),
+                                    ),
+                                  ),
+                                  if (_isInspectorOpen)
+                                    RepaintBoundary(
+                                      child: AudioInspectorDrawer(
+                                        track:
+                                            _inspectedTrack ??
+                                            (_inspectedAsset != null
+                                                ? null
+                                                : _currentTrack),
+                                        asset: _inspectedAsset,
+                                        musicService: widget.musicService,
+                                        onClose: _closeInspector,
+                                        onActiveAudioChanged: (newPcmHash) {
+                                          _loadCatalog();
+                                        },
+                                        onVerifyIntegrity: (hash) => widget
+                                            .musicService
+                                            .verifyCasHash(hash),
+                                      ),
+                                    ),
+                                ],
                               ),
-                              if (_isInspectorOpen)
-                                RepaintBoundary(
-                                  child: AudioInspectorDrawer(
-                                    track:
-                                        _inspectedTrack ??
-                                        (_inspectedAsset != null
-                                            ? null
-                                            : _currentTrack),
-                                    asset: _inspectedAsset,
-                                    musicService: widget.musicService,
-                                    onClose: _closeInspector,
-                                    onActiveAudioChanged: (newPcmHash) {
-                                      _loadCatalog();
-                                    },
-                                    onVerifyIntegrity: (hash) =>
-                                        widget.musicService.verifyCasHash(hash),
+
+                              // Now Playing View Overlay (Slide-up & Fade animation within Center Area)
+                              if (_isNowPlayingExpanded)
+                                Positioned.fill(
+                                  child: RepaintBoundary(
+                                    child: TweenAnimationBuilder<double>(
+                                      tween: Tween(begin: 0.0, end: 1.0),
+                                      duration: const Duration(
+                                        milliseconds: 250,
+                                      ),
+                                      curve: Curves.easeOutCubic,
+                                      builder: (context, value, child) {
+                                        return Transform.translate(
+                                          offset: Offset(
+                                            0,
+                                            (1.0 - value) * 40.0,
+                                          ),
+                                          child: Opacity(
+                                            opacity: value,
+                                            child: child,
+                                          ),
+                                        );
+                                      },
+                                      child: NowPlayingView(
+                                        track: _currentTrack,
+                                        playbackController: _playbackController,
+                                        onCollapse: _collapseNowPlaying,
+                                        queueSource: _activeTrackFilter != null
+                                            ? _activeTrackFilter!.label
+                                            : (_currentTab == AppTab.playlists
+                                                  ? 'Playing from Playlist'
+                                                  : 'Playing from Library'),
+                                      ),
+                                    ),
                                   ),
                                 ),
                             ],
@@ -575,6 +610,7 @@ class _AppShellState extends State<AppShell> {
                                 currentPosition: currentPosition,
                                 volume: _volume,
                                 isInspectorOpen: _isInspectorOpen,
+                                isNowPlayingExpanded: _isNowPlayingExpanded,
                                 onInspectTrack: _toggleInspector,
                                 onInspectAudio: () {
                                   if (_currentTrack != null) {
@@ -588,6 +624,7 @@ class _AppShellState extends State<AppShell> {
                                 onPrevious: _onPreviousTrack,
                                 onSeek: _onSeek,
                                 onVolumeChanged: _onVolumeChanged,
+                                onExpandNowPlaying: _toggleNowPlaying,
                               );
                             },
                           ),

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shadcn_ui/shadcn_ui.dart';
 import 'package:ui/design_system/factory/lyra_design_system_scope.dart';
@@ -11,10 +12,12 @@ import 'package:ui/features/albums/albums_view.dart';
 import 'package:ui/features/artists/artists_view.dart';
 import 'package:ui/features/cas_pool/cas_view.dart';
 import 'package:ui/features/inspector/asset_inspector_drawer.dart';
+import 'package:ui/features/player/views/now_playing_view.dart';
 import 'package:ui/features/playlists/playlists_view.dart';
 import 'package:ui/features/services/mock_music_service.dart';
 import 'package:ui/features/settings/settings_view.dart';
 import 'package:ui/features/shell/app_shell.dart';
+import 'package:ui/features/shell/header_bar.dart';
 import 'package:ui/features/shell/player_bar.dart';
 import 'package:ui/features/shell/sidebar.dart';
 import 'package:ui/features/tags/tags_view.dart';
@@ -835,6 +838,77 @@ void main() {
       // Verify inspector switches to CAS Physical File Blob mode
       expect(find.byType(AssetInspectorDrawer), findsOneWidget);
       expect(find.text('CAS Physical File Blob'), findsOneWidget);
+    },
+  );
+
+  testWidgets(
+    'AppShell keeps Sidebar, HeaderBar, and PlayerBar visible and interactive when NowPlaying is expanded',
+    (tester) async {
+      tester.view.physicalSize = const Size(1280, 800);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+
+      await tester.pumpWidget(_buildAppShellTest());
+      await tester.pumpAndSettle();
+
+      // 1. Play a track by tapping the first track in TracksView
+      final trackFinder = find
+          .text('Hotel California (Live on MTV 1994)')
+          .first;
+      await tester.tap(trackFinder);
+      await tester.pumpAndSettle();
+
+      // Verify NowPlayingView is initially not present
+      expect(find.byType(NowPlayingView), findsNothing);
+
+      // PlayerBar toggle button is chevronUp
+      expect(find.byIcon(LucideIcons.chevronUp), findsOneWidget);
+      expect(find.byTooltip('Expand Now Playing'), findsOneWidget);
+
+      // 2. Expand NowPlaying by tapping the expand button on PlayerBar
+      await tester.tap(find.byTooltip('Expand Now Playing'));
+      await tester.pumpAndSettle();
+
+      // NowPlayingView is now visible in the center area
+      expect(find.byType(NowPlayingView), findsOneWidget);
+
+      // 3. Verify Sidebar, HeaderBar, and PlayerBar remain fully visible!
+      expect(find.byType(LyraSidebar), findsOneWidget);
+      expect(find.byType(LyraHeaderBar), findsOneWidget);
+      expect(find.byType(LyraPlayerBar), findsOneWidget);
+
+      // PlayerBar now shows chevronDown with Collapse tooltip
+      expect(find.byTooltip('Collapse Now Playing'), findsOneWidget);
+
+      // Sidebar items remain visible
+      expect(find.text('Tracks'), findsOneWidget);
+      expect(find.text('Albums'), findsOneWidget);
+      expect(find.text('Artists'), findsWidgets);
+
+      // HeaderBar search input remains interactive
+      final searchInput = find.byType(EditableText).first;
+      await tester.enterText(searchInput, 'Miles');
+      await tester.pumpAndSettle();
+      final editable = tester.widget<EditableText>(searchInput);
+      expect(editable.controller.text, equals('Miles'));
+
+      // 4. Collapse NowPlaying by tapping the Collapse button on PlayerBar
+      await tester.tap(find.byTooltip('Collapse Now Playing'));
+      await tester.pumpAndSettle();
+
+      // NowPlayingView is collapsed
+      expect(find.byType(NowPlayingView), findsNothing);
+      expect(find.byTooltip('Expand Now Playing'), findsOneWidget);
+      expect(find.byIcon(LucideIcons.chevronUp), findsOneWidget);
+
+      // 5. Expand again and collapse via Escape keyboard shortcut
+      await tester.tap(find.byTooltip('Expand Now Playing'));
+      await tester.pumpAndSettle();
+      expect(find.byType(NowPlayingView), findsOneWidget);
+
+      await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+      await tester.pumpAndSettle();
+      expect(find.byType(NowPlayingView), findsNothing);
     },
   );
 }
