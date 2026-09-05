@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Tzu-Ting Lin
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart' show Tooltip;
 import 'package:flutter/widgets.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
@@ -17,6 +18,7 @@ class LyraPlayerBar extends StatelessWidget {
   final Track? currentTrack;
   final bool isPlaying;
   final Duration currentPosition;
+  final ValueListenable<Duration>? positionNotifier;
   final double volume;
   final VoidCallback onTogglePlay;
   final VoidCallback onNext;
@@ -33,7 +35,9 @@ class LyraPlayerBar extends StatelessWidget {
     super.key,
     required this.currentTrack,
     required this.isPlaying,
-    required this.currentPosition,
+    this.currentPosition = Duration.zero,
+    Duration? position,
+    this.positionNotifier,
     required this.volume,
     required this.onTogglePlay,
     required this.onNext,
@@ -45,7 +49,11 @@ class LyraPlayerBar extends StatelessWidget {
     this.isInspectorOpen = false,
     this.isNowPlayingExpanded = false,
     this.onExpandNowPlaying,
-  });
+  }) : _position = position;
+
+  final Duration? _position;
+  Duration get effectivePosition => _position ?? currentPosition;
+  Duration get position => effectivePosition;
 
   String _formatDuration(Duration d) {
     final minutes = d.inMinutes;
@@ -265,36 +273,7 @@ class LyraPlayerBar extends StatelessWidget {
                   const SizedBox(height: 4.0),
 
                   // Progress Scrubber
-                  Row(
-                    children: [
-                      Text(
-                        _formatDuration(currentPosition),
-                        style: LyraTypography.small(
-                          tokens,
-                        ).copyWith(color: tokens.textMuted, fontSize: 11.0),
-                      ),
-                      const SizedBox(width: LyraSpacing.sm),
-                      Expanded(
-                        child: _ProgressSlider(
-                          position: currentPosition,
-                          total:
-                              currentTrack?.duration ??
-                              const Duration(seconds: 1),
-                          onSeek: onSeek,
-                          tokens: tokens,
-                        ),
-                      ),
-                      const SizedBox(width: LyraSpacing.sm),
-                      Text(
-                        _formatDuration(
-                          currentTrack?.duration ?? Duration.zero,
-                        ),
-                        style: LyraTypography.small(
-                          tokens,
-                        ).copyWith(color: tokens.textMuted, fontSize: 11.0),
-                      ),
-                    ],
-                  ),
+                  _buildProgressScrubber(tokens),
                 ],
               ),
             ),
@@ -367,6 +346,72 @@ class LyraPlayerBar extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+
+  Widget _buildProgressScrubber(LyraThemeTokens tokens) {
+    final totalDuration = currentTrack?.duration ?? Duration.zero;
+
+    if (positionNotifier != null) {
+      return ValueListenableBuilder<Duration>(
+        valueListenable: positionNotifier!,
+        builder: (context, pos, child) {
+          return Row(
+            children: [
+              Text(
+                _formatDuration(pos),
+                style: LyraTypography.small(
+                  tokens,
+                ).copyWith(color: tokens.textMuted, fontSize: 11.0),
+              ),
+              const SizedBox(width: LyraSpacing.sm),
+              Expanded(
+                child: _ProgressSlider(
+                  position: pos,
+                  total: currentTrack?.duration ?? const Duration(seconds: 1),
+                  onSeek: onSeek,
+                  tokens: tokens,
+                ),
+              ),
+              const SizedBox(width: LyraSpacing.sm),
+              child!,
+            ],
+          );
+        },
+        child: Text(
+          _formatDuration(totalDuration),
+          style: LyraTypography.small(
+            tokens,
+          ).copyWith(color: tokens.textMuted, fontSize: 11.0),
+        ),
+      );
+    }
+
+    return Row(
+      children: [
+        Text(
+          _formatDuration(effectivePosition),
+          style: LyraTypography.small(
+            tokens,
+          ).copyWith(color: tokens.textMuted, fontSize: 11.0),
+        ),
+        const SizedBox(width: LyraSpacing.sm),
+        Expanded(
+          child: _ProgressSlider(
+            position: effectivePosition,
+            total: currentTrack?.duration ?? const Duration(seconds: 1),
+            onSeek: onSeek,
+            tokens: tokens,
+          ),
+        ),
+        const SizedBox(width: LyraSpacing.sm),
+        Text(
+          _formatDuration(totalDuration),
+          style: LyraTypography.small(
+            tokens,
+          ).copyWith(color: tokens.textMuted, fontSize: 11.0),
+        ),
+      ],
     );
   }
 }
@@ -449,35 +494,27 @@ class _ProgressSliderState extends State<_ProgressSlider> {
                 child: Stack(
                   alignment: Alignment.centerLeft,
                   children: [
-                    AnimatedContainer(
-                      duration: const Duration(milliseconds: 150),
+                    Container(
                       height: isActive ? 6.0 : 4.0,
                       width: double.infinity,
-                      child: Container(
-                        decoration: BoxDecoration(
-                          color: widget.tokens.secondary,
-                          borderRadius: LyraRadius.fullRadius,
-                        ),
+                      decoration: BoxDecoration(
+                        color: widget.tokens.secondary,
+                        borderRadius: LyraRadius.fullRadius,
                       ),
                     ),
                     FractionallySizedBox(
                       widthFactor: factor,
-                      child: AnimatedContainer(
-                        duration: const Duration(milliseconds: 150),
+                      child: Container(
                         height: isActive ? 6.0 : 4.0,
-                        child: Container(
-                          decoration: BoxDecoration(
-                            color: widget.tokens.primary,
-                            borderRadius: LyraRadius.fullRadius,
-                          ),
+                        decoration: BoxDecoration(
+                          color: widget.tokens.primary,
+                          borderRadius: LyraRadius.fullRadius,
                         ),
                       ),
                     ),
-                    Align(
-                      alignment: Alignment(2 * factor - 1, 0.0),
-                      child: AnimatedScale(
-                        scale: isActive ? 1.0 : 0.0,
-                        duration: const Duration(milliseconds: 150),
+                    if (isActive)
+                      Align(
+                        alignment: Alignment(2 * factor - 1, 0.0),
                         child: Container(
                           width: 12.0,
                           height: 12.0,
@@ -493,7 +530,6 @@ class _ProgressSliderState extends State<_ProgressSlider> {
                           ),
                         ),
                       ),
-                    ),
                   ],
                 ),
               ),

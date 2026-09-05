@@ -601,32 +601,27 @@ class _AppShellState extends State<AppShell> {
 
                         // Fixed Player Bar (Bottom)
                         RepaintBoundary(
-                          child: ValueListenableBuilder<Duration>(
-                            valueListenable: _positionNotifier,
-                            builder: (context, currentPosition, _) {
-                              return LyraPlayerBar(
-                                currentTrack: _currentTrack,
-                                isPlaying: _isPlaying,
-                                currentPosition: currentPosition,
-                                volume: _volume,
-                                isInspectorOpen: _isInspectorOpen,
-                                isNowPlayingExpanded: _isNowPlayingExpanded,
-                                onInspectTrack: _toggleInspector,
-                                onInspectAudio: () {
-                                  if (_currentTrack != null) {
-                                    _openInspectorForAudio(_currentTrack!);
-                                  } else {
-                                    _toggleInspector();
-                                  }
-                                },
-                                onTogglePlay: _togglePlay,
-                                onNext: _onNextTrack,
-                                onPrevious: _onPreviousTrack,
-                                onSeek: _onSeek,
-                                onVolumeChanged: _onVolumeChanged,
-                                onExpandNowPlaying: _toggleNowPlaying,
-                              );
+                          child: LyraPlayerBar(
+                            currentTrack: _currentTrack,
+                            isPlaying: _isPlaying,
+                            positionNotifier: _positionNotifier,
+                            volume: _volume,
+                            isInspectorOpen: _isInspectorOpen,
+                            isNowPlayingExpanded: _isNowPlayingExpanded,
+                            onInspectTrack: _toggleInspector,
+                            onInspectAudio: () {
+                              if (_currentTrack != null) {
+                                _openInspectorForAudio(_currentTrack!);
+                              } else {
+                                _toggleInspector();
+                              }
                             },
+                            onTogglePlay: _togglePlay,
+                            onNext: _onNextTrack,
+                            onPrevious: _onPreviousTrack,
+                            onSeek: _onSeek,
+                            onVolumeChanged: _onVolumeChanged,
+                            onExpandNowPlaying: _toggleNowPlaying,
                           ),
                         ),
                       ],

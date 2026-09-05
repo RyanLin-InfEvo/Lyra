@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Tzu-Ting Lin
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart' hide RepeatMode;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shadcn_ui/shadcn_ui.dart';
@@ -17,6 +18,7 @@ import 'package:ui/features/player/views/now_playing_view.dart';
 Widget _buildLyricsTest({
   LyricsData? lyrics,
   required PlaybackQueueController playbackController,
+  ValueListenable<Duration>? positionNotifier,
   VoidCallback? onReloadLyrics,
 }) {
   const factory = ShadcnFactory();
@@ -39,6 +41,7 @@ Widget _buildLyricsTest({
           body: LyricsTab(
             lyrics: lyrics,
             playbackController: playbackController,
+            positionNotifier: positionNotifier,
             onReloadLyrics: onReloadLyrics,
           ),
         ),
@@ -422,6 +425,63 @@ Final closing verse
       await tester.pump(const Duration(seconds: 4));
       await tester.pumpAndSettle();
     });
+
+    testWidgets(
+      'didUpdateWidget properly handles custom positionNotifier changes',
+      (tester) async {
+        final controller = PlaybackQueueController(autoStartTimer: false);
+        addTearDown(controller.dispose);
+        final notifier1 = ValueNotifier<Duration>(Duration.zero);
+        final notifier2 = ValueNotifier<Duration>(Duration.zero);
+        addTearDown(notifier1.dispose);
+        addTearDown(notifier2.dispose);
+
+        await tester.pumpWidget(
+          _buildLyricsTest(
+            lyrics: syncedLyrics,
+            playbackController: controller,
+            positionNotifier: notifier1,
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        AnimatedDefaultTextStyle getStyle(String text) {
+          return tester.widget<AnimatedDefaultTextStyle>(
+            find
+                .ancestor(
+                  of: find.text(text),
+                  matching: find.byType(AnimatedDefaultTextStyle),
+                )
+                .first,
+          );
+        }
+
+        expect(getStyle('Line Zero').style.fontWeight, equals(FontWeight.bold));
+        expect(getStyle('Line One').style.fontWeight, equals(FontWeight.w500));
+
+        // Update widget with notifier2
+        await tester.pumpWidget(
+          _buildLyricsTest(
+            lyrics: syncedLyrics,
+            playbackController: controller,
+            positionNotifier: notifier2,
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        // Advancing old notifier should have no effect
+        notifier1.value = const Duration(seconds: 10);
+        await tester.pumpAndSettle();
+        expect(getStyle('Line Zero').style.fontWeight, equals(FontWeight.bold));
+        expect(getStyle('Line One').style.fontWeight, equals(FontWeight.w500));
+
+        // Advancing new notifier updates active line
+        notifier2.value = const Duration(seconds: 10);
+        await tester.pumpAndSettle();
+        expect(getStyle('Line One').style.fontWeight, equals(FontWeight.bold));
+        expect(getStyle('Line Zero').style.fontWeight, equals(FontWeight.w500));
+      },
+    );
   });
 
   group('LyricsTab - Unsynced Plain Text Lyrics', () {

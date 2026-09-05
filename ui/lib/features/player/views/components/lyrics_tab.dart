@@ -3,6 +3,7 @@
 
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/widgets.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
@@ -19,11 +20,13 @@ import '../../models/lyrics.dart';
 class LyricsTab extends StatefulWidget {
   final LyricsData? lyrics;
   final PlaybackQueueController playbackController;
+  final ValueListenable<Duration>? positionNotifier;
   final VoidCallback? onReloadLyrics;
 
   const LyricsTab({
     super.key,
     required this.playbackController,
+    this.positionNotifier,
     this.lyrics,
     this.onReloadLyrics,
   });
@@ -34,18 +37,32 @@ class LyricsTab extends StatefulWidget {
 
 class _LyricsTabState extends State<LyricsTab> {
   late final ScrollController _scrollController;
+  final ValueNotifier<int> _activeIndexNotifier = ValueNotifier<int>(-1);
+
+  ValueListenable<Duration> get _positionNotifier =>
+      widget.positionNotifier ?? widget.playbackController.positionNotifier;
+
   List<GlobalKey> _lineKeys = [];
   Timer? _userScrollTimer;
   bool _isUserScrolling = false;
   bool _isAutoScrolling = false;
   int _lastActiveIndex = -1;
-  int? _hoveredIndex;
 
   @override
   void initState() {
     super.initState();
     _scrollController = ScrollController();
     _initKeys();
+    final initialIndex =
+        widget.lyrics?.findActiveIndex(_positionNotifier.value) ?? -1;
+    _activeIndexNotifier.value = initialIndex;
+    _lastActiveIndex = initialIndex;
+    _positionNotifier.addListener(_onPositionChanged);
+    if (initialIndex >= 0) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _scrollToActiveLine(initialIndex);
+      });
+    }
   }
 
   void _initKeys() {
@@ -56,17 +73,47 @@ class _LyricsTabState extends State<LyricsTab> {
   @override
   void didUpdateWidget(covariant LyricsTab oldWidget) {
     super.didUpdateWidget(oldWidget);
+    final oldNotifier =
+        oldWidget.positionNotifier ??
+        oldWidget.playbackController.positionNotifier;
+    if (oldNotifier != _positionNotifier) {
+      oldNotifier.removeListener(_onPositionChanged);
+      _positionNotifier.addListener(_onPositionChanged);
+    }
     if (oldWidget.lyrics != widget.lyrics) {
       _initKeys();
-      _lastActiveIndex = -1;
+      final newIndex =
+          widget.lyrics?.findActiveIndex(_positionNotifier.value) ?? -1;
+      _activeIndexNotifier.value = newIndex;
+      _lastActiveIndex = newIndex;
+      if (newIndex >= 0) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          _scrollToActiveLine(newIndex);
+        });
+      }
     }
   }
 
   @override
   void dispose() {
+    _positionNotifier.removeListener(_onPositionChanged);
+    _activeIndexNotifier.dispose();
     _userScrollTimer?.cancel();
     _scrollController.dispose();
     super.dispose();
+  }
+
+  void _onPositionChanged() {
+    final lyrics = widget.lyrics;
+    if (lyrics == null || !lyrics.isSynced) return;
+    final newActiveIndex = lyrics.findActiveIndex(_positionNotifier.value);
+    if (newActiveIndex != _activeIndexNotifier.value) {
+      _activeIndexNotifier.value = newActiveIndex;
+      _lastActiveIndex = newActiveIndex;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _scrollToActiveLine(newActiveIndex);
+      });
+    }
   }
 
   void _onLineTap(LyricsLine line) {
@@ -100,9 +147,7 @@ class _LyricsTabState extends State<LyricsTab> {
     _userScrollTimer?.cancel();
     _userScrollTimer = Timer(const Duration(seconds: 3), () {
       if (mounted) {
-        setState(() {
-          _isUserScrolling = false;
-        });
+        _isUserScrolling = false;
         _scrollToActiveLine(_lastActiveIndex);
       }
     });
@@ -234,103 +279,29 @@ class _LyricsTabState extends State<LyricsTab> {
             ? verticalPadding
             : 100.0;
 
-        return ValueListenableBuilder<Duration>(
-          valueListenable: widget.playbackController.positionNotifier,
-          builder: (context, currentPosition, _) {
-            final activeIndex = lyrics.findActiveIndex(currentPosition);
-
-            if (activeIndex != _lastActiveIndex) {
-              _lastActiveIndex = activeIndex;
-              WidgetsBinding.instance.addPostFrameCallback((_) {
-                _scrollToActiveLine(activeIndex);
-              });
-            }
-
-            return NotificationListener<ScrollNotification>(
-              onNotification: _onScrollNotification,
-              child: ListView.builder(
-                controller: _scrollController,
-                padding: EdgeInsets.symmetric(
-                  vertical: safeVerticalPadding,
-                  horizontal: LyraSpacing.xl,
-                ),
-                itemCount: lyrics.lines.length,
-                itemBuilder: (context, index) {
-                  final line = lyrics.lines[index];
-                  final isActive = index == activeIndex;
-                  final isHovered = index == _hoveredIndex;
-
-                  return _buildSyncedLineItem(
-                    key: index < _lineKeys.length ? _lineKeys[index] : null,
-                    line: line,
-                    isActive: isActive,
-                    isHovered: isHovered,
-                    tokens: tokens,
-                    onTap: () => _onLineTap(line),
-                    onHover: (hovered) {
-                      if (_hoveredIndex != (hovered ? index : null)) {
-                        setState(() {
-                          _hoveredIndex = hovered ? index : null;
-                        });
-                      }
-                    },
-                  );
-                },
-              ),
-            );
-          },
+        return NotificationListener<ScrollNotification>(
+          onNotification: _onScrollNotification,
+          child: ListView.builder(
+            controller: _scrollController,
+            padding: EdgeInsets.symmetric(
+              vertical: safeVerticalPadding,
+              horizontal: LyraSpacing.xl,
+            ),
+            itemCount: lyrics.lines.length,
+            itemBuilder: (context, index) {
+              final line = lyrics.lines[index];
+              return _SyncedLineItem(
+                key: index < _lineKeys.length ? _lineKeys[index] : null,
+                line: line,
+                index: index,
+                activeIndexNotifier: _activeIndexNotifier,
+                tokens: tokens,
+                onTap: () => _onLineTap(line),
+              );
+            },
+          ),
         );
       },
-    );
-  }
-
-  Widget _buildSyncedLineItem({
-    Key? key,
-    required LyricsLine line,
-    required bool isActive,
-    required bool isHovered,
-    required LyraThemeTokens tokens,
-    required VoidCallback onTap,
-    required ValueChanged<bool> onHover,
-  }) {
-    final textColor = isActive
-        ? tokens.text
-        : isHovered
-        ? tokens.text.withValues(alpha: 0.75)
-        : tokens.text.withValues(alpha: 0.4);
-
-    final fontSize = isActive ? 22.0 : 17.0;
-    final fontWeight = isActive ? FontWeight.bold : FontWeight.w500;
-
-    return MouseRegion(
-      key: key,
-      cursor: SystemMouseCursors.click,
-      onEnter: (_) => onHover(true),
-      onExit: (_) => onHover(false),
-      child: GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onTap: onTap,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(
-            vertical: 12.0,
-            horizontal: LyraSpacing.md,
-          ),
-          child: AnimatedDefaultTextStyle(
-            duration: const Duration(milliseconds: 250),
-            curve: Curves.easeOut,
-            style: TextStyle(
-              fontSize: fontSize,
-              fontWeight: fontWeight,
-              color: textColor,
-              height: 1.4,
-            ),
-            child: Text(
-              line.text.isEmpty ? '♪' : line.text,
-              textAlign: TextAlign.left,
-            ),
-          ),
-        ),
-      ),
     );
   }
 
@@ -364,6 +335,80 @@ class _LyricsTabState extends State<LyricsTab> {
           ),
         ),
       ),
+    );
+  }
+}
+
+/// Efficient synced lyric line item that listens to active index progression
+/// and manages its own hover state without causing full-list rebuilds.
+class _SyncedLineItem extends StatefulWidget {
+  final LyricsLine line;
+  final int index;
+  final ValueListenable<int> activeIndexNotifier;
+  final LyraThemeTokens tokens;
+  final VoidCallback onTap;
+
+  const _SyncedLineItem({
+    super.key,
+    required this.line,
+    required this.index,
+    required this.activeIndexNotifier,
+    required this.tokens,
+    required this.onTap,
+  });
+
+  @override
+  State<_SyncedLineItem> createState() => _SyncedLineItemState();
+}
+
+class _SyncedLineItemState extends State<_SyncedLineItem> {
+  bool _isHovered = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return ValueListenableBuilder<int>(
+      valueListenable: widget.activeIndexNotifier,
+      builder: (context, activeIndex, _) {
+        final isActive = widget.index == activeIndex;
+        final textColor = isActive
+            ? widget.tokens.text
+            : _isHovered
+            ? widget.tokens.text.withValues(alpha: 0.75)
+            : widget.tokens.text.withValues(alpha: 0.4);
+
+        final fontSize = isActive ? 22.0 : 17.0;
+        final fontWeight = isActive ? FontWeight.bold : FontWeight.w500;
+
+        return MouseRegion(
+          cursor: SystemMouseCursors.click,
+          onEnter: (_) => setState(() => _isHovered = true),
+          onExit: (_) => setState(() => _isHovered = false),
+          child: GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: widget.onTap,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(
+                vertical: 12.0,
+                horizontal: LyraSpacing.md,
+              ),
+              child: AnimatedDefaultTextStyle(
+                duration: const Duration(milliseconds: 250),
+                curve: Curves.easeOut,
+                style: TextStyle(
+                  fontSize: fontSize,
+                  fontWeight: fontWeight,
+                  color: textColor,
+                  height: 1.4,
+                ),
+                child: Text(
+                  widget.line.text.isEmpty ? '♪' : widget.line.text,
+                  textAlign: TextAlign.left,
+                ),
+              ),
+            ),
+          ),
+        );
+      },
     );
   }
 }
