@@ -11,12 +11,14 @@ import '../../../design_system/tokens/lyra_tokens.dart';
 import '../../../design_system/widgets/lyra_button.dart';
 import '../../models/track.dart';
 import '../controllers/playback_queue_controller.dart';
+import '../models/lyrics.dart';
+import 'components/lyrics_tab.dart';
 import 'components/media_viewport.dart';
 import 'components/up_next_tab.dart';
 
 /// YouTube Music-style full Now Playing view with split-view layout:
 /// - Left: Media viewport (Song artwork vs Video theater surface).
-/// - Right: Tabbed container (Up Next queue and Lyrics placeholder).
+/// - Right: Tabbed container (Up Next queue and Lyrics tab).
 class NowPlayingView extends StatefulWidget {
   final Track? track;
   final PlaybackQueueController playbackController;
@@ -25,6 +27,7 @@ class NowPlayingView extends StatefulWidget {
   final double? videoAspectRatio;
   final Widget? customVideoPlayer;
   final String? videoTag;
+  final LyricsData? lyrics;
 
   const NowPlayingView({
     super.key,
@@ -35,6 +38,7 @@ class NowPlayingView extends StatefulWidget {
     this.videoAspectRatio,
     this.customVideoPlayer,
     this.videoTag,
+    this.lyrics,
   });
 
   @override
@@ -225,7 +229,24 @@ class _NowPlayingViewState extends State<NowPlayingView> {
     );
   }
 
+  LyricsData? _getSampleLyricsForTrack(Track? track) {
+    if (track == null) return null;
+    return LyricsData.fromLrc('''
+[00:00.00]${track.title} - ${track.artist}
+[00:04.00]Soundwaves drifting through the digital sea
+[00:10.00]Every frequency aligning in place
+[00:16.00]Melodies echoing across cyberspace
+[00:22.00]Bit-perfect playback, crystal clear
+[00:28.00]Feel the rhythm in your soul
+[00:34.00]Let the music take control
+[00:40.00]Lyra audio engine in harmony
+''');
+  }
+
   Widget _buildRightTabContainer(LyraThemeTokens tokens) {
+    final effectiveLyrics =
+        widget.lyrics ?? _getSampleLyricsForTrack(widget.track);
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -272,7 +293,11 @@ class _NowPlayingViewState extends State<NowPlayingView> {
                     playbackController: widget.playbackController,
                     queueSource: widget.queueSource,
                   )
-                : _buildLyricsPlaceholder(tokens),
+                : LyricsTab(
+                    key: const ValueKey('lyrics_tab'),
+                    lyrics: effectiveLyrics,
+                    playbackController: widget.playbackController,
+                  ),
           ),
         ),
       ],
@@ -325,63 +350,6 @@ class _NowPlayingViewState extends State<NowPlayingView> {
               ),
             ],
           ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildLyricsPlaceholder(LyraThemeTokens tokens) {
-    return Center(
-      key: const ValueKey('lyrics_placeholder'),
-      child: Padding(
-        padding: const EdgeInsets.all(LyraSpacing.xl),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              width: 64.0,
-              height: 64.0,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: tokens.secondary,
-                border: Border.all(color: tokens.border, width: 1.0),
-              ),
-              child: Center(
-                child: Icon(
-                  LucideIcons.quote,
-                  size: 28.0,
-                  color: tokens.textMuted,
-                ),
-              ),
-            ),
-            const SizedBox(height: LyraSpacing.lg),
-            Text(
-              '歌詞功能將於下一階段推出',
-              style: LyraTypography.h3(
-                tokens,
-              ).copyWith(fontWeight: FontWeight.w600),
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: LyraSpacing.xs),
-            Text(
-              'Lyrics will be available in Phase 3',
-              style: LyraTypography.muted(
-                tokens,
-              ).copyWith(fontWeight: FontWeight.w500),
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: LyraSpacing.sm),
-            ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 320.0),
-              child: Text(
-                '即時動態歌詞同步與時間軸對齊引擎正在開發中。',
-                style: LyraTypography.small(
-                  tokens,
-                ).copyWith(color: tokens.textMuted),
-                textAlign: TextAlign.center,
-              ),
-            ),
-          ],
         ),
       ),
     );

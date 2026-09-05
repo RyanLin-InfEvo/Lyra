@@ -10,6 +10,8 @@ import 'package:ui/design_system/factory/shadcn_factory.dart';
 import 'package:ui/design_system/tokens/lyra_tokens.dart';
 import 'package:ui/features/models/track.dart';
 import 'package:ui/features/player/controllers/playback_queue_controller.dart';
+import 'package:ui/features/player/models/lyrics.dart';
+import 'package:ui/features/player/views/components/lyrics_tab.dart';
 import 'package:ui/features/player/views/components/media_viewport.dart';
 import 'package:ui/features/player/views/components/song_artwork_card.dart';
 import 'package:ui/features/player/views/components/up_next_tab.dart';
@@ -26,6 +28,7 @@ Widget _buildNowPlayingTest({
   double? videoAspectRatio,
   Widget? customVideoPlayer,
   String? videoTag,
+  LyricsData? lyrics,
 }) {
   final themeModeNotifier =
       themeNotifier ?? ValueNotifier<ThemeMode>(ThemeMode.dark);
@@ -63,6 +66,7 @@ Widget _buildNowPlayingTest({
                 videoAspectRatio: videoAspectRatio,
                 customVideoPlayer: customVideoPlayer,
                 videoTag: videoTag,
+                lyrics: lyrics,
               ),
             ),
           ),
@@ -384,9 +388,7 @@ void main() {
   });
 
   group('NowPlayingView - Tab Switching to Lyrics', () {
-    testWidgets('switches to Lyrics tab and shows Phase 3 placeholder', (
-      tester,
-    ) async {
+    testWidgets('switches between Up Next and Lyrics tabs', (tester) async {
       final controller = PlaybackQueueController(autoStartTimer: false);
       addTearDown(controller.dispose);
       controller.play(track1, contextQueue: [track1]);
@@ -402,10 +404,16 @@ void main() {
       await tester.tap(lyricsTab);
       await tester.pumpAndSettle();
 
-      // Shows Phase 3 placeholder
-      expect(find.text('歌詞功能將於下一階段推出'), findsOneWidget);
-      expect(find.text('Lyrics will be available in Phase 3'), findsOneWidget);
+      // Shows LyricsTab with sample lyrics
+      expect(find.byType(LyricsTab), findsOneWidget);
       expect(find.byType(UpNextTab), findsNothing);
+      expect(
+        find.descendant(
+          of: find.byType(LyricsTab),
+          matching: find.textContaining('Hotel California'),
+        ),
+        findsOneWidget,
+      );
 
       // Switch back to Up Next
       final upNextTab = find.text('Up Next');
@@ -414,7 +422,7 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.byType(UpNextTab), findsOneWidget);
-      expect(find.text('歌詞功能將於下一階段推出'), findsNothing);
+      expect(find.byType(LyricsTab), findsNothing);
     });
   });
 
