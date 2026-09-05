@@ -89,52 +89,50 @@ class _LyraSidebarState extends State<LyraSidebar> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             // Header / Logo
-            RepaintBoundary(
-              child: Container(
-                height: 64.0,
-                padding: widget.isCollapsed
-                    ? EdgeInsets.zero
-                    : const EdgeInsets.symmetric(horizontal: LyraSpacing.md),
-                alignment: widget.isCollapsed
-                    ? Alignment.center
-                    : Alignment.centerLeft,
-                decoration: BoxDecoration(
-                  border: Border(
-                    bottom: BorderSide(color: tokens.border, width: 1.0),
-                  ),
+            Container(
+              height: 64.0,
+              padding: widget.isCollapsed
+                  ? EdgeInsets.zero
+                  : const EdgeInsets.symmetric(horizontal: LyraSpacing.md),
+              alignment: widget.isCollapsed
+                  ? Alignment.center
+                  : Alignment.centerLeft,
+              decoration: BoxDecoration(
+                border: Border(
+                  bottom: BorderSide(color: tokens.border, width: 1.0),
                 ),
-                child: Row(
-                  mainAxisAlignment: widget.isCollapsed
-                      ? MainAxisAlignment.center
-                      : MainAxisAlignment.start,
-                  children: [
-                    Container(
-                      width: 32.0,
-                      height: 32.0,
-                      decoration: BoxDecoration(
-                        color: tokens.primary,
-                        borderRadius: LyraRadius.mdRadius,
-                      ),
-                      child: Center(
-                        child: Icon(
-                          LucideIcons.music,
-                          size: 18.0,
-                          color: tokens.primaryForeground,
-                        ),
+              ),
+              child: Row(
+                mainAxisAlignment: widget.isCollapsed
+                    ? MainAxisAlignment.center
+                    : MainAxisAlignment.start,
+                children: [
+                  Container(
+                    width: 32.0,
+                    height: 32.0,
+                    decoration: BoxDecoration(
+                      color: tokens.primary,
+                      borderRadius: LyraRadius.mdRadius,
+                    ),
+                    child: Center(
+                      child: Icon(
+                        LucideIcons.music,
+                        size: 18.0,
+                        color: tokens.primaryForeground,
                       ),
                     ),
-                    if (!widget.isCollapsed) ...[
-                      const SizedBox(width: LyraSpacing.sm),
-                      Expanded(
-                        child: Text(
-                          'Lyra Audio',
-                          style: LyraTypography.h4(tokens),
-                          overflow: TextOverflow.ellipsis,
-                        ),
+                  ),
+                  if (!widget.isCollapsed) ...[
+                    const SizedBox(width: LyraSpacing.sm),
+                    Expanded(
+                      child: Text(
+                        'Lyra Audio',
+                        style: LyraTypography.h4(tokens),
+                        overflow: TextOverflow.ellipsis,
                       ),
-                    ],
+                    ),
                   ],
-                ),
+                ],
               ),
             ),
 
@@ -303,47 +301,45 @@ class _LyraSidebarState extends State<LyraSidebar> {
             ),
 
             // Collapse Toggle Button
-            RepaintBoundary(
-              child: Container(
-                padding: const EdgeInsets.all(LyraSpacing.sm),
-                decoration: BoxDecoration(
-                  border: Border(
-                    top: BorderSide(color: tokens.border, width: 1.0),
-                  ),
+            Container(
+              padding: const EdgeInsets.all(LyraSpacing.sm),
+              decoration: BoxDecoration(
+                border: Border(
+                  top: BorderSide(color: tokens.border, width: 1.0),
                 ),
-                child: LyraButton.ghost(
-                  width: double.infinity,
-                  size: LyraButtonSize.sm,
-                  mainAxisAlignment: widget.isCollapsed
-                      ? MainAxisAlignment.center
-                      : MainAxisAlignment.start,
-                  crossAxisAlignment: CrossAxisAlignment.center,
-                  padding: widget.isCollapsed
-                      ? EdgeInsets.zero
-                      : const EdgeInsets.symmetric(
-                          horizontal: LyraSpacing.sm,
-                          vertical: LyraSpacing.xs,
-                        ),
-                  onPressed: widget.onToggleCollapse,
-                  leading: Icon(
-                    widget.isCollapsed
-                        ? LucideIcons.chevronRight
-                        : LucideIcons.chevronLeft,
-                    size: 16.0,
-                    color: tokens.textMuted,
-                  ),
-                  child: widget.isCollapsed
-                      ? null
-                      : Flexible(
-                          child: Text(
-                            'Collapse',
-                            style: LyraTypography.small(
-                              tokens,
-                            ).copyWith(color: tokens.textMuted),
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ),
+              ),
+              child: LyraButton.ghost(
+                width: double.infinity,
+                size: LyraButtonSize.sm,
+                mainAxisAlignment: widget.isCollapsed
+                    ? MainAxisAlignment.center
+                    : MainAxisAlignment.start,
+                crossAxisAlignment: CrossAxisAlignment.center,
+                padding: widget.isCollapsed
+                    ? EdgeInsets.zero
+                    : const EdgeInsets.symmetric(
+                        horizontal: LyraSpacing.sm,
+                        vertical: LyraSpacing.xs,
+                      ),
+                onPressed: widget.onToggleCollapse,
+                leading: Icon(
+                  widget.isCollapsed
+                      ? LucideIcons.chevronRight
+                      : LucideIcons.chevronLeft,
+                  size: 16.0,
+                  color: tokens.textMuted,
                 ),
+                child: widget.isCollapsed
+                    ? null
+                    : Flexible(
+                        child: Text(
+                          'Collapse',
+                          style: LyraTypography.small(
+                            tokens,
+                          ).copyWith(color: tokens.textMuted),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
               ),
             ),
           ],
@@ -366,70 +362,66 @@ class _LyraSidebarState extends State<LyraSidebar> {
   }) {
     final isSelected = widget.currentTab == tab;
 
-    return RepaintBoundary(
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 1.0),
-        child: Stack(
-          alignment: Alignment.centerRight,
-          children: [
-            LyraButton(
-              width: double.infinity,
-              size: LyraButtonSize.sm,
-              mainAxisAlignment: MainAxisAlignment.start,
-              crossAxisAlignment: CrossAxisAlignment.center,
-              variant: isSelected
-                  ? LyraButtonVariant.secondary
-                  : LyraButtonVariant.ghost,
-              padding: EdgeInsets.only(
-                left: LyraSpacing.sm,
-                right: hasSubItems ? 28.0 : LyraSpacing.sm,
-                top: LyraSpacing.xs,
-                bottom: LyraSpacing.xs,
-              ),
-              onPressed: onHeaderClick ?? () => widget.onTabSelected(tab),
-              leading: Icon(
-                icon,
-                size: 16.0,
-                color: isSelected ? tokens.text : tokens.textMuted,
-              ),
-              child: Flexible(
-                child: Text(
-                  label,
-                  style: LyraTypography.small(tokens).copyWith(
-                    fontSize: 13.0,
-                    fontWeight: isSelected
-                        ? FontWeight.w600
-                        : FontWeight.normal,
-                    color: isSelected ? tokens.text : tokens.textMuted,
-                  ),
-                  overflow: TextOverflow.ellipsis,
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 1.0),
+      child: Stack(
+        alignment: Alignment.centerRight,
+        children: [
+          LyraButton(
+            width: double.infinity,
+            size: LyraButtonSize.sm,
+            mainAxisAlignment: MainAxisAlignment.start,
+            crossAxisAlignment: CrossAxisAlignment.center,
+            variant: isSelected
+                ? LyraButtonVariant.secondary
+                : LyraButtonVariant.ghost,
+            padding: EdgeInsets.only(
+              left: LyraSpacing.sm,
+              right: hasSubItems ? 28.0 : LyraSpacing.sm,
+              top: LyraSpacing.xs,
+              bottom: LyraSpacing.xs,
+            ),
+            onPressed: onHeaderClick ?? () => widget.onTabSelected(tab),
+            leading: Icon(
+              icon,
+              size: 16.0,
+              color: isSelected ? tokens.text : tokens.textMuted,
+            ),
+            child: Flexible(
+              child: Text(
+                label,
+                style: LyraTypography.small(tokens).copyWith(
+                  fontSize: 13.0,
+                  fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
+                  color: isSelected ? tokens.text : tokens.textMuted,
                 ),
+                overflow: TextOverflow.ellipsis,
               ),
             ),
-            if (hasSubItems)
-              Positioned(
-                right: 4.0,
-                child: MouseRegion(
-                  cursor: SystemMouseCursors.click,
-                  child: GestureDetector(
-                    key: chevronKey,
-                    behavior: HitTestBehavior.opaque,
-                    onTap: onToggle,
-                    child: Padding(
-                      padding: const EdgeInsets.all(4.0),
-                      child: Icon(
-                        isExpanded
-                            ? LucideIcons.chevronDown
-                            : LucideIcons.chevronRight,
-                        size: 14.0,
-                        color: tokens.textMuted,
-                      ),
+          ),
+          if (hasSubItems)
+            Positioned(
+              right: 4.0,
+              child: MouseRegion(
+                cursor: SystemMouseCursors.click,
+                child: GestureDetector(
+                  key: chevronKey,
+                  behavior: HitTestBehavior.opaque,
+                  onTap: onToggle,
+                  child: Padding(
+                    padding: const EdgeInsets.all(4.0),
+                    child: Icon(
+                      isExpanded
+                          ? LucideIcons.chevronDown
+                          : LucideIcons.chevronRight,
+                      size: 14.0,
+                      color: tokens.textMuted,
                     ),
                   ),
                 ),
               ),
-          ],
-        ),
+            ),
+        ],
       ),
     );
   }
@@ -443,47 +435,45 @@ class _LyraSidebarState extends State<LyraSidebar> {
   }) {
     final isSelected = widget.currentTab == tab;
 
-    return RepaintBoundary(
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 1.0),
-        child: LyraButton(
-          width: double.infinity,
-          size: LyraButtonSize.sm,
-          mainAxisAlignment: widget.isCollapsed
-              ? MainAxisAlignment.center
-              : MainAxisAlignment.start,
-          crossAxisAlignment: CrossAxisAlignment.center,
-          variant: isSelected
-              ? LyraButtonVariant.secondary
-              : LyraButtonVariant.ghost,
-          padding: widget.isCollapsed
-              ? EdgeInsets.zero
-              : const EdgeInsets.symmetric(
-                  horizontal: LyraSpacing.sm,
-                  vertical: LyraSpacing.xs,
-                ),
-          onPressed: () => widget.onTabSelected(tab),
-          leading: Icon(
-            icon,
-            size: 16.0,
-            color: isSelected ? tokens.text : tokens.textMuted,
-          ),
-          child: widget.isCollapsed
-              ? null
-              : Flexible(
-                  child: Text(
-                    label,
-                    style: LyraTypography.small(tokens).copyWith(
-                      fontSize: 13.0,
-                      fontWeight: isSelected
-                          ? FontWeight.w600
-                          : FontWeight.normal,
-                      color: isSelected ? tokens.text : tokens.textMuted,
-                    ),
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ),
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 1.0),
+      child: LyraButton(
+        width: double.infinity,
+        size: LyraButtonSize.sm,
+        mainAxisAlignment: widget.isCollapsed
+            ? MainAxisAlignment.center
+            : MainAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.center,
+        variant: isSelected
+            ? LyraButtonVariant.secondary
+            : LyraButtonVariant.ghost,
+        padding: widget.isCollapsed
+            ? EdgeInsets.zero
+            : const EdgeInsets.symmetric(
+                horizontal: LyraSpacing.sm,
+                vertical: LyraSpacing.xs,
+              ),
+        onPressed: () => widget.onTabSelected(tab),
+        leading: Icon(
+          icon,
+          size: 16.0,
+          color: isSelected ? tokens.text : tokens.textMuted,
         ),
+        child: widget.isCollapsed
+            ? null
+            : Flexible(
+                child: Text(
+                  label,
+                  style: LyraTypography.small(tokens).copyWith(
+                    fontSize: 13.0,
+                    fontWeight: isSelected
+                        ? FontWeight.w600
+                        : FontWeight.normal,
+                    color: isSelected ? tokens.text : tokens.textMuted,
+                  ),
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
       ),
     );
   }
@@ -497,44 +487,42 @@ class _LyraSidebarState extends State<LyraSidebar> {
         widget.currentTab == AppTab.playlists &&
         widget.selectedPlaylistId == playlist.id;
 
-    return RepaintBoundary(
-      child: Padding(
-        padding: const EdgeInsets.only(
-          left: LyraSpacing.sm,
-          top: 1.0,
-          bottom: 1.0,
+    return Padding(
+      padding: const EdgeInsets.only(
+        left: LyraSpacing.sm,
+        top: 1.0,
+        bottom: 1.0,
+      ),
+      child: LyraButton(
+        width: double.infinity,
+        size: LyraButtonSize.sm,
+        mainAxisAlignment: MainAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.center,
+        variant: isSelected
+            ? LyraButtonVariant.secondary
+            : LyraButtonVariant.ghost,
+        padding: const EdgeInsets.symmetric(
+          horizontal: LyraSpacing.sm,
+          vertical: LyraSpacing.xs,
         ),
-        child: LyraButton(
-          width: double.infinity,
-          size: LyraButtonSize.sm,
-          mainAxisAlignment: MainAxisAlignment.start,
-          crossAxisAlignment: CrossAxisAlignment.center,
-          variant: isSelected
-              ? LyraButtonVariant.secondary
-              : LyraButtonVariant.ghost,
-          padding: const EdgeInsets.symmetric(
-            horizontal: LyraSpacing.sm,
-            vertical: LyraSpacing.xs,
-          ),
-          onPressed: () {
-            widget.onPlaylistSelected?.call(playlist);
-            widget.onTabSelected(AppTab.playlists);
-          },
-          leading: Icon(
-            LucideIcons.list,
-            size: 14.0,
-            color: isSelected ? tokens.text : tokens.textMuted,
-          ),
-          child: Flexible(
-            child: Text(
-              playlist.displayTitle,
-              style: LyraTypography.small(tokens).copyWith(
-                fontSize: 13.0,
-                fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
-                color: isSelected ? tokens.text : tokens.textMuted,
-              ),
-              overflow: TextOverflow.ellipsis,
+        onPressed: () {
+          widget.onPlaylistSelected?.call(playlist);
+          widget.onTabSelected(AppTab.playlists);
+        },
+        leading: Icon(
+          LucideIcons.list,
+          size: 14.0,
+          color: isSelected ? tokens.text : tokens.textMuted,
+        ),
+        child: Flexible(
+          child: Text(
+            playlist.displayTitle,
+            style: LyraTypography.small(tokens).copyWith(
+              fontSize: 13.0,
+              fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
+              color: isSelected ? tokens.text : tokens.textMuted,
             ),
+            overflow: TextOverflow.ellipsis,
           ),
         ),
       ),
@@ -549,43 +537,41 @@ class _LyraSidebarState extends State<LyraSidebar> {
     final isSelected =
         widget.currentTab == AppTab.tracks && widget.selectedTagId == tag.id;
 
-    return RepaintBoundary(
-      child: Padding(
-        padding: const EdgeInsets.only(
-          left: LyraSpacing.sm,
-          top: 1.0,
-          bottom: 1.0,
+    return Padding(
+      padding: const EdgeInsets.only(
+        left: LyraSpacing.sm,
+        top: 1.0,
+        bottom: 1.0,
+      ),
+      child: LyraButton(
+        width: double.infinity,
+        size: LyraButtonSize.sm,
+        mainAxisAlignment: MainAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.center,
+        variant: isSelected
+            ? LyraButtonVariant.secondary
+            : LyraButtonVariant.ghost,
+        padding: const EdgeInsets.symmetric(
+          horizontal: LyraSpacing.sm,
+          vertical: LyraSpacing.xs,
         ),
-        child: LyraButton(
-          width: double.infinity,
-          size: LyraButtonSize.sm,
-          mainAxisAlignment: MainAxisAlignment.start,
-          crossAxisAlignment: CrossAxisAlignment.center,
-          variant: isSelected
-              ? LyraButtonVariant.secondary
-              : LyraButtonVariant.ghost,
-          padding: const EdgeInsets.symmetric(
-            horizontal: LyraSpacing.sm,
-            vertical: LyraSpacing.xs,
-          ),
-          onPressed: () {
-            widget.onTagSelected?.call(tag);
-          },
-          leading: Icon(
-            LucideIcons.tag,
-            size: 14.0,
-            color: isSelected ? tokens.text : tokens.textMuted,
-          ),
-          child: Flexible(
-            child: Text(
-              tag.displayName,
-              style: LyraTypography.small(tokens).copyWith(
-                fontSize: 13.0,
-                fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
-                color: isSelected ? tokens.text : tokens.textMuted,
-              ),
-              overflow: TextOverflow.ellipsis,
+        onPressed: () {
+          widget.onTagSelected?.call(tag);
+        },
+        leading: Icon(
+          LucideIcons.tag,
+          size: 14.0,
+          color: isSelected ? tokens.text : tokens.textMuted,
+        ),
+        child: Flexible(
+          child: Text(
+            tag.displayName,
+            style: LyraTypography.small(tokens).copyWith(
+              fontSize: 13.0,
+              fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
+              color: isSelected ? tokens.text : tokens.textMuted,
             ),
+            overflow: TextOverflow.ellipsis,
           ),
         ),
       ),

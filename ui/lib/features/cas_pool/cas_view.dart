@@ -287,91 +287,89 @@ class CasView extends StatelessWidget {
             ),
             itemBuilder: (context, index) {
               final obj = casObjects[index];
-              return RepaintBoundary(
-                child: MouseRegion(
-                  cursor: onInspectAsset != null
-                      ? SystemMouseCursors.click
-                      : SystemMouseCursors.basic,
-                  child: GestureDetector(
-                    behavior: HitTestBehavior.opaque,
-                    onTap: onInspectAsset != null
-                        ? () => onInspectAsset!(obj)
-                        : null,
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: LyraSpacing.xl,
-                        vertical: LyraSpacing.md,
-                      ),
-                      child: Row(
-                        children: [
-                          Expanded(
-                            flex: 5,
-                            child: Row(
-                              children: [
-                                Icon(
-                                  LucideIcons.fileCode,
-                                  size: 16.0,
-                                  color: tokens.textMuted,
+              return MouseRegion(
+                cursor: onInspectAsset != null
+                    ? SystemMouseCursors.click
+                    : SystemMouseCursors.basic,
+                child: GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: onInspectAsset != null
+                      ? () => onInspectAsset!(obj)
+                      : null,
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: LyraSpacing.xl,
+                      vertical: LyraSpacing.md,
+                    ),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          flex: 5,
+                          child: Row(
+                            children: [
+                              Icon(
+                                LucideIcons.fileCode,
+                                size: 16.0,
+                                color: tokens.textMuted,
+                              ),
+                              const SizedBox(width: LyraSpacing.sm),
+                              Expanded(
+                                child: Text(
+                                  obj.hash,
+                                  style: LyraTypography.mono(
+                                    tokens,
+                                    fontSize: 12.0,
+                                  ),
+                                  overflow: TextOverflow.ellipsis,
                                 ),
-                                const SizedBox(width: LyraSpacing.sm),
-                                Expanded(
-                                  child: Text(
-                                    obj.hash,
-                                    style: LyraTypography.mono(
-                                      tokens,
-                                      fontSize: 12.0,
+                              ),
+                            ],
+                          ),
+                        ),
+                        Expanded(
+                          flex: 2,
+                          child: Text(
+                            obj.formattedSize,
+                            style: LyraTypography.small(tokens),
+                          ),
+                        ),
+                        Expanded(
+                          flex: 2,
+                          child: Text(
+                            obj.mimeType,
+                            style: LyraTypography.small(
+                              tokens,
+                            ).copyWith(color: tokens.textMuted),
+                          ),
+                        ),
+                        Expanded(
+                          flex: 2,
+                          child: Align(
+                            alignment: Alignment.centerRight,
+                            child: FittedBox(
+                              fit: BoxFit.scaleDown,
+                              child: LyraBadge.success(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 6.0,
+                                  vertical: 2.0,
+                                ),
+                                child: const Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Icon(
+                                      LucideIcons.check,
+                                      size: 10.0,
+                                      color: Color(0xFFFFFFFF),
                                     ),
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                          Expanded(
-                            flex: 2,
-                            child: Text(
-                              obj.formattedSize,
-                              style: LyraTypography.small(tokens),
-                            ),
-                          ),
-                          Expanded(
-                            flex: 2,
-                            child: Text(
-                              obj.mimeType,
-                              style: LyraTypography.small(
-                                tokens,
-                              ).copyWith(color: tokens.textMuted),
-                            ),
-                          ),
-                          Expanded(
-                            flex: 2,
-                            child: Align(
-                              alignment: Alignment.centerRight,
-                              child: FittedBox(
-                                fit: BoxFit.scaleDown,
-                                child: LyraBadge.success(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 6.0,
-                                    vertical: 2.0,
-                                  ),
-                                  child: const Row(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      Icon(
-                                        LucideIcons.check,
-                                        size: 10.0,
-                                        color: Color(0xFFFFFFFF),
-                                      ),
-                                      SizedBox(width: 4.0),
-                                      Text('Verified'),
-                                    ],
-                                  ),
+                                    SizedBox(width: 4.0),
+                                    Text('Verified'),
+                                  ],
                                 ),
                               ),
                             ),
                           ),
-                        ],
-                      ),
+                        ),
+                      ],
                     ),
                   ),
                 ),

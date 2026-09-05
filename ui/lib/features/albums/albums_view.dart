@@ -96,12 +96,10 @@ class AlbumsView extends StatelessWidget {
                 itemCount: albums.length,
                 itemBuilder: (context, index) {
                   final album = albums[index];
-                  return RepaintBoundary(
-                    child: _AlbumCard(
-                      album: album,
-                      onTap: () => onAlbumSelected?.call(album),
-                      tokens: tokens,
-                    ),
+                  return _AlbumCard(
+                    album: album,
+                    onTap: () => onAlbumSelected?.call(album),
+                    tokens: tokens,
                   );
                 },
               );
@@ -137,101 +135,99 @@ class _AlbumCardState extends State<_AlbumCard> {
     final tokens = widget.tokens;
     final album = widget.album;
 
-    return RepaintBoundary(
-      child: MouseRegion(
-        onEnter: (_) => setState(() => _isHovered = true),
-        onExit: (_) => setState(() => _isHovered = false),
-        child: GestureDetector(
-          behavior: HitTestBehavior.opaque,
-          onTap: widget.onTap,
-          child: AnimatedScale(
-            scale: _isHovered ? 1.02 : 1.0,
-            duration: const Duration(milliseconds: 150),
-            child: LyraCard(
-              padding: const EdgeInsets.all(LyraSpacing.md),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // Album Art Placeholder
-                  Expanded(
-                    child: Container(
-                      width: double.infinity,
-                      decoration: BoxDecoration(
-                        color: album.coverColor,
-                        borderRadius: LyraRadius.mdRadius,
-                        boxShadow: [
-                          BoxShadow(
-                            color: const Color(0x33000000),
-                            blurRadius: 8.0,
-                            offset: const Offset(0, 4),
+    return MouseRegion(
+      onEnter: (_) => setState(() => _isHovered = true),
+      onExit: (_) => setState(() => _isHovered = false),
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: widget.onTap,
+        child: AnimatedScale(
+          scale: _isHovered ? 1.02 : 1.0,
+          duration: const Duration(milliseconds: 150),
+          child: LyraCard(
+            padding: const EdgeInsets.all(LyraSpacing.md),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Album Art Placeholder
+                Expanded(
+                  child: Container(
+                    width: double.infinity,
+                    decoration: BoxDecoration(
+                      color: album.coverColor,
+                      borderRadius: LyraRadius.mdRadius,
+                      boxShadow: [
+                        BoxShadow(
+                          color: const Color(0x33000000),
+                          blurRadius: 8.0,
+                          offset: const Offset(0, 4),
+                        ),
+                      ],
+                    ),
+                    child: Stack(
+                      children: [
+                        Center(
+                          child: Icon(
+                            LucideIcons.disc,
+                            size: 48.0,
+                            color: const Color(0x66FFFFFF),
                           ),
-                        ],
-                      ),
-                      child: Stack(
-                        children: [
-                          Center(
-                            child: Icon(
-                              LucideIcons.disc,
-                              size: 48.0,
-                              color: const Color(0x66FFFFFF),
+                        ),
+                        Positioned(
+                          top: LyraSpacing.sm,
+                          right: LyraSpacing.sm,
+                          child: LyraBadge(
+                            variant: LyraBadgeVariant.secondary,
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 6.0,
+                              vertical: 2.0,
                             ),
-                          ),
-                          Positioned(
-                            top: LyraSpacing.sm,
-                            right: LyraSpacing.sm,
-                            child: LyraBadge(
-                              variant: LyraBadgeVariant.secondary,
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 6.0,
-                                vertical: 2.0,
-                              ),
-                              child: Text(
-                                album.format ?? 'FLAC',
-                                style: LyraTypography.small(tokens).copyWith(
-                                  fontSize: 9.0,
-                                  fontWeight: FontWeight.bold,
-                                ),
+                            child: Text(
+                              album.format ?? 'FLAC',
+                              style: LyraTypography.small(tokens).copyWith(
+                                fontSize: 9.0,
+                                fontWeight: FontWeight.bold,
                               ),
                             ),
                           ),
-                        ],
-                      ),
+                        ),
+                      ],
                     ),
                   ),
+                ),
 
-                  const SizedBox(height: LyraSpacing.md),
+                const SizedBox(height: LyraSpacing.md),
 
-                  // Title
-                  Text(
-                    album.title,
-                    style: LyraTypography.h4(tokens),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
+                // Title
+                Text(
+                  album.title,
+                  style: LyraTypography.h4(tokens),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
 
-                  const SizedBox(height: 2.0),
+                const SizedBox(height: 2.0),
 
-                  // Artist & Year
-                  Text(
-                    '${album.artist} • ${album.year}',
-                    style: LyraTypography.small(
-                      tokens,
-                    ).copyWith(color: tokens.textMuted),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
+                // Artist & Year
+                Text(
+                  '${album.artist} • ${album.year}',
+                  style: LyraTypography.small(
+                    tokens,
+                  ).copyWith(color: tokens.textMuted),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
 
-                  const SizedBox(height: LyraSpacing.xs),
+                const SizedBox(height: LyraSpacing.xs),
 
-                  // Track Count
-                  Text(
-                    '${album.trackCount} tracks',
-                    style: LyraTypography.small(
-                      tokens,
-                    ).copyWith(color: tokens.textMuted, fontSize: 11.0),
-                  ),
-                ],
-              ),
+                // Track Count
+                Text(
+                  '${album.trackCount} tracks',
+                  style: LyraTypography.small(
+                    tokens,
+                  ).copyWith(color: tokens.textMuted, fontSize: 11.0),
+                ),
+              ],
             ),
           ),
         ),

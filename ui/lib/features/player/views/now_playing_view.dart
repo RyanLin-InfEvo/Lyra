@@ -100,99 +100,68 @@ class _NowPlayingViewState extends State<NowPlayingView> {
     return Focus(
       focusNode: _focusNode,
       onKeyEvent: _handleKeyEvent,
-      child: RepaintBoundary(
-        child: Container(
-          color: tokens.background,
-          child: SafeArea(
-            child: Column(
-              children: [
-                // Top Navigation Bar (Collapse Button + View Title)
-                Container(
-                  height: 56.0,
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: LyraSpacing.lg,
-                  ),
-                  decoration: BoxDecoration(
-                    color: tokens.background,
-                    border: Border(
-                      bottom: BorderSide(color: tokens.border, width: 1.0),
-                    ),
-                  ),
-                  child: Row(
-                    children: [
-                      // Collapse Button
-                      LyraButton.ghost(
-                        size: LyraButtonSize.sm,
-                        onPressed: widget.onCollapse,
-                        leading: Icon(
-                          LucideIcons.chevronDown,
-                          size: 20.0,
-                          color: tokens.text,
-                        ),
-                        child: Text(
-                          'Collapse',
-                          style: LyraTypography.small(
-                            tokens,
-                          ).copyWith(fontWeight: FontWeight.w500),
-                        ),
-                      ),
-
-                      const Spacer(),
-
-                      // Title
-                      Text(
-                        'Now Playing',
-                        style: LyraTypography.h4(
-                          tokens,
-                        ).copyWith(fontWeight: FontWeight.w600),
-                      ),
-
-                      const Spacer(),
-
-                      // Right Spacer to balance collapse button width
-                      const SizedBox(width: 80.0),
-                    ],
+      child: Container(
+        color: tokens.background,
+        child: SafeArea(
+          child: Column(
+            children: [
+              // Top Navigation Bar (Collapse Button + View Title)
+              Container(
+                height: 56.0,
+                padding: const EdgeInsets.symmetric(horizontal: LyraSpacing.lg),
+                decoration: BoxDecoration(
+                  color: tokens.background,
+                  border: Border(
+                    bottom: BorderSide(color: tokens.border, width: 1.0),
                   ),
                 ),
+                child: Row(
+                  children: [
+                    // Collapse Button
+                    LyraButton.ghost(
+                      size: LyraButtonSize.sm,
+                      onPressed: widget.onCollapse,
+                      leading: Icon(
+                        LucideIcons.chevronDown,
+                        size: 20.0,
+                        color: tokens.text,
+                      ),
+                      child: Text(
+                        'Collapse',
+                        style: LyraTypography.small(
+                          tokens,
+                        ).copyWith(fontWeight: FontWeight.w500),
+                      ),
+                    ),
 
-                // Split-View Body (Left: Media Viewport, Right: Up Next & Lyrics)
-                Expanded(
-                  child: LayoutBuilder(
-                    builder: (context, constraints) {
-                      final isStacked = constraints.maxWidth < 780;
+                    const Spacer(),
 
-                      if (isStacked) {
-                        // Narrow screen vertical stacked fallback
-                        return Column(
-                          children: [
-                            Expanded(
-                              flex: 2,
-                              child: MediaViewport(
-                                track: widget.track,
-                                playbackController: widget.playbackController,
-                                isFavorite: _isFavorite,
-                                onToggleFavorite: () {
-                                  setState(() => _isFavorite = !_isFavorite);
-                                },
-                                videoAspectRatio: widget.videoAspectRatio,
-                                customVideoPlayer: widget.customVideoPlayer,
-                                videoTag: widget.videoTag,
-                              ),
-                            ),
-                            Container(height: 1.0, color: tokens.border),
-                            Expanded(
-                              flex: 1,
-                              child: _buildRightTabContainer(tokens),
-                            ),
-                          ],
-                        );
-                      }
+                    // Title
+                    Text(
+                      'Now Playing',
+                      style: LyraTypography.h4(
+                        tokens,
+                      ).copyWith(fontWeight: FontWeight.w600),
+                    ),
 
-                      // Wide screen desktop split-view
-                      return Row(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                    const Spacer(),
+
+                    // Right Spacer to balance collapse button width
+                    const SizedBox(width: 80.0),
+                  ],
+                ),
+              ),
+
+              // Split-View Body (Left: Media Viewport, Right: Up Next & Lyrics)
+              Expanded(
+                child: LayoutBuilder(
+                  builder: (context, constraints) {
+                    final isStacked = constraints.maxWidth < 780;
+
+                    if (isStacked) {
+                      // Narrow screen vertical stacked fallback
+                      return Column(
                         children: [
-                          // Left Pane: Media Viewport
                           Expanded(
                             flex: 2,
                             child: MediaViewport(
@@ -207,22 +176,49 @@ class _NowPlayingViewState extends State<NowPlayingView> {
                               videoTag: widget.videoTag,
                             ),
                           ),
-
-                          // Vertical Divider
-                          Container(width: 1.0, color: tokens.border),
-
-                          // Right Pane: Tabbed Container (Up Next / Lyrics)
+                          Container(height: 1.0, color: tokens.border),
                           Expanded(
                             flex: 1,
                             child: _buildRightTabContainer(tokens),
                           ),
                         ],
                       );
-                    },
-                  ),
+                    }
+
+                    // Wide screen desktop split-view
+                    return Row(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        // Left Pane: Media Viewport
+                        Expanded(
+                          flex: 2,
+                          child: MediaViewport(
+                            track: widget.track,
+                            playbackController: widget.playbackController,
+                            isFavorite: _isFavorite,
+                            onToggleFavorite: () {
+                              setState(() => _isFavorite = !_isFavorite);
+                            },
+                            videoAspectRatio: widget.videoAspectRatio,
+                            customVideoPlayer: widget.customVideoPlayer,
+                            videoTag: widget.videoTag,
+                          ),
+                        ),
+
+                        // Vertical Divider
+                        Container(width: 1.0, color: tokens.border),
+
+                        // Right Pane: Tabbed Container (Up Next / Lyrics)
+                        Expanded(
+                          flex: 1,
+                          child: _buildRightTabContainer(tokens),
+                        ),
+                      ],
+                    );
+                  },
                 ),
-              ],
-            ),
+              ),
+            ],
           ),
         ),
       ),

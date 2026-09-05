@@ -259,16 +259,14 @@ class _TagsViewState extends State<TagsView> {
                           itemBuilder: (context, index) {
                             final tag = filtered[index];
                             final count = widget.tagTrackCounts[tag.id] ?? 0;
-                            return RepaintBoundary(
-                              child: _TagCard(
-                                tag: tag,
-                                trackCount: count,
-                                tokens: tokens,
-                                onTap: () => widget.onTagSelected?.call(tag),
-                                onDelete: widget.onDeleteTag != null
-                                    ? () => setState(() => _tagToDelete = tag)
-                                    : null,
-                              ),
+                            return _TagCard(
+                              tag: tag,
+                              trackCount: count,
+                              tokens: tokens,
+                              onTap: () => widget.onTagSelected?.call(tag),
+                              onDelete: widget.onDeleteTag != null
+                                  ? () => setState(() => _tagToDelete = tag)
+                                  : null,
                             );
                           },
                         );
@@ -374,83 +372,81 @@ class _TagCardState extends State<_TagCard> {
     final tokens = widget.tokens;
     final tag = widget.tag;
 
-    return RepaintBoundary(
-      child: MouseRegion(
-        onEnter: (_) => setState(() => _isHovered = true),
-        onExit: (_) => setState(() => _isHovered = false),
-        child: GestureDetector(
-          behavior: HitTestBehavior.opaque,
-          onTap: widget.onTap,
-          child: AnimatedScale(
-            scale: _isHovered ? 1.02 : 1.0,
-            duration: const Duration(milliseconds: 150),
-            child: LyraCard(
-              padding: const EdgeInsets.all(LyraSpacing.lg),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      Container(
-                        width: 36.0,
-                        height: 36.0,
-                        decoration: BoxDecoration(
-                          color: tokens.secondary,
-                          borderRadius: LyraRadius.mdRadius,
-                        ),
-                        child: Center(
-                          child: Icon(
-                            LucideIcons.tag,
-                            size: 18.0,
-                            color: tokens.primary,
-                          ),
+    return MouseRegion(
+      onEnter: (_) => setState(() => _isHovered = true),
+      onExit: (_) => setState(() => _isHovered = false),
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: widget.onTap,
+        child: AnimatedScale(
+          scale: _isHovered ? 1.02 : 1.0,
+          duration: const Duration(milliseconds: 150),
+          child: LyraCard(
+            padding: const EdgeInsets.all(LyraSpacing.lg),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Container(
+                      width: 36.0,
+                      height: 36.0,
+                      decoration: BoxDecoration(
+                        color: tokens.secondary,
+                        borderRadius: LyraRadius.mdRadius,
+                      ),
+                      child: Center(
+                        child: Icon(
+                          LucideIcons.tag,
+                          size: 18.0,
+                          color: tokens.primary,
                         ),
                       ),
-                      const Spacer(),
-                      LyraBadge.secondary(
-                        child: Text(tag.displayCategory.toUpperCase()),
-                      ),
-                    ],
-                  ),
-                  const Spacer(),
-                  Text(
-                    tag.displayName,
-                    style: LyraTypography.h4(tokens),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  const SizedBox(height: LyraSpacing.xs),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text(
-                        '${widget.trackCount} ${widget.trackCount == 1 ? 'track' : 'tracks'}',
-                        style: LyraTypography.small(
-                          tokens,
-                        ).copyWith(color: tokens.textMuted),
-                      ),
-                      if (widget.onDelete != null)
-                        MouseRegion(
-                          cursor: SystemMouseCursors.click,
-                          child: GestureDetector(
-                            behavior: HitTestBehavior.opaque,
-                            onTap: widget.onDelete,
-                            child: Padding(
-                              padding: const EdgeInsets.all(4.0),
-                              child: Icon(
-                                LucideIcons.trash2,
-                                size: 14.0,
-                                color: _isHovered
-                                    ? tokens.destructive
-                                    : tokens.textMuted.withValues(alpha: 0.5),
-                              ),
+                    ),
+                    const Spacer(),
+                    LyraBadge.secondary(
+                      child: Text(tag.displayCategory.toUpperCase()),
+                    ),
+                  ],
+                ),
+                const Spacer(),
+                Text(
+                  tag.displayName,
+                  style: LyraTypography.h4(tokens),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                const SizedBox(height: LyraSpacing.xs),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      '${widget.trackCount} ${widget.trackCount == 1 ? 'track' : 'tracks'}',
+                      style: LyraTypography.small(
+                        tokens,
+                      ).copyWith(color: tokens.textMuted),
+                    ),
+                    if (widget.onDelete != null)
+                      MouseRegion(
+                        cursor: SystemMouseCursors.click,
+                        child: GestureDetector(
+                          behavior: HitTestBehavior.opaque,
+                          onTap: widget.onDelete,
+                          child: Padding(
+                            padding: const EdgeInsets.all(4.0),
+                            child: Icon(
+                              LucideIcons.trash2,
+                              size: 14.0,
+                              color: _isHovered
+                                  ? tokens.destructive
+                                  : tokens.textMuted.withValues(alpha: 0.5),
                             ),
                           ),
                         ),
-                    ],
-                  ),
-                ],
-              ),
+                      ),
+                  ],
+                ),
+              ],
             ),
           ),
         ),

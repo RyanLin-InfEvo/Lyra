@@ -245,30 +245,28 @@ class TracksView extends StatelessWidget {
                   audioVersionCounts?[track.pcmHash] ??
                   1;
 
-              return RepaintBoundary(
-                child: _TrackRow(
-                  index: index + 1,
-                  track: track,
-                  isCurrent: isCurrent,
-                  isPlaying: isCurrent && isPlaying,
-                  versionCount: versionCount,
-                  onTap: () {
-                    if (isCurrent) {
-                      onTogglePlay();
-                    } else {
-                      onTrackSelected(track);
-                    }
-                  },
-                  onInspect: onInspectTrack != null
-                      ? () => onInspectTrack!(track)
-                      : null,
-                  onInspectAudio: onInspectAudio != null
-                      ? () => onInspectAudio!(track)
-                      : (onInspectTrack != null
-                            ? () => onInspectTrack!(track)
-                            : null),
-                  tokens: tokens,
-                ),
+              return _TrackRow(
+                index: index + 1,
+                track: track,
+                isCurrent: isCurrent,
+                isPlaying: isCurrent && isPlaying,
+                versionCount: versionCount,
+                onTap: () {
+                  if (isCurrent) {
+                    onTogglePlay();
+                  } else {
+                    onTrackSelected(track);
+                  }
+                },
+                onInspect: onInspectTrack != null
+                    ? () => onInspectTrack!(track)
+                    : null,
+                onInspectAudio: onInspectAudio != null
+                    ? () => onInspectAudio!(track)
+                    : (onInspectTrack != null
+                          ? () => onInspectTrack!(track)
+                          : null),
+                tokens: tokens,
               );
             },
           ),
@@ -313,207 +311,202 @@ class _TrackRowState extends State<_TrackRow> {
   Widget build(BuildContext context) {
     final tokens = widget.tokens;
 
-    return RepaintBoundary(
-      child: MouseRegion(
-        onEnter: (_) => setState(() => _isHovered = true),
-        onExit: (_) => setState(() => _isHovered = false),
-        child: GestureDetector(
-          behavior: HitTestBehavior.opaque,
-          onTap: widget.onTap,
-          onSecondaryTap: widget.onInspectAudio ?? widget.onInspect,
-          child: Container(
-            padding: const EdgeInsets.symmetric(
-              horizontal: LyraSpacing.xl,
-              vertical: LyraSpacing.sm,
-            ),
-            decoration: BoxDecoration(
-              color: widget.isCurrent
-                  ? tokens.secondary
-                  : _isHovered
-                  ? tokens.secondary.withValues(alpha: 0.5)
-                  : null,
-            ),
-            child: Row(
-              children: [
-                // Index or Play Icon
-                SizedBox(
-                  width: 40.0,
-                  child: Align(
-                    alignment: Alignment.centerLeft,
-                    child: _isHovered || widget.isPlaying
-                        ? Icon(
-                            widget.isPlaying
-                                ? LucideIcons.volume2
-                                : LucideIcons.play,
-                            size: 16.0,
-                            color: widget.isCurrent
-                                ? tokens.primary
-                                : tokens.text,
-                          )
-                        : Text(
-                            '${widget.index}',
-                            style: LyraTypography.small(tokens).copyWith(
-                              color: widget.isCurrent
-                                  ? tokens.primary
-                                  : tokens.textMuted,
-                              fontWeight: widget.isCurrent
-                                  ? FontWeight.bold
-                                  : FontWeight.normal,
-                            ),
-                          ),
-                  ),
-                ),
-
-                // Title & Artist
-                Expanded(
-                  flex: 4,
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text(
-                        widget.track.displayTitle,
-                        style: LyraTypography.p(tokens).copyWith(
-                          fontWeight: widget.isCurrent
-                              ? FontWeight.w600
-                              : FontWeight.normal,
+    return MouseRegion(
+      onEnter: (_) => setState(() => _isHovered = true),
+      onExit: (_) => setState(() => _isHovered = false),
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: widget.onTap,
+        onSecondaryTap: widget.onInspectAudio ?? widget.onInspect,
+        child: Container(
+          padding: const EdgeInsets.symmetric(
+            horizontal: LyraSpacing.xl,
+            vertical: LyraSpacing.sm,
+          ),
+          decoration: BoxDecoration(
+            color: widget.isCurrent
+                ? tokens.secondary
+                : _isHovered
+                ? tokens.secondary.withValues(alpha: 0.5)
+                : null,
+          ),
+          child: Row(
+            children: [
+              // Index or Play Icon
+              SizedBox(
+                width: 40.0,
+                child: Align(
+                  alignment: Alignment.centerLeft,
+                  child: _isHovered || widget.isPlaying
+                      ? Icon(
+                          widget.isPlaying
+                              ? LucideIcons.volume2
+                              : LucideIcons.play,
+                          size: 16.0,
                           color: widget.isCurrent
                               ? tokens.primary
                               : tokens.text,
-                        ),
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                      Text(
-                        widget.track.artist,
-                        style: LyraTypography.small(
-                          tokens,
-                        ).copyWith(color: tokens.textMuted),
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ],
-                  ),
-                ),
-
-                // Album
-                Expanded(
-                  flex: 3,
-                  child: Text(
-                    widget.track.album,
-                    style: LyraTypography.small(
-                      tokens,
-                    ).copyWith(color: tokens.textMuted),
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ),
-
-                // Resolution / Version Badge (Interactive)
-                Expanded(
-                  flex: 2,
-                  child: Align(
-                    alignment: Alignment.centerLeft,
-                    child: MouseRegion(
-                      cursor:
-                          (widget.onInspectAudio ?? widget.onInspect) != null
-                          ? SystemMouseCursors.click
-                          : SystemMouseCursors.basic,
-                      child: GestureDetector(
-                        behavior: HitTestBehavior.opaque,
-                        onTap: widget.onInspectAudio ?? widget.onInspect,
-                        child: LyraBadge.secondary(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 6.0,
-                            vertical: 2.0,
-                          ),
-                          child: Text(
-                            widget.versionCount > 1
-                                ? '${widget.track.formattedQuality} · ${widget.versionCount} versions'
-                                : widget.track.formattedQuality,
-                            style: LyraTypography.small(tokens).copyWith(
-                              fontSize: 10.0,
-                              fontWeight: FontWeight.w600,
-                            ),
-                            overflow: TextOverflow.ellipsis,
+                        )
+                      : Text(
+                          '${widget.index}',
+                          style: LyraTypography.small(tokens).copyWith(
+                            color: widget.isCurrent
+                                ? tokens.primary
+                                : tokens.textMuted,
+                            fontWeight: widget.isCurrent
+                                ? FontWeight.bold
+                                : FontWeight.normal,
                           ),
                         ),
+                ),
+              ),
+
+              // Title & Artist
+              Expanded(
+                flex: 4,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      widget.track.displayTitle,
+                      style: LyraTypography.p(tokens).copyWith(
+                        fontWeight: widget.isCurrent
+                            ? FontWeight.w600
+                            : FontWeight.normal,
+                        color: widget.isCurrent ? tokens.primary : tokens.text,
                       ),
+                      overflow: TextOverflow.ellipsis,
                     ),
-                  ),
-                ),
-
-                // CAS Hash Tag & Inspect Action
-                Expanded(
-                  flex: 2,
-                  child: Align(
-                    alignment: Alignment.centerLeft,
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Flexible(
-                          child: MouseRegion(
-                            cursor: widget.onInspect != null
-                                ? SystemMouseCursors.click
-                                : SystemMouseCursors.basic,
-                            child: GestureDetector(
-                              behavior: HitTestBehavior.opaque,
-                              onTap: widget.onInspect,
-                              child: LyraBadge.outline(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 6.0,
-                                  vertical: 2.0,
-                                ),
-                                child: Text(
-                                  widget.track.shortCasHash,
-                                  style: LyraTypography.mono(
-                                    tokens,
-                                    fontSize: 10.0,
-                                  ),
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                              ),
-                            ),
-                          ),
-                        ),
-                        if (widget.onInspectAudio != null ||
-                            widget.onInspect != null) ...[
-                          const SizedBox(width: 4.0),
-                          MouseRegion(
-                            cursor: SystemMouseCursors.click,
-                            child: GestureDetector(
-                              behavior: HitTestBehavior.opaque,
-                              onTap: widget.onInspectAudio ?? widget.onInspect,
-                              child: Padding(
-                                padding: const EdgeInsets.all(2.0),
-                                child: Icon(
-                                  LucideIcons.info,
-                                  size: 14.0,
-                                  color: _isHovered
-                                      ? tokens.primary
-                                      : tokens.textMuted,
-                                ),
-                              ),
-                            ),
-                          ),
-                        ],
-                      ],
-                    ),
-                  ),
-                ),
-
-                // Duration
-                SizedBox(
-                  width: 60.0,
-                  child: Align(
-                    alignment: Alignment.centerRight,
-                    child: Text(
-                      widget.track.formattedDuration,
+                    Text(
+                      widget.track.artist,
                       style: LyraTypography.small(
                         tokens,
                       ).copyWith(color: tokens.textMuted),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ],
+                ),
+              ),
+
+              // Album
+              Expanded(
+                flex: 3,
+                child: Text(
+                  widget.track.album,
+                  style: LyraTypography.small(
+                    tokens,
+                  ).copyWith(color: tokens.textMuted),
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+
+              // Resolution / Version Badge (Interactive)
+              Expanded(
+                flex: 2,
+                child: Align(
+                  alignment: Alignment.centerLeft,
+                  child: MouseRegion(
+                    cursor: (widget.onInspectAudio ?? widget.onInspect) != null
+                        ? SystemMouseCursors.click
+                        : SystemMouseCursors.basic,
+                    child: GestureDetector(
+                      behavior: HitTestBehavior.opaque,
+                      onTap: widget.onInspectAudio ?? widget.onInspect,
+                      child: LyraBadge.secondary(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 6.0,
+                          vertical: 2.0,
+                        ),
+                        child: Text(
+                          widget.versionCount > 1
+                              ? '${widget.track.formattedQuality} · ${widget.versionCount} versions'
+                              : widget.track.formattedQuality,
+                          style: LyraTypography.small(tokens).copyWith(
+                            fontSize: 10.0,
+                            fontWeight: FontWeight.w600,
+                          ),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
                     ),
                   ),
                 ),
-              ],
-            ),
+              ),
+
+              // CAS Hash Tag & Inspect Action
+              Expanded(
+                flex: 2,
+                child: Align(
+                  alignment: Alignment.centerLeft,
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Flexible(
+                        child: MouseRegion(
+                          cursor: widget.onInspect != null
+                              ? SystemMouseCursors.click
+                              : SystemMouseCursors.basic,
+                          child: GestureDetector(
+                            behavior: HitTestBehavior.opaque,
+                            onTap: widget.onInspect,
+                            child: LyraBadge.outline(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 6.0,
+                                vertical: 2.0,
+                              ),
+                              child: Text(
+                                widget.track.shortCasHash,
+                                style: LyraTypography.mono(
+                                  tokens,
+                                  fontSize: 10.0,
+                                ),
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                      if (widget.onInspectAudio != null ||
+                          widget.onInspect != null) ...[
+                        const SizedBox(width: 4.0),
+                        MouseRegion(
+                          cursor: SystemMouseCursors.click,
+                          child: GestureDetector(
+                            behavior: HitTestBehavior.opaque,
+                            onTap: widget.onInspectAudio ?? widget.onInspect,
+                            child: Padding(
+                              padding: const EdgeInsets.all(2.0),
+                              child: Icon(
+                                LucideIcons.info,
+                                size: 14.0,
+                                color: _isHovered
+                                    ? tokens.primary
+                                    : tokens.textMuted,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+              ),
+
+              // Duration
+              SizedBox(
+                width: 60.0,
+                child: Align(
+                  alignment: Alignment.centerRight,
+                  child: Text(
+                    widget.track.formattedDuration,
+                    style: LyraTypography.small(
+                      tokens,
+                    ).copyWith(color: tokens.textMuted),
+                  ),
+                ),
+              ),
+            ],
           ),
         ),
       ),

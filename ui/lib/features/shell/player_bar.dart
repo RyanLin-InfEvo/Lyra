@@ -65,286 +65,280 @@ class LyraPlayerBar extends StatelessWidget {
   Widget build(BuildContext context) {
     final tokens = LyraDesignSystemScope.of(context).tokens;
 
-    return RepaintBoundary(
-      child: Container(
-        height: 84.0,
-        padding: const EdgeInsets.symmetric(horizontal: LyraSpacing.lg),
-        decoration: BoxDecoration(
-          color: tokens.card,
-          border: Border(top: BorderSide(color: tokens.border, width: 1.0)),
-        ),
-        child: Row(
-          children: [
-            // Left: Track Info & Format Metadata
-            Expanded(
-              flex: 3,
-              child: currentTrack == null
-                  ? Row(
-                      children: [
-                        Container(
-                          width: 44.0,
-                          height: 44.0,
-                          decoration: BoxDecoration(
-                            color: tokens.secondary,
-                            borderRadius: LyraRadius.mdRadius,
-                          ),
-                          child: Icon(
-                            LucideIcons.disc,
-                            size: 22.0,
-                            color: tokens.textMuted,
-                          ),
-                        ),
-                        const SizedBox(width: LyraSpacing.md),
-                        Flexible(
-                          child: Text(
-                            'No track selected',
-                            style: LyraTypography.muted(tokens),
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ),
-                      ],
-                    )
-                  : Row(
-                      children: [
-                        MouseRegion(
-                          cursor: onExpandNowPlaying != null
-                              ? SystemMouseCursors.click
-                              : SystemMouseCursors.basic,
-                          child: Listener(
-                            behavior: HitTestBehavior.opaque,
-                            onPointerUp: (_) => onExpandNowPlaying?.call(),
-                            child: Container(
-                              width: 44.0,
-                              height: 44.0,
-                              decoration: BoxDecoration(
-                                color: tokens.primary,
-                                borderRadius: LyraRadius.mdRadius,
-                              ),
-                              child: Center(
-                                child: Icon(
-                                  LucideIcons.music,
-                                  size: 22.0,
-                                  color: tokens.primaryForeground,
-                                ),
-                              ),
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: LyraSpacing.md),
-                        Expanded(
-                          child: Column(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              MouseRegion(
-                                cursor: onExpandNowPlaying != null
-                                    ? SystemMouseCursors.click
-                                    : SystemMouseCursors.basic,
-                                child: Listener(
-                                  behavior: HitTestBehavior.opaque,
-                                  onPointerUp: (_) =>
-                                      onExpandNowPlaying?.call(),
-                                  child: Text(
-                                    currentTrack!.displayTitle,
-                                    style: LyraTypography.p(
-                                      tokens,
-                                    ).copyWith(fontWeight: FontWeight.w600),
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
-                                ),
-                              ),
-                              const SizedBox(height: 2.0),
-                              Row(
-                                children: [
-                                  Flexible(
-                                    child: Text(
-                                      '${currentTrack!.artist} • ${currentTrack!.album}',
-                                      style: LyraTypography.small(
-                                        tokens,
-                                      ).copyWith(color: tokens.textMuted),
-                                      overflow: TextOverflow.ellipsis,
-                                    ),
-                                  ),
-                                  const SizedBox(width: LyraSpacing.xs),
-                                  MouseRegion(
-                                    cursor:
-                                        (onInspectAudio ?? onInspectTrack) !=
-                                            null
-                                        ? SystemMouseCursors.click
-                                        : SystemMouseCursors.basic,
-                                    child: Listener(
-                                      behavior: HitTestBehavior.opaque,
-                                      onPointerUp: (_) {
-                                        final callback =
-                                            onInspectAudio ?? onInspectTrack;
-                                        callback?.call();
-                                      },
-                                      child: LyraBadge.secondary(
-                                        padding: const EdgeInsets.symmetric(
-                                          horizontal: 4.0,
-                                          vertical: 1.0,
-                                        ),
-                                        child: Text(
-                                          currentTrack!.displayFormat,
-                                          style: LyraTypography.small(tokens)
-                                              .copyWith(
-                                                fontSize: 9.0,
-                                                fontWeight: FontWeight.bold,
-                                              ),
-                                        ),
-                                      ),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ],
-                          ),
-                        ),
-                      ],
-                    ),
-            ),
-
-            // Center: Playback Controls & Progress Bar
-            Expanded(
-              flex: 5,
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  // Transport Buttons
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
+    return Container(
+      height: 84.0,
+      padding: const EdgeInsets.symmetric(horizontal: LyraSpacing.lg),
+      decoration: BoxDecoration(
+        color: tokens.card,
+        border: Border(top: BorderSide(color: tokens.border, width: 1.0)),
+      ),
+      child: Row(
+        children: [
+          // Left: Track Info & Format Metadata
+          Expanded(
+            flex: 3,
+            child: currentTrack == null
+                ? Row(
                     children: [
-                      LyraButton.ghost(
-                        size: LyraButtonSize.sm,
-                        onPressed: currentTrack == null ? null : onPrevious,
+                      Container(
+                        width: 44.0,
+                        height: 44.0,
+                        decoration: BoxDecoration(
+                          color: tokens.secondary,
+                          borderRadius: LyraRadius.mdRadius,
+                        ),
                         child: Icon(
-                          LucideIcons.skipBack,
-                          size: 18.0,
-                          color: currentTrack == null
-                              ? tokens.textMuted
-                              : tokens.text,
+                          LucideIcons.disc,
+                          size: 22.0,
+                          color: tokens.textMuted,
                         ),
                       ),
-                      const SizedBox(width: LyraSpacing.sm),
+                      const SizedBox(width: LyraSpacing.md),
+                      Flexible(
+                        child: Text(
+                          'No track selected',
+                          style: LyraTypography.muted(tokens),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    ],
+                  )
+                : Row(
+                    children: [
                       MouseRegion(
-                        cursor: currentTrack == null
-                            ? SystemMouseCursors.basic
-                            : SystemMouseCursors.click,
-                        child: GestureDetector(
-                          onTap: currentTrack == null ? null : onTogglePlay,
+                        cursor: onExpandNowPlaying != null
+                            ? SystemMouseCursors.click
+                            : SystemMouseCursors.basic,
+                        child: Listener(
+                          behavior: HitTestBehavior.opaque,
+                          onPointerUp: (_) => onExpandNowPlaying?.call(),
                           child: Container(
-                            width: 42.0,
-                            height: 42.0,
+                            width: 44.0,
+                            height: 44.0,
                             decoration: BoxDecoration(
-                              shape: BoxShape.circle,
-                              color: currentTrack == null
-                                  ? tokens.secondary
-                                  : tokens.primary,
+                              color: tokens.primary,
+                              borderRadius: LyraRadius.mdRadius,
                             ),
                             child: Center(
                               child: Icon(
-                                isPlaying
-                                    ? LucideIcons.pause
-                                    : LucideIcons.play,
-                                size: 18.0,
-                                color: currentTrack == null
-                                    ? tokens.textMuted
-                                    : tokens.primaryForeground,
+                                LucideIcons.music,
+                                size: 22.0,
+                                color: tokens.primaryForeground,
                               ),
                             ),
                           ),
                         ),
                       ),
-                      const SizedBox(width: LyraSpacing.sm),
-                      LyraButton.ghost(
-                        size: LyraButtonSize.sm,
-                        onPressed: currentTrack == null ? null : onNext,
-                        child: Icon(
-                          LucideIcons.skipForward,
-                          size: 18.0,
-                          color: currentTrack == null
-                              ? tokens.textMuted
-                              : tokens.text,
+                      const SizedBox(width: LyraSpacing.md),
+                      Expanded(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            MouseRegion(
+                              cursor: onExpandNowPlaying != null
+                                  ? SystemMouseCursors.click
+                                  : SystemMouseCursors.basic,
+                              child: Listener(
+                                behavior: HitTestBehavior.opaque,
+                                onPointerUp: (_) => onExpandNowPlaying?.call(),
+                                child: Text(
+                                  currentTrack!.displayTitle,
+                                  style: LyraTypography.p(
+                                    tokens,
+                                  ).copyWith(fontWeight: FontWeight.w600),
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                            ),
+                            const SizedBox(height: 2.0),
+                            Row(
+                              children: [
+                                Flexible(
+                                  child: Text(
+                                    '${currentTrack!.artist} • ${currentTrack!.album}',
+                                    style: LyraTypography.small(
+                                      tokens,
+                                    ).copyWith(color: tokens.textMuted),
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                                const SizedBox(width: LyraSpacing.xs),
+                                MouseRegion(
+                                  cursor:
+                                      (onInspectAudio ?? onInspectTrack) != null
+                                      ? SystemMouseCursors.click
+                                      : SystemMouseCursors.basic,
+                                  child: Listener(
+                                    behavior: HitTestBehavior.opaque,
+                                    onPointerUp: (_) {
+                                      final callback =
+                                          onInspectAudio ?? onInspectTrack;
+                                      callback?.call();
+                                    },
+                                    child: LyraBadge.secondary(
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 4.0,
+                                        vertical: 1.0,
+                                      ),
+                                      child: Text(
+                                        currentTrack!.displayFormat,
+                                        style: LyraTypography.small(tokens)
+                                            .copyWith(
+                                              fontSize: 9.0,
+                                              fontWeight: FontWeight.bold,
+                                            ),
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
                         ),
                       ),
                     ],
                   ),
+          ),
 
-                  const SizedBox(height: 4.0),
-
-                  // Progress Scrubber
-                  _buildProgressScrubber(tokens),
-                ],
-              ),
-            ),
-
-            // Right: Volume & Bit-Perfect Indicator
-            Expanded(
-              flex: 3,
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.end,
-                children: [
-                  Icon(
-                    volume == 0
-                        ? LucideIcons.volumeX
-                        : volume < 0.5
-                        ? LucideIcons.volume1
-                        : LucideIcons.volume2,
-                    size: 18.0,
-                    color: tokens.textMuted,
-                  ),
-                  const SizedBox(width: LyraSpacing.xs),
-                  Flexible(
-                    child: ConstrainedBox(
-                      constraints: const BoxConstraints(
-                        maxWidth: 100.0,
-                        minWidth: 50.0,
-                      ),
-                      child: _VolumeSlider(
-                        volume: volume,
-                        onChanged: onVolumeChanged,
-                        tokens: tokens,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: LyraSpacing.md),
-                  LyraButton.ghost(
-                    size: LyraButtonSize.sm,
-                    onPressed: currentTrack == null ? null : onInspectTrack,
-                    child: Icon(
-                      LucideIcons.fileSearch,
-                      size: 18.0,
-                      color: isInspectorOpen
-                          ? tokens.primary
-                          : currentTrack == null
-                          ? tokens.textMuted
-                          : tokens.text,
-                    ),
-                  ),
-                  const SizedBox(width: LyraSpacing.xs),
-                  Tooltip(
-                    message: isNowPlayingExpanded
-                        ? 'Collapse Now Playing'
-                        : 'Expand Now Playing',
-                    child: LyraButton.ghost(
+          // Center: Playback Controls & Progress Bar
+          Expanded(
+            flex: 5,
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                // Transport Buttons
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    LyraButton.ghost(
                       size: LyraButtonSize.sm,
-                      onPressed: onExpandNowPlaying,
+                      onPressed: currentTrack == null ? null : onPrevious,
                       child: Icon(
-                        isNowPlayingExpanded
-                            ? LucideIcons.chevronDown
-                            : LucideIcons.chevronUp,
+                        LucideIcons.skipBack,
                         size: 18.0,
-                        color: onExpandNowPlaying == null
+                        color: currentTrack == null
                             ? tokens.textMuted
                             : tokens.text,
                       ),
                     ),
-                  ),
-                ],
-              ),
+                    const SizedBox(width: LyraSpacing.sm),
+                    MouseRegion(
+                      cursor: currentTrack == null
+                          ? SystemMouseCursors.basic
+                          : SystemMouseCursors.click,
+                      child: GestureDetector(
+                        onTap: currentTrack == null ? null : onTogglePlay,
+                        child: Container(
+                          width: 42.0,
+                          height: 42.0,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: currentTrack == null
+                                ? tokens.secondary
+                                : tokens.primary,
+                          ),
+                          child: Center(
+                            child: Icon(
+                              isPlaying ? LucideIcons.pause : LucideIcons.play,
+                              size: 18.0,
+                              color: currentTrack == null
+                                  ? tokens.textMuted
+                                  : tokens.primaryForeground,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: LyraSpacing.sm),
+                    LyraButton.ghost(
+                      size: LyraButtonSize.sm,
+                      onPressed: currentTrack == null ? null : onNext,
+                      child: Icon(
+                        LucideIcons.skipForward,
+                        size: 18.0,
+                        color: currentTrack == null
+                            ? tokens.textMuted
+                            : tokens.text,
+                      ),
+                    ),
+                  ],
+                ),
+
+                const SizedBox(height: 4.0),
+
+                // Progress Scrubber
+                _buildProgressScrubber(tokens),
+              ],
             ),
-          ],
-        ),
+          ),
+
+          // Right: Volume & Bit-Perfect Indicator
+          Expanded(
+            flex: 3,
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: [
+                Icon(
+                  volume == 0
+                      ? LucideIcons.volumeX
+                      : volume < 0.5
+                      ? LucideIcons.volume1
+                      : LucideIcons.volume2,
+                  size: 18.0,
+                  color: tokens.textMuted,
+                ),
+                const SizedBox(width: LyraSpacing.xs),
+                Flexible(
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(
+                      maxWidth: 100.0,
+                      minWidth: 50.0,
+                    ),
+                    child: _VolumeSlider(
+                      volume: volume,
+                      onChanged: onVolumeChanged,
+                      tokens: tokens,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: LyraSpacing.md),
+                LyraButton.ghost(
+                  size: LyraButtonSize.sm,
+                  onPressed: currentTrack == null ? null : onInspectTrack,
+                  child: Icon(
+                    LucideIcons.fileSearch,
+                    size: 18.0,
+                    color: isInspectorOpen
+                        ? tokens.primary
+                        : currentTrack == null
+                        ? tokens.textMuted
+                        : tokens.text,
+                  ),
+                ),
+                const SizedBox(width: LyraSpacing.xs),
+                Tooltip(
+                  message: isNowPlayingExpanded
+                      ? 'Collapse Now Playing'
+                      : 'Expand Now Playing',
+                  child: LyraButton.ghost(
+                    size: LyraButtonSize.sm,
+                    onPressed: onExpandNowPlaying,
+                    child: Icon(
+                      isNowPlayingExpanded
+                          ? LucideIcons.chevronDown
+                          : LucideIcons.chevronUp,
+                      size: 18.0,
+                      color: onExpandNowPlaying == null
+                          ? tokens.textMuted
+                          : tokens.text,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }
