@@ -350,26 +350,28 @@ class LyraPlayerBar extends StatelessWidget {
       return ValueListenableBuilder<Duration>(
         valueListenable: positionNotifier!,
         builder: (context, pos, child) {
-          return Row(
-            children: [
-              Text(
-                _formatDuration(pos),
-                style: LyraTypography.small(
-                  tokens,
-                ).copyWith(color: tokens.textMuted, fontSize: 11.0),
-              ),
-              const SizedBox(width: LyraSpacing.sm),
-              Expanded(
-                child: _ProgressSlider(
-                  position: pos,
-                  total: currentTrack?.duration ?? const Duration(seconds: 1),
-                  onSeek: onSeek,
-                  tokens: tokens,
+          return RepaintBoundary(
+            child: Row(
+              children: [
+                Text(
+                  _formatDuration(pos),
+                  style: LyraTypography.small(
+                    tokens,
+                  ).copyWith(color: tokens.textMuted, fontSize: 11.0),
                 ),
-              ),
-              const SizedBox(width: LyraSpacing.sm),
-              child!,
-            ],
+                const SizedBox(width: LyraSpacing.sm),
+                Expanded(
+                  child: _ProgressSlider(
+                    position: pos,
+                    total: currentTrack?.duration ?? const Duration(seconds: 1),
+                    onSeek: onSeek,
+                    tokens: tokens,
+                  ),
+                ),
+                const SizedBox(width: LyraSpacing.sm),
+                child!,
+              ],
+            ),
           );
         },
         child: Text(
@@ -381,31 +383,33 @@ class LyraPlayerBar extends StatelessWidget {
       );
     }
 
-    return Row(
-      children: [
-        Text(
-          _formatDuration(effectivePosition),
-          style: LyraTypography.small(
-            tokens,
-          ).copyWith(color: tokens.textMuted, fontSize: 11.0),
-        ),
-        const SizedBox(width: LyraSpacing.sm),
-        Expanded(
-          child: _ProgressSlider(
-            position: effectivePosition,
-            total: currentTrack?.duration ?? const Duration(seconds: 1),
-            onSeek: onSeek,
-            tokens: tokens,
+    return RepaintBoundary(
+      child: Row(
+        children: [
+          Text(
+            _formatDuration(effectivePosition),
+            style: LyraTypography.small(
+              tokens,
+            ).copyWith(color: tokens.textMuted, fontSize: 11.0),
           ),
-        ),
-        const SizedBox(width: LyraSpacing.sm),
-        Text(
-          _formatDuration(totalDuration),
-          style: LyraTypography.small(
-            tokens,
-          ).copyWith(color: tokens.textMuted, fontSize: 11.0),
-        ),
-      ],
+          const SizedBox(width: LyraSpacing.sm),
+          Expanded(
+            child: _ProgressSlider(
+              position: effectivePosition,
+              total: currentTrack?.duration ?? const Duration(seconds: 1),
+              onSeek: onSeek,
+              tokens: tokens,
+            ),
+          ),
+          const SizedBox(width: LyraSpacing.sm),
+          Text(
+            _formatDuration(totalDuration),
+            style: LyraTypography.small(
+              tokens,
+            ).copyWith(color: tokens.textMuted, fontSize: 11.0),
+          ),
+        ],
+      ),
     );
   }
 }

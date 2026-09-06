@@ -198,94 +198,101 @@ class _WorkRowState extends State<_WorkRow> {
       dateText = work.compositionDateText!;
     }
 
-    return MouseRegion(
-      onEnter: (_) => setState(() => _isHovered = true),
-      onExit: (_) => setState(() => _isHovered = false),
-      child: GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onTap: widget.onTap,
-        child: Container(
-          padding: const EdgeInsets.symmetric(
-            horizontal: LyraSpacing.xl,
-            vertical: LyraSpacing.md,
-          ),
-          decoration: BoxDecoration(
-            color: _isHovered ? tokens.secondary.withValues(alpha: 0.5) : null,
-            border: Border(
-              bottom: BorderSide(
-                color: tokens.border.withValues(alpha: 0.4),
-                width: 1.0,
+    return RepaintBoundary(
+      child: MouseRegion(
+        onEnter: (_) => setState(() => _isHovered = true),
+        onExit: (_) => setState(() => _isHovered = false),
+        child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: widget.onTap,
+          child: Container(
+            padding: const EdgeInsets.symmetric(
+              horizontal: LyraSpacing.xl,
+              vertical: LyraSpacing.md,
+            ),
+            decoration: BoxDecoration(
+              color: _isHovered
+                  ? tokens.secondary.withValues(alpha: 0.5)
+                  : null,
+              border: Border(
+                bottom: BorderSide(
+                  color: tokens.border.withValues(alpha: 0.4),
+                  width: 1.0,
+                ),
               ),
             ),
-          ),
-          child: Row(
-            children: [
-              SizedBox(
-                width: 40.0,
-                child: Text(
-                  '${widget.index}',
-                  style: LyraTypography.small(
-                    tokens,
-                  ).copyWith(color: tokens.textMuted),
-                ),
-              ),
-              Expanded(
-                flex: 5,
-                child: Text(
-                  work.title,
-                  style: LyraTypography.p(
-                    tokens,
-                  ).copyWith(fontWeight: FontWeight.w500),
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ),
-              Expanded(
-                flex: 3,
-                child: Text(
-                  dateText,
-                  style: LyraTypography.small(
-                    tokens,
-                  ).copyWith(color: tokens.textMuted),
-                ),
-              ),
-              Expanded(
-                flex: 3,
-                child: work.iswc != null
-                    ? Align(
-                        alignment: Alignment.centerLeft,
-                        child: LyraBadge.outline(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 6.0,
-                            vertical: 2.0,
-                          ),
-                          child: Text(
-                            work.iswc!,
-                            style: LyraTypography.mono(tokens, fontSize: 10.0),
-                          ),
-                        ),
-                      )
-                    : Text(
-                        '-',
-                        style: LyraTypography.small(
-                          tokens,
-                        ).copyWith(color: tokens.textMuted),
-                      ),
-              ),
-              Expanded(
-                flex: 3,
-                child: Align(
-                  alignment: Alignment.centerRight,
+            child: Row(
+              children: [
+                SizedBox(
+                  width: 40.0,
                   child: Text(
-                    work.musicbrainzId ?? '-',
-                    style: LyraTypography.mono(
+                    '${widget.index}',
+                    style: LyraTypography.small(
                       tokens,
-                      fontSize: 10.0,
                     ).copyWith(color: tokens.textMuted),
+                  ),
+                ),
+                Expanded(
+                  flex: 5,
+                  child: Text(
+                    work.title,
+                    style: LyraTypography.p(
+                      tokens,
+                    ).copyWith(fontWeight: FontWeight.w500),
                     overflow: TextOverflow.ellipsis,
                   ),
                 ),
-              ),
-            ],
+                Expanded(
+                  flex: 3,
+                  child: Text(
+                    dateText,
+                    style: LyraTypography.small(
+                      tokens,
+                    ).copyWith(color: tokens.textMuted),
+                  ),
+                ),
+                Expanded(
+                  flex: 3,
+                  child: work.iswc != null
+                      ? Align(
+                          alignment: Alignment.centerLeft,
+                          child: LyraBadge.outline(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 6.0,
+                              vertical: 2.0,
+                            ),
+                            child: Text(
+                              work.iswc!,
+                              style: LyraTypography.mono(
+                                tokens,
+                                fontSize: 10.0,
+                              ),
+                            ),
+                          ),
+                        )
+                      : Text(
+                          '-',
+                          style: LyraTypography.small(
+                            tokens,
+                          ).copyWith(color: tokens.textMuted),
+                        ),
+                ),
+                Expanded(
+                  flex: 3,
+                  child: Align(
+                    alignment: Alignment.centerRight,
+                    child: Text(
+                      work.musicbrainzId ?? '-',
+                      style: LyraTypography.mono(
+                        tokens,
+                        fontSize: 10.0,
+                      ).copyWith(color: tokens.textMuted),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
       ),

@@ -592,10 +592,12 @@ class _AppShellState extends State<AppShell> {
                                             0,
                                             (1.0 - value) * 40.0,
                                           ),
-                                          child: Opacity(
-                                            opacity: value,
-                                            child: child,
-                                          ),
+                                          child: value >= 1.0
+                                              ? child!
+                                              : Opacity(
+                                                  opacity: value,
+                                                  child: child,
+                                                ),
                                         );
                                       },
                                       child: NowPlayingView(

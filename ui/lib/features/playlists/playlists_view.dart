@@ -154,60 +154,62 @@ class _PlaylistCardState extends State<_PlaylistCard> {
     final tokens = widget.tokens;
     final playlist = widget.playlist;
 
-    return MouseRegion(
-      onEnter: (_) => setState(() => _isHovered = true),
-      onExit: (_) => setState(() => _isHovered = false),
-      child: GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onTap: widget.onTap,
-        child: AnimatedScale(
-          scale: _isHovered ? 1.02 : 1.0,
-          duration: const Duration(milliseconds: 150),
-          child: LyraCard(
-            padding: const EdgeInsets.all(LyraSpacing.lg),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Container(
-                      width: 44.0,
-                      height: 44.0,
-                      decoration: BoxDecoration(
-                        color: tokens.secondary,
-                        borderRadius: LyraRadius.mdRadius,
-                      ),
-                      child: Center(
-                        child: Icon(
-                          LucideIcons.listMusic,
-                          size: 22.0,
-                          color: tokens.primary,
+    return RepaintBoundary(
+      child: MouseRegion(
+        onEnter: (_) => setState(() => _isHovered = true),
+        onExit: (_) => setState(() => _isHovered = false),
+        child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: widget.onTap,
+          child: AnimatedScale(
+            scale: _isHovered ? 1.02 : 1.0,
+            duration: const Duration(milliseconds: 150),
+            child: LyraCard(
+              padding: const EdgeInsets.all(LyraSpacing.lg),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Container(
+                        width: 44.0,
+                        height: 44.0,
+                        decoration: BoxDecoration(
+                          color: tokens.secondary,
+                          borderRadius: LyraRadius.mdRadius,
+                        ),
+                        child: Center(
+                          child: Icon(
+                            LucideIcons.listMusic,
+                            size: 22.0,
+                            color: tokens.primary,
+                          ),
                         ),
                       ),
-                    ),
-                    const Spacer(),
-                    LyraBadge.secondary(
-                      child: Text('${playlist.trackCount} tracks'),
-                    ),
-                  ],
-                ),
-                const Spacer(),
-                Text(
-                  playlist.displayTitle,
-                  style: LyraTypography.h4(tokens),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-                const SizedBox(height: 2.0),
-                Text(
-                  playlist.description ?? 'Curated Playlist',
-                  style: LyraTypography.small(
-                    tokens,
-                  ).copyWith(color: tokens.textMuted),
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ],
+                      const Spacer(),
+                      LyraBadge.secondary(
+                        child: Text('${playlist.trackCount} tracks'),
+                      ),
+                    ],
+                  ),
+                  const Spacer(),
+                  Text(
+                    playlist.displayTitle,
+                    style: LyraTypography.h4(tokens),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  const SizedBox(height: 2.0),
+                  Text(
+                    playlist.description ?? 'Curated Playlist',
+                    style: LyraTypography.small(
+                      tokens,
+                    ).copyWith(color: tokens.textMuted),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ],
+              ),
             ),
           ),
         ),

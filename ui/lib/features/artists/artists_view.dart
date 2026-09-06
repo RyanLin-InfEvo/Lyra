@@ -133,66 +133,68 @@ class _ArtistCardState extends State<_ArtistCard> {
     final tokens = widget.tokens;
     final artist = widget.artist;
 
-    return MouseRegion(
-      onEnter: (_) => setState(() => _isHovered = true),
-      onExit: (_) => setState(() => _isHovered = false),
-      child: GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onTap: widget.onTap,
-        child: AnimatedScale(
-          scale: _isHovered ? 1.02 : 1.0,
-          duration: const Duration(milliseconds: 150),
-          child: LyraCard(
-            padding: const EdgeInsets.all(LyraSpacing.md),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Container(
-                  width: 72.0,
-                  height: 72.0,
-                  decoration: BoxDecoration(
-                    color: tokens.secondary,
-                    shape: BoxShape.circle,
-                    border: Border.all(color: tokens.border, width: 1.0),
-                  ),
-                  child: Center(
-                    child: Icon(
-                      LucideIcons.mic,
-                      size: 32.0,
-                      color: tokens.primary,
+    return RepaintBoundary(
+      child: MouseRegion(
+        onEnter: (_) => setState(() => _isHovered = true),
+        onExit: (_) => setState(() => _isHovered = false),
+        child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: widget.onTap,
+          child: AnimatedScale(
+            scale: _isHovered ? 1.02 : 1.0,
+            duration: const Duration(milliseconds: 150),
+            child: LyraCard(
+              padding: const EdgeInsets.all(LyraSpacing.md),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Container(
+                    width: 72.0,
+                    height: 72.0,
+                    decoration: BoxDecoration(
+                      color: tokens.secondary,
+                      shape: BoxShape.circle,
+                      border: Border.all(color: tokens.border, width: 1.0),
+                    ),
+                    child: Center(
+                      child: Icon(
+                        LucideIcons.mic,
+                        size: 32.0,
+                        color: tokens.primary,
+                      ),
                     ),
                   ),
-                ),
-                const SizedBox(height: LyraSpacing.md),
-                Text(
-                  artist.displayName,
-                  style: LyraTypography.h4(tokens),
-                  textAlign: TextAlign.center,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-                const SizedBox(height: LyraSpacing.xs),
-                if (artist.role != null)
-                  LyraBadge.secondary(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 6.0,
-                      vertical: 2.0,
-                    ),
-                    child: Text(
-                      artist.role!,
+                  const SizedBox(height: LyraSpacing.md),
+                  Text(
+                    artist.displayName,
+                    style: LyraTypography.h4(tokens),
+                    textAlign: TextAlign.center,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  const SizedBox(height: LyraSpacing.xs),
+                  if (artist.role != null)
+                    LyraBadge.secondary(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 6.0,
+                        vertical: 2.0,
+                      ),
+                      child: Text(
+                        artist.role!,
+                        style: LyraTypography.small(
+                          tokens,
+                        ).copyWith(fontSize: 10.0, fontWeight: FontWeight.w500),
+                      ),
+                    )
+                  else
+                    Text(
+                      'Artist',
                       style: LyraTypography.small(
                         tokens,
-                      ).copyWith(fontSize: 10.0, fontWeight: FontWeight.w500),
+                      ).copyWith(color: tokens.textMuted),
                     ),
-                  )
-                else
-                  Text(
-                    'Artist',
-                    style: LyraTypography.small(
-                      tokens,
-                    ).copyWith(color: tokens.textMuted),
-                  ),
-              ],
+                ],
+              ),
             ),
           ),
         ),

@@ -283,106 +283,119 @@ class CasView extends StatelessWidget {
             itemCount: casObjects.length,
             itemExtent: 60.0,
             itemBuilder: (context, index) {
-              final obj = casObjects[index];
-              return MouseRegion(
-                cursor: onInspectAsset != null
-                    ? SystemMouseCursors.click
-                    : SystemMouseCursors.basic,
-                child: GestureDetector(
-                  behavior: HitTestBehavior.opaque,
-                  onTap: onInspectAsset != null
-                      ? () => onInspectAsset!(obj)
-                      : null,
-                  child: Container(
-                    decoration: BoxDecoration(
-                      border: Border(
-                        bottom: BorderSide(
-                          color: tokens.border.withValues(alpha: 0.4),
-                          width: 1.0,
-                        ),
-                      ),
-                    ),
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: LyraSpacing.xl,
-                      vertical: LyraSpacing.md,
-                    ),
-                    child: Row(
-                      children: [
-                        Expanded(
-                          flex: 5,
-                          child: Row(
-                            children: [
-                              Icon(
-                                LucideIcons.fileCode,
-                                size: 16.0,
-                                color: tokens.textMuted,
-                              ),
-                              const SizedBox(width: LyraSpacing.sm),
-                              Expanded(
-                                child: Text(
-                                  obj.hash,
-                                  style: LyraTypography.mono(
-                                    tokens,
-                                    fontSize: 12.0,
-                                  ),
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                        Expanded(
-                          flex: 2,
-                          child: Text(
-                            obj.formattedSize,
-                            style: LyraTypography.small(tokens),
-                          ),
-                        ),
-                        Expanded(
-                          flex: 2,
-                          child: Text(
-                            obj.mimeType,
-                            style: LyraTypography.small(
-                              tokens,
-                            ).copyWith(color: tokens.textMuted),
-                          ),
-                        ),
-                        Expanded(
-                          flex: 2,
-                          child: Align(
-                            alignment: Alignment.centerRight,
-                            child: FittedBox(
-                              fit: BoxFit.scaleDown,
-                              child: LyraBadge.success(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 6.0,
-                                  vertical: 2.0,
-                                ),
-                                child: const Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    Icon(
-                                      LucideIcons.check,
-                                      size: 10.0,
-                                      color: Color(0xFFFFFFFF),
-                                    ),
-                                    SizedBox(width: 4.0),
-                                    Text('Verified'),
-                                  ],
-                                ),
-                              ),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
+              return _CasRow(
+                obj: casObjects[index],
+                tokens: tokens,
+                onInspectAsset: onInspectAsset,
               );
             },
           ),
         ),
       ],
+    );
+  }
+}
+
+class _CasRow extends StatelessWidget {
+  final CasObject obj;
+  final LyraThemeTokens tokens;
+  final ValueChanged<CasObject>? onInspectAsset;
+
+  const _CasRow({required this.obj, required this.tokens, this.onInspectAsset});
+
+  @override
+  Widget build(BuildContext context) {
+    return RepaintBoundary(
+      child: MouseRegion(
+        cursor: onInspectAsset != null
+            ? SystemMouseCursors.click
+            : SystemMouseCursors.basic,
+        child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: onInspectAsset != null ? () => onInspectAsset!(obj) : null,
+          child: Container(
+            decoration: BoxDecoration(
+              border: Border(
+                bottom: BorderSide(
+                  color: tokens.border.withValues(alpha: 0.4),
+                  width: 1.0,
+                ),
+              ),
+            ),
+            padding: const EdgeInsets.symmetric(
+              horizontal: LyraSpacing.xl,
+              vertical: LyraSpacing.md,
+            ),
+            child: Row(
+              children: [
+                Expanded(
+                  flex: 5,
+                  child: Row(
+                    children: [
+                      Icon(
+                        LucideIcons.fileCode,
+                        size: 16.0,
+                        color: tokens.textMuted,
+                      ),
+                      const SizedBox(width: LyraSpacing.sm),
+                      Expanded(
+                        child: Text(
+                          obj.hash,
+                          style: LyraTypography.mono(tokens, fontSize: 12.0),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                Expanded(
+                  flex: 2,
+                  child: Text(
+                    obj.formattedSize,
+                    style: LyraTypography.small(tokens),
+                  ),
+                ),
+                Expanded(
+                  flex: 2,
+                  child: Text(
+                    obj.mimeType,
+                    style: LyraTypography.small(
+                      tokens,
+                    ).copyWith(color: tokens.textMuted),
+                  ),
+                ),
+                Expanded(
+                  flex: 2,
+                  child: Align(
+                    alignment: Alignment.centerRight,
+                    child: FittedBox(
+                      fit: BoxFit.scaleDown,
+                      child: LyraBadge.success(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 6.0,
+                          vertical: 2.0,
+                        ),
+                        child: const Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(
+                              LucideIcons.check,
+                              size: 10.0,
+                              color: Color(0xFFFFFFFF),
+                            ),
+                            SizedBox(width: 4.0),
+                            Text('Verified'),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
     );
   }
 }
