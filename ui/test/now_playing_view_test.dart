@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Tzu-Ting Lin
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart' hide RepeatMode;
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -385,6 +386,41 @@ void main() {
       expect(controller.queue, isEmpty);
       expect(find.text('Queue is empty'), findsOneWidget);
     });
+
+    testWidgets(
+      'queue items respond to mouse hover events with localized hover state',
+      (tester) async {
+        final controller = PlaybackQueueController(autoStartTimer: false);
+        addTearDown(controller.dispose);
+        controller.play(track1, contextQueue: [track1, track2, track3]);
+
+        await tester.pumpWidget(
+          _buildNowPlayingTest(playbackController: controller),
+        );
+        await tester.pumpAndSettle();
+
+        final track2Finder = find.text('So What');
+        expect(track2Finder, findsOneWidget);
+
+        final gesture = await tester.createGesture(
+          kind: PointerDeviceKind.mouse,
+        );
+        await gesture.addPointer(location: Offset.zero);
+        addTearDown(gesture.removePointer);
+
+        // Hover over track 2 item
+        await gesture.moveTo(tester.getCenter(track2Finder));
+        await tester.pumpAndSettle();
+
+        expect(track2Finder, findsOneWidget);
+
+        // Hover exit
+        await gesture.moveTo(Offset.zero);
+        await tester.pumpAndSettle();
+
+        expect(track2Finder, findsOneWidget);
+      },
+    );
   });
 
   group('NowPlayingView - Tab Switching to Lyrics', () {

@@ -28,7 +28,6 @@ class UpNextTab extends StatefulWidget {
 
 class _UpNextTabState extends State<UpNextTab> {
   late final ScrollController _scrollController;
-  int? _hoveredIndex;
 
   @override
   void initState() {
@@ -196,22 +195,13 @@ class _UpNextTabState extends State<UpNextTab> {
                     itemBuilder: (context, index) {
                       final track = queue[index];
                       final isCurrent = index == currentIndex;
-                      final isHovered = _hoveredIndex == index;
 
                       return _QueueItemRow(
                         key: ValueKey('queue_track_${track.id}_$index'),
                         track: track,
                         index: index,
                         isCurrent: isCurrent,
-                        isHovered: isHovered,
                         tokens: tokens,
-                        onHoverChanged: (hovered) {
-                          if (mounted) {
-                            setState(() {
-                              _hoveredIndex = hovered ? index : null;
-                            });
-                          }
-                        },
                         onTap: () {
                           widget.playbackController.play(
                             track,
@@ -231,13 +221,11 @@ class _UpNextTabState extends State<UpNextTab> {
   }
 }
 
-class _QueueItemRow extends StatelessWidget {
+class _QueueItemRow extends StatefulWidget {
   final Track track;
   final int index;
   final bool isCurrent;
-  final bool isHovered;
   final LyraThemeTokens tokens;
-  final ValueChanged<bool> onHoverChanged;
   final VoidCallback onTap;
   final VoidCallback onRemove;
 
@@ -246,19 +234,31 @@ class _QueueItemRow extends StatelessWidget {
     required this.track,
     required this.index,
     required this.isCurrent,
-    required this.isHovered,
     required this.tokens,
-    required this.onHoverChanged,
     required this.onTap,
     required this.onRemove,
   });
 
   @override
+  State<_QueueItemRow> createState() => _QueueItemRowState();
+}
+
+class _QueueItemRowState extends State<_QueueItemRow> {
+  bool _isHovered = false;
+
+  @override
   Widget build(BuildContext context) {
+    final tokens = widget.tokens;
+    final track = widget.track;
+    final index = widget.index;
+    final isCurrent = widget.isCurrent;
+    final onTap = widget.onTap;
+    final onRemove = widget.onRemove;
+
     return MouseRegion(
       cursor: SystemMouseCursors.click,
-      onEnter: (_) => onHoverChanged(true),
-      onExit: (_) => onHoverChanged(false),
+      onEnter: (_) => setState(() => _isHovered = true),
+      onExit: (_) => setState(() => _isHovered = false),
       child: GestureDetector(
         onTap: onTap,
         behavior: HitTestBehavior.opaque,
@@ -272,7 +272,7 @@ class _QueueItemRow extends StatelessWidget {
           decoration: BoxDecoration(
             color: isCurrent
                 ? tokens.secondary
-                : (isHovered
+                : (_isHovered
                       ? tokens.secondary.withValues(alpha: 0.5)
                       : const Color(0x00000000)),
             borderRadius: LyraRadius.mdRadius,
