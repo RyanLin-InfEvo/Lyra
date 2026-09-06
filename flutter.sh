@@ -20,4 +20,6 @@ if [ $# -gt 0 ]; then
   CMD="${CMD} $(printf '%q ' "$@")"
 fi
 
+export GDK_BACKEND="${GDK_BACKEND:-x11}"
+
 nix-shell "${UI_DIR}/shell.nix" --run "${CMD}"

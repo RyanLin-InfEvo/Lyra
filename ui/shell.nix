@@ -23,6 +23,7 @@ pkgs.mkShell rec {
     libxinerama
     libxi
     libepoxy
+    libglvnd
 
     # Lyra Core dependencies
     nlohmann_json
@@ -38,7 +39,8 @@ pkgs.mkShell rec {
   CHROME_EXECUTABLE = "${pkgs.chromium}/bin/chromium";
 
   shellHook = ''
-    export LD_LIBRARY_PATH="${pkgs.lib.makeLibraryPath buildInputs}:$LD_LIBRARY_PATH"
+    export GDK_BACKEND="''${GDK_BACKEND:-x11}"
+    export LD_LIBRARY_PATH="/run/opengl-driver/lib:/run/opengl-driver-32/lib:${pkgs.lib.makeLibraryPath buildInputs}:$LD_LIBRARY_PATH"
     export CHROME_EXECUTABLE="${pkgs.chromium}/bin/chromium"
     echo "Lyra UI Flutter development environment (NixOS) is ready!"
   '';
