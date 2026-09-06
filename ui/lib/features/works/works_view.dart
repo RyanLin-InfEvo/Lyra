@@ -141,13 +141,10 @@ class WorksView extends StatelessWidget {
 
         // Table Rows
         Expanded(
-          child: ListView.separated(
+          child: ListView.builder(
             padding: const EdgeInsets.symmetric(vertical: LyraSpacing.xs),
             itemCount: works.length,
-            separatorBuilder: (context, index) => Container(
-              height: 1.0,
-              color: tokens.border.withValues(alpha: 0.4),
-            ),
+            itemExtent: 60.0,
             itemBuilder: (context, index) {
               final work = works[index];
               return _WorkRow(
@@ -212,7 +209,15 @@ class _WorkRowState extends State<_WorkRow> {
             horizontal: LyraSpacing.xl,
             vertical: LyraSpacing.md,
           ),
-          color: _isHovered ? tokens.secondary.withValues(alpha: 0.5) : null,
+          decoration: BoxDecoration(
+            color: _isHovered ? tokens.secondary.withValues(alpha: 0.5) : null,
+            border: Border(
+              bottom: BorderSide(
+                color: tokens.border.withValues(alpha: 0.4),
+                width: 1.0,
+              ),
+            ),
+          ),
           child: Row(
             children: [
               SizedBox(

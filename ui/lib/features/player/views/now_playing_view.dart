@@ -225,9 +225,18 @@ class _NowPlayingViewState extends State<NowPlayingView> {
     );
   }
 
+  static final Map<String, LyricsData> _sampleLyricsCache = {};
+
   LyricsData? _getSampleLyricsForTrack(Track? track) {
     if (track == null) return null;
-    return LyricsData.fromLrc('''
+    final cached = _sampleLyricsCache[track.id];
+    if (cached != null) return cached;
+
+    if (_sampleLyricsCache.length > 100) {
+      _sampleLyricsCache.remove(_sampleLyricsCache.keys.first);
+    }
+
+    final parsed = LyricsData.fromLrc('''
 [00:00.00]${track.title} - ${track.artist}
 [00:04.00]Soundwaves drifting through the digital sea
 [00:10.00]Every frequency aligning in place
@@ -237,6 +246,8 @@ class _NowPlayingViewState extends State<NowPlayingView> {
 [00:34.00]Let the music take control
 [00:40.00]Lyra audio engine in harmony
 ''');
+    _sampleLyricsCache[track.id] = parsed;
+    return parsed;
   }
 
   Widget _buildRightTabContainer(LyraThemeTokens tokens) {

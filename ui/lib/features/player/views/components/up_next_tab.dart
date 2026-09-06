@@ -188,6 +188,7 @@ class _UpNextTabState extends State<UpNextTab> {
                 : ListView.builder(
                     controller: _scrollController,
                     itemCount: queue.length,
+                    itemExtent: 64.0,
                     padding: const EdgeInsets.symmetric(
                       vertical: LyraSpacing.xs,
                       horizontal: LyraSpacing.sm,

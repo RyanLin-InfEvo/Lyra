@@ -68,6 +68,7 @@ class _AppShellState extends State<AppShell> {
   // Catalog State
   List<Track> _tracks = [];
   Map<String, int> _audioVersionCounts = {};
+  Map<String, int> _tagTrackCounts = {};
   List<Album> _albums = [];
   List<Work> _works = [];
   List<Artist> _artists = [];
@@ -86,6 +87,33 @@ class _AppShellState extends State<AppShell> {
   ValueNotifier<Duration> get _positionNotifier =>
       _playbackController.positionNotifier;
   double _volume = 0.85;
+
+  static Map<String, int> _computeTagTrackCounts(
+    List<Tag> tags,
+    List<Track> tracks,
+  ) {
+    final Map<String, int> counts = {};
+    for (final tag in tags) {
+      final tagLower = tag.name.toLowerCase();
+      counts[tag.id] = tracks.where((track) {
+        if (tagLower == 'hi-res') {
+          return (track.bitDepth != null && track.bitDepth! >= 24) ||
+              (track.sampleRate != null && track.sampleRate! > 48000);
+        }
+        if (tagLower == 'audiophile' ||
+            tagLower == 'reference master' ||
+            tagLower == 'direct stream') {
+          return track.verified ||
+              (track.bitDepth != null && track.bitDepth! >= 24);
+        }
+        return (track.format ?? '').toLowerCase().contains(tagLower) ||
+            track.displayTitle.toLowerCase().contains(tagLower) ||
+            track.artist.toLowerCase().contains(tagLower) ||
+            track.album.toLowerCase().contains(tagLower);
+      }).length;
+    }
+    return counts;
+  }
 
   @override
   void initState() {
@@ -124,23 +152,33 @@ class _AppShellState extends State<AppShell> {
     final casObjects = await widget.musicService.getCasObjects();
 
     final versionCounts = <String, int>{};
-    for (final t in tracks) {
-      if (t.pcmHash.isNotEmpty) {
+    final versionResults = await Future.wait(
+      tracks.where((t) => t.pcmHash.isNotEmpty).map((t) async {
         try {
           final versions = await widget.musicService.getAudioVersions(
             t.pcmHash,
           );
-          versionCounts[t.id] = versions.length;
-          versionCounts[t.pcmHash] = versions.length;
-        } catch (_) {}
+          return (id: t.id, hash: t.pcmHash, count: versions.length);
+        } catch (_) {
+          return null;
+        }
+      }),
+    );
+    for (final res in versionResults) {
+      if (res != null) {
+        versionCounts[res.id] = res.count;
+        versionCounts[res.hash] = res.count;
       }
     }
+
+    final tagTrackCounts = _computeTagTrackCounts(tags, tracks);
 
     if (!mounted) return;
 
     setState(() {
       _tracks = tracks;
       _audioVersionCounts = versionCounts;
+      _tagTrackCounts = tagTrackCounts;
       _albums = albums;
       _works = works;
       _artists = artists;
@@ -153,9 +191,7 @@ class _AppShellState extends State<AppShell> {
       _isLoading = false;
 
       if (_playbackController.queue.isEmpty && tracks.isNotEmpty) {
-        for (final t in tracks) {
-          _playbackController.addToQueue(t);
-        }
+        _playbackController.addAllToQueue(tracks);
       }
     });
   }
@@ -395,30 +431,10 @@ class _AppShellState extends State<AppShell> {
           ),
         );
       case AppTab.tags:
-        final Map<String, int> tagTrackCounts = {};
-        for (final tag in _tags) {
-          final tagLower = tag.name.toLowerCase();
-          tagTrackCounts[tag.id] = _tracks.where((track) {
-            if (tagLower == 'hi-res') {
-              return (track.bitDepth != null && track.bitDepth! >= 24) ||
-                  (track.sampleRate != null && track.sampleRate! > 48000);
-            }
-            if (tagLower == 'audiophile' ||
-                tagLower == 'reference master' ||
-                tagLower == 'direct stream') {
-              return track.verified ||
-                  (track.bitDepth != null && track.bitDepth! >= 24);
-            }
-            return (track.format ?? '').toLowerCase().contains(tagLower) ||
-                track.displayTitle.toLowerCase().contains(tagLower) ||
-                track.artist.toLowerCase().contains(tagLower) ||
-                track.album.toLowerCase().contains(tagLower);
-          }).length;
-        }
         return RepaintBoundary(
           child: TagsView(
             tags: _tags,
-            tagTrackCounts: tagTrackCounts,
+            tagTrackCounts: _tagTrackCounts,
             onTagSelected: _filterByTag,
             onCreateTag:
                 ({required String name, required String category}) async {

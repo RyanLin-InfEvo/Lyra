@@ -311,6 +311,27 @@ void main() {
       expect(controller.currentIndex, equals(0));
     });
 
+    test(
+      'addAllToQueue appends multiple tracks and notifies listeners once',
+      () {
+        final controller = PlaybackQueueController(autoStartTimer: false);
+        addTearDown(controller.dispose);
+
+        int notifyCount = 0;
+        controller.addListener(() => notifyCount++);
+
+        controller.addAllToQueue([track1, track2, track3]);
+
+        expect(controller.queue, equals([track1, track2, track3]));
+        expect(controller.currentIndex, equals(0));
+        expect(notifyCount, equals(1));
+
+        // Adding empty list does not notify
+        controller.addAllToQueue([]);
+        expect(notifyCount, equals(1));
+      },
+    );
+
     test('playNext inserts immediately after currentIndex', () {
       final controller = PlaybackQueueController(autoStartTimer: false);
       addTearDown(controller.dispose);

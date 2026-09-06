@@ -322,6 +322,22 @@ class PlaybackQueueController extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Appends all [tracks] to the end of the queue, notifying listeners once.
+  void addAllToQueue(List<Track> tracks) {
+    if (tracks.isEmpty) return;
+    final startIndex = _queue.length;
+    _queue.addAll(tracks);
+    if (_currentIndex == -1 && _queue.isNotEmpty) {
+      _currentIndex = 0;
+    }
+    if (_shuffleMode) {
+      for (var i = startIndex; i < _queue.length; i++) {
+        _shuffledOrder.add(i);
+      }
+    }
+    notifyListeners();
+  }
+
   /// Inserts [track] immediately after [currentIndex].
   void playNext(Track track) {
     if (_queue.isEmpty || _currentIndex < 0) {

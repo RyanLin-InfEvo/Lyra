@@ -230,13 +230,10 @@ class TracksView extends StatelessWidget {
 
         // Table Rows
         Expanded(
-          child: ListView.separated(
+          child: ListView.builder(
             padding: const EdgeInsets.symmetric(vertical: LyraSpacing.xs),
             itemCount: tracks.length,
-            separatorBuilder: (context, index) => Container(
-              height: 1.0,
-              color: tokens.border.withValues(alpha: 0.4),
-            ),
+            itemExtent: 56.0,
             itemBuilder: (context, index) {
               final track = tracks[index];
               final isCurrent = currentTrack?.id == track.id;
@@ -329,6 +326,12 @@ class _TrackRowState extends State<_TrackRow> {
                 : _isHovered
                 ? tokens.secondary.withValues(alpha: 0.5)
                 : null,
+            border: Border(
+              bottom: BorderSide(
+                color: tokens.border.withValues(alpha: 0.4),
+                width: 1.0,
+              ),
+            ),
           ),
           child: Row(
             children: [

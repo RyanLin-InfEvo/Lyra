@@ -278,13 +278,10 @@ class CasView extends StatelessWidget {
 
         // Blobs List
         Expanded(
-          child: ListView.separated(
+          child: ListView.builder(
             padding: const EdgeInsets.symmetric(vertical: LyraSpacing.xs),
             itemCount: casObjects.length,
-            separatorBuilder: (context, index) => Container(
-              height: 1.0,
-              color: tokens.border.withValues(alpha: 0.4),
-            ),
+            itemExtent: 60.0,
             itemBuilder: (context, index) {
               final obj = casObjects[index];
               return MouseRegion(
@@ -296,7 +293,15 @@ class CasView extends StatelessWidget {
                   onTap: onInspectAsset != null
                       ? () => onInspectAsset!(obj)
                       : null,
-                  child: Padding(
+                  child: Container(
+                    decoration: BoxDecoration(
+                      border: Border(
+                        bottom: BorderSide(
+                          color: tokens.border.withValues(alpha: 0.4),
+                          width: 1.0,
+                        ),
+                      ),
+                    ),
                     padding: const EdgeInsets.symmetric(
                       horizontal: LyraSpacing.xl,
                       vertical: LyraSpacing.md,
