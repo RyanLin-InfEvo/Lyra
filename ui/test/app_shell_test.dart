@@ -27,6 +27,8 @@ import 'package:ui/features/works/works_view.dart';
 Widget _buildAppShellTest({
   MockMusicService? service,
   ValueNotifier<ThemeMode>? themeNotifier,
+  Curve? nowPlayingCurve,
+  Duration? nowPlayingDuration,
 }) {
   final themeModeNotifier =
       themeNotifier ?? ValueNotifier<ThemeMode>(ThemeMode.dark);
@@ -56,7 +58,11 @@ Widget _buildAppShellTest({
             factory: factory,
             tokens: tokens,
             themeModeNotifier: themeModeNotifier,
-            child: AppShell(musicService: musicService),
+            child: AppShell(
+              musicService: musicService,
+              nowPlayingCurve: nowPlayingCurve ?? LyraAnimation.defaultCurve,
+              nowPlayingDuration: nowPlayingDuration ?? LyraAnimation.sheet,
+            ),
           ),
         );
       },
@@ -232,7 +238,13 @@ void main() {
 
       // Should navigate to TracksView with filter badge 'Tag: Audiophile'
       expect(find.byType(TracksView), findsOneWidget);
-      expect(find.text('Tag: Audiophile'), findsOneWidget);
+      expect(
+        find.descendant(
+          of: find.byType(TracksView),
+          matching: find.text('Tag: Audiophile'),
+        ),
+        findsOneWidget,
+      );
 
       // Search controller must NOT be mutated
       final searchInput = tester.widget<EditableText>(
@@ -241,9 +253,20 @@ void main() {
       expect(searchInput.controller.text, isEmpty);
 
       // Clear filter via X button
-      await tester.tap(find.byIcon(LucideIcons.x));
+      await tester.tap(
+        find.descendant(
+          of: find.byType(TracksView),
+          matching: find.byIcon(LucideIcons.x),
+        ),
+      );
       await tester.pumpAndSettle();
-      expect(find.text('Tag: Audiophile'), findsNothing);
+      expect(
+        find.descendant(
+          of: find.byType(TracksView),
+          matching: find.text('Tag: Audiophile'),
+        ),
+        findsNothing,
+      );
 
       // Click 'Tags' header in sidebar -> navigates to TagsView
       await tester.tap(find.text('Tags'));
@@ -299,15 +322,32 @@ void main() {
       expect(find.text('Lyra Audio'), findsOneWidget);
       expect(find.text('LIBRARY'), findsOneWidget);
       expect(find.text('Playlists'), findsOneWidget);
-      expect(find.text('Collapse'), findsOneWidget);
+      expect(
+        find.descendant(
+          of: find.byType(LyraSidebar),
+          matching: find.text('Collapse'),
+        ),
+        findsOneWidget,
+      );
 
       // 2. Toggle collapse manually on wide desktop
-      await tester.tap(find.text('Collapse'));
+      await tester.tap(
+        find.descendant(
+          of: find.byType(LyraSidebar),
+          matching: find.text('Collapse'),
+        ),
+      );
       await tester.pumpAndSettle();
 
       expect(find.text('LIBRARY'), findsNothing);
       expect(find.text('Playlists'), findsNothing);
-      expect(find.text('Collapse'), findsNothing);
+      expect(
+        find.descendant(
+          of: find.byType(LyraSidebar),
+          matching: find.text('Collapse'),
+        ),
+        findsNothing,
+      );
 
       // 3. Small Screen (< 900px, e.g. 800px) -> Effective collapsed
       tester.view.physicalSize = const Size(800, 600);
@@ -315,7 +355,13 @@ void main() {
 
       expect(find.text('LIBRARY'), findsNothing);
       expect(find.text('Playlists'), findsNothing);
-      expect(find.text('Collapse'), findsNothing);
+      expect(
+        find.descendant(
+          of: find.byType(LyraSidebar),
+          matching: find.text('Collapse'),
+        ),
+        findsNothing,
+      );
     },
   );
 
@@ -330,7 +376,12 @@ void main() {
       await tester.pumpAndSettle();
 
       // Collapse sidebar
-      await tester.tap(find.text('Collapse'));
+      await tester.tap(
+        find.descendant(
+          of: find.byType(LyraSidebar),
+          matching: find.text('Collapse'),
+        ),
+      );
       await tester.pumpAndSettle();
 
       // 1. Sidebar width is 64.0
@@ -417,7 +468,10 @@ void main() {
       expect(find.text('Works'), findsNothing);
       expect(find.text('Albums'), findsNothing);
       expect(find.text('Artists'), findsNothing);
-      expect(find.text('Collapse'), findsNothing);
+      expect(
+        find.descendant(of: sidebarFinder, matching: find.text('Collapse')),
+        findsNothing,
+      );
     },
   );
 
@@ -522,7 +576,13 @@ void main() {
         ),
         findsNothing,
       );
-      expect(find.text('Album: Hell Freezes Over'), findsOneWidget);
+      expect(
+        find.descendant(
+          of: find.byType(TracksView),
+          matching: find.text('Album: Hell Freezes Over'),
+        ),
+        findsOneWidget,
+      );
 
       // Search controller must NOT be mutated
       final searchInput = tester.widget<EditableText>(
@@ -531,7 +591,12 @@ void main() {
       expect(searchInput.controller.text, isEmpty);
 
       // Clear filter via X button
-      await tester.tap(find.byIcon(LucideIcons.x));
+      await tester.tap(
+        find.descendant(
+          of: find.byType(TracksView),
+          matching: find.byIcon(LucideIcons.x),
+        ),
+      );
       await tester.pumpAndSettle();
 
       // All tracks restored
@@ -549,7 +614,13 @@ void main() {
         ),
         findsOneWidget,
       );
-      expect(find.text('Album: Hell Freezes Over'), findsNothing);
+      expect(
+        find.descendant(
+          of: find.byType(TracksView),
+          matching: find.text('Album: Hell Freezes Over'),
+        ),
+        findsNothing,
+      );
     },
   );
 
@@ -586,7 +657,13 @@ void main() {
         ),
         findsNothing,
       );
-      expect(find.text('Work: Hotel California'), findsOneWidget);
+      expect(
+        find.descendant(
+          of: find.byType(TracksView),
+          matching: find.text('Work: Hotel California'),
+        ),
+        findsOneWidget,
+      );
 
       // Search text still empty
       var searchInput = tester.widget<EditableText>(
@@ -624,7 +701,13 @@ void main() {
         ),
         findsNothing,
       );
-      expect(find.text('Artist: Miles Davis'), findsOneWidget);
+      expect(
+        find.descendant(
+          of: find.byType(TracksView),
+          matching: find.text('Artist: Miles Davis'),
+        ),
+        findsOneWidget,
+      );
 
       // Search text still empty
       searchInput = tester.widget<EditableText>(
@@ -858,8 +941,15 @@ void main() {
       await tester.tap(trackFinder);
       await tester.pumpAndSettle();
 
-      // Verify NowPlayingView is initially not present
-      expect(find.byType(NowPlayingView), findsNothing);
+      // Verify NowPlayingView is initially pre-warmed offscreen
+      final initialSlide = tester.widget<AnimatedSlide>(
+        find.byKey(const ValueKey('now_playing_animated_slide')),
+      );
+      expect(initialSlide.offset, equals(const Offset(0.0, 1.0)));
+      final initialIgnorePointer = tester.widget<IgnorePointer>(
+        find.byKey(const ValueKey('now_playing_ignore_pointer')),
+      );
+      expect(initialIgnorePointer.ignoring, isTrue);
 
       // PlayerBar toggle button is chevronUp
       expect(find.byIcon(LucideIcons.chevronUp), findsOneWidget);
@@ -869,7 +959,15 @@ void main() {
       await tester.tap(find.byTooltip('Expand Now Playing'));
       await tester.pumpAndSettle();
 
-      // NowPlayingView is now visible in the center area
+      // NowPlayingView is now slid into view in the center area
+      final expandedSlide = tester.widget<AnimatedSlide>(
+        find.byKey(const ValueKey('now_playing_animated_slide')),
+      );
+      expect(expandedSlide.offset, equals(Offset.zero));
+      final expandedIgnorePointer = tester.widget<IgnorePointer>(
+        find.byKey(const ValueKey('now_playing_ignore_pointer')),
+      );
+      expect(expandedIgnorePointer.ignoring, isFalse);
       expect(find.byType(NowPlayingView), findsOneWidget);
 
       // 3. Verify Sidebar, HeaderBar, and PlayerBar remain fully visible!
@@ -896,19 +994,92 @@ void main() {
       await tester.tap(find.byTooltip('Collapse Now Playing'));
       await tester.pumpAndSettle();
 
-      // NowPlayingView is collapsed
-      expect(find.byType(NowPlayingView), findsNothing);
+      // NowPlayingView is collapsed and slid back offscreen
+      final collapsedSlide = tester.widget<AnimatedSlide>(
+        find.byKey(const ValueKey('now_playing_animated_slide')),
+      );
+      expect(collapsedSlide.offset, equals(const Offset(0.0, 1.0)));
+      final collapsedIgnorePointer = tester.widget<IgnorePointer>(
+        find.byKey(const ValueKey('now_playing_ignore_pointer')),
+      );
+      expect(collapsedIgnorePointer.ignoring, isTrue);
       expect(find.byTooltip('Expand Now Playing'), findsOneWidget);
       expect(find.byIcon(LucideIcons.chevronUp), findsOneWidget);
 
       // 5. Expand again and collapse via Escape keyboard shortcut
       await tester.tap(find.byTooltip('Expand Now Playing'));
       await tester.pumpAndSettle();
-      expect(find.byType(NowPlayingView), findsOneWidget);
+      expect(
+        tester
+            .widget<AnimatedSlide>(
+              find.byKey(const ValueKey('now_playing_animated_slide')),
+            )
+            .offset,
+        equals(Offset.zero),
+      );
 
       await tester.sendKeyEvent(LogicalKeyboardKey.escape);
       await tester.pumpAndSettle();
-      expect(find.byType(NowPlayingView), findsNothing);
+      expect(
+        tester
+            .widget<AnimatedSlide>(
+              find.byKey(const ValueKey('now_playing_animated_slide')),
+            )
+            .offset,
+        equals(const Offset(0.0, 1.0)),
+      );
+    },
+  );
+
+  testWidgets(
+    'AppShell isolates AnimatedSlide within RepaintBoundary and supports custom animation curve and duration',
+    (tester) async {
+      tester.view.physicalSize = const Size(1280, 800);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+
+      const customCurve = LyraAnimation.springGentle;
+      const customDuration = Duration(milliseconds: 280);
+
+      await tester.pumpWidget(
+        _buildAppShellTest(
+          nowPlayingCurve: customCurve,
+          nowPlayingDuration: customDuration,
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      // 1. Verify AnimatedSlide configured with custom curve and duration
+      final slideFinder = find.byKey(
+        const ValueKey('now_playing_animated_slide'),
+      );
+      expect(slideFinder, findsOneWidget);
+      final slideWidget = tester.widget<AnimatedSlide>(slideFinder);
+      expect(slideWidget.curve, equals(customCurve));
+      expect(slideWidget.duration, equals(customDuration));
+
+      // 2. Verify AnimatedSlide is isolated inside an outer RepaintBoundary
+      final ancestorRepaint = find.ancestor(
+        of: slideFinder,
+        matching: find.byType(RepaintBoundary),
+      );
+      expect(ancestorRepaint, findsWidgets);
+
+      // 3. Verify HeaderBar and PlayerBar are encapsulated within RepaintBoundary
+      expect(
+        find.ancestor(
+          of: find.byType(LyraHeaderBar),
+          matching: find.byType(RepaintBoundary),
+        ),
+        findsWidgets,
+      );
+      expect(
+        find.ancestor(
+          of: find.byType(LyraPlayerBar),
+          matching: find.byType(RepaintBoundary),
+        ),
+        findsWidgets,
+      );
     },
   );
 }

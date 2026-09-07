@@ -124,7 +124,7 @@ class _UpNextTabState extends State<UpNextTab> {
                   size: LyraButtonSize.sm,
                   onPressed: queue.isEmpty
                       ? null
-                      : widget.playbackController.toggleShuffle,
+                      : () => widget.playbackController.toggleShuffle(),
                   child: Icon(
                     LucideIcons.shuffle,
                     size: 16.0,
@@ -141,7 +141,7 @@ class _UpNextTabState extends State<UpNextTab> {
                   size: LyraButtonSize.sm,
                   onPressed: queue.isEmpty
                       ? null
-                      : widget.playbackController.clearQueue,
+                      : () => widget.playbackController.clearQueue(),
                   child: Icon(
                     LucideIcons.trash2,
                     size: 16.0,

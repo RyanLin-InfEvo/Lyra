@@ -260,6 +260,26 @@ void main() {
     });
 
     test(
+      'seek updates positionNotifier without triggering notifyListeners to avoid stutter',
+      () {
+        final controller = PlaybackQueueController(autoStartTimer: false);
+        addTearDown(controller.dispose);
+
+        controller.play(track1);
+
+        int notifyCount = 0;
+        controller.addListener(() => notifyCount++);
+
+        controller.seek(const Duration(seconds: 45));
+        expect(
+          controller.positionNotifier.value,
+          equals(const Duration(seconds: 45)),
+        );
+        expect(notifyCount, equals(0));
+      },
+    );
+
+    test(
       'tick increments positionNotifier and auto-advances when track finishes',
       () {
         final controller = PlaybackQueueController(autoStartTimer: false);

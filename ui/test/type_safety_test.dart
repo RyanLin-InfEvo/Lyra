@@ -32,6 +32,7 @@ import 'package:ui/features/services/mock_music_service.dart';
 import 'package:ui/features/services/music_service.dart';
 import 'package:ui/features/shell/app_shell.dart';
 import 'package:ui/features/shell/sidebar.dart';
+import 'package:ui/features/tracks/tracks_view.dart';
 
 Widget buildTestApp({MusicService? musicService}) {
   final service = musicService ?? MockMusicService();
@@ -601,12 +602,24 @@ void main() {
         await tester.tap(find.text('Hotel California').first);
         await tester.pumpAndSettle();
         expect(find.text('Tracks Library'), findsOneWidget);
-        expect(find.text('Work: Hotel California'), findsOneWidget);
+        expect(
+          find.descendant(
+            of: find.byType(TracksView),
+            matching: find.text('Work: Hotel California'),
+          ),
+          findsOneWidget,
+        );
 
         // 4. Click clear filter (X icon)
         await tester.tap(find.byIcon(LucideIcons.x).first);
         await tester.pumpAndSettle();
-        expect(find.text('Work: Hotel California'), findsNothing);
+        expect(
+          find.descendant(
+            of: find.byType(TracksView),
+            matching: find.text('Work: Hotel California'),
+          ),
+          findsNothing,
+        );
 
         // 5. Click on Albums tab
         await tester.tap(find.text('Albums').first);
@@ -618,7 +631,13 @@ void main() {
         await tester.tap(find.text('Kind of Blue').first);
         await tester.pumpAndSettle();
         expect(find.text('Tracks Library'), findsOneWidget);
-        expect(find.text('Album: Kind of Blue'), findsOneWidget);
+        expect(
+          find.descendant(
+            of: find.byType(TracksView),
+            matching: find.text('Album: Kind of Blue'),
+          ),
+          findsOneWidget,
+        );
 
         // 7. Click on Artists tab
         await tester.tap(find.text('Artists').first);
@@ -630,7 +649,13 @@ void main() {
         await tester.tap(find.text('Miles Davis').first);
         await tester.pumpAndSettle();
         expect(find.text('Tracks Library'), findsOneWidget);
-        expect(find.text('Artist: Miles Davis'), findsOneWidget);
+        expect(
+          find.descendant(
+            of: find.byType(TracksView),
+            matching: find.text('Artist: Miles Davis'),
+          ),
+          findsOneWidget,
+        );
 
         // 9. Click on Playlists tab header in sidebar
         await tester.tap(find.text('Playlists').first);

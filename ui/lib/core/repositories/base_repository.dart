@@ -1,15 +1,14 @@
 // SPDX-FileCopyrightText: 2026 Tzu-Ting Lin
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import '../ffi/lyra_native_bridge.dart';
+import '../bridge/lyra_bridge.dart';
 
 /// Base repository providing bridge communication and response decoding utilities.
 abstract class BaseRepository {
   /// Underlying bridge instance.
   final LyraBridge bridge;
 
-  BaseRepository([LyraBridge? bridge])
-    : bridge = bridge ?? LyraNativeBridge.instance;
+  BaseRepository([LyraBridge? bridge]) : bridge = bridge ?? LyraBridge.instance;
 
   /// Checks the bridge response and throws [LyraBridgeException] if an error occurred.
   Map<String, dynamic> checkResponse(Map<String, dynamic> response) {

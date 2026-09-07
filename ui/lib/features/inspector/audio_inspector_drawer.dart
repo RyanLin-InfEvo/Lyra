@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import 'dart:async';
-import 'package:flutter/material.dart' show SelectionArea;
+import 'package:flutter/material.dart' show SelectionArea, Tooltip;
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
@@ -21,7 +21,7 @@ import '../services/music_service.dart';
 
 /// Audio entity-centric property inspector drawer displaying deep acoustic specifications,
 /// Single-Level Star Topology audio versions, CAS storage properties, and digital provenance.
-class AudioInspectorDrawer extends StatefulWidget {
+class AudioInspectorDrawer extends StatelessWidget {
   final Track? track;
   final Asset? asset;
   final Audio? initialAudio;
@@ -46,10 +46,106 @@ class AudioInspectorDrawer extends StatefulWidget {
   });
 
   @override
-  State<AudioInspectorDrawer> createState() => _AudioInspectorDrawerState();
+  Widget build(BuildContext context) {
+    final tokens = LyraDesignSystemScope.of(context).tokens;
+
+    return Container(
+      width: width,
+      decoration: BoxDecoration(
+        color: tokens.card,
+        border: Border(left: BorderSide(color: tokens.border, width: 1.0)),
+      ),
+      child: Column(
+        children: [
+          _buildDrawerHeader(tokens),
+          Expanded(
+            child: AudioInspectorContent(
+              track: track,
+              asset: asset,
+              initialAudio: initialAudio,
+              initialSourceData: initialSourceData,
+              musicService: musicService,
+              onVerifyIntegrity: onVerifyIntegrity,
+              onActiveAudioChanged: onActiveAudioChanged,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDrawerHeader(LyraThemeTokens tokens) {
+    return Container(
+      height: 56.0,
+      padding: const EdgeInsets.symmetric(horizontal: LyraSpacing.md),
+      decoration: BoxDecoration(
+        color: tokens.card,
+        border: Border(bottom: BorderSide(color: tokens.border, width: 1.0)),
+      ),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(LyraSpacing.xs),
+            decoration: BoxDecoration(
+              color: tokens.secondary,
+              borderRadius: LyraRadius.smRadius,
+            ),
+            child: Icon(
+              LucideIcons.fileSearch,
+              size: 16.0,
+              color: tokens.primary,
+            ),
+          ),
+          const SizedBox(width: LyraSpacing.sm),
+          Expanded(
+            child: Text(
+              'Inspector',
+              style: LyraTypography.h4(
+                tokens,
+              ).copyWith(fontSize: 16.0, fontWeight: FontWeight.bold),
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+          LyraButton.ghost(
+            size: LyraButtonSize.sm,
+            onPressed: onClose,
+            child: Icon(LucideIcons.x, size: 16.0, color: tokens.textMuted),
+          ),
+        ],
+      ),
+    );
+  }
 }
 
-class _AudioInspectorDrawerState extends State<AudioInspectorDrawer> {
+/// Standalone audio inspector content view displaying acoustic specifications,
+/// audio versions, CAS storage properties, and digital provenance without drawer frame.
+class AudioInspectorContent extends StatefulWidget {
+  final Track? track;
+  final Asset? asset;
+  final Audio? initialAudio;
+  final SourceData? initialSourceData;
+  final MusicService? musicService;
+  final Future<bool> Function(String hash)? onVerifyIntegrity;
+  final void Function(String newPcmHash)? onActiveAudioChanged;
+  final EdgeInsetsGeometry padding;
+
+  const AudioInspectorContent({
+    super.key,
+    this.track,
+    this.asset,
+    this.initialAudio,
+    this.initialSourceData,
+    this.musicService,
+    this.onVerifyIntegrity,
+    this.onActiveAudioChanged,
+    this.padding = const EdgeInsets.all(LyraSpacing.md),
+  });
+
+  @override
+  State<AudioInspectorContent> createState() => _AudioInspectorContentState();
+}
+
+class _AudioInspectorContentState extends State<AudioInspectorContent> {
   Track? _track;
   List<Audio> _audioVersions = [];
   Audio? _selectedAudio;
@@ -73,7 +169,7 @@ class _AudioInspectorDrawerState extends State<AudioInspectorDrawer> {
   }
 
   @override
-  void didUpdateWidget(covariant AudioInspectorDrawer oldWidget) {
+  void didUpdateWidget(covariant AudioInspectorContent oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.track?.id != widget.track?.id ||
         oldWidget.track?.pcmHash != widget.track?.pcmHash ||
@@ -406,137 +502,57 @@ class _AudioInspectorDrawerState extends State<AudioInspectorDrawer> {
     final tokens = LyraDesignSystemScope.of(context).tokens;
 
     if (_track == null && widget.asset == null && _selectedAudio == null) {
-      return Container(
-        width: widget.width,
-        decoration: BoxDecoration(
-          color: tokens.card,
-          border: Border(left: BorderSide(color: tokens.border, width: 1.0)),
-        ),
-        child: Column(
-          children: [
-            _buildDrawerHeader(tokens),
-            Expanded(
-              child: Center(
-                child: Padding(
-                  padding: const EdgeInsets.all(LyraSpacing.xl),
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(
-                        LucideIcons.fileSearch,
-                        size: 48.0,
-                        color: tokens.textMuted,
-                      ),
-                      const SizedBox(height: LyraSpacing.md),
-                      Text(
-                        'No Entity Selected',
-                        style: LyraTypography.h3(tokens),
-                      ),
-                      const SizedBox(height: LyraSpacing.xs),
-                      Text(
-                        'Select a track or CAS storage object to inspect acoustic specifications and digital notarization records.',
-                        style: LyraTypography.muted(tokens),
-                        textAlign: TextAlign.center,
-                      ),
-                    ],
-                  ),
-                ),
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(LyraSpacing.xl),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(LucideIcons.fileSearch, size: 48.0, color: tokens.textMuted),
+              const SizedBox(height: LyraSpacing.md),
+              Text('No Entity Selected', style: LyraTypography.h3(tokens)),
+              const SizedBox(height: LyraSpacing.xs),
+              Text(
+                'Select a track or CAS storage object to inspect acoustic specifications and digital notarization records.',
+                style: LyraTypography.muted(tokens),
+                textAlign: TextAlign.center,
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       );
     }
 
-    return Container(
-      width: widget.width,
-      decoration: BoxDecoration(
-        color: tokens.card,
-        border: Border(left: BorderSide(color: tokens.border, width: 1.0)),
-      ),
+    return SingleChildScrollView(
+      padding: widget.padding,
       child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Drawer Header
-          _buildDrawerHeader(tokens),
+          // Entity Overview (Track / Asset Summary)
+          _buildEntitySummaryCard(tokens),
 
-          // Scrollable Content Body
-          Expanded(
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.all(LyraSpacing.md),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // Entity Overview (Track / Asset Summary)
-                  _buildEntitySummaryCard(tokens),
+          // Audio Version Selector (Star Topology)
+          if (_audioVersions.isNotEmpty) ...[
+            const SizedBox(height: LyraSpacing.md),
+            _buildAudioVersionSelector(tokens),
+          ],
 
-                  // Audio Version Selector (Star Topology)
-                  if (_audioVersions.isNotEmpty) ...[
-                    const SizedBox(height: LyraSpacing.md),
-                    _buildAudioVersionSelector(tokens),
-                  ],
+          const SizedBox(height: LyraSpacing.md),
 
-                  const SizedBox(height: LyraSpacing.md),
+          // Section 1: Acoustic Specifications (Audio - Tier 3)
+          _buildAcousticSpecificationsCard(tokens),
 
-                  // Section 1: Acoustic Specifications (Audio - Tier 3)
-                  _buildAcousticSpecificationsCard(tokens),
+          const SizedBox(height: LyraSpacing.md),
 
-                  const SizedBox(height: LyraSpacing.md),
+          // Section 2: Content Addressable Storage (CAS Asset Reference - Tier 4)
+          _buildCasAssetCard(tokens),
 
-                  // Section 2: Content Addressable Storage (CAS Asset Reference - Tier 4)
-                  _buildCasAssetCard(tokens),
+          const SizedBox(height: LyraSpacing.md),
 
-                  const SizedBox(height: LyraSpacing.md),
+          // Section 3: Digital Provenance & Notarization (SourceData - Tier 4)
+          _buildProvenanceCard(tokens),
 
-                  // Section 3: Digital Provenance & Notarization (SourceData - Tier 4)
-                  _buildProvenanceCard(tokens),
-
-                  const SizedBox(height: LyraSpacing.lg),
-                ],
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildDrawerHeader(LyraThemeTokens tokens) {
-    return Container(
-      height: 56.0,
-      padding: const EdgeInsets.symmetric(horizontal: LyraSpacing.md),
-      decoration: BoxDecoration(
-        color: tokens.card,
-        border: Border(bottom: BorderSide(color: tokens.border, width: 1.0)),
-      ),
-      child: Row(
-        children: [
-          Container(
-            padding: const EdgeInsets.all(LyraSpacing.xs),
-            decoration: BoxDecoration(
-              color: tokens.secondary,
-              borderRadius: LyraRadius.smRadius,
-            ),
-            child: Icon(
-              LucideIcons.fileSearch,
-              size: 16.0,
-              color: tokens.primary,
-            ),
-          ),
-          const SizedBox(width: LyraSpacing.sm),
-          Expanded(
-            child: Text(
-              'Inspector',
-              style: LyraTypography.h4(
-                tokens,
-              ).copyWith(fontSize: 16.0, fontWeight: FontWeight.bold),
-              overflow: TextOverflow.ellipsis,
-            ),
-          ),
-          LyraButton.ghost(
-            size: LyraButtonSize.sm,
-            onPressed: widget.onClose,
-            child: Icon(LucideIcons.x, size: 16.0, color: tokens.textMuted),
-          ),
+          const SizedBox(height: LyraSpacing.lg),
         ],
       ),
     );
@@ -743,18 +759,6 @@ class _AudioInspectorDrawerState extends State<AudioInspectorDrawer> {
                     fontSize: 13.0,
                   ),
                   overflow: TextOverflow.ellipsis,
-                ),
-              ),
-              LyraBadge.outline(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 6.0,
-                  vertical: 2.0,
-                ),
-                child: Text(
-                  '${_audioVersions.length} ${_audioVersions.length == 1 ? "version" : "versions"}',
-                  style: LyraTypography.small(
-                    tokens,
-                  ).copyWith(fontSize: 11.0, fontWeight: FontWeight.w600),
                 ),
               ),
             ],
@@ -1231,44 +1235,70 @@ class _AudioInspectorDrawerState extends State<AudioInspectorDrawer> {
         borderRadius: LyraRadius.smRadius,
         border: Border.all(color: borderColor, width: 1.0),
       ),
-      child: Row(
-        children: [
-          Icon(statusIcon, size: 18.0, color: statusColor),
-          const SizedBox(width: LyraSpacing.sm),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  statusTitle,
-                  style: LyraTypography.small(tokens).copyWith(
-                    fontWeight: FontWeight.bold,
-                    color: statusColor,
-                    fontSize: 13.0,
-                  ),
-                  overflow: TextOverflow.ellipsis,
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final isNarrow = constraints.maxWidth < 260;
+          return Row(
+            children: [
+              Icon(statusIcon, size: 18.0, color: statusColor),
+              const SizedBox(width: LyraSpacing.sm),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      statusTitle,
+                      style: LyraTypography.small(tokens).copyWith(
+                        fontWeight: FontWeight.bold,
+                        color: statusColor,
+                        fontSize: 13.0,
+                      ),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    Text(
+                      statusSubtitle,
+                      style: LyraTypography.muted(
+                        tokens,
+                      ).copyWith(fontSize: 11.5),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ],
                 ),
-                Text(
-                  statusSubtitle,
-                  style: LyraTypography.muted(tokens).copyWith(fontSize: 11.5),
-                  overflow: TextOverflow.ellipsis,
+              ),
+              if (!isNarrow) ...[
+                const SizedBox(width: LyraSpacing.sm),
+                LyraButton.outline(
+                  size: LyraButtonSize.sm,
+                  onPressed: (!hasFile || _isVerifying)
+                      ? null
+                      : _handleVerifyIntegrity,
+                  leading: _isVerifying
+                      ? const Icon(LucideIcons.loader2, size: 12.0)
+                      : const Icon(LucideIcons.refreshCw, size: 12.0),
+                  child: Text(_isVerifying ? 'Checking...' : 'Re-verify'),
+                ),
+              ] else ...[
+                const SizedBox(width: LyraSpacing.xs),
+                Tooltip(
+                  message: 'Re-verify',
+                  child: LyraButton.outline(
+                    size: LyraButtonSize.sm,
+                    width: 28.0,
+                    height: 28.0,
+                    padding: EdgeInsets.zero,
+                    onPressed: (!hasFile || _isVerifying)
+                        ? null
+                        : _handleVerifyIntegrity,
+                    child: _isVerifying
+                        ? const Icon(LucideIcons.loader2, size: 12.0)
+                        : const Icon(LucideIcons.refreshCw, size: 12.0),
+                  ),
                 ),
               ],
-            ),
-          ),
-          const SizedBox(width: LyraSpacing.sm),
-          LyraButton.outline(
-            size: LyraButtonSize.sm,
-            onPressed: (!hasFile || _isVerifying)
-                ? null
-                : _handleVerifyIntegrity,
-            leading: _isVerifying
-                ? const Icon(LucideIcons.loader2, size: 12.0)
-                : const Icon(LucideIcons.refreshCw, size: 12.0),
-            child: Text(_isVerifying ? 'Checking...' : 'Re-verify'),
-          ),
-        ],
+            ],
+          );
+        },
       ),
     );
   }
@@ -1284,54 +1314,62 @@ class _AudioInspectorDrawerState extends State<AudioInspectorDrawer> {
   }) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 3.0),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          SizedBox(
-            width: 155.0,
-            child: Text(
-              label,
-              style: LyraTypography.small(tokens).copyWith(
-                fontSize: 12.0,
-                fontWeight: FontWeight.bold,
-                color: tokens.textMuted,
-              ),
-            ),
-          ),
-          const SizedBox(width: LyraSpacing.xs),
-          Expanded(
-            child:
-                customValue ??
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(
-                      value,
-                      style:
-                          (isMono
-                                  ? LyraTypography.mono(tokens, fontSize: 12.0)
-                                  : LyraTypography.p(tokens).copyWith(
-                                      fontSize: 13.5,
-                                      fontWeight: FontWeight.w600,
-                                    ))
-                              .copyWith(color: valueColor ?? tokens.text),
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    if (subtitle != null && subtitle.isNotEmpty) ...[
-                      const SizedBox(height: 1.0),
-                      Text(
-                        subtitle,
-                        style: LyraTypography.muted(
-                          tokens,
-                        ).copyWith(fontSize: 11.0),
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ],
-                  ],
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final labelWidth = constraints.maxWidth < 280 ? 95.0 : 135.0;
+          return Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              SizedBox(
+                width: labelWidth,
+                child: Text(
+                  label,
+                  style: LyraTypography.small(tokens).copyWith(
+                    fontSize: 12.0,
+                    fontWeight: FontWeight.bold,
+                    color: tokens.textMuted,
+                  ),
                 ),
-          ),
-        ],
+              ),
+              const SizedBox(width: LyraSpacing.xs),
+              Expanded(
+                child:
+                    customValue ??
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          value,
+                          style:
+                              (isMono
+                                      ? LyraTypography.mono(
+                                          tokens,
+                                          fontSize: 12.0,
+                                        )
+                                      : LyraTypography.p(tokens).copyWith(
+                                          fontSize: 13.5,
+                                          fontWeight: FontWeight.w600,
+                                        ))
+                                  .copyWith(color: valueColor ?? tokens.text),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        if (subtitle != null && subtitle.isNotEmpty) ...[
+                          const SizedBox(height: 1.0),
+                          Text(
+                            subtitle,
+                            style: LyraTypography.muted(
+                              tokens,
+                            ).copyWith(fontSize: 11.0),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ],
+                      ],
+                    ),
+              ),
+            ],
+          );
+        },
       ),
     );
   }

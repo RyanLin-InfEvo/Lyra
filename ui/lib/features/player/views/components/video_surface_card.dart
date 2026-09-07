@@ -139,7 +139,8 @@ class VideoSurfaceCard extends StatelessWidget {
                                 child: MouseRegion(
                                   cursor: SystemMouseCursors.click,
                                   child: GestureDetector(
-                                    onTap: playbackController.togglePlay,
+                                    onTap: () =>
+                                        playbackController.togglePlay(),
                                     child: Container(
                                       width: 56.0,
                                       height: 56.0,

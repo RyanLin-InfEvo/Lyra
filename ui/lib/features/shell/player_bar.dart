@@ -1,9 +1,10 @@
 // SPDX-FileCopyrightText: 2026 Tzu-Ting Lin
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import 'dart:math';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart' show Tooltip;
-import 'package:flutter/widgets.dart';
+import 'package:flutter/widgets.dart' hide RepeatMode;
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../../design_system/contracts/lyra_contracts.dart';
@@ -11,7 +12,10 @@ import '../../design_system/factory/lyra_design_system_scope.dart';
 import '../../design_system/tokens/lyra_tokens.dart';
 import '../../design_system/widgets/lyra_badge.dart';
 import '../../design_system/widgets/lyra_button.dart';
+import '../audio/controllers/audio_device_controller.dart';
+import '../audio/widgets/audio_device_button.dart';
 import '../models/track.dart';
+import '../player/controllers/playback_queue_controller.dart' show RepeatMode;
 
 /// Fixed bottom audio player bar with playback controls, progress slider, and audiophile badges.
 class LyraPlayerBar extends StatelessWidget {
@@ -20,6 +24,7 @@ class LyraPlayerBar extends StatelessWidget {
   final Duration currentPosition;
   final ValueListenable<Duration>? positionNotifier;
   final double volume;
+  final ValueListenable<double>? volumeNotifier;
   final VoidCallback onTogglePlay;
   final VoidCallback onNext;
   final VoidCallback onPrevious;
@@ -30,6 +35,17 @@ class LyraPlayerBar extends StatelessWidget {
   final bool isInspectorOpen;
   final bool isNowPlayingExpanded;
   final VoidCallback? onExpandNowPlaying;
+  final bool isShuffle;
+  final VoidCallback? onToggleShuffle;
+  final RepeatMode repeatMode;
+  final VoidCallback? onCycleRepeat;
+  final VoidCallback? onAddToPlaylist;
+  final AudioDeviceController? audioDeviceController;
+
+  static AudioDeviceController? _fallbackDeviceController;
+  AudioDeviceController get _effectiveAudioDeviceController =>
+      audioDeviceController ??
+      (_fallbackDeviceController ??= AudioDeviceController(autoLoad: false));
 
   const LyraPlayerBar({
     super.key,
@@ -38,7 +54,8 @@ class LyraPlayerBar extends StatelessWidget {
     this.currentPosition = Duration.zero,
     Duration? position,
     this.positionNotifier,
-    required this.volume,
+    this.volume = 0.85,
+    this.volumeNotifier,
     required this.onTogglePlay,
     required this.onNext,
     required this.onPrevious,
@@ -49,6 +66,12 @@ class LyraPlayerBar extends StatelessWidget {
     this.isInspectorOpen = false,
     this.isNowPlayingExpanded = false,
     this.onExpandNowPlaying,
+    this.isShuffle = false,
+    this.onToggleShuffle,
+    this.repeatMode = RepeatMode.off,
+    this.onCycleRepeat,
+    this.onAddToPlaylist,
+    this.audioDeviceController,
   }) : _position = position;
 
   final Duration? _position;
@@ -67,74 +90,175 @@ class LyraPlayerBar extends StatelessWidget {
 
     return Container(
       height: 84.0,
-      padding: const EdgeInsets.symmetric(horizontal: LyraSpacing.lg),
       decoration: BoxDecoration(
         color: tokens.card,
         border: Border(top: BorderSide(color: tokens.border, width: 1.0)),
       ),
-      child: Row(
+      child: Stack(
+        clipBehavior: Clip.none,
         children: [
-          // Left: Track Info & Format Metadata
-          Expanded(
-            flex: 3,
-            child: currentTrack == null
-                ? Row(
+          // 1. Top Full-Width Progress Scrubber (Flush with left & right edges, like YouTube Music)
+          Positioned(
+            top: -6.0,
+            left: 0,
+            right: 0,
+            child: _buildTopProgressScrubber(tokens),
+          ),
+
+          // 2. Main Control Bar Content (Symmetric 7 : 8 : 7 flex ratio guarantees true horizontal center)
+          Padding(
+            padding: const EdgeInsets.only(
+              top: 6.0,
+              left: LyraSpacing.lg,
+              right: LyraSpacing.lg,
+            ),
+            child: Row(
+              children: [
+                // Left: Transport Controls (Shuffle, Prev, Play/Pause, Next, Repeat) + Duration
+                Expanded(
+                  flex: 7,
+                  child: Row(
                     children: [
-                      Container(
-                        width: 44.0,
-                        height: 44.0,
-                        decoration: BoxDecoration(
-                          color: tokens.secondary,
-                          borderRadius: LyraRadius.mdRadius,
-                        ),
+                      // Shuffle Button (smaller, dimmer color)
+                      LyraButton.ghost(
+                        size: LyraButtonSize.sm,
+                        width: 28.0,
+                        height: 28.0,
+                        padding: EdgeInsets.zero,
+                        onPressed: currentTrack == null
+                            ? null
+                            : onToggleShuffle,
                         child: Icon(
-                          LucideIcons.disc,
-                          size: 22.0,
-                          color: tokens.textMuted,
+                          LucideIcons.shuffle,
+                          size: 15.0,
+                          color: isShuffle
+                              ? tokens.primary
+                              : tokens.textMuted.withValues(alpha: 0.6),
                         ),
                       ),
-                      const SizedBox(width: LyraSpacing.md),
-                      Flexible(
-                        child: Text(
-                          'No track selected',
-                          style: LyraTypography.muted(tokens),
-                          overflow: TextOverflow.ellipsis,
+                      const SizedBox(width: 8.0),
+
+                      // Previous Button
+                      LyraButton.ghost(
+                        size: LyraButtonSize.sm,
+                        width: 32.0,
+                        height: 32.0,
+                        padding: EdgeInsets.zero,
+                        onPressed: currentTrack == null ? null : onPrevious,
+                        child: Icon(
+                          LucideIcons.skipBack,
+                          size: 18.0,
+                          color: currentTrack == null
+                              ? tokens.textMuted
+                              : tokens.text,
                         ),
                       ),
-                    ],
-                  )
-                : Row(
-                    children: [
+                      const SizedBox(width: 12.0),
+
+                      // Play/Pause Button (No circle, prominent white icon)
                       MouseRegion(
-                        cursor: onExpandNowPlaying != null
-                            ? SystemMouseCursors.click
-                            : SystemMouseCursors.basic,
-                        child: Listener(
+                        cursor: currentTrack == null
+                            ? SystemMouseCursors.basic
+                            : SystemMouseCursors.click,
+                        child: GestureDetector(
                           behavior: HitTestBehavior.opaque,
-                          onPointerUp: (_) => onExpandNowPlaying?.call(),
-                          child: Container(
-                            width: 44.0,
-                            height: 44.0,
-                            decoration: BoxDecoration(
-                              color: tokens.primary,
-                              borderRadius: LyraRadius.mdRadius,
-                            ),
+                          onTap: currentTrack == null ? null : onTogglePlay,
+                          child: SizedBox(
+                            width: 36.0,
+                            height: 36.0,
                             child: Center(
                               child: Icon(
-                                LucideIcons.music,
-                                size: 22.0,
-                                color: tokens.primaryForeground,
+                                isPlaying
+                                    ? LucideIcons.pause
+                                    : LucideIcons.play,
+                                size: 26.0,
+                                color: currentTrack == null
+                                    ? tokens.textMuted
+                                    : const Color(0xFFFFFFFF),
                               ),
                             ),
                           ),
                         ),
                       ),
+                      const SizedBox(width: 12.0),
+
+                      // Next Button
+                      LyraButton.ghost(
+                        size: LyraButtonSize.sm,
+                        width: 32.0,
+                        height: 32.0,
+                        padding: EdgeInsets.zero,
+                        onPressed: currentTrack == null ? null : onNext,
+                        child: Icon(
+                          LucideIcons.skipForward,
+                          size: 18.0,
+                          color: currentTrack == null
+                              ? tokens.textMuted
+                              : tokens.text,
+                        ),
+                      ),
+                      const SizedBox(width: 8.0),
+
+                      // Repeat Button (smaller, dimmer color)
+                      LyraButton.ghost(
+                        size: LyraButtonSize.sm,
+                        width: 28.0,
+                        height: 28.0,
+                        padding: EdgeInsets.zero,
+                        onPressed: currentTrack == null ? null : onCycleRepeat,
+                        child: Icon(
+                          repeatMode == RepeatMode.one
+                              ? LucideIcons.repeat1
+                              : LucideIcons.repeat,
+                          size: 15.0,
+                          color: repeatMode != RepeatMode.off
+                              ? tokens.primary
+                              : tokens.textMuted.withValues(alpha: 0.6),
+                        ),
+                      ),
+
                       const SizedBox(width: LyraSpacing.md),
-                      Expanded(
-                        child: Column(
+
+                      // Duration Display (Elapsed / Total)
+                      Flexible(child: _buildDurationDisplay(tokens)),
+                    ],
+                  ),
+                ),
+
+                // Center: Track Thumbnail & Info + Add to Playlist (Horizontally Centered)
+                Expanded(
+                  flex: 8,
+                  child: currentTrack == null
+                      ? Row(
                           mainAxisAlignment: MainAxisAlignment.center,
-                          crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
+                            Container(
+                              width: 42.0,
+                              height: 42.0,
+                              decoration: BoxDecoration(
+                                color: tokens.secondary,
+                                borderRadius: LyraRadius.mdRadius,
+                              ),
+                              child: Icon(
+                                LucideIcons.disc,
+                                size: 20.0,
+                                color: tokens.textMuted,
+                              ),
+                            ),
+                            const SizedBox(width: LyraSpacing.md),
+                            Flexible(
+                              child: Text(
+                                'No track selected',
+                                style: LyraTypography.muted(tokens),
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                          ],
+                        )
+                      : Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            // Small Thumbnail
                             MouseRegion(
                               cursor: onExpandNowPlaying != null
                                   ? SystemMouseCursors.click
@@ -142,197 +266,178 @@ class LyraPlayerBar extends StatelessWidget {
                               child: Listener(
                                 behavior: HitTestBehavior.opaque,
                                 onPointerUp: (_) => onExpandNowPlaying?.call(),
-                                child: Text(
-                                  currentTrack!.displayTitle,
-                                  style: LyraTypography.p(
-                                    tokens,
-                                  ).copyWith(fontWeight: FontWeight.w600),
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                              ),
-                            ),
-                            const SizedBox(height: 2.0),
-                            Row(
-                              children: [
-                                Flexible(
-                                  child: Text(
-                                    '${currentTrack!.artist} • ${currentTrack!.album}',
-                                    style: LyraTypography.small(
-                                      tokens,
-                                    ).copyWith(color: tokens.textMuted),
-                                    overflow: TextOverflow.ellipsis,
+                                child: Container(
+                                  width: 42.0,
+                                  height: 42.0,
+                                  decoration: BoxDecoration(
+                                    color: tokens.primary,
+                                    borderRadius: LyraRadius.mdRadius,
                                   ),
-                                ),
-                                const SizedBox(width: LyraSpacing.xs),
-                                MouseRegion(
-                                  cursor:
-                                      (onInspectAudio ?? onInspectTrack) != null
-                                      ? SystemMouseCursors.click
-                                      : SystemMouseCursors.basic,
-                                  child: Listener(
-                                    behavior: HitTestBehavior.opaque,
-                                    onPointerUp: (_) {
-                                      final callback =
-                                          onInspectAudio ?? onInspectTrack;
-                                      callback?.call();
-                                    },
-                                    child: LyraBadge.secondary(
-                                      padding: const EdgeInsets.symmetric(
-                                        horizontal: 4.0,
-                                        vertical: 1.0,
-                                      ),
-                                      child: Text(
-                                        currentTrack!.displayFormat,
-                                        style: LyraTypography.small(tokens)
-                                            .copyWith(
-                                              fontSize: 9.0,
-                                              fontWeight: FontWeight.bold,
-                                            ),
-                                      ),
+                                  child: Center(
+                                    child: Icon(
+                                      LucideIcons.music,
+                                      size: 20.0,
+                                      color: tokens.primaryForeground,
                                     ),
                                   ),
                                 ),
-                              ],
+                              ),
+                            ),
+                            const SizedBox(width: LyraSpacing.md),
+
+                            // Song Title & Artist
+                            Flexible(
+                              child: Column(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  MouseRegion(
+                                    cursor: onExpandNowPlaying != null
+                                        ? SystemMouseCursors.click
+                                        : SystemMouseCursors.basic,
+                                    child: Listener(
+                                      behavior: HitTestBehavior.opaque,
+                                      onPointerUp: (_) =>
+                                          onExpandNowPlaying?.call(),
+                                      child: Text(
+                                        currentTrack!.displayTitle,
+                                        style: LyraTypography.p(
+                                          tokens,
+                                        ).copyWith(fontWeight: FontWeight.w600),
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(height: 2.0),
+                                  Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Flexible(
+                                        child: Text(
+                                          '${currentTrack!.artist} • ${currentTrack!.album}',
+                                          style: LyraTypography.small(
+                                            tokens,
+                                          ).copyWith(color: tokens.textMuted),
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                      ),
+                                      const SizedBox(width: LyraSpacing.xs),
+                                      MouseRegion(
+                                        cursor:
+                                            (onInspectAudio ??
+                                                    onInspectTrack) !=
+                                                null
+                                            ? SystemMouseCursors.click
+                                            : SystemMouseCursors.basic,
+                                        child: Listener(
+                                          behavior: HitTestBehavior.opaque,
+                                          onPointerUp: (_) {
+                                            final callback =
+                                                onInspectAudio ??
+                                                onInspectTrack;
+                                            callback?.call();
+                                          },
+                                          child: LyraBadge.secondary(
+                                            padding: const EdgeInsets.symmetric(
+                                              horizontal: 4.0,
+                                              vertical: 1.0,
+                                            ),
+                                            child: Text(
+                                              currentTrack!.displayFormat,
+                                              style:
+                                                  LyraTypography.small(
+                                                    tokens,
+                                                  ).copyWith(
+                                                    fontSize: 9.0,
+                                                    fontWeight: FontWeight.bold,
+                                                  ),
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ],
+                              ),
+                            ),
+
+                            // Add to Playlist Action Button
+                            const SizedBox(width: LyraSpacing.xxl),
+                            Tooltip(
+                              message: 'Add to Playlist',
+                              child: LyraButton.ghost(
+                                size: LyraButtonSize.sm,
+                                width: 28.0,
+                                height: 28.0,
+                                padding: EdgeInsets.zero,
+                                onPressed: currentTrack == null
+                                    ? null
+                                    : onAddToPlaylist,
+                                child: Icon(
+                                  LucideIcons.listPlus,
+                                  size: 16.0,
+                                  color: currentTrack == null
+                                      ? tokens.textMuted
+                                      : tokens.text,
+                                ),
+                              ),
                             ),
                           ],
                         ),
-                      ),
-                    ],
-                  ),
-          ),
+                ),
 
-          // Center: Playback Controls & Progress Bar
-          Expanded(
-            flex: 5,
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                // Transport Buttons
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    LyraButton.ghost(
-                      size: LyraButtonSize.sm,
-                      onPressed: currentTrack == null ? null : onPrevious,
-                      child: Icon(
-                        LucideIcons.skipBack,
-                        size: 18.0,
-                        color: currentTrack == null
-                            ? tokens.textMuted
-                            : tokens.text,
+                // Right: Volume & Inspector Controls
+                Expanded(
+                  flex: 7,
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.end,
+                    children: [
+                      Flexible(
+                        child: _VolumeControl(
+                          volume: volume,
+                          volumeNotifier: volumeNotifier,
+                          onVolumeChanged: onVolumeChanged,
+                          tokens: tokens,
+                        ),
                       ),
-                    ),
-                    const SizedBox(width: LyraSpacing.sm),
-                    MouseRegion(
-                      cursor: currentTrack == null
-                          ? SystemMouseCursors.basic
-                          : SystemMouseCursors.click,
-                      child: GestureDetector(
-                        onTap: currentTrack == null ? null : onTogglePlay,
-                        child: Container(
-                          width: 42.0,
-                          height: 42.0,
-                          decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            color: currentTrack == null
-                                ? tokens.secondary
-                                : tokens.primary,
-                          ),
-                          child: Center(
-                            child: Icon(
-                              isPlaying ? LucideIcons.pause : LucideIcons.play,
-                              size: 18.0,
-                              color: currentTrack == null
-                                  ? tokens.textMuted
-                                  : tokens.primaryForeground,
-                            ),
+                      const SizedBox(width: LyraSpacing.xs),
+                      AudioDeviceButton(
+                        controller: _effectiveAudioDeviceController,
+                      ),
+                      const SizedBox(width: LyraSpacing.xs),
+                      LyraButton.ghost(
+                        size: LyraButtonSize.sm,
+                        onPressed: currentTrack == null ? null : onInspectTrack,
+                        child: Icon(
+                          LucideIcons.fileSearch,
+                          size: 18.0,
+                          color: isInspectorOpen
+                              ? tokens.primary
+                              : currentTrack == null
+                              ? tokens.textMuted
+                              : tokens.text,
+                        ),
+                      ),
+                      const SizedBox(width: LyraSpacing.xs),
+                      Tooltip(
+                        message: isNowPlayingExpanded
+                            ? 'Collapse Now Playing'
+                            : 'Expand Now Playing',
+                        child: LyraButton.ghost(
+                          size: LyraButtonSize.sm,
+                          onPressed: onExpandNowPlaying,
+                          child: Icon(
+                            isNowPlayingExpanded
+                                ? LucideIcons.chevronDown
+                                : LucideIcons.chevronUp,
+                            size: 18.0,
+                            color: onExpandNowPlaying == null
+                                ? tokens.textMuted
+                                : tokens.text,
                           ),
                         ),
                       ),
-                    ),
-                    const SizedBox(width: LyraSpacing.sm),
-                    LyraButton.ghost(
-                      size: LyraButtonSize.sm,
-                      onPressed: currentTrack == null ? null : onNext,
-                      child: Icon(
-                        LucideIcons.skipForward,
-                        size: 18.0,
-                        color: currentTrack == null
-                            ? tokens.textMuted
-                            : tokens.text,
-                      ),
-                    ),
-                  ],
-                ),
-
-                const SizedBox(height: 4.0),
-
-                // Progress Scrubber
-                _buildProgressScrubber(tokens),
-              ],
-            ),
-          ),
-
-          // Right: Volume & Bit-Perfect Indicator
-          Expanded(
-            flex: 3,
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.end,
-              children: [
-                Icon(
-                  volume == 0
-                      ? LucideIcons.volumeX
-                      : volume < 0.5
-                      ? LucideIcons.volume1
-                      : LucideIcons.volume2,
-                  size: 18.0,
-                  color: tokens.textMuted,
-                ),
-                const SizedBox(width: LyraSpacing.xs),
-                Flexible(
-                  child: ConstrainedBox(
-                    constraints: const BoxConstraints(
-                      maxWidth: 100.0,
-                      minWidth: 50.0,
-                    ),
-                    child: _VolumeSlider(
-                      volume: volume,
-                      onChanged: onVolumeChanged,
-                      tokens: tokens,
-                    ),
-                  ),
-                ),
-                const SizedBox(width: LyraSpacing.md),
-                LyraButton.ghost(
-                  size: LyraButtonSize.sm,
-                  onPressed: currentTrack == null ? null : onInspectTrack,
-                  child: Icon(
-                    LucideIcons.fileSearch,
-                    size: 18.0,
-                    color: isInspectorOpen
-                        ? tokens.primary
-                        : currentTrack == null
-                        ? tokens.textMuted
-                        : tokens.text,
-                  ),
-                ),
-                const SizedBox(width: LyraSpacing.xs),
-                Tooltip(
-                  message: isNowPlayingExpanded
-                      ? 'Collapse Now Playing'
-                      : 'Expand Now Playing',
-                  child: LyraButton.ghost(
-                    size: LyraButtonSize.sm,
-                    onPressed: onExpandNowPlaying,
-                    child: Icon(
-                      isNowPlayingExpanded
-                          ? LucideIcons.chevronDown
-                          : LucideIcons.chevronUp,
-                      size: 18.0,
-                      color: onExpandNowPlaying == null
-                          ? tokens.textMuted
-                          : tokens.text,
-                    ),
+                    ],
                   ),
                 ),
               ],
@@ -343,7 +448,36 @@ class LyraPlayerBar extends StatelessWidget {
     );
   }
 
-  Widget _buildProgressScrubber(LyraThemeTokens tokens) {
+  Widget _buildTopProgressScrubber(LyraThemeTokens tokens) {
+    if (positionNotifier != null) {
+      return ValueListenableBuilder<Duration>(
+        valueListenable: positionNotifier!,
+        builder: (context, pos, _) {
+          return RepaintBoundary(
+            child: _ProgressSlider(
+              position: pos,
+              total: currentTrack?.duration ?? const Duration(seconds: 1),
+              onSeek: onSeek,
+              tokens: tokens,
+              isTopScrubber: true,
+            ),
+          );
+        },
+      );
+    }
+
+    return RepaintBoundary(
+      child: _ProgressSlider(
+        position: effectivePosition,
+        total: currentTrack?.duration ?? const Duration(seconds: 1),
+        onSeek: onSeek,
+        tokens: tokens,
+        isTopScrubber: true,
+      ),
+    );
+  }
+
+  Widget _buildDurationDisplay(LyraThemeTokens tokens) {
     final totalDuration = currentTrack?.duration ?? Duration.zero;
 
     if (positionNotifier != null) {
@@ -351,26 +485,28 @@ class LyraPlayerBar extends StatelessWidget {
         valueListenable: positionNotifier!,
         builder: (context, pos, child) {
           return RepaintBoundary(
-            child: Row(
-              children: [
-                Text(
-                  _formatDuration(pos),
-                  style: LyraTypography.small(
-                    tokens,
-                  ).copyWith(color: tokens.textMuted, fontSize: 11.0),
-                ),
-                const SizedBox(width: LyraSpacing.sm),
-                Expanded(
-                  child: _ProgressSlider(
-                    position: pos,
-                    total: currentTrack?.duration ?? const Duration(seconds: 1),
-                    onSeek: onSeek,
-                    tokens: tokens,
+            child: FittedBox(
+              fit: BoxFit.scaleDown,
+              alignment: Alignment.centerLeft,
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    _formatDuration(pos),
+                    style: LyraTypography.small(
+                      tokens,
+                    ).copyWith(color: tokens.textMuted, fontSize: 11.0),
                   ),
-                ),
-                const SizedBox(width: LyraSpacing.sm),
-                child!,
-              ],
+                  Text(
+                    ' / ',
+                    style: LyraTypography.small(tokens).copyWith(
+                      color: tokens.textMuted.withValues(alpha: 0.5),
+                      fontSize: 11.0,
+                    ),
+                  ),
+                  child!,
+                ],
+              ),
             ),
           );
         },
@@ -384,31 +520,33 @@ class LyraPlayerBar extends StatelessWidget {
     }
 
     return RepaintBoundary(
-      child: Row(
-        children: [
-          Text(
-            _formatDuration(effectivePosition),
-            style: LyraTypography.small(
-              tokens,
-            ).copyWith(color: tokens.textMuted, fontSize: 11.0),
-          ),
-          const SizedBox(width: LyraSpacing.sm),
-          Expanded(
-            child: _ProgressSlider(
-              position: effectivePosition,
-              total: currentTrack?.duration ?? const Duration(seconds: 1),
-              onSeek: onSeek,
-              tokens: tokens,
+      child: FittedBox(
+        fit: BoxFit.scaleDown,
+        alignment: Alignment.centerLeft,
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              _formatDuration(effectivePosition),
+              style: LyraTypography.small(
+                tokens,
+              ).copyWith(color: tokens.textMuted, fontSize: 11.0),
             ),
-          ),
-          const SizedBox(width: LyraSpacing.sm),
-          Text(
-            _formatDuration(totalDuration),
-            style: LyraTypography.small(
-              tokens,
-            ).copyWith(color: tokens.textMuted, fontSize: 11.0),
-          ),
-        ],
+            Text(
+              ' / ',
+              style: LyraTypography.small(tokens).copyWith(
+                color: tokens.textMuted.withValues(alpha: 0.5),
+                fontSize: 11.0,
+              ),
+            ),
+            Text(
+              _formatDuration(totalDuration),
+              style: LyraTypography.small(
+                tokens,
+              ).copyWith(color: tokens.textMuted, fontSize: 11.0),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -420,12 +558,14 @@ class _ProgressSlider extends StatefulWidget {
   final Duration total;
   final ValueChanged<Duration> onSeek;
   final LyraThemeTokens tokens;
+  final bool isTopScrubber;
 
   const _ProgressSlider({
     required this.position,
     required this.total,
     required this.onSeek,
     required this.tokens,
+    this.isTopScrubber = false,
   });
 
   @override
@@ -435,6 +575,14 @@ class _ProgressSlider extends StatefulWidget {
 class _ProgressSliderState extends State<_ProgressSlider> {
   bool _isHovered = false;
   bool _isDragging = false;
+  double? _hoverX;
+  double? _dragFactor;
+
+  String _formatDuration(Duration d) {
+    final minutes = d.inMinutes;
+    final seconds = (d.inSeconds % 60).toString().padLeft(2, '0');
+    return '$minutes:$seconds';
+  }
 
   void _handleSeek(double localX, double maxWidth) {
     if (maxWidth <= 0) return;
@@ -446,76 +594,133 @@ class _ProgressSliderState extends State<_ProgressSlider> {
 
   @override
   Widget build(BuildContext context) {
-    final factor = widget.total.inMilliseconds > 0
-        ? (widget.position.inMilliseconds / widget.total.inMilliseconds).clamp(
-            0.0,
-            1.0,
-          )
-        : 0.0;
+    final factor = _isDragging && _dragFactor != null
+        ? _dragFactor!
+        : (widget.total.inMilliseconds > 0
+              ? (widget.position.inMilliseconds / widget.total.inMilliseconds)
+                    .clamp(0.0, 1.0)
+              : 0.0);
     final isActive = _isHovered || _isDragging;
 
     return RepaintBoundary(
       child: MouseRegion(
         cursor: SystemMouseCursors.click,
-        onEnter: (_) => setState(() => _isHovered = true),
-        onExit: (_) => setState(() => _isHovered = false),
+        onEnter: (event) => setState(() {
+          _isHovered = true;
+          _hoverX = event.localPosition.dx;
+        }),
+        onHover: (event) => setState(() {
+          _isHovered = true;
+          _hoverX = event.localPosition.dx;
+        }),
+        onExit: (_) => setState(() {
+          _isHovered = false;
+          _hoverX = null;
+        }),
         child: LayoutBuilder(
           builder: (context, constraints) {
             return GestureDetector(
               behavior: HitTestBehavior.opaque,
               onHorizontalDragStart: (details) {
-                setState(() => _isDragging = true);
+                setState(() {
+                  _isDragging = true;
+                  _hoverX = details.localPosition.dx;
+                  _dragFactor =
+                      (details.localPosition.dx / constraints.maxWidth).clamp(
+                        0.0,
+                        1.0,
+                      );
+                });
                 _handleSeek(details.localPosition.dx, constraints.maxWidth);
               },
               onHorizontalDragUpdate: (details) {
+                setState(() {
+                  _hoverX = details.localPosition.dx;
+                  _dragFactor =
+                      (details.localPosition.dx / constraints.maxWidth).clamp(
+                        0.0,
+                        1.0,
+                      );
+                });
                 _handleSeek(details.localPosition.dx, constraints.maxWidth);
               },
               onHorizontalDragEnd: (_) {
-                setState(() => _isDragging = false);
+                setState(() {
+                  _isDragging = false;
+                  _dragFactor = null;
+                });
               },
               onHorizontalDragCancel: () {
-                setState(() => _isDragging = false);
+                setState(() {
+                  _isDragging = false;
+                  _dragFactor = null;
+                });
               },
               onTapDown: (details) {
-                setState(() => _isDragging = true);
+                setState(() {
+                  _isDragging = true;
+                  _dragFactor =
+                      (details.localPosition.dx / constraints.maxWidth).clamp(
+                        0.0,
+                        1.0,
+                      );
+                });
                 _handleSeek(details.localPosition.dx, constraints.maxWidth);
               },
               onTapUp: (_) {
-                setState(() => _isDragging = false);
+                setState(() {
+                  _isDragging = false;
+                  _dragFactor = null;
+                });
               },
               onTapCancel: () {
-                setState(() => _isDragging = false);
+                setState(() {
+                  _isDragging = false;
+                  _dragFactor = null;
+                });
               },
               child: Container(
-                height: 16.0,
+                height: widget.isTopScrubber ? 14.0 : 16.0,
                 alignment: Alignment.center,
                 child: Stack(
+                  clipBehavior: Clip.none,
                   alignment: Alignment.centerLeft,
                   children: [
+                    // Background Track
                     Container(
-                      height: isActive ? 6.0 : 4.0,
+                      height: widget.isTopScrubber
+                          ? (isActive ? 4.0 : 2.0)
+                          : (isActive ? 6.0 : 4.0),
                       width: double.infinity,
                       decoration: BoxDecoration(
                         color: widget.tokens.secondary,
-                        borderRadius: LyraRadius.fullRadius,
+                        borderRadius: widget.isTopScrubber
+                            ? BorderRadius.zero
+                            : LyraRadius.fullRadius,
                       ),
                     ),
+                    // Active Progress Track
                     FractionallySizedBox(
                       widthFactor: factor,
                       child: Container(
-                        height: isActive ? 6.0 : 4.0,
+                        height: widget.isTopScrubber
+                            ? (isActive ? 4.0 : 2.0)
+                            : (isActive ? 6.0 : 4.0),
                         decoration: BoxDecoration(
                           color: widget.tokens.primary,
-                          borderRadius: LyraRadius.fullRadius,
+                          borderRadius: widget.isTopScrubber
+                              ? BorderRadius.zero
+                              : LyraRadius.fullRadius,
                         ),
                       ),
                     ),
+                    // Centered Circular Thumb Control Point
                     if (isActive)
                       Align(
                         alignment: Alignment(2 * factor - 1, 0.0),
                         child: Container(
-                          width: 12.0,
-                          height: 12.0,
+                          width: widget.isTopScrubber ? 10.0 : 12.0,
+                          height: widget.isTopScrubber ? 10.0 : 12.0,
                           decoration: BoxDecoration(
                             shape: BoxShape.circle,
                             color: widget.tokens.primary,
@@ -528,6 +733,57 @@ class _ProgressSliderState extends State<_ProgressSlider> {
                           ),
                         ),
                       ),
+                    // Hover Preview Timestamp Tooltip
+                    if (_isHovered &&
+                        _hoverX != null &&
+                        widget.total.inMilliseconds > 0)
+                      Positioned(
+                        top: widget.isTopScrubber ? -26.0 : -28.0,
+                        left: (_hoverX! - 22.0).clamp(
+                          4.0,
+                          max(4.0, constraints.maxWidth - 48.0),
+                        ),
+                        child: IgnorePointer(
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 6.0,
+                              vertical: 2.0,
+                            ),
+                            decoration: BoxDecoration(
+                              color: widget.tokens.card,
+                              borderRadius: LyraRadius.smRadius,
+                              border: Border.all(
+                                color: widget.tokens.border,
+                                width: 1.0,
+                              ),
+                              boxShadow: const [
+                                BoxShadow(
+                                  color: Color(0x40000000),
+                                  blurRadius: 6.0,
+                                  offset: Offset(0, 2),
+                                ),
+                              ],
+                            ),
+                            child: Text(
+                              _formatDuration(
+                                Duration(
+                                  milliseconds:
+                                      (widget.total.inMilliseconds *
+                                              (_hoverX! / constraints.maxWidth)
+                                                  .clamp(0.0, 1.0))
+                                          .round(),
+                                ),
+                              ),
+                              style: LyraTypography.small(widget.tokens)
+                                  .copyWith(
+                                    fontSize: 10.0,
+                                    fontWeight: FontWeight.w600,
+                                    color: widget.tokens.text,
+                                  ),
+                            ),
+                          ),
+                        ),
+                      ),
                   ],
                 ),
               ),
@@ -535,6 +791,149 @@ class _ProgressSliderState extends State<_ProgressSlider> {
           },
         ),
       ),
+    );
+  }
+}
+
+/// Interactive volume control widget combining clickable mute toggle icon and smooth volume slider.
+class _VolumeControl extends StatefulWidget {
+  final double volume;
+  final ValueListenable<double>? volumeNotifier;
+  final ValueChanged<double> onVolumeChanged;
+  final LyraThemeTokens tokens;
+
+  const _VolumeControl({
+    required this.volume,
+    this.volumeNotifier,
+    required this.onVolumeChanged,
+    required this.tokens,
+  });
+
+  @override
+  State<_VolumeControl> createState() => _VolumeControlState();
+}
+
+class _VolumeControlState extends State<_VolumeControl> {
+  late double _currentVolume;
+  double _lastNonZeroVolume = 0.85;
+
+  @override
+  void initState() {
+    super.initState();
+    _currentVolume = widget.volumeNotifier?.value ?? widget.volume;
+    if (_currentVolume > 0) {
+      _lastNonZeroVolume = _currentVolume;
+    }
+    widget.volumeNotifier?.addListener(_onNotifierChanged);
+  }
+
+  @override
+  void didUpdateWidget(covariant _VolumeControl oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.volumeNotifier != widget.volumeNotifier) {
+      oldWidget.volumeNotifier?.removeListener(_onNotifierChanged);
+      widget.volumeNotifier?.addListener(_onNotifierChanged);
+      if (widget.volumeNotifier != null) {
+        _currentVolume = widget.volumeNotifier!.value;
+        if (_currentVolume > 0) {
+          _lastNonZeroVolume = _currentVolume;
+        }
+      }
+    } else if (widget.volumeNotifier == null &&
+        oldWidget.volume != widget.volume) {
+      _currentVolume = widget.volume;
+      if (_currentVolume > 0) {
+        _lastNonZeroVolume = _currentVolume;
+      }
+    }
+  }
+
+  @override
+  void dispose() {
+    widget.volumeNotifier?.removeListener(_onNotifierChanged);
+    super.dispose();
+  }
+
+  void _onNotifierChanged() {
+    if (mounted && widget.volumeNotifier != null) {
+      final newVol = widget.volumeNotifier!.value;
+      if (newVol != _currentVolume) {
+        setState(() {
+          _currentVolume = newVol;
+          if (newVol > 0) {
+            _lastNonZeroVolume = newVol;
+          }
+        });
+      }
+    }
+  }
+
+  void _handleVolumeChanged(double vol) {
+    final clamped = vol.clamp(0.0, 1.0);
+    if (clamped > 0) {
+      _lastNonZeroVolume = clamped;
+    }
+    setState(() {
+      _currentVolume = clamped;
+    });
+    widget.onVolumeChanged(clamped);
+  }
+
+  void _toggleMute() {
+    if (_currentVolume > 0) {
+      _lastNonZeroVolume = _currentVolume;
+      _handleVolumeChanged(0.0);
+    } else {
+      final restore = (_lastNonZeroVolume > 0) ? _lastNonZeroVolume : 0.85;
+      _handleVolumeChanged(restore);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final IconData volumeIcon = _currentVolume == 0
+        ? LucideIcons.volumeX
+        : _currentVolume < 0.5
+        ? LucideIcons.volume1
+        : LucideIcons.volume2;
+    final String tooltip = _currentVolume == 0 ? 'Unmute' : 'Mute';
+
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Tooltip(
+          message: tooltip,
+          child: MouseRegion(
+            cursor: SystemMouseCursors.click,
+            child: GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: _toggleMute,
+              child: SizedBox(
+                width: 24.0,
+                height: 24.0,
+                child: Center(
+                  child: Icon(
+                    volumeIcon,
+                    size: 18.0,
+                    color: widget.tokens.textMuted,
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+        const SizedBox(width: LyraSpacing.xs),
+        Flexible(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 90.0, minWidth: 30.0),
+            child: _VolumeSlider(
+              volume: _currentVolume,
+              onChanged: _handleVolumeChanged,
+              tokens: widget.tokens,
+            ),
+          ),
+        ),
+      ],
     );
   }
 }
@@ -558,17 +957,25 @@ class _VolumeSlider extends StatefulWidget {
 class _VolumeSliderState extends State<_VolumeSlider> {
   bool _isHovered = false;
   bool _isDragging = false;
+  double? _dragVolume;
 
   void _handleVolume(double localX, double maxWidth) {
     if (maxWidth <= 0) return;
     final double clampedX = localX.clamp(0.0, maxWidth);
-    widget.onChanged(clampedX / maxWidth);
+    final double newVol = clampedX / maxWidth;
+    setState(() {
+      _dragVolume = newVol;
+    });
+    widget.onChanged(newVol);
   }
 
   @override
   Widget build(BuildContext context) {
-    final factor = widget.volume.clamp(0.0, 1.0);
+    final factor = (_dragVolume ?? widget.volume).clamp(0.0, 1.0);
     final isActive = _isHovered || _isDragging;
+    final animDuration = _isDragging
+        ? Duration.zero
+        : const Duration(milliseconds: 150);
 
     return RepaintBoundary(
       child: MouseRegion(
@@ -587,20 +994,32 @@ class _VolumeSliderState extends State<_VolumeSlider> {
                 _handleVolume(details.localPosition.dx, constraints.maxWidth);
               },
               onHorizontalDragEnd: (_) {
-                setState(() => _isDragging = false);
+                setState(() {
+                  _isDragging = false;
+                  _dragVolume = null;
+                });
               },
               onHorizontalDragCancel: () {
-                setState(() => _isDragging = false);
+                setState(() {
+                  _isDragging = false;
+                  _dragVolume = null;
+                });
               },
               onTapDown: (details) {
                 setState(() => _isDragging = true);
                 _handleVolume(details.localPosition.dx, constraints.maxWidth);
               },
               onTapUp: (_) {
-                setState(() => _isDragging = false);
+                setState(() {
+                  _isDragging = false;
+                  _dragVolume = null;
+                });
               },
               onTapCancel: () {
-                setState(() => _isDragging = false);
+                setState(() {
+                  _isDragging = false;
+                  _dragVolume = null;
+                });
               },
               child: Container(
                 height: 16.0,
@@ -609,7 +1028,7 @@ class _VolumeSliderState extends State<_VolumeSlider> {
                   alignment: Alignment.centerLeft,
                   children: [
                     AnimatedContainer(
-                      duration: const Duration(milliseconds: 150),
+                      duration: animDuration,
                       height: isActive ? 5.0 : 4.0,
                       width: double.infinity,
                       child: Container(
@@ -622,7 +1041,7 @@ class _VolumeSliderState extends State<_VolumeSlider> {
                     FractionallySizedBox(
                       widthFactor: factor,
                       child: AnimatedContainer(
-                        duration: const Duration(milliseconds: 150),
+                        duration: animDuration,
                         height: isActive ? 5.0 : 4.0,
                         child: Container(
                           decoration: BoxDecoration(
@@ -636,7 +1055,7 @@ class _VolumeSliderState extends State<_VolumeSlider> {
                       alignment: Alignment(2 * factor - 1, 0.0),
                       child: AnimatedScale(
                         scale: isActive ? 1.0 : 0.0,
-                        duration: const Duration(milliseconds: 150),
+                        duration: animDuration,
                         child: Container(
                           width: 10.0,
                           height: 10.0,

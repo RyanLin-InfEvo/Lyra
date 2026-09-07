@@ -303,3 +303,20 @@ class LyraTypography {
         color: tokens.text,
       );
 }
+
+/// Motion and animation tokens for duration and easing curves.
+class LyraAnimation {
+  const LyraAnimation._();
+
+  // Durations
+  static const Duration fast = Duration(milliseconds: 150);
+  static const Duration normal = Duration(milliseconds: 250);
+  static const Duration sheet = Duration(milliseconds: 350);
+  static const Duration slow = Duration(milliseconds: 500);
+
+  // Easing Curves
+  static const Curve defaultCurve = Curves.easeInOutCubic;
+  static const Curve emphasized = Cubic(0.2, 0.0, 0.0, 1.0);
+  static const Curve springGentle = Cubic(0.32, 0.72, 0.0, 1.0);
+  static const Curve deceleration = Cubic(0.0, 0.0, 0.2, 1.0);
+}

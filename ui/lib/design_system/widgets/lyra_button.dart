@@ -39,6 +39,22 @@ class LyraButton extends StatelessWidget {
     this.padding,
   });
 
+  const LyraButton.primary({
+    super.key,
+    this.child,
+    this.onPressed,
+    this.size = LyraButtonSize.md,
+    this.leading,
+    this.trailing,
+    this.mainAxisAlignment,
+    this.crossAxisAlignment,
+    this.autofocus = false,
+    this.focusNode,
+    this.width,
+    this.height,
+    this.padding,
+  }) : variant = LyraButtonVariant.primary;
+
   const LyraButton.secondary({
     super.key,
     this.child,

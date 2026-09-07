@@ -9,7 +9,9 @@ import '../../../design_system/contracts/lyra_contracts.dart';
 import '../../../design_system/factory/lyra_design_system_scope.dart';
 import '../../../design_system/tokens/lyra_tokens.dart';
 import '../../../design_system/widgets/lyra_button.dart';
+import '../../inspector/audio_inspector_drawer.dart';
 import '../../models/track.dart';
+import '../../services/music_service.dart';
 import '../controllers/playback_queue_controller.dart';
 import '../models/lyrics.dart';
 import 'components/lyrics_tab.dart';
@@ -18,7 +20,7 @@ import 'components/up_next_tab.dart';
 
 /// YouTube Music-style full Now Playing view with split-view layout:
 /// - Left: Media viewport (Song artwork vs Video theater surface).
-/// - Right: Tabbed container (Up Next queue and Lyrics tab).
+/// - Right: Tabbed container (Up Next queue, Lyrics tab, and Audio Inspector tab).
 class NowPlayingView extends StatefulWidget {
   final Track? track;
   final PlaybackQueueController playbackController;
@@ -28,6 +30,11 @@ class NowPlayingView extends StatefulWidget {
   final Widget? customVideoPlayer;
   final String? videoTag;
   final LyricsData? lyrics;
+  final bool isExpanded;
+  final MusicService? musicService;
+  final ValueNotifier<int>? selectedTabNotifier;
+  final int initialTabIndex;
+  final ValueChanged<int>? onTabSelected;
 
   const NowPlayingView({
     super.key,
@@ -39,6 +46,11 @@ class NowPlayingView extends StatefulWidget {
     this.customVideoPlayer,
     this.videoTag,
     this.lyrics,
+    this.isExpanded = true,
+    this.musicService,
+    this.selectedTabNotifier,
+    this.initialTabIndex = 0,
+    this.onTabSelected,
   });
 
   @override
@@ -47,24 +59,50 @@ class NowPlayingView extends StatefulWidget {
 
 class _NowPlayingViewState extends State<NowPlayingView> {
   late final FocusNode _focusNode;
-  int _selectedTabIndex = 0; // 0: Up Next, 1: Lyrics
+  late int _selectedTabIndex;
   bool _isFavorite = false;
 
   @override
   void initState() {
     super.initState();
     _focusNode = FocusNode();
+    _selectedTabIndex =
+        widget.selectedTabNotifier?.value ?? widget.initialTabIndex;
     widget.playbackController.addListener(_onPlaybackChanged);
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) {
-        _focusNode.requestFocus();
-      }
-    });
+    widget.selectedTabNotifier?.addListener(_onTabNotifierChanged);
+    if (widget.isExpanded) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          _focusNode.requestFocus();
+        }
+      });
+    }
   }
 
   void _onPlaybackChanged() {
     if (mounted) {
       setState(() {});
+    }
+  }
+
+  void _onTabNotifierChanged() {
+    if (mounted && widget.selectedTabNotifier != null) {
+      if (_selectedTabIndex != widget.selectedTabNotifier!.value) {
+        setState(() {
+          _selectedTabIndex = widget.selectedTabNotifier!.value;
+        });
+      }
+    }
+  }
+
+  void _setTabIndex(int index) {
+    if (_selectedTabIndex != index) {
+      setState(() => _selectedTabIndex = index);
+      if (widget.selectedTabNotifier != null &&
+          widget.selectedTabNotifier!.value != index) {
+        widget.selectedTabNotifier!.value = index;
+      }
+      widget.onTabSelected?.call(index);
     }
   }
 
@@ -75,10 +113,27 @@ class _NowPlayingViewState extends State<NowPlayingView> {
       oldWidget.playbackController.removeListener(_onPlaybackChanged);
       widget.playbackController.addListener(_onPlaybackChanged);
     }
+    if (oldWidget.selectedTabNotifier != widget.selectedTabNotifier) {
+      oldWidget.selectedTabNotifier?.removeListener(_onTabNotifierChanged);
+      widget.selectedTabNotifier?.addListener(_onTabNotifierChanged);
+      if (widget.selectedTabNotifier != null) {
+        _selectedTabIndex = widget.selectedTabNotifier!.value;
+      }
+    }
+    if (!oldWidget.isExpanded && widget.isExpanded) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          _focusNode.requestFocus();
+        }
+      });
+    } else if (oldWidget.isExpanded && !widget.isExpanded) {
+      _focusNode.unfocus();
+    }
   }
 
   @override
   void dispose() {
+    widget.selectedTabNotifier?.removeListener(_onTabNotifierChanged);
     widget.playbackController.removeListener(_onPlaybackChanged);
     _focusNode.dispose();
     super.dispose();
@@ -100,63 +155,16 @@ class _NowPlayingViewState extends State<NowPlayingView> {
     return RepaintBoundary(
       child: Focus(
         focusNode: _focusNode,
+        canRequestFocus: widget.isExpanded,
         onKeyEvent: _handleKeyEvent,
         child: Container(
           color: tokens.background,
           child: SafeArea(
-            child: Column(
+            child: Stack(
+              fit: StackFit.expand,
               children: [
-                // Top Navigation Bar (Collapse Button + View Title)
-                Container(
-                  height: 56.0,
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: LyraSpacing.lg,
-                  ),
-                  decoration: BoxDecoration(
-                    color: tokens.background,
-                    border: Border(
-                      bottom: BorderSide(color: tokens.border, width: 1.0),
-                    ),
-                  ),
-                  child: Row(
-                    children: [
-                      // Collapse Button
-                      LyraButton.ghost(
-                        size: LyraButtonSize.sm,
-                        onPressed: widget.onCollapse,
-                        leading: Icon(
-                          LucideIcons.chevronDown,
-                          size: 20.0,
-                          color: tokens.text,
-                        ),
-                        child: Text(
-                          'Collapse',
-                          style: LyraTypography.small(
-                            tokens,
-                          ).copyWith(fontWeight: FontWeight.w500),
-                        ),
-                      ),
-
-                      const Spacer(),
-
-                      // Title
-                      Text(
-                        'Now Playing',
-                        style: LyraTypography.h4(
-                          tokens,
-                        ).copyWith(fontWeight: FontWeight.w600),
-                      ),
-
-                      const Spacer(),
-
-                      // Right Spacer to balance collapse button width
-                      const SizedBox(width: 80.0),
-                    ],
-                  ),
-                ),
-
                 // Split-View Body (Left: Media Viewport, Right: Up Next & Lyrics)
-                Expanded(
+                Positioned.fill(
                   child: LayoutBuilder(
                     builder: (context, constraints) {
                       final isStacked = constraints.maxWidth < 780;
@@ -221,6 +229,27 @@ class _NowPlayingViewState extends State<NowPlayingView> {
                     },
                   ),
                 ),
+
+                // Floating Collapse Button (Top-Left)
+                Positioned(
+                  top: LyraSpacing.md,
+                  left: LyraSpacing.md,
+                  child: LyraButton.ghost(
+                    size: LyraButtonSize.sm,
+                    onPressed: widget.onCollapse,
+                    leading: Icon(
+                      LucideIcons.chevronDown,
+                      size: 20.0,
+                      color: tokens.text,
+                    ),
+                    child: Text(
+                      'Collapse',
+                      style: LyraTypography.small(
+                        tokens,
+                      ).copyWith(fontWeight: FontWeight.w500),
+                    ),
+                  ),
+                ),
               ],
             ),
           ),
@@ -261,7 +290,7 @@ class _NowPlayingViewState extends State<NowPlayingView> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        // Tabs Header (Up Next vs Lyrics)
+        // Tabs Header (Up Next vs Lyrics vs Inspector)
         Container(
           padding: const EdgeInsets.symmetric(
             horizontal: LyraSpacing.md,
@@ -289,6 +318,13 @@ class _NowPlayingViewState extends State<NowPlayingView> {
                   icon: LucideIcons.quote,
                   tokens: tokens,
                 ),
+                const SizedBox(width: LyraSpacing.sm),
+                _buildTabHeaderButton(
+                  index: 2,
+                  label: 'Details',
+                  icon: LucideIcons.fileSearch,
+                  tokens: tokens,
+                ),
               ],
             ),
           ),
@@ -298,16 +334,31 @@ class _NowPlayingViewState extends State<NowPlayingView> {
         Expanded(
           child: AnimatedSwitcher(
             duration: const Duration(milliseconds: 200),
+            layoutBuilder: (currentChild, previousChildren) => Stack(
+              alignment: Alignment.center,
+              children: [...previousChildren, ?currentChild],
+            ),
+            transitionBuilder: (child, animation) => FadeTransition(
+              key: ValueKey<Key?>(child.key),
+              opacity: animation,
+              child: child,
+            ),
             child: _selectedTabIndex == 0
                 ? UpNextTab(
                     key: const ValueKey('up_next_tab'),
                     playbackController: widget.playbackController,
                     queueSource: widget.queueSource,
                   )
-                : LyricsTab(
+                : _selectedTabIndex == 1
+                ? LyricsTab(
                     key: const ValueKey('lyrics_tab'),
                     lyrics: effectiveLyrics,
                     playbackController: widget.playbackController,
+                  )
+                : AudioInspectorContent(
+                    key: const ValueKey('inspector_tab'),
+                    track: widget.track,
+                    musicService: widget.musicService,
                   ),
           ),
         ),
@@ -326,14 +377,11 @@ class _NowPlayingViewState extends State<NowPlayingView> {
     return MouseRegion(
       cursor: SystemMouseCursors.click,
       child: GestureDetector(
-        onTap: () {
-          if (_selectedTabIndex != index) {
-            setState(() => _selectedTabIndex = index);
-          }
-        },
+        behavior: HitTestBehavior.opaque,
+        onTap: () => _setTabIndex(index),
         child: Container(
           padding: const EdgeInsets.symmetric(
-            horizontal: LyraSpacing.md,
+            horizontal: LyraSpacing.sm,
             vertical: 6.0,
           ),
           decoration: BoxDecoration(

@@ -307,7 +307,6 @@ class PlaybackQueueController extends ChangeNotifier {
       target = trackDuration;
     }
     _positionNotifier.value = target;
-    notifyListeners();
   }
 
   /// Appends [track] to the end of the queue.

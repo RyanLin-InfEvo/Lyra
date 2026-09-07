@@ -129,7 +129,7 @@ void main() {
 
       // Verify Audio Versions Section
       expect(find.text('Audio Versions'), findsOneWidget);
-      expect(find.text('4 versions'), findsOneWidget);
+      expect(find.text('4 versions'), findsNothing);
 
       // Verify Badges and clean version labels (no duplicate 'Master · ...')
       expect(find.text('Active'), findsOneWidget);

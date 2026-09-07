@@ -8,6 +8,8 @@ import 'package:shadcn_ui/shadcn_ui.dart';
 import 'package:ui/design_system/factory/lyra_design_system_scope.dart';
 import 'package:ui/design_system/factory/shadcn_factory.dart';
 import 'package:ui/design_system/tokens/lyra_tokens.dart';
+import 'package:ui/features/audio/controllers/audio_device_controller.dart';
+import 'package:ui/features/audio/widgets/audio_device_button.dart';
 import 'package:ui/features/models/track.dart';
 import 'package:ui/features/shell/player_bar.dart';
 
@@ -16,6 +18,7 @@ Widget _buildPlayerBarTest({
   bool isPlaying = false,
   Duration currentPosition = const Duration(seconds: 30),
   double volume = 0.75,
+  ValueNotifier<double>? volumeNotifier,
   VoidCallback? onTogglePlay,
   VoidCallback? onNext,
   VoidCallback? onPrevious,
@@ -24,6 +27,7 @@ Widget _buildPlayerBarTest({
   ValueNotifier<ThemeMode>? themeNotifier,
   bool isNowPlayingExpanded = false,
   VoidCallback? onExpandNowPlaying,
+  AudioDeviceController? audioDeviceController,
 }) {
   final themeModeNotifier =
       themeNotifier ?? ValueNotifier<ThemeMode>(ThemeMode.dark);
@@ -58,6 +62,7 @@ Widget _buildPlayerBarTest({
                 isPlaying: isPlaying,
                 currentPosition: currentPosition,
                 volume: volume,
+                volumeNotifier: volumeNotifier,
                 isNowPlayingExpanded: isNowPlayingExpanded,
                 onTogglePlay: onTogglePlay ?? () {},
                 onNext: onNext ?? () {},
@@ -65,6 +70,7 @@ Widget _buildPlayerBarTest({
                 onSeek: onSeek ?? (_) {},
                 onVolumeChanged: onVolumeChanged ?? (_) {},
                 onExpandNowPlaying: onExpandNowPlaying,
+                audioDeviceController: audioDeviceController,
               ),
             ),
           ),
@@ -117,8 +123,8 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    // Find progress slider gesture area
-    final progressFinder = find.byType(GestureDetector).at(1);
+    // Find progress slider gesture area (now at the top of the player bar)
+    final progressFinder = find.byType(GestureDetector).first;
     expect(progressFinder, findsOneWidget);
 
     // Tap halfway across the progress slider
@@ -171,7 +177,7 @@ void main() {
     await tester.pumpAndSettle();
 
     final gestureDetectorFinders = find.byType(GestureDetector);
-    final progressGestureFinder = gestureDetectorFinders.at(1);
+    final progressGestureFinder = gestureDetectorFinders.first;
 
     // Simulate pointer hover enter and exit
     final gesture = await tester.createGesture(kind: PointerDeviceKind.mouse);
@@ -256,6 +262,104 @@ void main() {
       expect(find.byIcon(LucideIcons.chevronDown), findsOneWidget);
       expect(find.byIcon(LucideIcons.chevronUp), findsNothing);
       expect(find.byTooltip('Collapse Now Playing'), findsOneWidget);
+    },
+  );
+
+  testWidgets(
+    'LyraPlayerBar volume icon click toggles mute and restores previous volume',
+    (tester) async {
+      double currentVol = 0.8;
+      final volumeNotifier = ValueNotifier<double>(currentVol);
+      addTearDown(volumeNotifier.dispose);
+
+      await tester.pumpWidget(
+        _buildPlayerBarTest(
+          currentTrack: testTrack,
+          volume: currentVol,
+          volumeNotifier: volumeNotifier,
+          onVolumeChanged: (vol) {
+            currentVol = vol;
+            volumeNotifier.value = vol;
+          },
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      // Initially at 0.8: icon is volume2, tooltip is Mute
+      expect(find.byIcon(LucideIcons.volume2), findsOneWidget);
+      expect(find.byTooltip('Mute'), findsOneWidget);
+
+      // Tap volume icon to mute
+      await tester.tap(find.byTooltip('Mute'));
+      await tester.pumpAndSettle();
+
+      // Should be muted to 0.0
+      expect(currentVol, equals(0.0));
+      expect(find.byIcon(LucideIcons.volumeX), findsOneWidget);
+      expect(find.byTooltip('Unmute'), findsOneWidget);
+
+      // Tap volume icon again to restore
+      await tester.tap(find.byTooltip('Unmute'));
+      await tester.pumpAndSettle();
+
+      // Restored back to 0.8
+      expect(currentVol, equals(0.8));
+      expect(find.byIcon(LucideIcons.volume2), findsOneWidget);
+      expect(find.byTooltip('Mute'), findsOneWidget);
+    },
+  );
+
+  testWidgets(
+    'LyraPlayerBar displays correct volume icons for different thresholds',
+    (tester) async {
+      // 1. Low volume (< 0.5): displays volume1
+      await tester.pumpWidget(
+        _buildPlayerBarTest(currentTrack: testTrack, volume: 0.25),
+      );
+      await tester.pumpAndSettle();
+      expect(find.byIcon(LucideIcons.volume1), findsOneWidget);
+
+      // 2. Zero volume (0.0): displays volumeX
+      await tester.pumpWidget(
+        _buildPlayerBarTest(currentTrack: testTrack, volume: 0.0),
+      );
+      await tester.pumpAndSettle();
+      expect(find.byIcon(LucideIcons.volumeX), findsOneWidget);
+
+      // 3. High volume (>= 0.5): displays volume2
+      await tester.pumpWidget(
+        _buildPlayerBarTest(currentTrack: testTrack, volume: 0.85),
+      );
+      await tester.pumpAndSettle();
+      expect(find.byIcon(LucideIcons.volume2), findsOneWidget);
+    },
+  );
+
+  testWidgets(
+    'LyraPlayerBar renders AudioDeviceButton and opens output popover',
+    (tester) async {
+      final controller = AudioDeviceController(autoLoad: false);
+      addTearDown(controller.dispose);
+
+      await tester.pumpWidget(
+        _buildPlayerBarTest(
+          currentTrack: testTrack,
+          audioDeviceController: controller,
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      // Verify AudioDeviceButton is present
+      final deviceBtn = find.byType(AudioDeviceButton);
+      expect(deviceBtn, findsOneWidget);
+
+      // Tap to open popover
+      await tester.tap(deviceBtn);
+      await tester.pumpAndSettle();
+
+      // Popover content is visible
+      expect(find.text('Audio Output'), findsOneWidget);
+      expect(find.text('Default System Audio'), findsOneWidget);
     },
   );
 }

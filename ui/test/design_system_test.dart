@@ -72,6 +72,18 @@ void main() {
       expect(tokens.text, equals(LyraColors.zinc950));
       expect(tokens.border, equals(LyraColors.zinc200));
     });
+
+    test('LyraAnimation defines standard motion durations and curves', () {
+      expect(LyraAnimation.fast, equals(const Duration(milliseconds: 150)));
+      expect(LyraAnimation.normal, equals(const Duration(milliseconds: 250)));
+      expect(LyraAnimation.sheet, equals(const Duration(milliseconds: 350)));
+      expect(LyraAnimation.slow, equals(const Duration(milliseconds: 500)));
+      expect(LyraAnimation.defaultCurve, equals(Curves.easeInOutCubic));
+      expect(
+        LyraAnimation.springGentle,
+        equals(const Cubic(0.32, 0.72, 0.0, 1.0)),
+      );
+    });
   });
 
   group('Facade Widgets with ShadcnFactory', () {

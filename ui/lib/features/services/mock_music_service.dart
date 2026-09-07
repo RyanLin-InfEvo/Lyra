@@ -480,6 +480,20 @@ class MockMusicService implements MusicService {
     return playlist;
   }
 
+  /// Adds a track ID to a playlist if not already present.
+  void addTrackToPlaylist(String playlistId, String trackId) {
+    final index = _playlists.indexWhere((p) => p.id == playlistId);
+    if (index != -1) {
+      final pl = _playlists[index];
+      if (!pl.trackIds.contains(trackId)) {
+        _playlists[index] = pl.copyWith(
+          trackIds: [...pl.trackIds, trackId],
+          updatedAt: DateTime.now(),
+        );
+      }
+    }
+  }
+
   @override
   Future<List<CasObject>> getCasObjects() async {
     return List.unmodifiable(_casObjects);

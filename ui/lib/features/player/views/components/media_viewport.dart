@@ -208,6 +208,15 @@ class _MediaViewportState extends State<MediaViewport> {
         Expanded(
           child: AnimatedSwitcher(
             duration: const Duration(milliseconds: 240),
+            layoutBuilder: (currentChild, previousChildren) => Stack(
+              alignment: Alignment.center,
+              children: [...previousChildren, ?currentChild],
+            ),
+            transitionBuilder: (child, animation) => FadeTransition(
+              key: ValueKey<Key?>(child.key),
+              opacity: animation,
+              child: child,
+            ),
             child: _currentMode == MediaViewportMode.song
                 ? SongArtworkCard(
                     key: const ValueKey('song_artwork_mode'),

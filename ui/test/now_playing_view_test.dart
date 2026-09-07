@@ -9,6 +9,7 @@ import 'package:shadcn_ui/shadcn_ui.dart';
 import 'package:ui/design_system/factory/lyra_design_system_scope.dart';
 import 'package:ui/design_system/factory/shadcn_factory.dart';
 import 'package:ui/design_system/tokens/lyra_tokens.dart';
+import 'package:ui/features/inspector/audio_inspector_drawer.dart';
 import 'package:ui/features/models/track.dart';
 import 'package:ui/features/player/controllers/playback_queue_controller.dart';
 import 'package:ui/features/player/models/lyrics.dart';
@@ -18,6 +19,7 @@ import 'package:ui/features/player/views/components/song_artwork_card.dart';
 import 'package:ui/features/player/views/components/up_next_tab.dart';
 import 'package:ui/features/player/views/components/video_surface_card.dart';
 import 'package:ui/features/player/views/now_playing_view.dart';
+import 'package:ui/features/services/music_service.dart';
 import 'package:ui/features/shell/player_bar.dart';
 
 Widget _buildNowPlayingTest({
@@ -30,6 +32,8 @@ Widget _buildNowPlayingTest({
   Widget? customVideoPlayer,
   String? videoTag,
   LyricsData? lyrics,
+  ValueNotifier<int>? selectedTabNotifier,
+  MusicService? musicService,
 }) {
   final themeModeNotifier =
       themeNotifier ?? ValueNotifier<ThemeMode>(ThemeMode.dark);
@@ -68,6 +72,8 @@ Widget _buildNowPlayingTest({
                 customVideoPlayer: customVideoPlayer,
                 videoTag: videoTag,
                 lyrics: lyrics,
+                selectedTabNotifier: selectedTabNotifier,
+                musicService: musicService,
               ),
             ),
           ),
@@ -211,19 +217,14 @@ void main() {
         );
         await tester.pumpAndSettle();
 
-        // Top bar header
-        expect(find.text('Now Playing'), findsOneWidget);
+        // Zero top bar clutter - floating collapse button
+        expect(find.text('Now Playing'), findsNothing);
         expect(find.text('Collapse'), findsOneWidget);
 
         // Media Viewport in Song mode
         expect(find.byType(MediaViewport), findsOneWidget);
         expect(find.byType(SongArtworkCard), findsOneWidget);
         expect(find.byType(VideoSurfaceCard), findsNothing);
-
-        // Track metadata rendered inside SongArtworkCard
-        expect(find.text('Hotel California (Live on MTV 1994)'), findsWidgets);
-        expect(find.text('Eagles'), findsWidgets);
-        expect(find.text('Hell Freezes Over'), findsWidgets);
 
         // Fallback disc icon in artwork
         expect(find.byIcon(LucideIcons.disc), findsOneWidget);
@@ -462,6 +463,75 @@ void main() {
     });
   });
 
+  group('NowPlayingView - Tab Switching to Details / Inspector', () {
+    testWidgets('switches to Details tab and renders AudioInspectorContent', (
+      tester,
+    ) async {
+      tester.view.physicalSize = const Size(1280, 800);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+
+      final controller = PlaybackQueueController(autoStartTimer: false);
+      addTearDown(controller.dispose);
+      controller.play(track1, contextQueue: [track1]);
+
+      await tester.pumpWidget(
+        _buildNowPlayingTest(playbackController: controller),
+      );
+      await tester.pumpAndSettle();
+
+      // Details tab button is present in right-side segmented pill switcher
+      final detailsTab = find.text('Details');
+      expect(detailsTab, findsOneWidget);
+
+      // Tap Details tab
+      await tester.tap(detailsTab);
+      await tester.pumpAndSettle();
+
+      // Displays AudioInspectorContent
+      expect(find.byType(AudioInspectorContent), findsOneWidget);
+      expect(find.byType(UpNextTab), findsNothing);
+      expect(find.byType(LyricsTab), findsNothing);
+
+      // Shows technical info from track
+      expect(find.text('24-bit/96kHz'), findsOneWidget);
+      expect(find.text('Acoustic Specifications'), findsOneWidget);
+    });
+
+    testWidgets('external selectedTabNotifier controls active tab', (
+      tester,
+    ) async {
+      tester.view.physicalSize = const Size(1280, 800);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+
+      final controller = PlaybackQueueController(autoStartTimer: false);
+      addTearDown(controller.dispose);
+      controller.play(track1, contextQueue: [track1]);
+
+      final tabNotifier = ValueNotifier<int>(0);
+      addTearDown(tabNotifier.dispose);
+
+      await tester.pumpWidget(
+        _buildNowPlayingTest(
+          playbackController: controller,
+          selectedTabNotifier: tabNotifier,
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.byType(UpNextTab), findsOneWidget);
+      expect(find.byType(AudioInspectorContent), findsNothing);
+
+      // Programmatically switch to Details tab (index 2) via notifier
+      tabNotifier.value = 2;
+      await tester.pumpAndSettle();
+
+      expect(find.byType(AudioInspectorContent), findsOneWidget);
+      expect(find.byType(UpNextTab), findsNothing);
+    });
+  });
+
   group('NowPlayingView - Collapse & Keyboard Escape', () {
     testWidgets('invokes onCollapse when collapse button is tapped', (
       tester,
@@ -580,9 +650,9 @@ void main() {
     );
   });
 
-  group('SongArtworkCard - Secondary Controls', () {
+  group('SongArtworkCard - Artwork Presentation', () {
     testWidgets(
-      'shuffle toggle and repeat mode cycler update playback controller',
+      'renders square album art presentation card with disc fallback',
       (tester) async {
         final controller = PlaybackQueueController(autoStartTimer: false);
         addTearDown(controller.dispose);
@@ -593,34 +663,12 @@ void main() {
         );
         await tester.pumpAndSettle();
 
-        // 1. Shuffle toggle
-        expect(controller.shuffleMode, isFalse);
-        final shuffleBtn = find.byIcon(LucideIcons.shuffle).first;
-        await tester.tap(shuffleBtn);
-        await tester.pumpAndSettle();
-        expect(controller.shuffleMode, isTrue);
+        // 1. SongArtworkCard is present
+        expect(find.byType(SongArtworkCard), findsOneWidget);
+        expect(find.byIcon(LucideIcons.disc), findsOneWidget);
 
-        // 2. Repeat mode cycling: off -> all -> one -> off
-        expect(controller.repeatMode, equals(RepeatMode.off));
-        final repeatBtn = find.byIcon(LucideIcons.repeat);
-        await tester.tap(repeatBtn);
-        await tester.pumpAndSettle();
-        expect(controller.repeatMode, equals(RepeatMode.all));
-
-        await tester.tap(find.byIcon(LucideIcons.repeat));
-        await tester.pumpAndSettle();
-        expect(controller.repeatMode, equals(RepeatMode.one));
-        expect(find.byIcon(LucideIcons.repeat1), findsOneWidget);
-
-        await tester.tap(find.byIcon(LucideIcons.repeat1));
-        await tester.pumpAndSettle();
-        expect(controller.repeatMode, equals(RepeatMode.off));
-
-        // 3. Favorite toggle
-        final favoriteBtn = find.byIcon(LucideIcons.heart);
-        expect(favoriteBtn, findsOneWidget);
-        await tester.tap(favoriteBtn);
-        await tester.pumpAndSettle();
+        // 2. Secondary buttons under artwork are removed
+        expect(find.byIcon(LucideIcons.heart), findsNothing);
       },
     );
   });
@@ -835,6 +883,43 @@ void main() {
         final bottomExpanded = splitCol.children[2] as Expanded;
         expect(topExpanded.flex, equals(2));
         expect(bottomExpanded.flex, equals(1));
+      },
+    );
+
+    testWidgets(
+      'switches between UpNext and Lyrics tabs via AnimatedSwitcher without errors',
+      (tester) async {
+        final controller = PlaybackQueueController(autoStartTimer: false);
+        addTearDown(controller.dispose);
+        controller.addAllToQueue([track1, track2]);
+
+        await tester.pumpWidget(
+          _buildNowPlayingTest(playbackController: controller),
+        );
+        await tester.pumpAndSettle();
+
+        // Initially Up Next tab is selected
+        expect(find.byType(UpNextTab), findsOneWidget);
+        expect(find.byType(LyricsTab), findsNothing);
+
+        // Tap shuffle button (uses closure)
+        await tester.tap(find.byIcon(LucideIcons.shuffle).first);
+        await tester.pumpAndSettle();
+        expect(controller.shuffleMode, isTrue);
+
+        // Switch to Lyrics tab
+        await tester.tap(find.text('Lyrics'));
+        await tester.pumpAndSettle();
+
+        expect(find.byType(LyricsTab), findsOneWidget);
+        expect(find.byType(UpNextTab), findsNothing);
+
+        // Switch back to Up Next tab
+        await tester.tap(find.text('Up Next'));
+        await tester.pumpAndSettle();
+
+        expect(find.byType(UpNextTab), findsOneWidget);
+        expect(find.byType(LyricsTab), findsNothing);
       },
     );
   });
