@@ -676,9 +676,6 @@ class _AppShellState extends State<AppShell> {
                                         onActiveAudioChanged: (newPcmHash) {
                                           _loadCatalog();
                                         },
-                                        onVerifyIntegrity: (hash) => widget
-                                            .musicService
-                                            .verifyCasHash(hash),
                                       ),
                                     ),
                                 ],

@@ -8,7 +8,6 @@ import 'package:shadcn_ui/shadcn_ui.dart';
 import 'package:ui/design_system/factory/lyra_design_system_scope.dart';
 import 'package:ui/design_system/factory/shadcn_factory.dart';
 import 'package:ui/design_system/tokens/lyra_tokens.dart';
-import 'package:ui/design_system/widgets/lyra_button.dart';
 import 'package:ui/features/inspector/asset_inspector_drawer.dart';
 import 'package:ui/features/models/audio.dart';
 import 'package:ui/features/models/cas_object.dart';
@@ -24,7 +23,6 @@ Widget _buildInspectorTestWidget({
   SourceData? initialSourceData,
   MusicService? musicService,
   VoidCallback? onClose,
-  Future<bool> Function(String hash)? onVerifyIntegrity,
   ValueNotifier<ThemeMode>? themeNotifier,
   double width = 420.0,
 }) {
@@ -68,7 +66,6 @@ Widget _buildInspectorTestWidget({
                         initialSourceData: initialSourceData,
                         musicService: musicService,
                         onClose: onClose ?? () {},
-                        onVerifyIntegrity: onVerifyIntegrity,
                         width: width,
                       ),
                     ],
@@ -186,8 +183,9 @@ void main() {
     // Decorative marketing badge "CAS Verified" must NOT be in header
     expect(find.text('CAS Verified'), findsNothing);
 
-    // 2. Acoustic Specifications Section
-    expect(find.text('Acoustic Specifications'), findsOneWidget);
+    // 2. Audio Specifications Section
+    expect(find.text('Audio Specifications'), findsOneWidget);
+    expect(find.text('Acoustic Specifications'), findsNothing);
     expect(find.text('ACOUSTIC SPECIFICATIONS'), findsNothing);
 
     // Gamified marketing scores must be eliminated
@@ -216,7 +214,8 @@ void main() {
     expect(find.text('2.0 Stereo'), findsOneWidget);
 
     // Decoded PCM Hash
-    expect(find.text('Decoded PCM Stream Hash'), findsOneWidget);
+    expect(find.text('PCM Hash'), findsOneWidget);
+    expect(find.text('Decoded PCM Stream Hash'), findsNothing);
     expect(find.text('DECODED PCM STREAM HASH (SHA-256)'), findsNothing);
     expect(
       find.text(
@@ -243,29 +242,34 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      // Section 2: Storage & File Container
-      expect(find.text('Storage & File Container'), findsOneWidget);
+      // Section 2: File Storage
+      expect(find.text('File Storage'), findsOneWidget);
+      expect(find.text('Storage & File Container'), findsNothing);
       expect(find.text('CONTENT ADDRESSABLE STORAGE (CAS)'), findsNothing);
       expect(find.text('File Size'), findsOneWidget);
       expect(find.text('PAYLOAD SIZE'), findsNothing);
       expect(find.text('149.6 MB'), findsOneWidget);
       expect(find.text('${sampleAsset.fileSize} bytes'), findsNothing);
-      expect(find.text('Container MIME'), findsOneWidget);
+      expect(find.text('MIME Type'), findsOneWidget);
+      expect(find.text('Container MIME'), findsNothing);
       expect(find.text('CONTAINER MIME'), findsNothing);
       expect(find.text('audio/flac'), findsOneWidget);
       expect(find.text('Content-Type'), findsNothing);
-      expect(find.text('Physical File Digest'), findsOneWidget);
+      expect(find.text('File Hash'), findsOneWidget);
+      expect(find.text('Physical File Digest'), findsNothing);
       expect(find.text('PHYSICAL BLOB DIGEST (SHA-256)'), findsNothing);
 
-      // Section 3: Digital Provenance
-      expect(find.text('Digital Provenance'), findsOneWidget);
+      // Section 3: Source Information
+      expect(find.text('Source Information'), findsOneWidget);
+      expect(find.text('Digital Provenance'), findsNothing);
       expect(find.text('DIGITAL PROVENANCE & NOTARIZATION'), findsNothing);
       expect(find.text('Source Type'), findsOneWidget);
       expect(find.text('SOURCE ACQUISITION'), findsNothing);
       expect(find.text('CD-Rip'), findsOneWidget);
       expect(find.text('CD-Rip (Redbook Audio)'), findsNothing);
 
-      expect(find.text('Notarization Timestamp'), findsOneWidget);
+      expect(find.text('Timestamp'), findsOneWidget);
+      expect(find.text('Notarization Timestamp'), findsNothing);
       expect(find.text('NOTARIZATION TIMESTAMP'), findsNothing);
       expect(find.text('2026-01-15 10:30:00 UTC'), findsOneWidget);
 
@@ -279,13 +283,15 @@ void main() {
       );
 
       // Objective Cryptographic Integrity Status (Marketing buzzwords removed)
-      expect(find.text('Integrity: Verified'), findsOneWidget);
-      expect(find.text('Checksum Match'), findsOneWidget);
+      expect(find.text('Integrity: Verified'), findsNothing);
+      expect(find.text('Checksum Match'), findsNothing);
+      expect(find.text('Re-verify'), findsNothing);
       expect(find.text('Cryptographically Notarized'), findsNothing);
       expect(find.text('SHA-256 CAS hash verified bit-perfect'), findsNothing);
 
       // Curator notes in monospace box
-      expect(find.text('Curator & Ingestion Log'), findsOneWidget);
+      expect(find.text('Ingestion Note'), findsOneWidget);
+      expect(find.text('Curator & Ingestion Log'), findsNothing);
       expect(find.text('CURATOR LINEAGE & NOTES'), findsNothing);
       expect(
         find.text(
@@ -326,20 +332,16 @@ void main() {
       expect(find.text('CD-Rip'), findsNothing);
       expect(find.text('/library/audio/Unanalyzed Track.flac'), findsNothing);
 
-      // Physical file is not registered in CAS: integrity should indicate unregistered
-      expect(find.text('Integrity: Unregistered'), findsOneWidget);
-      expect(find.text('No physical file registered in CAS'), findsOneWidget);
-
-      // Re-verify button must be disabled
-      final reVerifyButton = tester.widget<LyraButton>(
-        find.widgetWithText(LyraButton, 'Re-verify'),
-      );
-      expect(reVerifyButton.onPressed, isNull);
+      // Physical file is not registered in CAS: displays em-dash and subtitle
+      expect(find.text('File Hash'), findsOneWidget);
+      expect(find.text('Not registered in CAS'), findsOneWidget);
+      expect(find.text('Integrity: Unregistered'), findsNothing);
+      expect(find.text('Re-verify'), findsNothing);
     },
   );
 
   testWidgets(
-    'AssetInspectorDrawer verifies physical fileHash (not pcmHash) and handles integrity failure',
+    'AssetInspectorDrawer displays physical fileHash (not pcmHash) and clean technical metadata without placebo cards',
     (tester) async {
       tester.view.physicalSize = const Size(1280, 800);
       tester.view.devicePixelRatio = 1.0;
@@ -357,40 +359,24 @@ void main() {
         createdAt: DateTime(2026, 1, 1),
         verified: true,
       );
-      String? verifiedHash;
-      bool callbackResult = true;
 
       await tester.pumpWidget(
-        _buildInspectorTestWidget(
-          track: customTrack,
-          asset: customAsset,
-          onVerifyIntegrity: (hash) async {
-            verifiedHash = hash;
-            return callbackResult;
-          },
-        ),
+        _buildInspectorTestWidget(track: customTrack, asset: customAsset),
       );
       await tester.pumpAndSettle();
 
-      final reVerifyBtn = find.text('Re-verify');
-      expect(reVerifyBtn, findsOneWidget);
+      // Must display fileHash in CAS card, NEVER pcmHash as File Hash
+      expect(find.text('file-hash-value-0987654321fedcba'), findsOneWidget);
+      expect(find.text('File Size'), findsOneWidget);
+      expect(find.text('MIME Type'), findsOneWidget);
+      expect(find.text('audio/flac'), findsOneWidget);
 
-      await tester.tap(reVerifyBtn);
-      await tester.pumpAndSettle();
-
-      // Must verify fileHash, NEVER pcmHash
-      expect(verifiedHash, equals('file-hash-value-0987654321fedcba'));
-      expect(verifiedHash, isNot(equals('pcm-hash-value-1234567890abcdef')));
-      expect(find.text('Integrity: Verified'), findsOneWidget);
-      expect(find.text('Checksum Match'), findsOneWidget);
-
-      // Now verify failure state
-      callbackResult = false;
-      await tester.tap(reVerifyBtn);
-      await tester.pumpAndSettle();
-
-      expect(find.text('Verification Failed'), findsOneWidget);
-      expect(find.text('Checksum Mismatch'), findsOneWidget);
+      // Placebo integrity elements must NOT exist
+      expect(find.text('Integrity: Verified'), findsNothing);
+      expect(find.text('Checksum Match'), findsNothing);
+      expect(find.text('Verification Failed'), findsNothing);
+      expect(find.text('Checksum Mismatch'), findsNothing);
+      expect(find.text('Re-verify'), findsNothing);
     },
   );
 
@@ -440,47 +426,8 @@ void main() {
     },
   );
 
-  testWidgets('AssetInspectorDrawer re-verifies integrity via callback', (
-    tester,
-  ) async {
-    tester.view.physicalSize = const Size(1280, 800);
-    tester.view.devicePixelRatio = 1.0;
-    addTearDown(tester.view.resetPhysicalSize);
-
-    bool verifyCalled = false;
-    String? verifiedHash;
-
-    await tester.pumpWidget(
-      _buildInspectorTestWidget(
-        track: sampleTrack,
-        initialAudio: sampleAudio,
-        initialSourceData: sampleSourceData,
-        asset: sampleAsset,
-        onVerifyIntegrity: (hash) async {
-          verifyCalled = true;
-          verifiedHash = hash;
-          return true;
-        },
-      ),
-    );
-    await tester.pumpAndSettle();
-
-    // Click Re-verify button
-    final reVerifyBtn = find.text('Re-verify');
-    expect(reVerifyBtn, findsOneWidget);
-
-    await tester.ensureVisible(reVerifyBtn);
-    await tester.pumpAndSettle();
-
-    await tester.tap(reVerifyBtn);
-    await tester.pumpAndSettle();
-
-    expect(verifyCalled, isTrue);
-    expect(verifiedHash, equals(sampleAsset.fileHash));
-  });
-
   testWidgets(
-    'AssetInspectorDrawer loads acoustic and provenance data via MusicService',
+    'AssetInspectorDrawer loads audio specifications and provenance data via MusicService',
     (tester) async {
       tester.view.physicalSize = const Size(1280, 800);
       tester.view.devicePixelRatio = 1.0;
@@ -494,7 +441,7 @@ void main() {
       await tester.pumpAndSettle();
 
       // Verify data was fetched asynchronously from MockMusicService
-      expect(find.text('Acoustic Specifications'), findsOneWidget);
+      expect(find.text('Audio Specifications'), findsOneWidget);
       expect(find.text('-14.2 LUFS'), findsOneWidget);
       expect(find.text('CD-Rip'), findsOneWidget);
       expect(
@@ -507,7 +454,7 @@ void main() {
   );
 
   testWidgets(
-    'AssetInspectorDrawer renders CAS blob mode when only Asset is supplied',
+    'AssetInspectorDrawer renders CAS asset mode when only Asset is supplied',
     (tester) async {
       tester.view.physicalSize = const Size(1280, 800);
       tester.view.devicePixelRatio = 1.0;
@@ -527,7 +474,7 @@ void main() {
 
       expect(find.text('Inspector'), findsOneWidget);
       expect(find.text('Asset & Notarization'), findsNothing);
-      expect(find.text('CAS Physical File Blob'), findsOneWidget);
+      expect(find.text('CAS Asset'), findsOneWidget);
       expect(find.text('365.2 MB'), findsWidgets);
       expect(find.text('audio/flac'), findsWidgets);
     },

@@ -58,9 +58,6 @@ abstract class MusicService {
     required String simulatedHash,
   });
 
-  /// Verify CAS hash integrity on the server/storage engine.
-  Future<bool> verifyCasHash(String hash);
-
   /// Fetch acoustic specifications (Tier 3) for a given decoded PCM hash.
   Future<Audio?> getAudioDetails(String pcmHash);
 

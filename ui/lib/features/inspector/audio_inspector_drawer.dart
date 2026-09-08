@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import 'dart:async';
-import 'package:flutter/material.dart' show SelectionArea, Tooltip;
+import 'package:flutter/material.dart' show SelectionArea;
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
@@ -28,7 +28,6 @@ class AudioInspectorDrawer extends StatelessWidget {
   final SourceData? initialSourceData;
   final MusicService? musicService;
   final VoidCallback onClose;
-  final Future<bool> Function(String hash)? onVerifyIntegrity;
   final void Function(String newPcmHash)? onActiveAudioChanged;
   final double width;
 
@@ -40,7 +39,6 @@ class AudioInspectorDrawer extends StatelessWidget {
     this.initialSourceData,
     this.musicService,
     required this.onClose,
-    this.onVerifyIntegrity,
     this.onActiveAudioChanged,
     this.width = 420.0,
   });
@@ -65,7 +63,6 @@ class AudioInspectorDrawer extends StatelessWidget {
               initialAudio: initialAudio,
               initialSourceData: initialSourceData,
               musicService: musicService,
-              onVerifyIntegrity: onVerifyIntegrity,
               onActiveAudioChanged: onActiveAudioChanged,
             ),
           ),
@@ -125,7 +122,6 @@ class AudioInspectorContent extends StatefulWidget {
   final Audio? initialAudio;
   final SourceData? initialSourceData;
   final MusicService? musicService;
-  final Future<bool> Function(String hash)? onVerifyIntegrity;
   final void Function(String newPcmHash)? onActiveAudioChanged;
   final EdgeInsetsGeometry padding;
 
@@ -136,7 +132,6 @@ class AudioInspectorContent extends StatefulWidget {
     this.initialAudio,
     this.initialSourceData,
     this.musicService,
-    this.onVerifyIntegrity,
     this.onActiveAudioChanged,
     this.padding = const EdgeInsets.all(LyraSpacing.md),
   });
@@ -153,8 +148,6 @@ class _AudioInspectorContentState extends State<AudioInspectorContent> {
   Asset? _resolvedAsset;
   bool _isLoading = false;
   bool _isSwitchingActive = false;
-  bool _isVerifying = false;
-  bool? _verificationResult;
   String? _copiedField;
   Timer? _copyResetTimer;
 
@@ -180,7 +173,6 @@ class _AudioInspectorContentState extends State<AudioInspectorContent> {
       _selectedAudio = widget.initialAudio;
       _sourceData = widget.initialSourceData;
       _resolvedAsset = widget.asset;
-      _verificationResult = null;
       _fetchDetails();
     }
   }
@@ -289,7 +281,6 @@ class _AudioInspectorContentState extends State<AudioInspectorContent> {
 
     setState(() {
       _selectedAudio = version;
-      _verificationResult = null;
       _isLoading = true;
     });
 
@@ -350,39 +341,6 @@ class _AudioInspectorContentState extends State<AudioInspectorContent> {
         _isSwitchingActive = false;
       });
     }
-  }
-
-  Future<void> _handleVerifyIntegrity() async {
-    final fileHash =
-        _resolvedAsset?.fileHash ??
-        widget.asset?.fileHash ??
-        (_selectedAudio != null && _selectedAudio!.assets.isNotEmpty
-            ? _selectedAudio!.assets.first.fileHash
-            : null);
-
-    if (fileHash == null || fileHash.isEmpty) return;
-
-    setState(() {
-      _isVerifying = true;
-    });
-
-    bool verified = false;
-    try {
-      if (widget.onVerifyIntegrity != null) {
-        verified = await widget.onVerifyIntegrity!(fileHash);
-      } else if (widget.musicService != null) {
-        verified = await widget.musicService!.verifyCasHash(fileHash);
-      }
-    } catch (_) {
-      verified = false;
-    }
-
-    if (!mounted) return;
-
-    setState(() {
-      _isVerifying = false;
-      _verificationResult = verified;
-    });
   }
 
   void _copyToClipboard(String text, String fieldIdentifier) {
@@ -539,17 +497,17 @@ class _AudioInspectorContentState extends State<AudioInspectorContent> {
 
           const SizedBox(height: LyraSpacing.md),
 
-          // Section 1: Acoustic Specifications (Audio - Tier 3)
+          // Section 1: Audio Specifications (Audio - Tier 3)
           _buildAcousticSpecificationsCard(tokens),
 
           const SizedBox(height: LyraSpacing.md),
 
-          // Section 2: Content Addressable Storage (CAS Asset Reference - Tier 4)
+          // Section 2: File Storage (CAS Asset Reference - Tier 4)
           _buildCasAssetCard(tokens),
 
           const SizedBox(height: LyraSpacing.md),
 
-          // Section 3: Digital Provenance & Notarization (SourceData - Tier 4)
+          // Section 3: Source Information (SourceData - Tier 4)
           _buildProvenanceCard(tokens),
 
           const SizedBox(height: LyraSpacing.lg),
@@ -688,7 +646,7 @@ class _AudioInspectorContentState extends State<AudioInspectorContent> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        'CAS Physical File Blob',
+                        'CAS Asset',
                         style: LyraTypography.p(
                           tokens,
                         ).copyWith(fontWeight: FontWeight.bold, fontSize: 15.0),
@@ -943,7 +901,7 @@ class _AudioInspectorContentState extends State<AudioInspectorContent> {
               const SizedBox(width: LyraSpacing.xs),
               Expanded(
                 child: Text(
-                  'Acoustic Specifications',
+                  'Audio Specifications',
                   style: LyraTypography.small(tokens).copyWith(
                     fontWeight: FontWeight.bold,
                     color: tokens.textMuted,
@@ -1000,14 +958,14 @@ class _AudioInspectorContentState extends State<AudioInspectorContent> {
           if (pcmHash.isNotEmpty) ...[
             const SizedBox(height: LyraSpacing.sm),
             _buildHashBox(
-              label: 'Decoded PCM Stream Hash',
+              label: 'PCM Hash',
               hash: pcmHash,
               fieldId: 'pcm_hash',
               tokens: tokens,
             ),
           ] else ...[
             _buildPropertyRow(
-              label: 'Decoded PCM Stream Hash',
+              label: 'PCM Hash',
               value: '—',
               subtitle: 'Not available',
               tokens: tokens,
@@ -1039,7 +997,7 @@ class _AudioInspectorContentState extends State<AudioInspectorContent> {
               const SizedBox(width: LyraSpacing.xs),
               Expanded(
                 child: Text(
-                  'Storage & File Container',
+                  'File Storage',
                   style: LyraTypography.small(tokens).copyWith(
                     fontWeight: FontWeight.bold,
                     color: tokens.textMuted,
@@ -1057,31 +1015,26 @@ class _AudioInspectorContentState extends State<AudioInspectorContent> {
             tokens: tokens,
           ),
           _buildPropertyRow(
-            label: 'Container MIME',
+            label: 'MIME Type',
             value: hasAsset && asset.mimeType.isNotEmpty ? asset.mimeType : '—',
             tokens: tokens,
           ),
           if (fileHash.isNotEmpty) ...[
             const SizedBox(height: LyraSpacing.sm),
             _buildHashBox(
-              label: 'Physical File Digest',
+              label: 'File Hash',
               hash: fileHash,
               fieldId: 'cas_hash',
               tokens: tokens,
             ),
           ] else ...[
             _buildPropertyRow(
-              label: 'Physical File Digest',
+              label: 'File Hash',
               value: '—',
               subtitle: 'Not registered in CAS',
               tokens: tokens,
             ),
           ],
-          const SizedBox(height: LyraSpacing.sm),
-          _buildIntegrityStatusRow(
-            fileHash: fileHash.isNotEmpty ? fileHash : null,
-            tokens: tokens,
-          ),
         ],
       ),
     );
@@ -1112,7 +1065,7 @@ class _AudioInspectorContentState extends State<AudioInspectorContent> {
               const SizedBox(width: LyraSpacing.xs),
               Expanded(
                 child: Text(
-                  'Digital Provenance',
+                  'Source Information',
                   style: LyraTypography.small(tokens).copyWith(
                     fontWeight: FontWeight.bold,
                     color: tokens.textMuted,
@@ -1130,7 +1083,7 @@ class _AudioInspectorContentState extends State<AudioInspectorContent> {
             tokens: tokens,
           ),
           _buildPropertyRow(
-            label: 'Notarization Timestamp',
+            label: 'Timestamp',
             value: createdAt != null
                 ? '${createdAt.toIso8601String().replaceAll('T', ' ').substring(0, 19)} UTC'
                 : '—',
@@ -1150,7 +1103,7 @@ class _AudioInspectorContentState extends State<AudioInspectorContent> {
           if (note.isNotEmpty) ...[
             const SizedBox(height: LyraSpacing.sm),
             Text(
-              'Curator & Ingestion Log',
+              'Ingestion Note',
               style: LyraTypography.small(tokens).copyWith(
                 fontWeight: FontWeight.bold,
                 color: tokens.textMuted,
@@ -1178,127 +1131,6 @@ class _AudioInspectorContentState extends State<AudioInspectorContent> {
             ),
           ],
         ],
-      ),
-    );
-  }
-
-  Widget _buildIntegrityStatusRow({
-    required String? fileHash,
-    required LyraThemeTokens tokens,
-  }) {
-    final hasFile = fileHash != null && fileHash.isNotEmpty;
-    final isVerified =
-        hasFile &&
-        (_verificationResult ??
-            _resolvedAsset?.verified ??
-            widget.asset?.verified ??
-            _track?.verified ??
-            false);
-
-    Color statusColor;
-    Color bgColor;
-    Color borderColor;
-    IconData statusIcon;
-    String statusTitle;
-    String statusSubtitle;
-
-    if (!hasFile) {
-      statusColor = tokens.textMuted;
-      bgColor = tokens.secondary.withValues(alpha: 0.3);
-      borderColor = tokens.border;
-      statusIcon = LucideIcons.fileQuestion;
-      statusTitle = 'Integrity: Unregistered';
-      statusSubtitle = 'No physical file registered in CAS';
-    } else if (!isVerified) {
-      statusColor = tokens.destructive;
-      bgColor = tokens.destructive.withValues(alpha: 0.08);
-      borderColor = tokens.destructive.withValues(alpha: 0.3);
-      statusIcon = LucideIcons.shieldAlert;
-      statusTitle = 'Verification Failed';
-      statusSubtitle = 'Checksum Mismatch';
-    } else {
-      statusColor = tokens.success;
-      bgColor = tokens.success.withValues(alpha: 0.08);
-      borderColor = tokens.success.withValues(alpha: 0.3);
-      statusIcon = LucideIcons.shieldCheck;
-      statusTitle = 'Integrity: Verified';
-      statusSubtitle = 'Checksum Match';
-    }
-
-    return Container(
-      padding: const EdgeInsets.symmetric(
-        horizontal: LyraSpacing.md,
-        vertical: LyraSpacing.sm,
-      ),
-      decoration: BoxDecoration(
-        color: bgColor,
-        borderRadius: LyraRadius.smRadius,
-        border: Border.all(color: borderColor, width: 1.0),
-      ),
-      child: LayoutBuilder(
-        builder: (context, constraints) {
-          final isNarrow = constraints.maxWidth < 260;
-          return Row(
-            children: [
-              Icon(statusIcon, size: 18.0, color: statusColor),
-              const SizedBox(width: LyraSpacing.sm),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(
-                      statusTitle,
-                      style: LyraTypography.small(tokens).copyWith(
-                        fontWeight: FontWeight.bold,
-                        color: statusColor,
-                        fontSize: 13.0,
-                      ),
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    Text(
-                      statusSubtitle,
-                      style: LyraTypography.muted(
-                        tokens,
-                      ).copyWith(fontSize: 11.5),
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ],
-                ),
-              ),
-              if (!isNarrow) ...[
-                const SizedBox(width: LyraSpacing.sm),
-                LyraButton.outline(
-                  size: LyraButtonSize.sm,
-                  onPressed: (!hasFile || _isVerifying)
-                      ? null
-                      : _handleVerifyIntegrity,
-                  leading: _isVerifying
-                      ? const Icon(LucideIcons.loader2, size: 12.0)
-                      : const Icon(LucideIcons.refreshCw, size: 12.0),
-                  child: Text(_isVerifying ? 'Checking...' : 'Re-verify'),
-                ),
-              ] else ...[
-                const SizedBox(width: LyraSpacing.xs),
-                Tooltip(
-                  message: 'Re-verify',
-                  child: LyraButton.outline(
-                    size: LyraButtonSize.sm,
-                    width: 28.0,
-                    height: 28.0,
-                    padding: EdgeInsets.zero,
-                    onPressed: (!hasFile || _isVerifying)
-                        ? null
-                        : _handleVerifyIntegrity,
-                    child: _isVerifying
-                        ? const Icon(LucideIcons.loader2, size: 12.0)
-                        : const Icon(LucideIcons.refreshCw, size: 12.0),
-                  ),
-                ),
-              ],
-            ],
-          );
-        },
       ),
     );
   }

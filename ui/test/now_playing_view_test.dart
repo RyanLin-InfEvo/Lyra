@@ -495,7 +495,7 @@ void main() {
 
       // Shows technical info from track
       expect(find.text('24-bit/96kHz'), findsOneWidget);
-      expect(find.text('Acoustic Specifications'), findsOneWidget);
+      expect(find.text('Audio Specifications'), findsOneWidget);
     });
 
     testWidgets('external selectedTabNotifier controls active tab', (

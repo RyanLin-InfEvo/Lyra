@@ -924,11 +924,6 @@ class MockMusicService implements MusicService {
   };
 
   @override
-  Future<bool> verifyCasHash(String hash) async {
-    return _casObjects.any((obj) => obj.hash == hash);
-  }
-
-  @override
   Future<Audio?> getAudioDetails(String pcmHash) async {
     if (_audioDetails.containsKey(pcmHash)) {
       return _audioDetails[pcmHash];

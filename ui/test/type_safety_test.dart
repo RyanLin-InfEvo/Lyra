@@ -127,9 +127,6 @@ class EmptyMusicService implements MusicService {
   }
 
   @override
-  Future<bool> verifyCasHash(String hash) async => true;
-
-  @override
   Future<Audio?> getAudioDetails(String pcmHash) async => null;
 
   @override

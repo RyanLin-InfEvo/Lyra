@@ -834,8 +834,8 @@ void main() {
       // Drawer is opened
       expect(find.byType(AssetInspectorDrawer), findsOneWidget);
       expect(find.text('Inspector'), findsOneWidget);
-      expect(find.text('Acoustic Specifications'), findsOneWidget);
-      expect(find.text('Digital Provenance'), findsOneWidget);
+      expect(find.text('Audio Specifications'), findsOneWidget);
+      expect(find.text('Source Information'), findsOneWidget);
 
       // 3. Dynamic track update: while inspector is open, select a different track ('So What')
       final soWhatTrack = find.descendant(
@@ -918,9 +918,9 @@ void main() {
       await tester.tap(casRow);
       await tester.pumpAndSettle();
 
-      // Verify inspector switches to CAS Physical File Blob mode
+      // Verify inspector switches to CAS Asset mode
       expect(find.byType(AssetInspectorDrawer), findsOneWidget);
-      expect(find.text('CAS Physical File Blob'), findsOneWidget);
+      expect(find.text('CAS Asset'), findsOneWidget);
     },
   );
 
