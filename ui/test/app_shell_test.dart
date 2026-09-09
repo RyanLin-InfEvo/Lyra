@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Tzu-Ting Lin
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -809,7 +810,7 @@ void main() {
   );
 
   testWidgets(
-    'AppShell opens AssetInspectorDrawer from PlayerBar, track info icon, track CAS badge, and dynamically updates on track switch',
+    'AppShell opens AssetInspectorDrawer from PlayerBar, track info icon, track resolution badge, and dynamically updates on track switch',
     (tester) async {
       tester.view.physicalSize = const Size(1280, 800);
       tester.view.devicePixelRatio = 1.0;
@@ -895,10 +896,13 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.byType(AssetInspectorDrawer), findsNothing);
 
-      // 9. Open Inspector by clicking on a Track CAS Hash Badge
-      final trackCasBadge = find.text('7f83b1...9069');
-      expect(trackCasBadge, findsWidgets);
-      await tester.tap(trackCasBadge.first);
+      // 9. Open Inspector by clicking on a Track Resolution Badge
+      final trackResolutionBadge = find.descendant(
+        of: find.byType(TracksView),
+        matching: find.textContaining('24-bit/96kHz'),
+      );
+      expect(trackResolutionBadge, findsWidgets);
+      await tester.tap(trackResolutionBadge.first);
       await tester.pumpAndSettle();
 
       expect(find.byType(AssetInspectorDrawer), findsOneWidget);
@@ -1082,4 +1086,180 @@ void main() {
       );
     },
   );
+
+  testWidgets(
+    'AppShell persists column visibility customizations across tab switches',
+    (tester) async {
+      tester.view.physicalSize = const Size(1280, 800);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+
+      await tester.pumpWidget(_buildAppShellTest());
+      await tester.pumpAndSettle();
+
+      // In initial Tracks view, verify ALBUM is visible
+      expect(find.text('ALBUM'), findsOneWidget);
+
+      // Right-click Tracks header to toggle off ALBUM
+      final tracksHeader = find.byKey(const Key('tracks_table_header'));
+      expect(tracksHeader, findsOneWidget);
+
+      final gesture = await tester.createGesture(
+        kind: PointerDeviceKind.mouse,
+        buttons: kSecondaryMouseButton,
+      );
+      await gesture.down(tester.getCenter(tracksHeader));
+      await gesture.up();
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byKey(const Key('track_col_menu_album')));
+      await tester.pumpAndSettle();
+
+      // ALBUM is now hidden
+      expect(find.text('ALBUM'), findsNothing);
+
+      // Switch to Works tab
+      await tester.tap(find.text('Works'));
+      await tester.pumpAndSettle();
+      expect(find.byType(WorksView), findsOneWidget);
+
+      // Right click Works header to toggle off Year / Date
+      final worksHeader = find.byKey(const Key('works_table_header'));
+      expect(worksHeader, findsOneWidget);
+
+      await gesture.down(tester.getCenter(worksHeader));
+      await gesture.up();
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byKey(const Key('work_col_menu_date')));
+      await tester.pumpAndSettle();
+
+      expect(find.text('COMPOSITION YEAR / DATE'), findsNothing);
+
+      // Switch back to Tracks tab
+      await tester.tap(find.text('Tracks'));
+      await tester.pumpAndSettle();
+      expect(find.byType(TracksView), findsOneWidget);
+
+      // Verify ALBUM is still hidden (session persistence)
+      expect(find.text('ALBUM'), findsNothing);
+
+      // Switch back to Works tab
+      await tester.tap(find.text('Works'));
+      await tester.pumpAndSettle();
+      expect(find.byType(WorksView), findsOneWidget);
+
+      // Verify COMPOSITION YEAR / DATE is still hidden (session persistence)
+      expect(find.text('COMPOSITION YEAR / DATE'), findsNothing);
+    },
+  );
+
+  testWidgets('AppShell persists column order customizations across tab switches', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(1440, 900);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+
+    await tester.pumpWidget(_buildAppShellTest());
+    await tester.pumpAndSettle();
+
+    // 1. In TracksView, verify # is to the left of TIME
+    final tracksHeader = find.byKey(const Key('tracks_table_header'));
+    expect(tracksHeader, findsOneWidget);
+    expect(
+      tester.getTopLeft(find.text('#')).dx,
+      lessThan(
+        tester
+            .getTopLeft(
+              find.descendant(of: tracksHeader, matching: find.text('TIME')),
+            )
+            .dx,
+      ),
+    );
+
+    // Right-click Tracks header to reorder TIME to the front
+    final gesture = await tester.createGesture(
+      kind: PointerDeviceKind.mouse,
+      buttons: kSecondaryMouseButton,
+    );
+    await gesture.down(tester.getCenter(tracksHeader));
+    await gesture.up();
+    await tester.pumpAndSettle();
+
+    final durationGrip = find.descendant(
+      of: find.byKey(const Key('track_col_menu_duration')),
+      matching: find.byIcon(LucideIcons.gripVertical),
+    );
+    await tester.timedDrag(
+      durationGrip,
+      const Offset(0, -450),
+      const Duration(milliseconds: 500),
+    );
+    await tester.pumpAndSettle();
+
+    expect(
+      tester
+          .getTopLeft(
+            find.descendant(of: tracksHeader, matching: find.text('TIME')),
+          )
+          .dx,
+      lessThan(tester.getTopLeft(find.text('#')).dx),
+    );
+
+    // 2. Switch to Works tab
+    await tester.tap(find.text('Works'));
+    await tester.pumpAndSettle();
+    expect(find.byType(WorksView), findsOneWidget);
+
+    // In WorksView, verify # is to the left of MUSICBRAINZ ID
+    final worksHeader = find.byKey(const Key('works_table_header'));
+    expect(
+      tester.getTopLeft(find.text('#')).dx,
+      lessThan(tester.getTopLeft(find.text('MUSICBRAINZ ID')).dx),
+    );
+
+    // Right-click Works header to reorder MUSICBRAINZ ID to the front
+    await gesture.down(tester.getCenter(worksHeader));
+    await gesture.up();
+    await tester.pumpAndSettle();
+
+    final mbGrip = find.descendant(
+      of: find.byKey(const Key('work_col_menu_musicbrainzId')),
+      matching: find.byIcon(LucideIcons.gripVertical),
+    );
+    await tester.timedDrag(
+      mbGrip,
+      const Offset(0, -320),
+      const Duration(milliseconds: 500),
+    );
+    await tester.pumpAndSettle();
+
+    expect(
+      tester.getTopLeft(find.text('MUSICBRAINZ ID')).dx,
+      lessThan(tester.getTopLeft(find.text('#')).dx),
+    );
+
+    // 3. Switch back to Tracks tab
+    await tester.tap(find.text('Tracks'));
+    await tester.pumpAndSettle();
+    expect(find.byType(TracksView), findsOneWidget);
+
+    // Verify TIME is STILL to the left of # (column order preserved across tabs)
+    expect(
+      tester.getTopLeft(find.text('TIME')).dx,
+      lessThan(tester.getTopLeft(find.text('#')).dx),
+    );
+
+    // 4. Switch back to Works tab
+    await tester.tap(find.text('Works'));
+    await tester.pumpAndSettle();
+    expect(find.byType(WorksView), findsOneWidget);
+
+    // Verify MUSICBRAINZ ID is STILL to the left of # (column order preserved across tabs)
+    expect(
+      tester.getTopLeft(find.text('MUSICBRAINZ ID')).dx,
+      lessThan(tester.getTopLeft(find.text('#')).dx),
+    );
+  });
 }
