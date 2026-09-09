@@ -18,6 +18,9 @@ class Track {
   /// Optional reference ID to the parent musical composition [Work].
   final String? workId;
 
+  /// Title of the linked musical work composition.
+  final String? workTitle;
+
   /// Display title of the track recording.
   final String? title;
 
@@ -38,6 +41,9 @@ class Track {
 
   /// International Standard Recording Code (ISRC).
   final String? isrc;
+
+  /// International Standard Musical Work Code (ISWC).
+  final String? iswc;
 
   /// MusicBrainz Recording ID (UUID).
   final String? musicbrainzId;
@@ -66,10 +72,20 @@ class Track {
   /// Whether the track's raw audio CAS integrity has been server-verified.
   final bool verified;
 
+  /// Music genre classification (e.g. Rock, Jazz, Classical).
+  final String? genre;
+
+  /// Track position index within its disc/media.
+  final int? trackNumber;
+
+  /// Disc or media volume number in multi-disc sets.
+  final int? discNumber;
+
   const Track({
     required this.id,
     this.pcmHash = '',
     this.workId,
+    this.workTitle,
     this.title,
     this.recordingYear,
     this.recordingMonth,
@@ -77,6 +93,7 @@ class Track {
     this.recordingLocation,
     this.durationMs,
     this.isrc,
+    this.iswc,
     this.musicbrainzId,
     this.spotifyId,
     this.ytmId,
@@ -86,6 +103,9 @@ class Track {
     this.sampleRate,
     this.bitDepth,
     this.verified = true,
+    this.genre,
+    this.trackNumber,
+    this.discNumber,
   });
 
   /// Factory constructor supporting legacy parameter names.
@@ -94,6 +114,7 @@ class Track {
     String? pcmHash,
     String? casHash,
     String? workId,
+    String? workTitle,
     String? title,
     int? recordingYear,
     int? recordingMonth,
@@ -102,6 +123,7 @@ class Track {
     int? durationMs,
     Duration? duration,
     String? isrc,
+    String? iswc,
     String? musicbrainzId,
     String? spotifyId,
     String? ytmId,
@@ -113,11 +135,15 @@ class Track {
     int? sampleRate,
     int? bitDepth,
     bool verified = true,
+    String? genre,
+    int? trackNumber,
+    int? discNumber,
   }) {
     return Track(
       id: id,
       pcmHash: pcmHash ?? casHash ?? '',
       workId: workId,
+      workTitle: workTitle,
       title: title,
       recordingYear: recordingYear,
       recordingMonth: recordingMonth,
@@ -125,6 +151,7 @@ class Track {
       recordingLocation: recordingLocation,
       durationMs: durationMs ?? duration?.inMilliseconds,
       isrc: isrc,
+      iswc: iswc,
       musicbrainzId: musicbrainzId,
       spotifyId: spotifyId,
       ytmId: ytmId,
@@ -134,8 +161,17 @@ class Track {
       sampleRate: sampleRate,
       bitDepth: bitDepth,
       verified: verified,
+      genre: genre,
+      trackNumber: trackNumber,
+      discNumber: discNumber,
     );
   }
+
+  /// Backward-compatible year accessor.
+  int? get year => recordingYear;
+
+  /// Backward-compatible MusicBrainz ID accessor.
+  String? get musicBrainzId => musicbrainzId;
 
   /// Safe display title with fallback.
   String get displayTitle =>
@@ -181,8 +217,8 @@ class Track {
     return '${pcmHash.substring(0, 6)}...${pcmHash.substring(pcmHash.length - 4)}';
   }
 
-  /// Creates a [Track] instance from a JSON map.
-  factory Track.fromJson(Map<String, dynamic> json) {
+  /// Creates a [Track] instance from a Map / JSON object.
+  factory Track.fromMap(Map<String, dynamic> map) {
     int? parseInt(dynamic val) {
       if (val is int) return val;
       if (val is num) return val.toInt();
@@ -203,7 +239,7 @@ class Track {
 
     int? parsedDurationMs;
     final rawDuration =
-        json['duration_ms'] ?? json['durationMs'] ?? json['duration'];
+        map['duration_ms'] ?? map['durationMs'] ?? map['duration'];
     if (rawDuration != null) {
       if (rawDuration is int) {
         parsedDurationMs = rawDuration;
@@ -221,46 +257,58 @@ class Track {
     }
 
     return Track(
-      id: json['id']?.toString() ?? '',
+      id: map['id']?.toString() ?? '',
       pcmHash:
-          (json['pcm_hash'] ??
-                  json['pcmHash'] ??
-                  json['cas_hash'] ??
-                  json['casHash'])
+          (map['pcm_hash'] ??
+                  map['pcmHash'] ??
+                  map['cas_hash'] ??
+                  map['casHash'])
               ?.toString() ??
           '',
-      workId: (json['work_id'] ?? json['workId'])?.toString(),
-      title: json['title']?.toString(),
-      recordingYear: parseInt(json['recording_year'] ?? json['recordingYear']),
-      recordingMonth: parseInt(
-        json['recording_month'] ?? json['recordingMonth'],
+      workId: (map['work_id'] ?? map['workId'])?.toString(),
+      workTitle: (map['work_title'] ?? map['workTitle'])?.toString(),
+      title: map['title']?.toString(),
+      recordingYear: parseInt(
+        map['recording_year'] ?? map['recordingYear'] ?? map['year'],
       ),
-      recordingDay: parseInt(json['recording_day'] ?? json['recordingDay']),
-      recordingLocation:
-          (json['recording_location'] ?? json['recordingLocation'])?.toString(),
+      recordingMonth: parseInt(map['recording_month'] ?? map['recordingMonth']),
+      recordingDay: parseInt(map['recording_day'] ?? map['recordingDay']),
+      recordingLocation: (map['recording_location'] ?? map['recordingLocation'])
+          ?.toString(),
       durationMs: parsedDurationMs,
-      isrc: json['isrc']?.toString(),
-      musicbrainzId: (json['musicbrainz_id'] ?? json['musicbrainzId'])
+      isrc: map['isrc']?.toString(),
+      iswc: map['iswc']?.toString(),
+      musicbrainzId:
+          (map['musicbrainz_id'] ??
+                  map['musicbrainzId'] ??
+                  map['musicBrainzId'])
+              ?.toString(),
+      spotifyId: (map['spotify_id'] ?? map['spotifyId'])?.toString(),
+      ytmId: (map['ytm_id'] ?? map['ytmId'])?.toString(),
+      artistName: (map['artist_name'] ?? map['artistName'] ?? map['artist'])
           ?.toString(),
-      spotifyId: (json['spotify_id'] ?? json['spotifyId'])?.toString(),
-      ytmId: (json['ytm_id'] ?? json['ytmId'])?.toString(),
-      artistName: (json['artist_name'] ?? json['artistName'] ?? json['artist'])
+      albumTitle: (map['album_title'] ?? map['albumTitle'] ?? map['album'])
           ?.toString(),
-      albumTitle: (json['album_title'] ?? json['albumTitle'] ?? json['album'])
-          ?.toString(),
-      format: json['format']?.toString(),
-      sampleRate: parseInt(json['sample_rate'] ?? json['sampleRate']),
-      bitDepth: parseInt(json['bit_depth'] ?? json['bitDepth']),
-      verified: parseBool(json['verified'], defaultValue: true),
+      format: map['format']?.toString(),
+      sampleRate: parseInt(map['sample_rate'] ?? map['sampleRate']),
+      bitDepth: parseInt(map['bit_depth'] ?? map['bitDepth']),
+      verified: parseBool(map['verified'], defaultValue: true),
+      genre: map['genre']?.toString(),
+      trackNumber: parseInt(map['track_number'] ?? map['trackNumber']),
+      discNumber: parseInt(map['disc_number'] ?? map['discNumber']),
     );
   }
 
-  /// Converts this [Track] to a JSON map compatible with the core engine.
-  Map<String, dynamic> toJson() {
+  /// Creates a [Track] instance from a JSON map.
+  factory Track.fromJson(Map<String, dynamic> json) => Track.fromMap(json);
+
+  /// Converts this [Track] to a map compatible with storage and serialization.
+  Map<String, dynamic> toMap() {
     return {
       'id': id,
       'pcm_hash': pcmHash,
       if (workId != null) 'work_id': workId,
+      if (workTitle != null) 'work_title': workTitle,
       if (title != null) 'title': title,
       if (recordingYear != null) 'recording_year': recordingYear,
       if (recordingMonth != null) 'recording_month': recordingMonth,
@@ -268,6 +316,7 @@ class Track {
       if (recordingLocation != null) 'recording_location': recordingLocation,
       if (durationMs != null) 'duration': durationMs,
       if (isrc != null) 'isrc': isrc,
+      if (iswc != null) 'iswc': iswc,
       if (musicbrainzId != null) 'musicbrainz_id': musicbrainzId,
       if (spotifyId != null) 'spotify_id': spotifyId,
       if (ytmId != null) 'ytm_id': ytmId,
@@ -277,14 +326,21 @@ class Track {
       if (sampleRate != null) 'sample_rate': sampleRate,
       if (bitDepth != null) 'bit_depth': bitDepth,
       'verified': verified,
+      if (genre != null) 'genre': genre,
+      if (trackNumber != null) 'track_number': trackNumber,
+      if (discNumber != null) 'disc_number': discNumber,
     };
   }
+
+  /// Converts this [Track] to a JSON map compatible with the core engine.
+  Map<String, dynamic> toJson() => toMap();
 
   /// Creates a copy of this [Track] with updated fields.
   Track copyWith({
     String? id,
     String? pcmHash,
     String? workId,
+    String? workTitle,
     String? title,
     int? recordingYear,
     int? recordingMonth,
@@ -292,6 +348,7 @@ class Track {
     String? recordingLocation,
     int? durationMs,
     String? isrc,
+    String? iswc,
     String? musicbrainzId,
     String? spotifyId,
     String? ytmId,
@@ -301,11 +358,15 @@ class Track {
     int? sampleRate,
     int? bitDepth,
     bool? verified,
+    String? genre,
+    int? trackNumber,
+    int? discNumber,
   }) {
     return Track(
       id: id ?? this.id,
       pcmHash: pcmHash ?? this.pcmHash,
       workId: workId ?? this.workId,
+      workTitle: workTitle ?? this.workTitle,
       title: title ?? this.title,
       recordingYear: recordingYear ?? this.recordingYear,
       recordingMonth: recordingMonth ?? this.recordingMonth,
@@ -313,6 +374,7 @@ class Track {
       recordingLocation: recordingLocation ?? this.recordingLocation,
       durationMs: durationMs ?? this.durationMs,
       isrc: isrc ?? this.isrc,
+      iswc: iswc ?? this.iswc,
       musicbrainzId: musicbrainzId ?? this.musicbrainzId,
       spotifyId: spotifyId ?? this.spotifyId,
       ytmId: ytmId ?? this.ytmId,
@@ -322,6 +384,9 @@ class Track {
       sampleRate: sampleRate ?? this.sampleRate,
       bitDepth: bitDepth ?? this.bitDepth,
       verified: verified ?? this.verified,
+      genre: genre ?? this.genre,
+      trackNumber: trackNumber ?? this.trackNumber,
+      discNumber: discNumber ?? this.discNumber,
     );
   }
 
@@ -332,6 +397,7 @@ class Track {
         other.id == id &&
         other.pcmHash == pcmHash &&
         other.workId == workId &&
+        other.workTitle == workTitle &&
         other.title == title &&
         other.recordingYear == recordingYear &&
         other.recordingMonth == recordingMonth &&
@@ -339,6 +405,7 @@ class Track {
         other.recordingLocation == recordingLocation &&
         other.durationMs == durationMs &&
         other.isrc == isrc &&
+        other.iswc == iswc &&
         other.musicbrainzId == musicbrainzId &&
         other.spotifyId == spotifyId &&
         other.ytmId == ytmId &&
@@ -347,7 +414,10 @@ class Track {
         other.format == format &&
         other.sampleRate == sampleRate &&
         other.bitDepth == bitDepth &&
-        other.verified == verified;
+        other.verified == verified &&
+        other.genre == genre &&
+        other.trackNumber == trackNumber &&
+        other.discNumber == discNumber;
   }
 
   @override
@@ -355,6 +425,7 @@ class Track {
     id,
     pcmHash,
     workId,
+    workTitle,
     title,
     recordingYear,
     recordingMonth,
@@ -362,6 +433,7 @@ class Track {
     recordingLocation,
     durationMs,
     isrc,
+    iswc,
     musicbrainzId,
     spotifyId,
     ytmId,
@@ -371,6 +443,9 @@ class Track {
     sampleRate,
     bitDepth,
     verified,
+    genre,
+    trackNumber,
+    discNumber,
   ]);
 
   @override
@@ -379,6 +454,7 @@ class Track {
         'id: $id, '
         'pcmHash: $pcmHash, '
         'workId: $workId, '
+        'workTitle: $workTitle, '
         'title: $title, '
         'recordingYear: $recordingYear, '
         'recordingMonth: $recordingMonth, '
@@ -386,6 +462,7 @@ class Track {
         'recordingLocation: $recordingLocation, '
         'durationMs: $durationMs, '
         'isrc: $isrc, '
+        'iswc: $iswc, '
         'musicbrainzId: $musicbrainzId, '
         'spotifyId: $spotifyId, '
         'ytmId: $ytmId, '
@@ -394,7 +471,10 @@ class Track {
         'format: $format, '
         'sampleRate: $sampleRate, '
         'bitDepth: $bitDepth, '
-        'verified: $verified'
+        'verified: $verified, '
+        'genre: $genre, '
+        'trackNumber: $trackNumber, '
+        'discNumber: $discNumber'
         ')';
   }
 }

@@ -1,7 +1,9 @@
 // SPDX-FileCopyrightText: 2026 Tzu-Ting Lin
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:shadcn_ui/shadcn_ui.dart';
 
 import 'design_system/factory/lyra_design_system_scope.dart';
@@ -11,6 +13,10 @@ import 'features/services/mock_music_service.dart';
 import 'features/shell/app_shell.dart';
 
 void main() {
+  WidgetsFlutterBinding.ensureInitialized();
+  if (kIsWeb) {
+    BrowserContextMenu.disableContextMenu();
+  }
   runApp(const LyraApp());
 }
 

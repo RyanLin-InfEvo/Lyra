@@ -102,6 +102,18 @@ class _AppShellState extends State<AppShell> {
   TrackFilter? _activeTrackFilter;
   bool _isLoading = true;
 
+  // Table Customization State
+  Set<TrackColumn> _trackVisibleColumns = Set<TrackColumn>.from(
+    TrackColumn.defaultVisibleColumns,
+  );
+  List<TrackColumn> _trackColumnOrder = List<TrackColumn>.from(
+    TrackColumn.values,
+  );
+  Set<WorkColumn> _workVisibleColumns = Set<WorkColumn>.from(
+    WorkColumn.defaultVisibleColumns,
+  );
+  List<WorkColumn> _workColumnOrder = List<WorkColumn>.from(WorkColumn.values);
+
   // Playback State delegation
   Track? get _currentTrack => _playbackController.currentTrack;
   bool get _isPlaying => _playbackController.isPlaying;
@@ -414,6 +426,14 @@ class _AppShellState extends State<AppShell> {
             isPlaying: _isPlaying,
             filterLabel: _activeTrackFilter?.label,
             audioVersionCounts: _audioVersionCounts,
+            visibleColumns: _trackVisibleColumns,
+            columnOrder: _trackColumnOrder,
+            onVisibleColumnsChanged: (columns) => setState(() {
+              _trackVisibleColumns = columns;
+            }),
+            onColumnOrderChanged: (order) => setState(() {
+              _trackColumnOrder = order;
+            }),
             onClearFilter: () => setState(() {
               _activeTrackFilter = null;
               _selectedTagId = null;
@@ -428,6 +448,14 @@ class _AppShellState extends State<AppShell> {
         return RepaintBoundary(
           child: WorksView(
             works: _works,
+            visibleColumns: _workVisibleColumns,
+            columnOrder: _workColumnOrder,
+            onVisibleColumnsChanged: (columns) => setState(() {
+              _workVisibleColumns = columns;
+            }),
+            onColumnOrderChanged: (order) => setState(() {
+              _workColumnOrder = order;
+            }),
             onWorkSelected: (work) {
               setState(() {
                 _activeTrackFilter = TrackFilter(

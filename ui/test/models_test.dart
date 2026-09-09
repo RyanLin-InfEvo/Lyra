@@ -33,7 +33,7 @@ void main() {
       expect(work1.toString(), contains('wrk-001'));
     });
 
-    test('serializes to and from JSON', () {
+    test('serializes to and from JSON and Map with enriched fields', () {
       final json = {
         'id': 'wrk-002',
         'title': 'Für Elise',
@@ -42,9 +42,12 @@ void main() {
         'composition_date_text': '27 April 1810',
         'iswc': 'T-000.000.002-1',
         'musicbrainz_id': 'mb-wrk-002',
+        'composer': 'Ludwig van Beethoven',
+        'lyricist': 'Friedrich Schiller',
+        'movement': 'Poco moto',
       };
 
-      final work = Work.fromJson(json);
+      final work = Work.fromMap(json);
       expect(work.id, 'wrk-002');
       expect(work.title, 'Für Elise');
       expect(work.compositionStartYear, 1810);
@@ -52,25 +55,56 @@ void main() {
       expect(work.compositionDateText, '27 April 1810');
       expect(work.iswc, 'T-000.000.002-1');
       expect(work.musicbrainzId, 'mb-wrk-002');
+      expect(work.composer, 'Ludwig van Beethoven');
+      expect(work.lyricist, 'Friedrich Schiller');
+      expect(work.movement, 'Poco moto');
+      expect(work.displayDate, '1810');
 
-      final serialized = work.toJson();
+      final serialized = work.toMap();
       expect(serialized['id'], 'wrk-002');
       expect(serialized['title'], 'Für Elise');
-      expect(serialized['composition_start_year'], 1810);
-      expect(serialized['iswc'], 'T-000.000.002-1');
+      expect(serialized['composer'], 'Ludwig van Beethoven');
+      expect(serialized['lyricist'], 'Friedrich Schiller');
+      expect(serialized['movement'], 'Poco moto');
     });
 
-    test('supports copyWith', () {
+    test('Work displayDate handles date ranges, text, and fallbacks', () {
+      const workRange = Work(
+        id: '1',
+        title: 'Work 1',
+        compositionStartYear: 1804,
+        compositionEndYear: 1808,
+      );
+      expect(workRange.displayDate, '1804–1808');
+
+      const workText = Work(
+        id: '2',
+        title: 'Work 2',
+        compositionDateText: 'circa 1970',
+      );
+      expect(workText.displayDate, 'circa 1970');
+
+      const workEmpty = Work(id: '3', title: 'Work 3');
+      expect(workEmpty.displayDate, '-');
+    });
+
+    test('supports copyWith with enriched fields', () {
       const work = Work(id: 'wrk-001', title: 'Original Title');
 
       final updated = work.copyWith(
         title: 'New Title',
         compositionStartYear: 1900,
+        composer: 'Composer A',
+        lyricist: 'Lyricist B',
+        movement: 'Movement I',
       );
 
       expect(updated.id, 'wrk-001');
       expect(updated.title, 'New Title');
       expect(updated.compositionStartYear, 1900);
+      expect(updated.composer, 'Composer A');
+      expect(updated.lyricist, 'Lyricist B');
+      expect(updated.movement, 'Movement I');
       expect(work.title, 'Original Title');
     });
   });
@@ -82,6 +116,7 @@ void main() {
         pcmHash:
             '7f83b1657ff1fc53b92dc18148a1d65dfc2d4b1fa3d677284addd200126d9069',
         workId: 'wrk-001',
+        workTitle: 'Hotel California Composition',
         title: 'Hotel California',
         artistName: 'Eagles',
         albumTitle: 'Hell Freezes Over',
@@ -91,6 +126,7 @@ void main() {
         recordingLocation: 'Warner Bros. Studios, Burbank, CA',
         durationMs: 432000,
         isrc: 'USPR39400001',
+        iswc: 'T-070.789.012-3',
         musicbrainzId: 'mb-trk-001',
         spotifyId: 'sp-trk-001',
         ytmId: 'yt-trk-001',
@@ -98,10 +134,20 @@ void main() {
         sampleRate: 96000,
         bitDepth: 24,
         verified: true,
+        genre: 'Rock',
+        trackNumber: 6,
+        discNumber: 1,
       );
 
       expect(track.id, 'trk-001');
       expect(track.displayTitle, 'Hotel California');
+      expect(track.workTitle, 'Hotel California Composition');
+      expect(track.iswc, 'T-070.789.012-3');
+      expect(track.genre, 'Rock');
+      expect(track.trackNumber, 6);
+      expect(track.discNumber, 1);
+      expect(track.year, 1994);
+      expect(track.musicBrainzId, 'mb-trk-001');
       expect(track.artist, 'Eagles');
       expect(track.album, 'Hell Freezes Over');
       expect(track.duration, const Duration(minutes: 7, seconds: 12));
@@ -122,6 +168,9 @@ void main() {
         duration: const Duration(minutes: 3, seconds: 45),
         sampleRate: 44100,
         bitDepth: 16,
+        genre: 'Jazz',
+        trackNumber: 2,
+        discNumber: 1,
       );
 
       expect(track.pcmHash, 'abcdef1234567890abcdef1234567890abcdef1234567890');
@@ -130,13 +179,17 @@ void main() {
       expect(track.durationMs, 225000);
       expect(track.formattedDuration, '3:45');
       expect(track.formattedQuality, '16-bit/44.1kHz');
+      expect(track.genre, 'Jazz');
+      expect(track.trackNumber, 2);
+      expect(track.discNumber, 1);
     });
 
-    test('serializes to and from JSON', () {
+    test('serializes to and from JSON and Map', () {
       final json = {
         'id': 'trk-002',
         'pcm_hash': 'hash123',
         'work_id': 'wrk-002',
+        'work_title': 'So What Work',
         'title': 'So What',
         'artist_name': 'Miles Davis',
         'album_title': 'Kind of Blue',
@@ -146,25 +199,46 @@ void main() {
         'sample_rate': 192000,
         'bit_depth': 24,
         'verified': true,
+        'iswc': 'T-070.123.456-7',
+        'isrc': 'USSM15900001',
+        'musicbrainz_id': 'mb-002',
+        'genre': 'Modal Jazz',
+        'track_number': 1,
+        'disc_number': 1,
       };
 
-      final track = Track.fromJson(json);
+      final track = Track.fromMap(json);
       expect(track.id, 'trk-002');
       expect(track.pcmHash, 'hash123');
       expect(track.workId, 'wrk-002');
+      expect(track.workTitle, 'So What Work');
       expect(track.title, 'So What');
       expect(track.artistName, 'Miles Davis');
       expect(track.albumTitle, 'Kind of Blue');
       expect(track.durationMs, 562000);
       expect(track.recordingYear, 1959);
+      expect(track.year, 1959);
+      expect(track.iswc, 'T-070.123.456-7');
+      expect(track.isrc, 'USSM15900001');
+      expect(track.musicbrainzId, 'mb-002');
+      expect(track.musicBrainzId, 'mb-002');
+      expect(track.genre, 'Modal Jazz');
+      expect(track.trackNumber, 1);
+      expect(track.discNumber, 1);
 
-      final serialized = track.toJson();
+      final serialized = track.toMap();
       expect(serialized['id'], 'trk-002');
       expect(serialized['pcm_hash'], 'hash123');
       expect(serialized['artist_name'], 'Miles Davis');
+      expect(serialized['work_title'], 'So What Work');
+      expect(serialized['iswc'], 'T-070.123.456-7');
+      expect(serialized['isrc'], 'USSM15900001');
+      expect(serialized['genre'], 'Modal Jazz');
+      expect(serialized['track_number'], 1);
+      expect(serialized['disc_number'], 1);
     });
 
-    test('supports copyWith', () {
+    test('supports copyWith with enriched fields', () {
       const track = Track(
         id: 'trk-001',
         title: 'Original Title',
@@ -174,12 +248,22 @@ void main() {
       final updated = track.copyWith(
         title: 'Updated Title',
         albumTitle: 'New Album',
+        workTitle: 'New Work',
+        iswc: 'T-111',
+        genre: 'Ambient',
+        trackNumber: 5,
+        discNumber: 2,
       );
 
       expect(updated.id, 'trk-001');
       expect(updated.title, 'Updated Title');
       expect(updated.artistName, 'Artist 1');
       expect(updated.albumTitle, 'New Album');
+      expect(updated.workTitle, 'New Work');
+      expect(updated.iswc, 'T-111');
+      expect(updated.genre, 'Ambient');
+      expect(updated.trackNumber, 5);
+      expect(updated.discNumber, 2);
     });
   });
 

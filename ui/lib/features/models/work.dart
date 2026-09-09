@@ -29,6 +29,15 @@ class Work {
   /// MusicBrainz Work ID (UUID).
   final String? musicbrainzId;
 
+  /// Primary composer(s) or creator(s) of the composition.
+  final String? composer;
+
+  /// Lyricist(s) or text author(s) of the composition.
+  final String? lyricist;
+
+  /// Specific movement, section, or act name of the composition.
+  final String? movement;
+
   const Work({
     required this.id,
     required this.title,
@@ -37,10 +46,31 @@ class Work {
     this.compositionDateText,
     this.iswc,
     this.musicbrainzId,
+    this.composer,
+    this.lyricist,
+    this.movement,
   });
 
-  /// Creates a [Work] instance from a JSON map.
-  factory Work.fromJson(Map<String, dynamic> json) {
+  /// Formatted composition date text or year range for UI display.
+  String get displayDate {
+    if (compositionStartYear != null) {
+      if (compositionEndYear != null &&
+          compositionEndYear != compositionStartYear) {
+        return '$compositionStartYear–$compositionEndYear';
+      }
+      return '$compositionStartYear';
+    }
+    if (compositionDateText != null && compositionDateText!.isNotEmpty) {
+      return compositionDateText!;
+    }
+    if (compositionEndYear != null) {
+      return '$compositionEndYear';
+    }
+    return '-';
+  }
+
+  /// Creates a [Work] instance from a Map / JSON object.
+  factory Work.fromMap(Map<String, dynamic> map) {
     int? parseInt(dynamic val) {
       if (val is int) return val;
       if (val is num) return val.toInt();
@@ -49,25 +79,31 @@ class Work {
     }
 
     return Work(
-      id: json['id']?.toString() ?? '',
-      title: json['title']?.toString() ?? '',
+      id: map['id']?.toString() ?? '',
+      title: map['title']?.toString() ?? '',
       compositionStartYear: parseInt(
-        json['composition_start_year'] ?? json['compositionStartYear'],
+        map['composition_start_year'] ?? map['compositionStartYear'],
       ),
       compositionEndYear: parseInt(
-        json['composition_end_year'] ?? json['compositionEndYear'],
+        map['composition_end_year'] ?? map['compositionEndYear'],
       ),
       compositionDateText:
-          (json['composition_date_text'] ?? json['compositionDateText'])
+          (map['composition_date_text'] ?? map['compositionDateText'])
               ?.toString(),
-      iswc: json['iswc']?.toString(),
-      musicbrainzId: (json['musicbrainz_id'] ?? json['musicbrainzId'])
+      iswc: map['iswc']?.toString(),
+      musicbrainzId: (map['musicbrainz_id'] ?? map['musicbrainzId'])
           ?.toString(),
+      composer: map['composer']?.toString(),
+      lyricist: map['lyricist']?.toString(),
+      movement: map['movement']?.toString(),
     );
   }
 
-  /// Converts this [Work] to a JSON map compatible with the core engine.
-  Map<String, dynamic> toJson() {
+  /// Creates a [Work] instance from a JSON map.
+  factory Work.fromJson(Map<String, dynamic> json) => Work.fromMap(json);
+
+  /// Converts this [Work] to a map compatible with storage and serialization.
+  Map<String, dynamic> toMap() {
     return {
       'id': id,
       'title': title,
@@ -79,8 +115,14 @@ class Work {
         'composition_date_text': compositionDateText,
       if (iswc != null) 'iswc': iswc,
       if (musicbrainzId != null) 'musicbrainz_id': musicbrainzId,
+      if (composer != null) 'composer': composer,
+      if (lyricist != null) 'lyricist': lyricist,
+      if (movement != null) 'movement': movement,
     };
   }
+
+  /// Converts this [Work] to a JSON map compatible with the core engine.
+  Map<String, dynamic> toJson() => toMap();
 
   /// Creates a copy of this [Work] with updated fields.
   Work copyWith({
@@ -91,6 +133,9 @@ class Work {
     String? compositionDateText,
     String? iswc,
     String? musicbrainzId,
+    String? composer,
+    String? lyricist,
+    String? movement,
   }) {
     return Work(
       id: id ?? this.id,
@@ -100,6 +145,9 @@ class Work {
       compositionDateText: compositionDateText ?? this.compositionDateText,
       iswc: iswc ?? this.iswc,
       musicbrainzId: musicbrainzId ?? this.musicbrainzId,
+      composer: composer ?? this.composer,
+      lyricist: lyricist ?? this.lyricist,
+      movement: movement ?? this.movement,
     );
   }
 
@@ -113,7 +161,10 @@ class Work {
         other.compositionEndYear == compositionEndYear &&
         other.compositionDateText == compositionDateText &&
         other.iswc == iswc &&
-        other.musicbrainzId == musicbrainzId;
+        other.musicbrainzId == musicbrainzId &&
+        other.composer == composer &&
+        other.lyricist == lyricist &&
+        other.movement == movement;
   }
 
   @override
@@ -125,6 +176,9 @@ class Work {
     compositionDateText,
     iswc,
     musicbrainzId,
+    composer,
+    lyricist,
+    movement,
   );
 
   @override
@@ -136,7 +190,10 @@ class Work {
         'compositionEndYear: $compositionEndYear, '
         'compositionDateText: $compositionDateText, '
         'iswc: $iswc, '
-        'musicbrainzId: $musicbrainzId'
+        'musicbrainzId: $musicbrainzId, '
+        'composer: $composer, '
+        'lyricist: $lyricist, '
+        'movement: $movement'
         ')';
   }
 }
