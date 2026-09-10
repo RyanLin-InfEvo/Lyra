@@ -256,135 +256,137 @@ class _QueueItemRowState extends State<_QueueItemRow> {
     final onTap = widget.onTap;
     final onRemove = widget.onRemove;
 
-    return MouseRegion(
-      cursor: SystemMouseCursors.click,
-      onEnter: (_) => setState(() => _isHovered = true),
-      onExit: (_) => setState(() => _isHovered = false),
-      child: GestureDetector(
-        onTap: onTap,
-        behavior: HitTestBehavior.opaque,
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 120),
-          padding: const EdgeInsets.symmetric(
-            horizontal: LyraSpacing.md,
-            vertical: 8.0,
-          ),
-          margin: const EdgeInsets.symmetric(vertical: 2.0),
-          decoration: BoxDecoration(
-            color: isCurrent
-                ? tokens.secondary
-                : (_isHovered
-                      ? tokens.secondary.withValues(alpha: 0.5)
-                      : const Color(0x00000000)),
-            borderRadius: LyraRadius.mdRadius,
-            border: isCurrent
-                ? Border.all(color: tokens.border, width: 1.0)
-                : null,
-          ),
-          child: Row(
-            children: [
-              // Track Index or Animated Wave / Volume Playing Indicator
-              SizedBox(
-                width: 28.0,
-                child: Center(
-                  child: isCurrent
-                      ? Icon(
-                          LucideIcons.volume2,
-                          size: 16.0,
-                          color: tokens.primary,
-                        )
-                      : Text(
-                          '${index + 1}',
-                          style: LyraTypography.small(tokens).copyWith(
-                            color: tokens.textMuted,
-                            fontWeight: FontWeight.w500,
+    return RepaintBoundary(
+      child: MouseRegion(
+        cursor: SystemMouseCursors.click,
+        onEnter: (_) => setState(() => _isHovered = true),
+        onExit: (_) => setState(() => _isHovered = false),
+        child: GestureDetector(
+          onTap: onTap,
+          behavior: HitTestBehavior.opaque,
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 120),
+            padding: const EdgeInsets.symmetric(
+              horizontal: LyraSpacing.md,
+              vertical: 8.0,
+            ),
+            margin: const EdgeInsets.symmetric(vertical: 2.0),
+            decoration: BoxDecoration(
+              color: isCurrent
+                  ? tokens.secondary
+                  : (_isHovered
+                        ? tokens.secondary.withValues(alpha: 0.5)
+                        : const Color(0x00000000)),
+              borderRadius: LyraRadius.mdRadius,
+              border: isCurrent
+                  ? Border.all(color: tokens.border, width: 1.0)
+                  : null,
+            ),
+            child: Row(
+              children: [
+                // Track Index or Animated Wave / Volume Playing Indicator
+                SizedBox(
+                  width: 28.0,
+                  child: Center(
+                    child: isCurrent
+                        ? Icon(
+                            LucideIcons.volume2,
+                            size: 16.0,
+                            color: tokens.primary,
+                          )
+                        : Text(
+                            '${index + 1}',
+                            style: LyraTypography.small(tokens).copyWith(
+                              color: tokens.textMuted,
+                              fontWeight: FontWeight.w500,
+                            ),
                           ),
-                        ),
-                ),
-              ),
-
-              const SizedBox(width: LyraSpacing.xs),
-
-              // Mini Album Art Thumbnail
-              Container(
-                width: 38.0,
-                height: 38.0,
-                decoration: BoxDecoration(
-                  color: tokens.secondary,
-                  borderRadius: LyraRadius.smRadius,
-                  border: Border.all(color: tokens.border, width: 0.5),
-                ),
-                child: Center(
-                  child: Icon(
-                    LucideIcons.music,
-                    size: 16.0,
-                    color: isCurrent ? tokens.primary : tokens.textMuted,
                   ),
                 ),
-              ),
 
-              const SizedBox(width: LyraSpacing.md),
+                const SizedBox(width: LyraSpacing.xs),
 
-              // Track Title & Artist
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(
-                      track.displayTitle,
-                      style: LyraTypography.p(tokens).copyWith(
-                        fontWeight: isCurrent
-                            ? FontWeight.w600
-                            : FontWeight.normal,
-                        color: isCurrent ? tokens.primary : tokens.text,
-                      ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    const SizedBox(height: 2.0),
-                    Text(
-                      '${track.artist.isNotEmpty ? track.artist : "Unknown Artist"} • ${track.album.isNotEmpty ? track.album : "Unknown Album"}',
-                      style: LyraTypography.small(
-                        tokens,
-                      ).copyWith(color: tokens.textMuted),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ],
-                ),
-              ),
-
-              const SizedBox(width: LyraSpacing.sm),
-
-              // Duration
-              Text(
-                track.formattedDuration,
-                style: LyraTypography.small(tokens).copyWith(
-                  color: tokens.textMuted,
-                  fontWeight: FontWeight.w500,
-                ),
-              ),
-
-              const SizedBox(width: LyraSpacing.sm),
-
-              // Remove from Queue Action
-              MouseRegion(
-                cursor: SystemMouseCursors.click,
-                child: GestureDetector(
-                  onTap: onRemove,
-                  behavior: HitTestBehavior.opaque,
-                  child: Container(
-                    padding: const EdgeInsets.all(4.0),
+                // Mini Album Art Thumbnail
+                Container(
+                  width: 38.0,
+                  height: 38.0,
+                  decoration: BoxDecoration(
+                    color: tokens.secondary,
+                    borderRadius: LyraRadius.smRadius,
+                    border: Border.all(color: tokens.border, width: 0.5),
+                  ),
+                  child: Center(
                     child: Icon(
-                      LucideIcons.x,
+                      LucideIcons.music,
                       size: 16.0,
-                      color: tokens.textMuted,
+                      color: isCurrent ? tokens.primary : tokens.textMuted,
                     ),
                   ),
                 ),
-              ),
-            ],
+
+                const SizedBox(width: LyraSpacing.md),
+
+                // Track Title & Artist
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        track.displayTitle,
+                        style: LyraTypography.p(tokens).copyWith(
+                          fontWeight: isCurrent
+                              ? FontWeight.w600
+                              : FontWeight.normal,
+                          color: isCurrent ? tokens.primary : tokens.text,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      const SizedBox(height: 2.0),
+                      Text(
+                        '${track.artist.isNotEmpty ? track.artist : "Unknown Artist"} • ${track.album.isNotEmpty ? track.album : "Unknown Album"}',
+                        style: LyraTypography.small(
+                          tokens,
+                        ).copyWith(color: tokens.textMuted),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ],
+                  ),
+                ),
+
+                const SizedBox(width: LyraSpacing.sm),
+
+                // Duration
+                Text(
+                  track.formattedDuration,
+                  style: LyraTypography.small(tokens).copyWith(
+                    color: tokens.textMuted,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+
+                const SizedBox(width: LyraSpacing.sm),
+
+                // Remove from Queue Action
+                MouseRegion(
+                  cursor: SystemMouseCursors.click,
+                  child: GestureDetector(
+                    onTap: onRemove,
+                    behavior: HitTestBehavior.opaque,
+                    child: Container(
+                      padding: const EdgeInsets.all(4.0),
+                      child: Icon(
+                        LucideIcons.x,
+                        size: 16.0,
+                        color: tokens.textMuted,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
       ),

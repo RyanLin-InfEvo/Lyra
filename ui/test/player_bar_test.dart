@@ -187,8 +187,14 @@ void main() {
     await gesture.moveTo(tester.getCenter(progressGestureFinder));
     await tester.pump(const Duration(milliseconds: 150));
 
+    // Hover tooltip preview appears at hover position (center = 50% of 3:20 = 1:40)
+    expect(find.text('1:40'), findsOneWidget);
+
     await gesture.moveTo(Offset.zero);
     await tester.pump(const Duration(milliseconds: 150));
+
+    // Hover tooltip disappears when mouse exits
+    expect(find.text('1:40'), findsNothing);
   });
 
   testWidgets(
