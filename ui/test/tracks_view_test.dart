@@ -538,6 +538,49 @@ void main() {
     );
 
     testWidgets(
+      'TracksView column checkbox provides instant zero-latency visual feedback and overlay card has RepaintBoundary',
+      (tester) async {
+        tester.view.physicalSize = const Size(1280, 800);
+        tester.view.devicePixelRatio = 1.0;
+        addTearDown(tester.view.resetPhysicalSize);
+
+        await tester.pumpWidget(_buildTracksViewTest(tracks: sampleTracks));
+        await tester.pumpAndSettle();
+
+        final header = find.byKey(const Key('tracks_table_header'));
+        final gesture = await tester.createGesture(
+          kind: PointerDeviceKind.mouse,
+          buttons: kSecondaryMouseButton,
+        );
+        await gesture.down(tester.getCenter(header));
+        await gesture.up();
+        await tester.pumpAndSettle();
+
+        // Verify overlay floating card is wrapped in a RepaintBoundary
+        final card = find.byKey(const Key('tracks_columns_window'));
+        expect(card, findsOneWidget);
+        expect(
+          find.ancestor(of: card, matching: find.byType(RepaintBoundary)),
+          findsWidgets,
+        );
+
+        final albumCheckboxFinder = find.byKey(
+          const Key('track_col_checkbox_album'),
+        );
+        expect(tester.widget<ShadCheckbox>(albumCheckboxFinder).value, isTrue);
+
+        // Tap to toggle off ALBUM
+        await tester.tap(find.byKey(const Key('track_col_menu_album')));
+        // Single frame pump - instant visual feedback before table settle
+        await tester.pump();
+        expect(tester.widget<ShadCheckbox>(albumCheckboxFinder).value, isFalse);
+
+        await tester.pumpAndSettle();
+        expect(find.text('ALBUM'), findsNothing);
+      },
+    );
+
+    testWidgets(
       'TracksView right-clicking header displays refined Shadcn card with COLUMNS header, Reset button, and grip handles',
       (tester) async {
         tester.view.physicalSize = const Size(1280, 800);

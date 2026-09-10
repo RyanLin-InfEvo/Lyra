@@ -138,148 +138,150 @@ class DraggableColumnsOverlay extends StatelessWidget {
                 Positioned(
                   left: clampedX,
                   top: clampedY,
-                  child: TapRegion(
-                    onTapOutside: (_) => _hide(),
-                    child: Focus(
-                      autofocus: true,
-                      onKeyEvent: (node, event) {
-                        if (event is KeyDownEvent &&
-                            event.logicalKey == LogicalKeyboardKey.escape) {
-                          _hide();
-                          return KeyEventResult.handled;
-                        }
-                        return KeyEventResult.ignored;
-                      },
-                      child: Material(
-                        color: Colors.transparent,
-                        child: Container(
-                          key: cardKey,
-                          width: cardWidth,
-                          constraints: BoxConstraints(
-                            maxHeight: math.max(120.0, size.height - 32.0),
-                          ),
-                          decoration: BoxDecoration(
-                            color: tokens.card,
-                            borderRadius: BorderRadius.circular(10.0),
-                            border: Border.all(
-                              color: tokens.border,
-                              width: 1.0,
+                  child: RepaintBoundary(
+                    child: TapRegion(
+                      onTapOutside: (_) => _hide(),
+                      child: Focus(
+                        autofocus: true,
+                        onKeyEvent: (node, event) {
+                          if (event is KeyDownEvent &&
+                              event.logicalKey == LogicalKeyboardKey.escape) {
+                            _hide();
+                            return KeyEventResult.handled;
+                          }
+                          return KeyEventResult.ignored;
+                        },
+                        child: Material(
+                          color: Colors.transparent,
+                          child: Container(
+                            key: cardKey,
+                            width: cardWidth,
+                            constraints: BoxConstraints(
+                              maxHeight: math.max(120.0, size.height - 32.0),
                             ),
-                            boxShadow: const [
-                              BoxShadow(
-                                color: Color(0x33000000),
-                                blurRadius: 16.0,
-                                offset: Offset(0, 8),
+                            decoration: BoxDecoration(
+                              color: tokens.card,
+                              borderRadius: BorderRadius.circular(10.0),
+                              border: Border.all(
+                                color: tokens.border,
+                                width: 1.0,
                               ),
-                              BoxShadow(
-                                color: Color(0x1A000000),
-                                blurRadius: 8.0,
-                                offset: Offset(0, 2),
-                              ),
-                            ],
-                          ),
-                          padding: const EdgeInsets.symmetric(
-                            vertical: 8.0,
-                            horizontal: 8.0,
-                          ),
-                          child: Column(
-                            mainAxisSize: MainAxisSize.min,
-                            crossAxisAlignment: CrossAxisAlignment.stretch,
-                            children: [
-                              // Movable Header
-                              GestureDetector(
-                                key: headerKey,
-                                behavior: HitTestBehavior.opaque,
-                                onPanUpdate: (details) {
-                                  final current = positionNotifier.value;
-                                  final nextX = current.dx + details.delta.dx;
-                                  final nextY = current.dy + details.delta.dy;
-                                  positionNotifier.value = Offset(
-                                    nextX.clamp(8.0, maxX),
-                                    nextY.clamp(8.0, maxY),
-                                  );
-                                },
-                                child: MouseRegion(
-                                  cursor: SystemMouseCursors.move,
-                                  child: Container(
-                                    padding: const EdgeInsets.symmetric(
-                                      horizontal: 6.0,
-                                      vertical: 4.0,
-                                    ),
-                                    child: Row(
-                                      children: [
-                                        Text(
-                                          'COLUMNS',
-                                          style: LyraTypography.small(tokens)
-                                              .copyWith(
-                                                fontSize: 11.0,
-                                                fontWeight: FontWeight.w600,
-                                                letterSpacing: 0.8,
-                                                color: tokens.textMuted,
-                                              ),
-                                        ),
-                                        const Spacer(),
-                                        MouseRegion(
-                                          cursor: SystemMouseCursors.click,
-                                          child: GestureDetector(
-                                            key: resetKey,
-                                            behavior: HitTestBehavior.opaque,
-                                            onTap: onReset,
-                                            child: Padding(
-                                              padding:
-                                                  const EdgeInsets.symmetric(
-                                                    horizontal: 4.0,
-                                                    vertical: 2.0,
-                                                  ),
-                                              child: Text(
-                                                'Reset',
-                                                style:
-                                                    LyraTypography.small(
-                                                      tokens,
-                                                    ).copyWith(
-                                                      fontSize: 11.0,
-                                                      fontWeight:
-                                                          FontWeight.w500,
-                                                      color: tokens.textMuted,
+                              boxShadow: const [
+                                BoxShadow(
+                                  color: Color(0x33000000),
+                                  blurRadius: 16.0,
+                                  offset: Offset(0, 8),
+                                ),
+                                BoxShadow(
+                                  color: Color(0x1A000000),
+                                  blurRadius: 8.0,
+                                  offset: Offset(0, 2),
+                                ),
+                              ],
+                            ),
+                            padding: const EdgeInsets.symmetric(
+                              vertical: 8.0,
+                              horizontal: 8.0,
+                            ),
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              crossAxisAlignment: CrossAxisAlignment.stretch,
+                              children: [
+                                // Movable Header
+                                GestureDetector(
+                                  key: headerKey,
+                                  behavior: HitTestBehavior.opaque,
+                                  onPanUpdate: (details) {
+                                    final current = positionNotifier.value;
+                                    final nextX = current.dx + details.delta.dx;
+                                    final nextY = current.dy + details.delta.dy;
+                                    positionNotifier.value = Offset(
+                                      nextX.clamp(8.0, maxX),
+                                      nextY.clamp(8.0, maxY),
+                                    );
+                                  },
+                                  child: MouseRegion(
+                                    cursor: SystemMouseCursors.move,
+                                    child: Container(
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 6.0,
+                                        vertical: 4.0,
+                                      ),
+                                      child: Row(
+                                        children: [
+                                          Text(
+                                            'COLUMNS',
+                                            style: LyraTypography.small(tokens)
+                                                .copyWith(
+                                                  fontSize: 11.0,
+                                                  fontWeight: FontWeight.w600,
+                                                  letterSpacing: 0.8,
+                                                  color: tokens.textMuted,
+                                                ),
+                                          ),
+                                          const Spacer(),
+                                          MouseRegion(
+                                            cursor: SystemMouseCursors.click,
+                                            child: GestureDetector(
+                                              key: resetKey,
+                                              behavior: HitTestBehavior.opaque,
+                                              onTap: onReset,
+                                              child: Padding(
+                                                padding:
+                                                    const EdgeInsets.symmetric(
+                                                      horizontal: 4.0,
+                                                      vertical: 2.0,
                                                     ),
+                                                child: Text(
+                                                  'Reset',
+                                                  style:
+                                                      LyraTypography.small(
+                                                        tokens,
+                                                      ).copyWith(
+                                                        fontSize: 11.0,
+                                                        fontWeight:
+                                                            FontWeight.w500,
+                                                        color: tokens.textMuted,
+                                                      ),
+                                                ),
                                               ),
                                             ),
                                           ),
-                                        ),
-                                        const SizedBox(width: 8.0),
-                                        MouseRegion(
-                                          cursor: SystemMouseCursors.click,
-                                          child: GestureDetector(
-                                            key: closeKey,
-                                            behavior: HitTestBehavior.opaque,
-                                            onTap: _hide,
-                                            child: Padding(
-                                              padding: const EdgeInsets.all(
-                                                2.0,
-                                              ),
-                                              child: Icon(
-                                                LucideIcons.x,
-                                                size: 14.0,
-                                                color: tokens.textMuted,
+                                          const SizedBox(width: 8.0),
+                                          MouseRegion(
+                                            cursor: SystemMouseCursors.click,
+                                            child: GestureDetector(
+                                              key: closeKey,
+                                              behavior: HitTestBehavior.opaque,
+                                              onTap: _hide,
+                                              child: Padding(
+                                                padding: const EdgeInsets.all(
+                                                  2.0,
+                                                ),
+                                                child: Icon(
+                                                  LucideIcons.x,
+                                                  size: 14.0,
+                                                  color: tokens.textMuted,
+                                                ),
                                               ),
                                             ),
                                           ),
-                                        ),
-                                      ],
+                                        ],
+                                      ),
                                     ),
                                   ),
                                 ),
-                              ),
-                              Container(
-                                height: 1.0,
-                                color: tokens.border,
-                                margin: const EdgeInsets.only(
-                                  top: 4.0,
-                                  bottom: 6.0,
+                                Container(
+                                  height: 1.0,
+                                  color: tokens.border,
+                                  margin: const EdgeInsets.only(
+                                    top: 4.0,
+                                    bottom: 6.0,
+                                  ),
                                 ),
-                              ),
-                              Flexible(child: content),
-                            ],
+                                Flexible(child: content),
+                              ],
+                            ),
                           ),
                         ),
                       ),
@@ -291,11 +293,14 @@ class DraggableColumnsOverlay extends StatelessWidget {
           },
         );
       },
-      child: GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onSecondaryTapDown: (details) => _show(details.globalPosition, context),
-        onLongPressStart: (details) => _show(details.globalPosition, context),
-        child: child,
+      child: RepaintBoundary(
+        child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onSecondaryTapDown: (details) =>
+              _show(details.globalPosition, context),
+          onLongPressStart: (details) => _show(details.globalPosition, context),
+          child: child,
+        ),
       ),
     );
   }

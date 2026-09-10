@@ -227,6 +227,8 @@ class _WorksViewState extends State<WorksView> {
     if (current.contains(column)) {
       if (current.length > 1) {
         current.remove(column);
+      } else {
+        return;
       }
     } else {
       current.add(column);
@@ -412,11 +414,15 @@ class _WorksViewState extends State<WorksView> {
             itemBuilder: (context, index) {
               final col = _effectiveColumnOrder[index];
               final isVisible = _effectiveVisibleColumns.contains(col);
+              final canToggle =
+                  !col.isMandatory &&
+                  (!isVisible || _effectiveVisibleColumns.length > 1);
               return _WorkColumnMenuItem(
                 key: Key('work_col_menu_${col.name}'),
                 index: index,
                 col: col,
                 isVisible: isVisible,
+                canToggle: canToggle,
                 tokens: tokens,
                 onToggle: () => _toggleColumn(col),
               );
@@ -472,6 +478,7 @@ class _WorkColumnMenuItem extends StatefulWidget {
   final int index;
   final WorkColumn col;
   final bool isVisible;
+  final bool canToggle;
   final LyraThemeTokens tokens;
   final VoidCallback onToggle;
 
@@ -480,6 +487,7 @@ class _WorkColumnMenuItem extends StatefulWidget {
     required this.index,
     required this.col,
     required this.isVisible,
+    this.canToggle = true,
     required this.tokens,
     required this.onToggle,
   });
@@ -490,6 +498,29 @@ class _WorkColumnMenuItem extends StatefulWidget {
 
 class _WorkColumnMenuItemState extends State<_WorkColumnMenuItem> {
   bool _isHovered = false;
+  late bool _isChecked;
+
+  @override
+  void initState() {
+    super.initState();
+    _isChecked = widget.isVisible;
+  }
+
+  @override
+  void didUpdateWidget(covariant _WorkColumnMenuItem oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (_isChecked != widget.isVisible) {
+      _isChecked = widget.isVisible;
+    }
+  }
+
+  void _handleToggle() {
+    if (!widget.canToggle) return;
+    setState(() {
+      _isChecked = !_isChecked;
+    });
+    widget.onToggle();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -499,9 +530,9 @@ class _WorkColumnMenuItemState extends State<_WorkColumnMenuItem> {
     return MouseRegion(
       onEnter: (_) => setState(() => _isHovered = true),
       onExit: (_) => setState(() => _isHovered = false),
-      cursor: col.isMandatory
-          ? SystemMouseCursors.basic
-          : SystemMouseCursors.click,
+      cursor: widget.canToggle
+          ? SystemMouseCursors.click
+          : SystemMouseCursors.basic,
       child: Container(
         height: 36.0,
         padding: const EdgeInsets.symmetric(horizontal: 4.0),
@@ -532,14 +563,14 @@ class _WorkColumnMenuItemState extends State<_WorkColumnMenuItem> {
             Expanded(
               child: GestureDetector(
                 behavior: HitTestBehavior.opaque,
-                onTap: col.isMandatory ? null : widget.onToggle,
+                onTap: widget.canToggle ? _handleToggle : null,
                 child: Row(
                   children: [
                     IgnorePointer(
                       child: ShadCheckbox(
                         key: Key('work_col_checkbox_${col.name}'),
-                        value: widget.isVisible,
-                        enabled: !col.isMandatory,
+                        value: _isChecked,
+                        enabled: widget.canToggle,
                       ),
                     ),
                     const SizedBox(width: 8.0),
