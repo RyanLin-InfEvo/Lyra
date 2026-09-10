@@ -428,12 +428,12 @@ class _AppShellState extends State<AppShell> {
             audioVersionCounts: _audioVersionCounts,
             visibleColumns: _trackVisibleColumns,
             columnOrder: _trackColumnOrder,
-            onVisibleColumnsChanged: (columns) => setState(() {
+            onVisibleColumnsChanged: (columns) {
               _trackVisibleColumns = columns;
-            }),
-            onColumnOrderChanged: (order) => setState(() {
+            },
+            onColumnOrderChanged: (order) {
               _trackColumnOrder = order;
-            }),
+            },
             onClearFilter: () => setState(() {
               _activeTrackFilter = null;
               _selectedTagId = null;
@@ -450,12 +450,12 @@ class _AppShellState extends State<AppShell> {
             works: _works,
             visibleColumns: _workVisibleColumns,
             columnOrder: _workColumnOrder,
-            onVisibleColumnsChanged: (columns) => setState(() {
+            onVisibleColumnsChanged: (columns) {
               _workVisibleColumns = columns;
-            }),
-            onColumnOrderChanged: (order) => setState(() {
+            },
+            onColumnOrderChanged: (order) {
               _workColumnOrder = order;
-            }),
+            },
             onWorkSelected: (work) {
               setState(() {
                 _activeTrackFilter = TrackFilter(
