@@ -365,6 +365,28 @@ Final closing verse
       expect(getStyle('Line One').style.fontWeight, equals(FontWeight.w500));
     });
 
+    testWidgets('isolates synced lyrics lines in RepaintBoundary', (
+      tester,
+    ) async {
+      final controller = PlaybackQueueController(autoStartTimer: false);
+      addTearDown(controller.dispose);
+      controller.play(sampleTrack);
+
+      await tester.pumpWidget(
+        _buildLyricsTest(lyrics: syncedLyrics, playbackController: controller),
+      );
+      await tester.pumpAndSettle();
+
+      for (final text in ['Line Zero', 'Line One', 'Line Two', 'Line Three']) {
+        final lineFinder = find.text(text);
+        final lineRepaint = find.ancestor(
+          of: lineFinder,
+          matching: find.byType(RepaintBoundary),
+        );
+        expect(lineRepaint, findsWidgets);
+      }
+    });
+
     testWidgets('tapping a lyrics line calls seek() and starts playback', (
       tester,
     ) async {

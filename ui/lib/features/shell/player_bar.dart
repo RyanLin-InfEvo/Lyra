@@ -575,8 +575,14 @@ class _ProgressSlider extends StatefulWidget {
 class _ProgressSliderState extends State<_ProgressSlider> {
   bool _isHovered = false;
   bool _isDragging = false;
-  double? _hoverX;
+  final ValueNotifier<double?> _hoverXNotifier = ValueNotifier<double?>(null);
   double? _dragFactor;
+
+  @override
+  void dispose() {
+    _hoverXNotifier.dispose();
+    super.dispose();
+  }
 
   String _formatDuration(Duration d) {
     final minutes = d.inMinutes;
@@ -605,26 +611,33 @@ class _ProgressSliderState extends State<_ProgressSlider> {
     return RepaintBoundary(
       child: MouseRegion(
         cursor: SystemMouseCursors.click,
-        onEnter: (event) => setState(() {
-          _isHovered = true;
-          _hoverX = event.localPosition.dx;
-        }),
-        onHover: (event) => setState(() {
-          _isHovered = true;
-          _hoverX = event.localPosition.dx;
-        }),
-        onExit: (_) => setState(() {
-          _isHovered = false;
-          _hoverX = null;
-        }),
+        onEnter: (event) {
+          _hoverXNotifier.value = event.localPosition.dx;
+          if (!_isHovered) {
+            setState(() {
+              _isHovered = true;
+            });
+          }
+        },
+        onHover: (event) {
+          _hoverXNotifier.value = event.localPosition.dx;
+        },
+        onExit: (_) {
+          _hoverXNotifier.value = null;
+          if (_isHovered) {
+            setState(() {
+              _isHovered = false;
+            });
+          }
+        },
         child: LayoutBuilder(
           builder: (context, constraints) {
             return GestureDetector(
               behavior: HitTestBehavior.opaque,
               onHorizontalDragStart: (details) {
+                _hoverXNotifier.value = details.localPosition.dx;
                 setState(() {
                   _isDragging = true;
-                  _hoverX = details.localPosition.dx;
                   _dragFactor =
                       (details.localPosition.dx / constraints.maxWidth).clamp(
                         0.0,
@@ -634,8 +647,8 @@ class _ProgressSliderState extends State<_ProgressSlider> {
                 _handleSeek(details.localPosition.dx, constraints.maxWidth);
               },
               onHorizontalDragUpdate: (details) {
+                _hoverXNotifier.value = details.localPosition.dx;
                 setState(() {
-                  _hoverX = details.localPosition.dx;
                   _dragFactor =
                       (details.localPosition.dx / constraints.maxWidth).clamp(
                         0.0,
@@ -657,6 +670,7 @@ class _ProgressSliderState extends State<_ProgressSlider> {
                 });
               },
               onTapDown: (details) {
+                _hoverXNotifier.value = details.localPosition.dx;
                 setState(() {
                   _isDragging = true;
                   _dragFactor =
@@ -734,54 +748,70 @@ class _ProgressSliderState extends State<_ProgressSlider> {
                         ),
                       ),
                     // Hover Preview Timestamp Tooltip
-                    if (_isHovered &&
-                        _hoverX != null &&
-                        widget.total.inMilliseconds > 0)
+                    if (_isHovered && widget.total.inMilliseconds > 0)
                       Positioned(
                         top: widget.isTopScrubber ? -26.0 : -28.0,
-                        left: (_hoverX! - 22.0).clamp(
-                          4.0,
-                          max(4.0, constraints.maxWidth - 48.0),
-                        ),
-                        child: IgnorePointer(
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 6.0,
-                              vertical: 2.0,
-                            ),
-                            decoration: BoxDecoration(
-                              color: widget.tokens.card,
-                              borderRadius: LyraRadius.smRadius,
-                              border: Border.all(
-                                color: widget.tokens.border,
-                                width: 1.0,
-                              ),
-                              boxShadow: const [
-                                BoxShadow(
-                                  color: Color(0x40000000),
-                                  blurRadius: 6.0,
-                                  offset: Offset(0, 2),
-                                ),
-                              ],
-                            ),
-                            child: Text(
-                              _formatDuration(
-                                Duration(
-                                  milliseconds:
-                                      (widget.total.inMilliseconds *
-                                              (_hoverX! / constraints.maxWidth)
-                                                  .clamp(0.0, 1.0))
-                                          .round(),
-                                ),
-                              ),
-                              style: LyraTypography.small(widget.tokens)
-                                  .copyWith(
-                                    fontSize: 10.0,
-                                    fontWeight: FontWeight.w600,
-                                    color: widget.tokens.text,
+                        left: 0.0,
+                        right: 0.0,
+                        child: ValueListenableBuilder<double?>(
+                          valueListenable: _hoverXNotifier,
+                          builder: (context, hoverX, _) {
+                            if (hoverX == null) return const SizedBox.shrink();
+                            final leftOffset = (hoverX - 22.0)
+                                .clamp(
+                                  4.0,
+                                  max(4.0, constraints.maxWidth - 48.0),
+                                )
+                                .toDouble();
+                            return Align(
+                              alignment: Alignment.topLeft,
+                              child: Transform.translate(
+                                offset: Offset(leftOffset, 0.0),
+                                child: IgnorePointer(
+                                  child: Container(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 6.0,
+                                      vertical: 2.0,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      color: widget.tokens.card,
+                                      borderRadius: LyraRadius.smRadius,
+                                      border: Border.all(
+                                        color: widget.tokens.border,
+                                        width: 1.0,
+                                      ),
+                                      boxShadow: const [
+                                        BoxShadow(
+                                          color: Color(0x40000000),
+                                          blurRadius: 6.0,
+                                          offset: Offset(0, 2),
+                                        ),
+                                      ],
+                                    ),
+                                    child: Text(
+                                      _formatDuration(
+                                        Duration(
+                                          milliseconds:
+                                              (widget.total.inMilliseconds *
+                                                      (hoverX /
+                                                              constraints
+                                                                  .maxWidth)
+                                                          .clamp(0.0, 1.0))
+                                                  .round(),
+                                        ),
+                                      ),
+                                      style: LyraTypography.small(widget.tokens)
+                                          .copyWith(
+                                            fontSize: 10.0,
+                                            fontWeight: FontWeight.w600,
+                                            color: widget.tokens.text,
+                                          ),
+                                    ),
                                   ),
-                            ),
-                          ),
+                                ),
+                              ),
+                            );
+                          },
                         ),
                       ),
                   ],

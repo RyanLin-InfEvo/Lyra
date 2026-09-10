@@ -341,6 +341,13 @@ void main() {
       // Current track switched to track 2
       expect(controller.currentTrack, equals(track2));
       expect(controller.currentIndex, equals(1));
+
+      // Verify queue items are isolated within RepaintBoundary
+      final track2Repaint = find.ancestor(
+        of: track2Finder,
+        matching: find.byType(RepaintBoundary),
+      );
+      expect(track2Repaint, findsWidgets);
     });
 
     testWidgets('removes track from queue when clicking remove action', (

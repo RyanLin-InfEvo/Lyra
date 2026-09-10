@@ -363,52 +363,85 @@ class _SyncedLineItem extends StatefulWidget {
 
 class _SyncedLineItemState extends State<_SyncedLineItem> {
   bool _isHovered = false;
+  late bool _isActive;
+
+  @override
+  void initState() {
+    super.initState();
+    _isActive = widget.activeIndexNotifier.value == widget.index;
+    widget.activeIndexNotifier.addListener(_onActiveIndexChanged);
+  }
+
+  @override
+  void didUpdateWidget(covariant _SyncedLineItem oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.activeIndexNotifier != widget.activeIndexNotifier) {
+      oldWidget.activeIndexNotifier.removeListener(_onActiveIndexChanged);
+      widget.activeIndexNotifier.addListener(_onActiveIndexChanged);
+    }
+    if (oldWidget.index != widget.index ||
+        oldWidget.activeIndexNotifier != widget.activeIndexNotifier) {
+      _isActive = widget.activeIndexNotifier.value == widget.index;
+    }
+  }
+
+  @override
+  void dispose() {
+    widget.activeIndexNotifier.removeListener(_onActiveIndexChanged);
+    super.dispose();
+  }
+
+  void _onActiveIndexChanged() {
+    final bool isNowActive = widget.activeIndexNotifier.value == widget.index;
+    if (isNowActive != _isActive) {
+      setState(() {
+        _isActive = isNowActive;
+      });
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
-    return ValueListenableBuilder<int>(
-      valueListenable: widget.activeIndexNotifier,
-      builder: (context, activeIndex, _) {
-        final isActive = widget.index == activeIndex;
-        final textColor = isActive
-            ? widget.tokens.text
-            : _isHovered
-            ? widget.tokens.text.withValues(alpha: 0.75)
-            : widget.tokens.text.withValues(alpha: 0.4);
+    final isActive = _isActive;
+    final textColor = isActive
+        ? widget.tokens.text
+        : _isHovered
+        ? widget.tokens.text.withValues(alpha: 0.75)
+        : widget.tokens.text.withValues(alpha: 0.4);
 
-        final fontSize = isActive ? 22.0 : 17.0;
-        final fontWeight = isActive ? FontWeight.bold : FontWeight.w500;
+    final fontSize = isActive ? 22.0 : 17.0;
+    final fontWeight = isActive ? FontWeight.bold : FontWeight.w500;
 
-        return MouseRegion(
-          cursor: SystemMouseCursors.click,
-          onEnter: (_) => setState(() => _isHovered = true),
-          onExit: (_) => setState(() => _isHovered = false),
-          child: GestureDetector(
-            behavior: HitTestBehavior.opaque,
-            onTap: widget.onTap,
-            child: Padding(
-              padding: const EdgeInsets.symmetric(
-                vertical: 12.0,
-                horizontal: LyraSpacing.md,
+    return RepaintBoundary(
+      child: MouseRegion(
+        cursor: SystemMouseCursors.click,
+        onEnter: (_) => setState(() => _isHovered = true),
+        onExit: (_) => setState(() => _isHovered = false),
+        child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: widget.onTap,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(
+              vertical: 12.0,
+              horizontal: LyraSpacing.md,
+            ),
+            child: AnimatedDefaultTextStyle(
+              duration: const Duration(milliseconds: 250),
+              curve: Curves.easeOut,
+              style: TextStyle(
+                fontSize: fontSize,
+                fontWeight: fontWeight,
+                color: textColor,
+                height: 1.4,
               ),
-              child: AnimatedDefaultTextStyle(
-                duration: const Duration(milliseconds: 250),
-                curve: Curves.easeOut,
-                style: TextStyle(
-                  fontSize: fontSize,
-                  fontWeight: fontWeight,
-                  color: textColor,
-                  height: 1.4,
-                ),
-                child: Text(
-                  widget.line.text.isEmpty ? '♪' : widget.line.text,
-                  textAlign: TextAlign.left,
-                ),
+              child: Text(
+                widget.line.text.isEmpty ? '♪' : widget.line.text,
+                textAlign: TextAlign.left,
               ),
             ),
           ),
-        );
-      },
+        ),
+      ),
     );
   }
 }

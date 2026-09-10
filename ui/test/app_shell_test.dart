@@ -954,6 +954,11 @@ void main() {
         find.byKey(const ValueKey('now_playing_ignore_pointer')),
       );
       expect(initialIgnorePointer.ignoring, isTrue);
+      final initialVisibility = tester.widget<Visibility>(
+        find.byKey(const ValueKey('now_playing_visibility')),
+      );
+      expect(initialVisibility.visible, isFalse);
+      expect(initialVisibility.maintainState, isTrue);
 
       // PlayerBar toggle button is chevronUp
       expect(find.byIcon(LucideIcons.chevronUp), findsOneWidget);
@@ -972,6 +977,10 @@ void main() {
         find.byKey(const ValueKey('now_playing_ignore_pointer')),
       );
       expect(expandedIgnorePointer.ignoring, isFalse);
+      final expandedVisibility = tester.widget<Visibility>(
+        find.byKey(const ValueKey('now_playing_visibility')),
+      );
+      expect(expandedVisibility.visible, isTrue);
       expect(find.byType(NowPlayingView), findsOneWidget);
 
       // 3. Verify Sidebar, HeaderBar, and PlayerBar remain fully visible!
@@ -1007,6 +1016,10 @@ void main() {
         find.byKey(const ValueKey('now_playing_ignore_pointer')),
       );
       expect(collapsedIgnorePointer.ignoring, isTrue);
+      final collapsedVisibility = tester.widget<Visibility>(
+        find.byKey(const ValueKey('now_playing_visibility')),
+      );
+      expect(collapsedVisibility.visible, isFalse);
       expect(find.byTooltip('Expand Now Playing'), findsOneWidget);
       expect(find.byIcon(LucideIcons.chevronUp), findsOneWidget);
 

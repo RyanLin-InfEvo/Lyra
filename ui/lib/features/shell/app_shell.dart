@@ -78,6 +78,7 @@ class _AppShellState extends State<AppShell> {
   final ValueNotifier<bool> _isNowPlayingExpandedNotifier = ValueNotifier<bool>(
     false,
   );
+  bool _isNowPlayingVisible = false;
   final ValueNotifier<int> _nowPlayingTabNotifier = ValueNotifier<int>(0);
   final ValueNotifier<double> _volumeNotifier = ValueNotifier<double>(0.85);
 
@@ -150,6 +151,8 @@ class _AppShellState extends State<AppShell> {
   @override
   void initState() {
     super.initState();
+    _isNowPlayingVisible = _isNowPlayingExpandedNotifier.value;
+    _isNowPlayingExpandedNotifier.addListener(_onNowPlayingExpandedChanged);
     _searchController = TextEditingController();
     _audioDeviceController = AudioDeviceController();
     _playbackController =
@@ -176,6 +179,7 @@ class _AppShellState extends State<AppShell> {
       _playbackController.dispose();
     }
     _searchController.dispose();
+    _isNowPlayingExpandedNotifier.removeListener(_onNowPlayingExpandedChanged);
     _isNowPlayingExpandedNotifier.dispose();
     super.dispose();
   }
@@ -282,6 +286,24 @@ class _AppShellState extends State<AppShell> {
 
   void _toggleNowPlaying() {
     _isNowPlayingExpandedNotifier.value = !_isNowPlayingExpandedNotifier.value;
+  }
+
+  void _onNowPlayingExpandedChanged() {
+    if (_isNowPlayingExpandedNotifier.value && !_isNowPlayingVisible) {
+      setState(() {
+        _isNowPlayingVisible = true;
+      });
+    }
+  }
+
+  void _onNowPlayingSlideEnd() {
+    if (!_isNowPlayingExpandedNotifier.value && _isNowPlayingVisible) {
+      if (mounted) {
+        setState(() {
+          _isNowPlayingVisible = false;
+        });
+      }
+    }
   }
 
   Future<void> _handleCreatePlaylistWithName(String rawName) async {
@@ -715,6 +737,10 @@ class _AppShellState extends State<AppShell> {
                                   valueListenable:
                                       _isNowPlayingExpandedNotifier,
                                   builder: (context, isNowPlayingExpanded, _) {
+                                    final bool isVisible =
+                                        _isNowPlayingVisible ||
+                                        isNowPlayingExpanded;
+
                                     return RepaintBoundary(
                                       child: AnimatedSlide(
                                         key: const ValueKey(
@@ -725,43 +751,56 @@ class _AppShellState extends State<AppShell> {
                                             : const Offset(0.0, 1.0),
                                         duration: widget.nowPlayingDuration,
                                         curve: widget.nowPlayingCurve,
+                                        onEnd: _onNowPlayingSlideEnd,
                                         child: IgnorePointer(
                                           key: const ValueKey(
                                             'now_playing_ignore_pointer',
                                           ),
                                           ignoring: !isNowPlayingExpanded,
-                                          child: RepaintBoundary(
-                                            child: DecoratedBox(
-                                              decoration: BoxDecoration(
-                                                boxShadow: [
-                                                  BoxShadow(
-                                                    color: Colors.black
-                                                        .withValues(
-                                                          alpha: 0.45,
-                                                        ),
-                                                    blurRadius: 28.0,
-                                                    offset: const Offset(0, -6),
-                                                  ),
-                                                ],
-                                              ),
-                                              child: NowPlayingView(
-                                                track: _currentTrack,
-                                                playbackController:
-                                                    _playbackController,
-                                                onCollapse: _collapseNowPlaying,
-                                                isExpanded:
-                                                    isNowPlayingExpanded,
-                                                musicService:
-                                                    widget.musicService,
-                                                selectedTabNotifier:
-                                                    _nowPlayingTabNotifier,
-                                                queueSource:
-                                                    _activeTrackFilter != null
-                                                    ? _activeTrackFilter!.label
-                                                    : (_currentTab ==
-                                                              AppTab.playlists
-                                                          ? 'Playing from Playlist'
-                                                          : 'Playing from Library'),
+                                          child: Visibility(
+                                            key: const ValueKey(
+                                              'now_playing_visibility',
+                                            ),
+                                            visible: isVisible,
+                                            maintainState: true,
+                                            child: RepaintBoundary(
+                                              child: DecoratedBox(
+                                                decoration: BoxDecoration(
+                                                  boxShadow: [
+                                                    BoxShadow(
+                                                      color: Colors.black
+                                                          .withValues(
+                                                            alpha: 0.45,
+                                                          ),
+                                                      blurRadius: 28.0,
+                                                      offset: const Offset(
+                                                        0,
+                                                        -6,
+                                                      ),
+                                                    ),
+                                                  ],
+                                                ),
+                                                child: NowPlayingView(
+                                                  track: _currentTrack,
+                                                  playbackController:
+                                                      _playbackController,
+                                                  onCollapse:
+                                                      _collapseNowPlaying,
+                                                  isExpanded:
+                                                      isNowPlayingExpanded,
+                                                  musicService:
+                                                      widget.musicService,
+                                                  selectedTabNotifier:
+                                                      _nowPlayingTabNotifier,
+                                                  queueSource:
+                                                      _activeTrackFilter != null
+                                                      ? _activeTrackFilter!
+                                                            .label
+                                                      : (_currentTab ==
+                                                                AppTab.playlists
+                                                            ? 'Playing from Playlist'
+                                                            : 'Playing from Library'),
+                                                ),
                                               ),
                                             ),
                                           ),
