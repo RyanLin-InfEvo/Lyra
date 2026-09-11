@@ -422,7 +422,8 @@ void main() {
 
       expect(log, isNotEmpty);
       expect(log.last.arguments['text'], equals(sampleTrack.pcmHash));
-      expect(find.text('Copied'), findsOneWidget);
+      expect(find.byIcon(LucideIcons.check), findsWidgets);
+      expect(find.text('Copied'), findsNothing);
     },
   );
 

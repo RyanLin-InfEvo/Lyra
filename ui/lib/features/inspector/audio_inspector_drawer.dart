@@ -1,9 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Tzu-Ting Lin
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import 'dart:async';
 import 'package:flutter/material.dart' show SelectionArea;
-import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
@@ -13,6 +11,7 @@ import '../../design_system/tokens/lyra_tokens.dart';
 import '../../design_system/widgets/lyra_badge.dart';
 import '../../design_system/widgets/lyra_button.dart';
 import '../../design_system/widgets/lyra_card.dart';
+import '../../design_system/widgets/lyra_copy_button.dart';
 import '../models/asset.dart';
 import '../models/audio.dart';
 import '../models/source_data.dart';
@@ -148,9 +147,6 @@ class _AudioInspectorContentState extends State<AudioInspectorContent> {
   Asset? _resolvedAsset;
   bool _isLoading = false;
   bool _isSwitchingActive = false;
-  String? _copiedField;
-  Timer? _copyResetTimer;
-
   @override
   void initState() {
     super.initState();
@@ -175,12 +171,6 @@ class _AudioInspectorContentState extends State<AudioInspectorContent> {
       _resolvedAsset = widget.asset;
       _fetchDetails();
     }
-  }
-
-  @override
-  void dispose() {
-    _copyResetTimer?.cancel();
-    super.dispose();
   }
 
   String get _currentActivePcmHash =>
@@ -341,21 +331,6 @@ class _AudioInspectorContentState extends State<AudioInspectorContent> {
         _isSwitchingActive = false;
       });
     }
-  }
-
-  void _copyToClipboard(String text, String fieldIdentifier) {
-    Clipboard.setData(ClipboardData(text: text));
-    _copyResetTimer?.cancel();
-    setState(() {
-      _copiedField = fieldIdentifier;
-    });
-    _copyResetTimer = Timer(const Duration(seconds: 2), () {
-      if (mounted) {
-        setState(() {
-          _copiedField = null;
-        });
-      }
-    });
   }
 
   String _formatSourceType(String sourceType) {
@@ -1244,7 +1219,7 @@ class _AudioInspectorContentState extends State<AudioInspectorContent> {
                 ),
               ),
               const SizedBox(width: LyraSpacing.xs),
-              _buildCopyButton(hash, fieldId, tokens),
+              LyraCopyButton(text: hash),
             ],
           ),
         ),
@@ -1285,41 +1260,11 @@ class _AudioInspectorContentState extends State<AudioInspectorContent> {
                 ),
               ),
               const SizedBox(width: LyraSpacing.xs),
-              _buildCopyButton(path, 'orig_path', tokens),
+              LyraCopyButton(text: path),
             ],
           ),
         ),
       ],
-    );
-  }
-
-  Widget _buildCopyButton(String text, String fieldId, LyraThemeTokens tokens) {
-    final isCopied = _copiedField == fieldId;
-    return MouseRegion(
-      cursor: SystemMouseCursors.click,
-      child: GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onTap: () => _copyToClipboard(text, fieldId),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(
-              isCopied ? LucideIcons.check : LucideIcons.copy,
-              size: 13.0,
-              color: isCopied ? tokens.success : tokens.textMuted,
-            ),
-            if (isCopied) ...[
-              const SizedBox(width: 4.0),
-              Text(
-                'Copied',
-                style: LyraTypography.small(
-                  tokens,
-                ).copyWith(color: tokens.success, fontSize: 11.0),
-              ),
-            ],
-          ],
-        ),
-      ),
     );
   }
 }
