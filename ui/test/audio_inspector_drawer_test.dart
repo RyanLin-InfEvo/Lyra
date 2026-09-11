@@ -8,6 +8,7 @@ import 'package:shadcn_ui/shadcn_ui.dart';
 import 'package:ui/design_system/factory/lyra_design_system_scope.dart';
 import 'package:ui/design_system/factory/shadcn_factory.dart';
 import 'package:ui/design_system/tokens/lyra_tokens.dart';
+import 'package:ui/design_system/widgets/lyra_copy_button.dart';
 import 'package:ui/features/inspector/audio_inspector_drawer.dart';
 import 'package:ui/features/models/asset.dart';
 import 'package:ui/features/models/audio.dart';
@@ -210,4 +211,47 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('Inspector'), findsOneWidget);
   });
+
+  testWidgets(
+    'AudioInspectorDrawer copy button maintains stable container and text size when clicked',
+    (tester) async {
+      tester.view.physicalSize = const Size(1280, 800);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+
+      final service = MockMusicService();
+      final tracks = await service.getTracks();
+      final track = tracks.firstWhere((t) => t.id == 'trk-001');
+
+      await tester.pumpWidget(
+        _buildAudioInspectorTestWidget(track: track, musicService: service),
+      );
+      await tester.pumpAndSettle();
+
+      final copyButtonFinder = find.byType(LyraCopyButton).first;
+      expect(copyButtonFinder, findsOneWidget);
+
+      final rowFinder = find
+          .ancestor(of: copyButtonFinder, matching: find.byType(Row))
+          .first;
+
+      final initialRowSize = tester.getSize(rowFinder);
+      final initialButtonSize = tester.getSize(copyButtonFinder);
+
+      expect(initialButtonSize.width, equals(24.0));
+      expect(initialButtonSize.height, equals(24.0));
+
+      // Tap copy button
+      await tester.tap(copyButtonFinder);
+      await tester.pump();
+
+      // Verify sizes remain 100% identical during animation and in copied state
+      expect(tester.getSize(copyButtonFinder), equals(initialButtonSize));
+      expect(tester.getSize(rowFinder), equals(initialRowSize));
+
+      await tester.pumpAndSettle();
+      expect(tester.getSize(copyButtonFinder), equals(initialButtonSize));
+      expect(tester.getSize(rowFinder), equals(initialRowSize));
+    },
+  );
 }
