@@ -153,34 +153,16 @@ class LyraPlayerBar extends StatelessWidget {
                               : tokens.text,
                         ),
                       ),
-                      const SizedBox(width: 12.0),
+                      const SizedBox(width: 6.0),
 
-                      // Play/Pause Button (No circle, prominent white icon)
-                      MouseRegion(
-                        cursor: currentTrack == null
-                            ? SystemMouseCursors.basic
-                            : SystemMouseCursors.click,
-                        child: GestureDetector(
-                          behavior: HitTestBehavior.opaque,
-                          onTap: currentTrack == null ? null : onTogglePlay,
-                          child: SizedBox(
-                            width: 36.0,
-                            height: 36.0,
-                            child: Center(
-                              child: Icon(
-                                isPlaying
-                                    ? LucideIcons.pause
-                                    : LucideIcons.play,
-                                size: 26.0,
-                                color: currentTrack == null
-                                    ? tokens.textMuted
-                                    : const Color(0xFFFFFFFF),
-                              ),
-                            ),
-                          ),
-                        ),
+                      // Play/Pause Button with circular hover effect
+                      _PlayerPlayPauseButton(
+                        isPlaying: isPlaying,
+                        isEnabled: currentTrack != null,
+                        onTogglePlay: onTogglePlay,
+                        tokens: tokens,
                       ),
-                      const SizedBox(width: 12.0),
+                      const SizedBox(width: 6.0),
 
                       // Next Button
                       LyraButton.ghost(
@@ -1101,6 +1083,72 @@ class _VolumeSliderState extends State<_VolumeSlider> {
               ),
             );
           },
+        ),
+      ),
+    );
+  }
+}
+
+/// Central circular play/pause button with hover feedback matching neighboring transport controls.
+class _PlayerPlayPauseButton extends StatefulWidget {
+  final bool isPlaying;
+  final bool isEnabled;
+  final VoidCallback? onTogglePlay;
+  final LyraThemeTokens tokens;
+
+  const _PlayerPlayPauseButton({
+    required this.isPlaying,
+    required this.isEnabled,
+    required this.onTogglePlay,
+    required this.tokens,
+  });
+
+  @override
+  State<_PlayerPlayPauseButton> createState() => _PlayerPlayPauseButtonState();
+}
+
+class _PlayerPlayPauseButtonState extends State<_PlayerPlayPauseButton> {
+  bool _isHovered = false;
+  bool _isPressed = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = widget.tokens;
+    final isEnabled = widget.isEnabled;
+    final showHighlight = (_isHovered || _isPressed) && isEnabled;
+
+    return MouseRegion(
+      cursor: isEnabled ? SystemMouseCursors.click : SystemMouseCursors.basic,
+      onEnter: (_) {
+        if (!_isHovered) setState(() => _isHovered = true);
+      },
+      onExit: (_) {
+        if (_isHovered) setState(() => _isHovered = false);
+      },
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTapDown: isEnabled ? (_) => setState(() => _isPressed = true) : null,
+        onTapUp: isEnabled ? (_) => setState(() => _isPressed = false) : null,
+        onTapCancel: isEnabled
+            ? () => setState(() => _isPressed = false)
+            : null,
+        onTap: isEnabled ? widget.onTogglePlay : null,
+        child: Container(
+          width: 46.0,
+          height: 46.0,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            color: showHighlight ? tokens.accent : const Color(0x00000000),
+          ),
+          child: Center(
+            child: Icon(
+              widget.isPlaying ? LucideIcons.pause : LucideIcons.play,
+              size: 26.0,
+              color: !isEnabled
+                  ? tokens.textMuted
+                  : (tokens.isDark ? const Color(0xFFFFFFFF) : tokens.text),
+            ),
+          ),
         ),
       ),
     );

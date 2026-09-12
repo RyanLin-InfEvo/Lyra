@@ -368,4 +368,109 @@ void main() {
       expect(find.text('Default System Audio'), findsOneWidget);
     },
   );
+
+  testWidgets(
+    'LyraPlayerBar play button shows circular hover highlight effect and toggles playback',
+    (tester) async {
+      bool toggleCalled = false;
+
+      await tester.pumpWidget(
+        _buildPlayerBarTest(
+          currentTrack: testTrack,
+          isPlaying: false,
+          onTogglePlay: () => toggleCalled = true,
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final playIconFinder = find.byIcon(LucideIcons.play);
+      expect(playIconFinder, findsOneWidget);
+
+      // Verify initial state: idle container has circular shape and transparent color
+      final playContainerFinder = find.ancestor(
+        of: playIconFinder,
+        matching: find.byWidgetPredicate(
+          (w) =>
+              w is Container &&
+              w.decoration is BoxDecoration &&
+              (w.decoration as BoxDecoration).shape == BoxShape.circle &&
+              w.constraints?.minWidth == 36.0,
+        ),
+      );
+      expect(playContainerFinder, findsOneWidget);
+
+      var deco =
+          tester.widget<Container>(playContainerFinder).decoration
+              as BoxDecoration;
+      expect(deco.shape, equals(BoxShape.circle));
+      expect(deco.color, equals(const Color(0x00000000)));
+
+      // Simulate pointer hover over play button
+      final gesture = await tester.createGesture(kind: PointerDeviceKind.mouse);
+      await gesture.addPointer(location: Offset.zero);
+      addTearDown(gesture.removePointer);
+
+      await gesture.moveTo(tester.getCenter(playIconFinder));
+      await tester.pump();
+
+      // On hover: circular background turns to tokens.accent (zinc800 in dark mode)
+      deco =
+          tester.widget<Container>(playContainerFinder).decoration
+              as BoxDecoration;
+      expect(deco.shape, equals(BoxShape.circle));
+      expect(deco.color, equals(LyraColors.zinc800));
+
+      // Pointer moves away
+      await gesture.moveTo(Offset.zero);
+      await tester.pump();
+
+      // Reverts to transparent
+      deco =
+          tester.widget<Container>(playContainerFinder).decoration
+              as BoxDecoration;
+      expect(deco.color, equals(const Color(0x00000000)));
+
+      // Tap toggles playback
+      await tester.tap(playIconFinder);
+      await tester.pumpAndSettle();
+      expect(toggleCalled, isTrue);
+    },
+  );
+
+  testWidgets(
+    'LyraPlayerBar play button does not highlight on hover when disabled (currentTrack is null)',
+    (tester) async {
+      await tester.pumpWidget(
+        _buildPlayerBarTest(currentTrack: null, isPlaying: false),
+      );
+      await tester.pumpAndSettle();
+
+      final playIconFinder = find.byIcon(LucideIcons.play);
+      expect(playIconFinder, findsOneWidget);
+
+      final playContainerFinder = find.ancestor(
+        of: playIconFinder,
+        matching: find.byWidgetPredicate(
+          (w) =>
+              w is Container &&
+              w.decoration is BoxDecoration &&
+              (w.decoration as BoxDecoration).shape == BoxShape.circle &&
+              w.constraints?.minWidth == 36.0,
+        ),
+      );
+      expect(playContainerFinder, findsOneWidget);
+
+      final gesture = await tester.createGesture(kind: PointerDeviceKind.mouse);
+      await gesture.addPointer(location: Offset.zero);
+      addTearDown(gesture.removePointer);
+
+      await gesture.moveTo(tester.getCenter(playIconFinder));
+      await tester.pump();
+
+      final deco =
+          tester.widget<Container>(playContainerFinder).decoration
+              as BoxDecoration;
+      expect(deco.color, equals(const Color(0x00000000)));
+    },
+  );
 }
