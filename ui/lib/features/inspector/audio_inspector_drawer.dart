@@ -10,7 +10,6 @@ import '../../design_system/factory/lyra_design_system_scope.dart';
 import '../../design_system/tokens/lyra_tokens.dart';
 import '../../design_system/widgets/lyra_badge.dart';
 import '../../design_system/widgets/lyra_button.dart';
-import '../../design_system/widgets/lyra_card.dart';
 import '../../design_system/widgets/lyra_copy_button.dart';
 import '../models/asset.dart';
 import '../models/audio.dart';
@@ -73,7 +72,7 @@ class AudioInspectorDrawer extends StatelessWidget {
   Widget _buildDrawerHeader(LyraThemeTokens tokens) {
     return Container(
       height: 56.0,
-      padding: const EdgeInsets.symmetric(horizontal: LyraSpacing.md),
+      padding: const EdgeInsets.symmetric(horizontal: LyraSpacing.lg),
       decoration: BoxDecoration(
         color: tokens.card,
         border: Border(bottom: BorderSide(color: tokens.border, width: 1.0)),
@@ -132,7 +131,7 @@ class AudioInspectorContent extends StatefulWidget {
     this.initialSourceData,
     this.musicService,
     this.onActiveAudioChanged,
-    this.padding = const EdgeInsets.all(LyraSpacing.md),
+    this.padding = const EdgeInsets.all(LyraSpacing.lg),
   });
 
   @override
@@ -456,34 +455,38 @@ class _AudioInspectorContentState extends State<AudioInspectorContent> {
       );
     }
 
+    final hasEntitySummary =
+        _track != null || (_resolvedAsset ?? widget.asset) != null;
+
     return SingleChildScrollView(
       padding: widget.padding,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           // Entity Overview (Track / Asset Summary)
-          _buildEntitySummaryCard(tokens),
+          if (hasEntitySummary) ...[
+            _buildEntitySummarySection(tokens),
+            _buildSectionDivider(tokens),
+          ],
 
           // Audio Version Selector (Star Topology)
           if (_audioVersions.isNotEmpty) ...[
-            const SizedBox(height: LyraSpacing.md),
-            _buildAudioVersionSelector(tokens),
+            _buildAudioVersionSection(tokens),
+            _buildSectionDivider(tokens),
           ],
 
-          const SizedBox(height: LyraSpacing.md),
-
           // Section 1: Audio Specifications (Audio - Tier 3)
-          _buildAcousticSpecificationsCard(tokens),
+          _buildAcousticSpecificationsSection(tokens),
 
-          const SizedBox(height: LyraSpacing.md),
+          _buildSectionDivider(tokens),
 
           // Section 2: File Storage (CAS Asset Reference - Tier 4)
-          _buildCasAssetCard(tokens),
+          _buildCasAssetSection(tokens),
 
-          const SizedBox(height: LyraSpacing.md),
+          _buildSectionDivider(tokens),
 
           // Section 3: Source Information (SourceData - Tier 4)
-          _buildProvenanceCard(tokens),
+          _buildProvenanceSection(tokens),
 
           const SizedBox(height: LyraSpacing.lg),
         ],
@@ -491,366 +494,379 @@ class _AudioInspectorContentState extends State<AudioInspectorContent> {
     );
   }
 
-  Widget _buildEntitySummaryCard(LyraThemeTokens tokens) {
+  Widget _buildSectionDivider(LyraThemeTokens tokens) {
+    return Container(
+      height: 1.0,
+      margin: const EdgeInsets.symmetric(vertical: LyraSpacing.lg),
+      color: tokens.border,
+    );
+  }
+
+  Widget _buildSectionHeader({
+    required IconData icon,
+    required String title,
+    Widget? trailing,
+    required LyraThemeTokens tokens,
+  }) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: LyraSpacing.sm),
+      child: Row(
+        children: [
+          Icon(icon, size: 15.0, color: tokens.primary),
+          const SizedBox(width: LyraSpacing.xs),
+          Expanded(
+            child: Text(
+              title,
+              style: LyraTypography.small(tokens).copyWith(
+                fontWeight: FontWeight.bold,
+                color: tokens.textMuted,
+                fontSize: 13.0,
+              ),
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+          ?trailing,
+        ],
+      ),
+    );
+  }
+
+  Widget _buildEntitySummarySection(LyraThemeTokens tokens) {
     final track = _track;
     final asset = _resolvedAsset ?? widget.asset;
 
     if (track != null) {
-      return LyraCard(
-        padding: const EdgeInsets.all(LyraSpacing.md),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Container(
-                  width: 32.0,
-                  height: 32.0,
-                  decoration: BoxDecoration(
-                    color: tokens.primary,
-                    borderRadius: LyraRadius.smRadius,
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 32.0,
+                height: 32.0,
+                decoration: BoxDecoration(
+                  color: tokens.primary,
+                  borderRadius: LyraRadius.smRadius,
+                ),
+                child: Center(
+                  child: Icon(
+                    LucideIcons.music,
+                    size: 16.0,
+                    color: tokens.primaryForeground,
                   ),
-                  child: Center(
-                    child: Icon(
-                      LucideIcons.music,
-                      size: 16.0,
-                      color: tokens.primaryForeground,
+                ),
+              ),
+              const SizedBox(width: LyraSpacing.sm),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      track.displayTitle,
+                      style: LyraTypography.p(
+                        tokens,
+                      ).copyWith(fontWeight: FontWeight.bold, fontSize: 15.0),
+                      overflow: TextOverflow.ellipsis,
                     ),
-                  ),
+                    Text(
+                      '${track.artist.isNotEmpty ? track.artist : "Unknown Artist"} • ${track.album.isNotEmpty ? track.album : "Unknown Album"}',
+                      style: LyraTypography.small(
+                        tokens,
+                      ).copyWith(color: tokens.textMuted, fontSize: 12.5),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ],
                 ),
-                const SizedBox(width: LyraSpacing.sm),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        track.displayTitle,
-                        style: LyraTypography.p(
-                          tokens,
-                        ).copyWith(fontWeight: FontWeight.bold, fontSize: 15.0),
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                      Text(
-                        '${track.artist.isNotEmpty ? track.artist : "Unknown Artist"} • ${track.album.isNotEmpty ? track.album : "Unknown Album"}',
-                        style: LyraTypography.small(
-                          tokens,
-                        ).copyWith(color: tokens.textMuted, fontSize: 12.5),
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ],
-                  ),
+              ),
+            ],
+          ),
+          const SizedBox(height: LyraSpacing.sm),
+          Wrap(
+            spacing: LyraSpacing.xs,
+            runSpacing: LyraSpacing.xs,
+            children: [
+              LyraBadge.secondary(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 6.0,
+                  vertical: 2.0,
                 ),
-              ],
-            ),
-            const SizedBox(height: LyraSpacing.xs),
-            Wrap(
-              spacing: LyraSpacing.xs,
-              runSpacing: LyraSpacing.xs,
-              children: [
-                LyraBadge.secondary(
+                child: Text(
+                  track.formattedQuality,
+                  style: LyraTypography.small(
+                    tokens,
+                  ).copyWith(fontSize: 11.0, fontWeight: FontWeight.w600),
+                ),
+              ),
+              if (track.durationMs != null && track.durationMs! > 0)
+                LyraBadge.outline(
                   padding: const EdgeInsets.symmetric(
                     horizontal: 6.0,
                     vertical: 2.0,
                   ),
                   child: Text(
-                    track.formattedQuality,
+                    track.formattedDuration,
                     style: LyraTypography.small(
                       tokens,
-                    ).copyWith(fontSize: 11.0, fontWeight: FontWeight.w600),
+                    ).copyWith(fontSize: 11.0),
                   ),
                 ),
-                if (track.durationMs != null && track.durationMs! > 0)
-                  LyraBadge.outline(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 6.0,
-                      vertical: 2.0,
-                    ),
-                    child: Text(
-                      track.formattedDuration,
-                      style: LyraTypography.small(
-                        tokens,
-                      ).copyWith(fontSize: 11.0),
-                    ),
+              if (track.recordingYear != null)
+                LyraBadge.outline(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 6.0,
+                    vertical: 2.0,
                   ),
-                if (track.recordingYear != null)
-                  LyraBadge.outline(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 6.0,
-                      vertical: 2.0,
-                    ),
-                    child: Text(
-                      '${track.recordingYear}',
-                      style: LyraTypography.small(
-                        tokens,
-                      ).copyWith(fontSize: 11.0),
-                    ),
+                  child: Text(
+                    '${track.recordingYear}',
+                    style: LyraTypography.small(
+                      tokens,
+                    ).copyWith(fontSize: 11.0),
                   ),
-              ],
-            ),
-          ],
-        ),
+                ),
+            ],
+          ),
+        ],
       );
     }
 
     if (asset != null) {
-      return LyraCard(
-        padding: const EdgeInsets.all(LyraSpacing.md),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Container(
-                  width: 32.0,
-                  height: 32.0,
-                  decoration: BoxDecoration(
-                    color: tokens.secondary,
-                    borderRadius: LyraRadius.smRadius,
-                  ),
-                  child: Center(
-                    child: Icon(
-                      LucideIcons.hardDrive,
-                      size: 16.0,
-                      color: tokens.primary,
-                    ),
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 32.0,
+                height: 32.0,
+                decoration: BoxDecoration(
+                  color: tokens.secondary,
+                  borderRadius: LyraRadius.smRadius,
+                ),
+                child: Center(
+                  child: Icon(
+                    LucideIcons.hardDrive,
+                    size: 16.0,
+                    color: tokens.primary,
                   ),
                 ),
-                const SizedBox(width: LyraSpacing.sm),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'CAS Asset',
-                        style: LyraTypography.p(
-                          tokens,
-                        ).copyWith(fontWeight: FontWeight.bold, fontSize: 15.0),
-                      ),
-                      Text(
-                        asset.shortHash,
-                        style: LyraTypography.mono(
-                          tokens,
-                          fontSize: 12.0,
-                        ).copyWith(color: tokens.textMuted),
-                      ),
-                    ],
+              ),
+              const SizedBox(width: LyraSpacing.sm),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'CAS Asset',
+                      style: LyraTypography.p(
+                        tokens,
+                      ).copyWith(fontWeight: FontWeight.bold, fontSize: 15.0),
+                    ),
+                    Text(
+                      asset.shortHash,
+                      style: LyraTypography.mono(
+                        tokens,
+                        fontSize: 12.0,
+                      ).copyWith(color: tokens.textMuted),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: LyraSpacing.sm),
+          Wrap(
+            spacing: LyraSpacing.xs,
+            children: [
+              if (asset.mimeType.isNotEmpty)
+                LyraBadge.secondary(
+                  child: Text(
+                    asset.mimeType,
+                    style: LyraTypography.small(
+                      tokens,
+                    ).copyWith(fontSize: 11.0),
                   ),
                 ),
-              ],
-            ),
-            const SizedBox(height: LyraSpacing.xs),
-            Wrap(
-              spacing: LyraSpacing.xs,
-              children: [
-                if (asset.mimeType.isNotEmpty)
-                  LyraBadge.secondary(
-                    child: Text(
-                      asset.mimeType,
-                      style: LyraTypography.small(
-                        tokens,
-                      ).copyWith(fontSize: 11.0),
-                    ),
+              if (asset.fileSize > 0)
+                LyraBadge.outline(
+                  child: Text(
+                    asset.formattedSize,
+                    style: LyraTypography.small(
+                      tokens,
+                    ).copyWith(fontSize: 11.0),
                   ),
-                if (asset.fileSize > 0)
-                  LyraBadge.outline(
-                    child: Text(
-                      asset.formattedSize,
-                      style: LyraTypography.small(
-                        tokens,
-                      ).copyWith(fontSize: 11.0),
-                    ),
-                  ),
-              ],
-            ),
-          ],
-        ),
+                ),
+            ],
+          ),
+        ],
       );
     }
 
     return const SizedBox.shrink();
   }
 
-  Widget _buildAudioVersionSelector(LyraThemeTokens tokens) {
+  Widget _buildAudioVersionSection(LyraThemeTokens tokens) {
     final activePcmHash = _currentActivePcmHash;
     final isInspectingActive = _selectedAudio?.pcmHash == activePcmHash;
 
-    return LyraCard(
-      padding: const EdgeInsets.all(LyraSpacing.md),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Icon(LucideIcons.layers, size: 15.0, color: tokens.primary),
-              const SizedBox(width: LyraSpacing.xs),
-              Expanded(
-                child: Text(
-                  'Audio Versions',
-                  style: LyraTypography.small(tokens).copyWith(
-                    fontWeight: FontWeight.bold,
-                    color: tokens.textMuted,
-                    fontSize: 13.0,
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _buildSectionHeader(
+          icon: LucideIcons.layers,
+          title: 'Audio Versions',
+          tokens: tokens,
+        ),
+        ..._audioVersions.map((v) {
+          final isMaster = v.parentHash.isEmpty || v.parentHash == v.pcmHash;
+          final isActive = v.pcmHash == activePcmHash;
+          final isInspected = v.pcmHash == _selectedAudio?.pcmHash;
+
+          final label = _formatVersionLabel(v);
+
+          return Padding(
+            padding: const EdgeInsets.only(bottom: LyraSpacing.xs),
+            child: MouseRegion(
+              cursor: SystemMouseCursors.click,
+              child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: () => _selectVersion(v),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: LyraSpacing.sm,
+                    vertical: LyraSpacing.xs,
                   ),
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: LyraSpacing.sm),
-          ..._audioVersions.map((v) {
-            final isMaster = v.parentHash.isEmpty || v.parentHash == v.pcmHash;
-            final isActive = v.pcmHash == activePcmHash;
-            final isInspected = v.pcmHash == _selectedAudio?.pcmHash;
-
-            final label = _formatVersionLabel(v);
-
-            return Padding(
-              padding: const EdgeInsets.only(bottom: LyraSpacing.xs),
-              child: MouseRegion(
-                cursor: SystemMouseCursors.click,
-                child: GestureDetector(
-                  behavior: HitTestBehavior.opaque,
-                  onTap: () => _selectVersion(v),
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: LyraSpacing.sm,
-                      vertical: LyraSpacing.xs,
+                  decoration: BoxDecoration(
+                    color: isInspected
+                        ? tokens.secondary
+                        : tokens.secondary.withValues(alpha: 0.35),
+                    borderRadius: LyraRadius.smRadius,
+                    border: Border.all(
+                      color: isInspected ? tokens.primary : tokens.border,
+                      width: isInspected ? 1.5 : 1.0,
                     ),
-                    decoration: BoxDecoration(
-                      color: isInspected ? tokens.secondary : tokens.card,
-                      borderRadius: LyraRadius.smRadius,
-                      border: Border.all(
-                        color: isInspected ? tokens.primary : tokens.border,
-                        width: isInspected ? 1.5 : 1.0,
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(
+                        isMaster ? LucideIcons.disc : LucideIcons.gitFork,
+                        size: 16.0,
+                        color: isInspected ? tokens.primary : tokens.textMuted,
                       ),
-                    ),
-                    child: Row(
-                      children: [
-                        Icon(
-                          isMaster ? LucideIcons.disc : LucideIcons.gitFork,
-                          size: 16.0,
-                          color: isInspected
-                              ? tokens.primary
-                              : tokens.textMuted,
-                        ),
-                        const SizedBox(width: LyraSpacing.sm),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Row(
-                                children: [
-                                  Flexible(
+                      const SizedBox(width: LyraSpacing.sm),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Row(
+                              children: [
+                                Flexible(
+                                  child: Text(
+                                    label,
+                                    style: LyraTypography.small(tokens)
+                                        .copyWith(
+                                          fontWeight: isInspected
+                                              ? FontWeight.bold
+                                              : FontWeight.w500,
+                                          color: tokens.text,
+                                          fontSize: 13.0,
+                                        ),
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                                if (isMaster) ...[
+                                  const SizedBox(width: 4.0),
+                                  LyraBadge.secondary(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 5.0,
+                                      vertical: 1.0,
+                                    ),
                                     child: Text(
-                                      label,
+                                      'Master',
                                       style: LyraTypography.small(tokens)
                                           .copyWith(
-                                            fontWeight: isInspected
-                                                ? FontWeight.bold
-                                                : FontWeight.w500,
-                                            color: isInspected
-                                                ? tokens.text
-                                                : tokens.text,
-                                            fontSize: 13.0,
+                                            fontSize: 10.5,
+                                            fontWeight: FontWeight.w600,
+                                            color: tokens.textMuted,
                                           ),
-                                      overflow: TextOverflow.ellipsis,
                                     ),
                                   ),
-                                  if (isMaster) ...[
-                                    const SizedBox(width: 4.0),
-                                    LyraBadge.secondary(
-                                      padding: const EdgeInsets.symmetric(
-                                        horizontal: 5.0,
-                                        vertical: 1.0,
-                                      ),
-                                      child: Text(
-                                        'Master',
-                                        style: LyraTypography.small(tokens)
-                                            .copyWith(
-                                              fontSize: 10.5,
-                                              fontWeight: FontWeight.w600,
-                                              color: tokens.textMuted,
-                                            ),
-                                      ),
-                                    ),
-                                  ],
-                                  if (isActive) ...[
-                                    const SizedBox(width: 4.0),
-                                    LyraBadge.outline(
-                                      padding: const EdgeInsets.symmetric(
-                                        horizontal: 5.0,
-                                        vertical: 1.0,
-                                      ),
-                                      child: Row(
-                                        mainAxisSize: MainAxisSize.min,
-                                        children: [
-                                          Container(
-                                            width: 5.0,
-                                            height: 5.0,
-                                            decoration: BoxDecoration(
-                                              color: tokens.primary,
-                                              shape: BoxShape.circle,
-                                            ),
-                                          ),
-                                          const SizedBox(width: 3.0),
-                                          Text(
-                                            'Active',
-                                            style: LyraTypography.small(tokens)
-                                                .copyWith(
-                                                  fontSize: 10.5,
-                                                  fontWeight: FontWeight.bold,
-                                                  color: tokens.primary,
-                                                ),
-                                          ),
-                                        ],
-                                      ),
-                                    ),
-                                  ],
                                 ],
-                              ),
-                              Text(
-                                '${_formatChannels(v.channels)} • ${v.shortPcmHash}',
-                                style: LyraTypography.mono(
-                                  tokens,
-                                  fontSize: 11.5,
-                                ).copyWith(color: tokens.textMuted),
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            ],
-                          ),
+                                if (isActive) ...[
+                                  const SizedBox(width: 4.0),
+                                  LyraBadge.outline(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 5.0,
+                                      vertical: 1.0,
+                                    ),
+                                    child: Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Container(
+                                          width: 5.0,
+                                          height: 5.0,
+                                          decoration: BoxDecoration(
+                                            color: tokens.primary,
+                                            shape: BoxShape.circle,
+                                          ),
+                                        ),
+                                        const SizedBox(width: 3.0),
+                                        Text(
+                                          'Active',
+                                          style: LyraTypography.small(tokens)
+                                              .copyWith(
+                                                fontSize: 10.5,
+                                                fontWeight: FontWeight.bold,
+                                                color: tokens.primary,
+                                              ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ],
+                              ],
+                            ),
+                            Text(
+                              '${_formatChannels(v.channels)} • ${v.shortPcmHash}',
+                              style: LyraTypography.mono(
+                                tokens,
+                                fontSize: 11.5,
+                              ).copyWith(color: tokens.textMuted),
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ],
                         ),
-                      ],
-                    ),
+                      ),
+                    ],
                   ),
-                ),
-              ),
-            );
-          }),
-          if (!isInspectingActive && _track != null) ...[
-            const SizedBox(height: LyraSpacing.xs),
-            SizedBox(
-              width: double.infinity,
-              child: LyraButton(
-                size: LyraButtonSize.sm,
-                onPressed: _isSwitchingActive ? null : _handleSetActiveAudio,
-                leading: _isSwitchingActive
-                    ? const Icon(LucideIcons.loader2, size: 14.0)
-                    : const Icon(LucideIcons.check, size: 14.0),
-                child: Text(
-                  _isSwitchingActive
-                      ? 'Switching Audio...'
-                      : 'Set as Active Audio',
                 ),
               ),
             ),
-          ],
+          );
+        }),
+        if (!isInspectingActive && _track != null) ...[
+          const SizedBox(height: LyraSpacing.xs),
+          SizedBox(
+            width: double.infinity,
+            child: LyraButton(
+              size: LyraButtonSize.sm,
+              onPressed: _isSwitchingActive ? null : _handleSetActiveAudio,
+              leading: _isSwitchingActive
+                  ? const Icon(LucideIcons.loader2, size: 14.0)
+                  : const Icon(LucideIcons.check, size: 14.0),
+              child: Text(
+                _isSwitchingActive
+                    ? 'Switching Audio...'
+                    : 'Set as Active Audio',
+              ),
+            ),
+          ),
         ],
-      ),
+      ],
     );
   }
 
-  Widget _buildAcousticSpecificationsCard(LyraThemeTokens tokens) {
+  Widget _buildAcousticSpecificationsSection(LyraThemeTokens tokens) {
     final audio = _selectedAudio;
     final track = _track;
 
@@ -865,93 +881,78 @@ class _AudioInspectorContentState extends State<AudioInspectorContent> {
         audio != null &&
         (audio.integratedLoudness != 0.0 || audio.truePeak != 0.0);
 
-    return LyraCard(
-      padding: const EdgeInsets.all(LyraSpacing.md),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Icon(LucideIcons.activity, size: 15.0, color: tokens.primary),
-              const SizedBox(width: LyraSpacing.xs),
-              Expanded(
-                child: Text(
-                  'Audio Specifications',
-                  style: LyraTypography.small(tokens).copyWith(
-                    fontWeight: FontWeight.bold,
-                    color: tokens.textMuted,
-                    fontSize: 13.0,
-                  ),
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ),
-              if (_isLoading)
-                const SizedBox(
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _buildSectionHeader(
+          icon: LucideIcons.activity,
+          title: 'Audio Specifications',
+          trailing: _isLoading
+              ? const SizedBox(
                   width: 14.0,
                   height: 14.0,
                   child: Center(child: Icon(LucideIcons.loader2, size: 14.0)),
-                ),
-            ],
-          ),
+                )
+              : null,
+          tokens: tokens,
+        ),
+        _buildPropertyRow(
+          label: 'Sample Rate',
+          value: sampleRate > 0 ? _formatSampleRate(sampleRate) : '—',
+          tokens: tokens,
+        ),
+        _buildPropertyRow(
+          label: 'Bit Depth',
+          value: bitDepth > 0 ? _formatBitDepth(bitDepth) : '—',
+          tokens: tokens,
+        ),
+        _buildPropertyRow(
+          label: 'Channels',
+          value: channels > 0 ? _formatChannels(channels) : '—',
+          tokens: tokens,
+        ),
+        _buildPropertyRow(
+          label: 'Integrated Loudness',
+          value: hasLoudness
+              ? '${audio.integratedLoudness.toStringAsFixed(1)} LUFS'
+              : '—',
+          subtitle: hasLoudness ? null : 'Not analyzed',
+          tokens: tokens,
+        ),
+        _buildPropertyRow(
+          label: 'True Peak',
+          value: hasLoudness
+              ? '${audio.truePeak >= 0 ? "+" : ""}${audio.truePeak.toStringAsFixed(1)} dBTP'
+              : '—',
+          subtitle: hasLoudness
+              ? (audio.truePeak > 0.0 ? 'Over 0 dBTP' : null)
+              : 'Not analyzed',
+          valueColor: hasLoudness && audio.truePeak > 0.0
+              ? tokens.destructive
+              : null,
+          tokens: tokens,
+        ),
+        if (pcmHash.isNotEmpty) ...[
           const SizedBox(height: LyraSpacing.sm),
-          _buildPropertyRow(
-            label: 'Sample Rate',
-            value: sampleRate > 0 ? _formatSampleRate(sampleRate) : '—',
+          _buildHashBox(
+            label: 'PCM Hash',
+            hash: pcmHash,
+            fieldId: 'pcm_hash',
             tokens: tokens,
           ),
+        ] else ...[
           _buildPropertyRow(
-            label: 'Bit Depth',
-            value: bitDepth > 0 ? _formatBitDepth(bitDepth) : '—',
+            label: 'PCM Hash',
+            value: '—',
+            subtitle: 'Not available',
             tokens: tokens,
           ),
-          _buildPropertyRow(
-            label: 'Channels',
-            value: channels > 0 ? _formatChannels(channels) : '—',
-            tokens: tokens,
-          ),
-          _buildPropertyRow(
-            label: 'Integrated Loudness',
-            value: hasLoudness
-                ? '${audio.integratedLoudness.toStringAsFixed(1)} LUFS'
-                : '—',
-            subtitle: hasLoudness ? null : 'Not analyzed',
-            tokens: tokens,
-          ),
-          _buildPropertyRow(
-            label: 'True Peak',
-            value: hasLoudness
-                ? '${audio.truePeak >= 0 ? "+" : ""}${audio.truePeak.toStringAsFixed(1)} dBTP'
-                : '—',
-            subtitle: hasLoudness
-                ? (audio.truePeak > 0.0 ? 'Over 0 dBTP' : null)
-                : 'Not analyzed',
-            valueColor: hasLoudness && audio.truePeak > 0.0
-                ? tokens.destructive
-                : null,
-            tokens: tokens,
-          ),
-          if (pcmHash.isNotEmpty) ...[
-            const SizedBox(height: LyraSpacing.sm),
-            _buildHashBox(
-              label: 'PCM Hash',
-              hash: pcmHash,
-              fieldId: 'pcm_hash',
-              tokens: tokens,
-            ),
-          ] else ...[
-            _buildPropertyRow(
-              label: 'PCM Hash',
-              value: '—',
-              subtitle: 'Not available',
-              tokens: tokens,
-            ),
-          ],
         ],
-      ),
+      ],
     );
   }
 
-  Widget _buildCasAssetCard(LyraThemeTokens tokens) {
+  Widget _buildCasAssetSection(LyraThemeTokens tokens) {
     final asset = _resolvedAsset ?? widget.asset;
     final fileHash =
         asset?.fileHash ??
@@ -961,61 +962,45 @@ class _AudioInspectorContentState extends State<AudioInspectorContent> {
 
     final hasAsset = asset != null;
 
-    return LyraCard(
-      padding: const EdgeInsets.all(LyraSpacing.md),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Icon(LucideIcons.database, size: 15.0, color: tokens.primary),
-              const SizedBox(width: LyraSpacing.xs),
-              Expanded(
-                child: Text(
-                  'File Storage',
-                  style: LyraTypography.small(tokens).copyWith(
-                    fontWeight: FontWeight.bold,
-                    color: tokens.textMuted,
-                    fontSize: 13.0,
-                  ),
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ),
-            ],
-          ),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _buildSectionHeader(
+          icon: LucideIcons.database,
+          title: 'File Storage',
+          tokens: tokens,
+        ),
+        _buildPropertyRow(
+          label: 'File Size',
+          value: hasAsset && asset.fileSize > 0 ? asset.formattedSize : '—',
+          tokens: tokens,
+        ),
+        _buildPropertyRow(
+          label: 'MIME Type',
+          value: hasAsset && asset.mimeType.isNotEmpty ? asset.mimeType : '—',
+          tokens: tokens,
+        ),
+        if (fileHash.isNotEmpty) ...[
           const SizedBox(height: LyraSpacing.sm),
-          _buildPropertyRow(
-            label: 'File Size',
-            value: hasAsset && asset.fileSize > 0 ? asset.formattedSize : '—',
+          _buildHashBox(
+            label: 'File Hash',
+            hash: fileHash,
+            fieldId: 'cas_hash',
             tokens: tokens,
           ),
+        ] else ...[
           _buildPropertyRow(
-            label: 'MIME Type',
-            value: hasAsset && asset.mimeType.isNotEmpty ? asset.mimeType : '—',
+            label: 'File Hash',
+            value: '—',
+            subtitle: 'Not registered in CAS',
             tokens: tokens,
           ),
-          if (fileHash.isNotEmpty) ...[
-            const SizedBox(height: LyraSpacing.sm),
-            _buildHashBox(
-              label: 'File Hash',
-              hash: fileHash,
-              fieldId: 'cas_hash',
-              tokens: tokens,
-            ),
-          ] else ...[
-            _buildPropertyRow(
-              label: 'File Hash',
-              value: '—',
-              subtitle: 'Not registered in CAS',
-              tokens: tokens,
-            ),
-          ],
         ],
-      ),
+      ],
     );
   }
 
-  Widget _buildProvenanceCard(LyraThemeTokens tokens) {
+  Widget _buildProvenanceSection(LyraThemeTokens tokens) {
     final sourceData = _sourceData;
     final asset = _resolvedAsset ?? widget.asset;
     final track = _track;
@@ -1029,84 +1014,68 @@ class _AudioInspectorContentState extends State<AudioInspectorContent> {
     final createdAt = sourceData?.createdAt ?? asset?.createdAt;
     final note = sourceData?.note ?? '';
 
-    return LyraCard(
-      padding: const EdgeInsets.all(LyraSpacing.md),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Icon(LucideIcons.shieldCheck, size: 15.0, color: tokens.primary),
-              const SizedBox(width: LyraSpacing.xs),
-              Expanded(
-                child: Text(
-                  'Source Information',
-                  style: LyraTypography.small(tokens).copyWith(
-                    fontWeight: FontWeight.bold,
-                    color: tokens.textMuted,
-                    fontSize: 13.0,
-                  ),
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: LyraSpacing.sm),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _buildSectionHeader(
+          icon: LucideIcons.shieldCheck,
+          title: 'Source Information',
+          tokens: tokens,
+        ),
+        _buildPropertyRow(
+          label: 'Source Type',
+          value: sourceType.isNotEmpty ? _formatSourceType(sourceType) : '—',
+          tokens: tokens,
+        ),
+        _buildPropertyRow(
+          label: 'Timestamp',
+          value: createdAt != null
+              ? '${createdAt.toIso8601String().replaceAll('T', ' ').substring(0, 19)} UTC'
+              : '—',
+          isMono: createdAt != null,
+          tokens: tokens,
+        ),
+        if (originalPath.isNotEmpty) ...[
+          const SizedBox(height: 2.0),
+          _buildOriginalPathBox(originalPath, tokens),
+        ] else ...[
           _buildPropertyRow(
-            label: 'Source Type',
-            value: sourceType.isNotEmpty ? _formatSourceType(sourceType) : '—',
+            label: 'Original File Path',
+            value: '—',
             tokens: tokens,
           ),
-          _buildPropertyRow(
-            label: 'Timestamp',
-            value: createdAt != null
-                ? '${createdAt.toIso8601String().replaceAll('T', ' ').substring(0, 19)} UTC'
-                : '—',
-            isMono: createdAt != null,
-            tokens: tokens,
-          ),
-          if (originalPath.isNotEmpty) ...[
-            const SizedBox(height: 2.0),
-            _buildOriginalPathBox(originalPath, tokens),
-          ] else ...[
-            _buildPropertyRow(
-              label: 'Original File Path',
-              value: '—',
-              tokens: tokens,
-            ),
-          ],
-          if (note.isNotEmpty) ...[
-            const SizedBox(height: LyraSpacing.sm),
-            Text(
-              'Ingestion Note',
-              style: LyraTypography.small(tokens).copyWith(
-                fontWeight: FontWeight.bold,
-                color: tokens.textMuted,
-                fontSize: 12.0,
-              ),
-            ),
-            const SizedBox(height: 4.0),
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(LyraSpacing.sm),
-              decoration: BoxDecoration(
-                color: tokens.secondary.withValues(alpha: 0.5),
-                borderRadius: LyraRadius.smRadius,
-                border: Border.all(color: tokens.border, width: 1.0),
-              ),
-              child: SelectionArea(
-                child: Text(
-                  note,
-                  style: LyraTypography.mono(
-                    tokens,
-                    fontSize: 12.0,
-                  ).copyWith(height: 1.4, color: tokens.text),
-                ),
-              ),
-            ),
-          ],
         ],
-      ),
+        if (note.isNotEmpty) ...[
+          const SizedBox(height: LyraSpacing.sm),
+          Text(
+            'Ingestion Note',
+            style: LyraTypography.small(tokens).copyWith(
+              fontWeight: FontWeight.bold,
+              color: tokens.textMuted,
+              fontSize: 12.0,
+            ),
+          ),
+          const SizedBox(height: 4.0),
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(LyraSpacing.sm),
+            decoration: BoxDecoration(
+              color: tokens.secondary.withValues(alpha: 0.5),
+              borderRadius: LyraRadius.smRadius,
+              border: Border.all(color: tokens.border, width: 1.0),
+            ),
+            child: SelectionArea(
+              child: Text(
+                note,
+                style: LyraTypography.mono(
+                  tokens,
+                  fontSize: 12.0,
+                ).copyWith(height: 1.4, color: tokens.text),
+              ),
+            ),
+          ),
+        ],
+      ],
     );
   }
 
