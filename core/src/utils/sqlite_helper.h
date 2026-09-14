@@ -11,11 +11,40 @@
 #include <cstring>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <type_traits>
 #include <vector>
 
 namespace lyra {
 namespace SqliteHelper {
+
+/**
+ * @brief Quotes and escapes a single SQLite identifier (table or column name) using ANSI double quotes.
+ *
+ * Any embedded double quote characters are escaped by doubling them ("" -> ANSI SQL standard).
+ * Example:
+ *   - "Album"      -> ""Album""
+ *   - "order"      -> ""order""
+ *   - "my"column" -> ""my""column""
+ *
+ * @note This is strictly for single tokens; composite qualifiers (e.g. "table"."col")
+ *       must have each identifier quoted individually.
+ */
+[[nodiscard]] inline std::string quote_identifier(std::string_view identifier) {
+    std::string result;
+    result.reserve(identifier.size() + 4);
+    result.push_back('"');
+    for (char c : identifier) {
+        if (c == '"') {
+            result.push_back('"');
+            result.push_back('"');
+        } else {
+            result.push_back(c);
+        }
+    }
+    result.push_back('"');
+    return result;
+}
 
 // Check if a statement's result columns include the specified column name
 inline bool has_column(SQLite::Statement &query, const char *column_name) {

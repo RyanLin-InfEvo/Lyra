@@ -6,7 +6,9 @@
 #include "../src/utils/uuid_generator.h"
 #include <SQLiteCpp/SQLiteCpp.h>
 #include <iostream>
+#include <optional>
 #include <string>
+#include <tl/expected.hpp>
 
 using namespace lyra;
 
@@ -271,6 +273,109 @@ bool test_wal_checkpoint_visibility(const std::string &db_path) {
     }
 }
 
+bool test_with_transaction(const std::string &db_path) {
+    SqliteDatabaseContext ctx(db_path);
+    auto &db = ctx.get_db();
+
+    TableCleaner cleaner{db, "test_with_tx"};
+    db.exec("CREATE TABLE IF NOT EXISTS test_with_tx (id INTEGER PRIMARY KEY, val TEXT);");
+    db.exec("DELETE FROM test_with_tx;");
+
+    try {
+        // 1. lambda returning tl::expected<void, std::string> committing on success
+        {
+            auto res = ctx.with_transaction([&]() -> tl::expected<void, std::string> {
+                db.exec("INSERT INTO test_with_tx (id, val) VALUES (1, 'success');");
+                return {};
+            });
+            if (!res.has_value()) {
+                std::cerr << "test_with_transaction FAILED: expected success, got error: " << res.error() << "\n";
+                return false;
+            }
+
+            SQLite::Statement query(db, "SELECT COUNT(*) FROM test_with_tx WHERE id = 1;");
+            if (!query.executeStep() || query.getColumn(0).getInt() != 1) {
+                std::cerr << "test_with_transaction FAILED: successful transaction row missing\n";
+                return false;
+            }
+        }
+
+        // 2. rolling back when returning tl::unexpected
+        {
+            auto res = ctx.with_transaction([&]() -> tl::expected<void, std::string> {
+                db.exec("INSERT INTO test_with_tx (id, val) VALUES (2, 'should_rollback');");
+                return tl::unexpected("manual error");
+            });
+            if (res.has_value()) {
+                std::cerr << "test_with_transaction FAILED: expected error return, but got value\n";
+                return false;
+            }
+            if (res.error() != "manual error") {
+                std::cerr << "test_with_transaction FAILED: unexpected error content: " << res.error() << "\n";
+                return false;
+            }
+
+            SQLite::Statement query(db, "SELECT COUNT(*) FROM test_with_tx WHERE id = 2;");
+            if (query.executeStep() && query.getColumn(0).getInt() != 0) {
+                std::cerr << "test_with_transaction FAILED: row from unexpected error was not rolled back\n";
+                return false;
+            }
+        }
+
+        // 3. rolling back when throwing an exception
+        {
+            bool exception_caught = false;
+            try {
+                ctx.with_transaction([&]() -> tl::expected<void, std::string> {
+                    db.exec("INSERT INTO test_with_tx (id, val) VALUES (3, 'throw_rollback');");
+                    throw std::runtime_error("simulated crash");
+                    return {};
+                });
+            } catch (const std::runtime_error &e) {
+                exception_caught = true;
+                if (std::string(e.what()) != "simulated crash") {
+                    std::cerr << "test_with_transaction FAILED: unexpected exception message: " << e.what() << "\n";
+                    return false;
+                }
+            }
+
+            if (!exception_caught) {
+                std::cerr << "test_with_transaction FAILED: exception was not rethrown\n";
+                return false;
+            }
+
+            SQLite::Statement query(db, "SELECT COUNT(*) FROM test_with_tx WHERE id = 3;");
+            if (query.executeStep() && query.getColumn(0).getInt() != 0) {
+                std::cerr << "test_with_transaction FAILED: row from thrown exception was not rolled back\n";
+                return false;
+            }
+        }
+
+        // 4. lambda returning std::optional<std::string>(std::nullopt) MUST commit (not rollback)
+        {
+            auto res = ctx.with_transaction([&]() -> std::optional<std::string> {
+                db.exec("INSERT INTO test_with_tx (id, val) VALUES (4, 'optional_nullopt_commit');");
+                return std::nullopt;
+            });
+            if (res.has_value()) {
+                std::cerr << "test_with_transaction FAILED: expected nullopt, got value\n";
+                return false;
+            }
+
+            SQLite::Statement query(db, "SELECT COUNT(*) FROM test_with_tx WHERE id = 4;");
+            if (!query.executeStep() || query.getColumn(0).getInt() != 1) {
+                std::cerr << "test_with_transaction FAILED: transaction returning nullopt was rolled back instead of committed\n";
+                return false;
+            }
+        }
+
+        return true;
+    } catch (const std::exception &e) {
+        std::cerr << "test_with_transaction failed with unexpected exception: " << e.what() << "\n";
+        return false;
+    }
+}
+
 int main(int argc, char *argv[]) {
     if (argc < 2) {
         std::cerr << "Usage: " << argv[0] << " <db_path>\n";
@@ -281,33 +386,39 @@ int main(int argc, char *argv[]) {
 
     bool all_passed = true;
 
-    std::cout << "[1/5] Running test_basic_transaction..." << std::endl;
+    std::cout << "[1/6] Running test_basic_transaction..." << std::endl;
     if (!test_basic_transaction(db_path1)) {
         std::cerr << "test_basic_transaction FAILED\n";
         all_passed = false;
     }
 
-    std::cout << "[2/5] Running test_savepoint_rollback..." << std::endl;
+    std::cout << "[2/6] Running test_savepoint_rollback..." << std::endl;
     if (!test_savepoint_rollback(db_path1)) {
         std::cerr << "test_savepoint_rollback FAILED\n";
         all_passed = false;
     }
 
-    std::cout << "[3/5] Running test_nested_savepoint_rollback_and_commit..." << std::endl;
+    std::cout << "[3/6] Running test_nested_savepoint_rollback_and_commit..." << std::endl;
     if (!test_nested_savepoint_rollback_and_commit(db_path1)) {
         std::cerr << "test_nested_savepoint_rollback_and_commit FAILED\n";
         all_passed = false;
     }
 
-    std::cout << "[4/5] Running test_context_isolation..." << std::endl;
+    std::cout << "[4/6] Running test_context_isolation..." << std::endl;
     if (!test_context_isolation(db_path1, db_path2)) {
         std::cerr << "test_context_isolation FAILED\n";
         all_passed = false;
     }
 
-    std::cout << "[5/5] Running test_wal_checkpoint_visibility..." << std::endl;
+    std::cout << "[5/6] Running test_wal_checkpoint_visibility..." << std::endl;
     if (!test_wal_checkpoint_visibility(db_path1)) {
         std::cerr << "test_wal_checkpoint_visibility FAILED\n";
+        all_passed = false;
+    }
+
+    std::cout << "[6/6] Running test_with_transaction..." << std::endl;
+    if (!test_with_transaction(db_path1)) {
+        std::cerr << "test_with_transaction FAILED\n";
         all_passed = false;
     }
 

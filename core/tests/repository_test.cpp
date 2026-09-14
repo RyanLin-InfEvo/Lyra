@@ -535,6 +535,451 @@ bool test_audio_get_related_versions(SqliteDatabaseContext &ctx) {
     return true;
 }
 
+bool test_sqlite_update_builder(SqliteDatabaseContext &ctx) {
+    std::cout << "Running test_sqlite_update_builder..." << std::endl;
+
+    // 1. Empty builder
+    SqliteUpdateBuilder empty_builder("Album", "test-id-1");
+    assert(empty_builder.empty());
+    assert(empty_builder.build_sql().empty());
+    assert(empty_builder.execute(ctx.get_db()).has_value());
+
+    // 2. Chaining with optionals
+    SqliteUpdateBuilder builder("Album", "test-id-2");
+    std::optional<std::string> title = "Test Album";
+    std::optional<uint16_t> year = 2026;
+    std::optional<uint8_t> month = std::nullopt;
+
+    builder.set("title", title)
+        .set("release_year", year)
+        .set("release_month", month);
+
+    assert(!builder.empty());
+    assert(builder.size() == 2);
+    assert(builder.build_sql() == "UPDATE \"Album\" SET \"title\" = ?, \"release_year\" = ? WHERE \"id\" = ?");
+
+    // 3. Execution on non-existent record
+    auto exec_res = builder.execute(ctx.get_db());
+    assert(!exec_res.has_value());
+    assert(exec_res.error() == "Album ID not found.");
+
+    // 4. Custom not found message
+    builder.set_not_found_message("Custom not found");
+    auto custom_res = builder.execute(ctx.get_db());
+    assert(!custom_res.has_value());
+    assert(custom_res.error() == "Custom not found");
+
+    // 5. Quoted identifiers & SQLite reserved keyword handling
+    SqliteUpdateBuilder keyword_builder("order", "item-1", "group");
+    keyword_builder.set("index", std::string("first"));
+    assert(keyword_builder.build_sql() == "UPDATE \"order\" SET \"index\" = ? WHERE \"group\" = ?");
+
+    // 6. Embedded double quote escaping
+    SqliteUpdateBuilder quote_escape_builder("weird\"table", "id-1");
+    quote_escape_builder.set("col\"name", 123);
+    assert(quote_escape_builder.build_sql() == "UPDATE \"weird\"\"table\" SET \"col\"\"name\" = ? WHERE \"id\" = ?");
+
+    // 7. Safety error when executing without a WHERE clause
+    SqliteUpdateBuilder no_where_builder("Album");
+    no_where_builder.set("title", std::string("Unsafe Update"));
+    auto no_where_res = no_where_builder.execute(ctx.get_db());
+    assert(!no_where_res.has_value());
+    assert(no_where_res.error() == "Safety Error: Refusing to execute UPDATE without a WHERE clause.");
+
+    // 8. Dangling pointer prevention: passing temporary string / string_view
+    {
+        SqliteAlbumRepository repo(ctx);
+        Album album_temp;
+        album_temp.id = "album-temp-str-test";
+        album_temp.title = "Original Title";
+        assert(repo.insert(album_temp).has_value());
+
+        SqliteUpdateBuilder temp_builder("Album", "album-temp-str-test");
+        {
+            auto make_temp = []() { return std::string("Updated Via Temporary String"); };
+            // Pass string_view of temporary string that will be destroyed after this statement
+            temp_builder.set("title", std::string_view(make_temp()));
+        }
+
+        // Execute against DB after the temporary objects in the inner scope have been destroyed.
+        // If the lambda closure captured by pointer/reference or dangling string_view, this would read invalid memory.
+        auto temp_res = temp_builder.execute(ctx.get_db());
+        assert(temp_res.has_value());
+
+        auto get_res = repo.get("album-temp-str-test");
+        assert(get_res.has_value());
+        assert(get_res->title == "Updated Via Temporary String");
+
+        // Also test optional with temporary string_view
+        SqliteUpdateBuilder temp_opt_builder("Album", "album-temp-str-test");
+        {
+            auto make_temp = []() { return std::string("Updated Via Temp Optional"); };
+            temp_opt_builder.set("title", std::optional<std::string_view>(make_temp()));
+        }
+        auto opt_res = temp_opt_builder.execute(ctx.get_db());
+        assert(opt_res.has_value());
+
+        auto get_opt_res = repo.get("album-temp-str-test");
+        assert(get_opt_res.has_value());
+        assert(get_opt_res->title == "Updated Via Temp Optional");
+    }
+
+    return true;
+}
+
+bool test_entity_repository_crud(SqliteDatabaseContext &ctx) {
+    std::cout << "Running test_entity_repository_crud..." << std::endl;
+    SqliteAlbumRepository repo(ctx);
+
+    // 1. Insert
+    Album album;
+    album.id = "album-crud-1";
+    album.title = "CRUD Album 1";
+    album.release_year = 2020;
+    assert(repo.insert(album).has_value());
+
+    // Verify Entity table
+    {
+        auto &db = ctx.get_db();
+        SQLite::Statement check_entity(db, "SELECT entity_type, created_at, updated_at FROM Entity WHERE id = ?");
+        check_entity.bind(1, album.id);
+        assert(check_entity.executeStep());
+        assert(std::string(check_entity.getColumn(0).getText()) == "album");
+        assert(std::string(check_entity.getColumn(1).getText()).size() > 0);
+    }
+
+    // 2. Get
+    auto get_res = repo.get(album.id);
+    assert(get_res.has_value());
+    assert(get_res->id == album.id);
+    assert(get_res->title == "CRUD Album 1");
+    assert(get_res->release_year == 2020);
+
+    // Get non-existent
+    auto get_non = repo.get("non-existent-id");
+    assert(!get_non.has_value());
+    assert(get_non.error() == "Album not found.");
+
+    // 3. Update
+    AlbumUpdate update_data;
+    update_data.id = album.id;
+    update_data.title = "CRUD Album Updated";
+    update_data.release_year = 2021;
+    assert(repo.update(update_data).has_value());
+
+    auto get_updated = repo.get(album.id);
+    assert(get_updated.has_value());
+    assert(get_updated->title == "CRUD Album Updated");
+    assert(get_updated->release_year == 2021);
+
+    // Update non-existent
+    AlbumUpdate unexist_update;
+    unexist_update.id = "non-existent-id";
+    unexist_update.title = "Should Fail";
+    auto update_err = repo.update(unexist_update);
+    assert(!update_err.has_value());
+    assert(update_err.error() == "Album ID not found.");
+
+    // Empty update on non-existent ID
+    AlbumUpdate empty_unexist_update;
+    empty_unexist_update.id = "non-existent-id";
+    auto empty_unexist_res = repo.update(empty_unexist_update);
+    assert(!empty_unexist_res.has_value());
+    assert(empty_unexist_res.error() == "Album ID not found.");
+
+    // Empty update on existing ID
+    AlbumUpdate empty_exist_update;
+    empty_exist_update.id = album.id;
+    auto empty_exist_res = repo.update(empty_exist_update);
+    assert(empty_exist_res.has_value());
+
+    // 4. List and search
+    Album album2;
+    album2.id = "album-crud-2";
+    album2.title = "Another CRUD Album";
+    album2.release_year = 2021;
+    assert(repo.insert(album2).has_value());
+
+    auto list_all = repo.list(0, 10, std::nullopt);
+    assert(list_all.has_value());
+    assert(list_all->total >= 2);
+
+    auto list_search = repo.list(0, 10, "Another");
+    assert(list_search.has_value());
+    assert(list_search->total == 1);
+    assert(list_search->items[0].id == "album-crud-2");
+
+    // 5. get_one_by_field
+    auto one_found = repo.get_one_by_field("title", std::string("Another CRUD Album"));
+    assert(one_found.has_value());
+    assert(one_found->has_value());
+    assert(one_found->value().id == "album-crud-2");
+
+    auto one_not_found = repo.get_one_by_field("title", std::string("Nonexistent Title"));
+    assert(one_not_found.has_value());
+    assert(!one_not_found->has_value());
+
+    // 6. get_by_field with custom ordering
+    Album album3;
+    album3.id = "album-crud-3";
+    album3.title = "Zebra Album";
+    album3.release_year = 2021;
+    assert(repo.insert(album3).has_value());
+
+    auto field_asc = repo.get_by_field("release_year", 2021, "title", true);
+    assert(field_asc.has_value());
+    assert(field_asc->size() >= 3);
+    // "Another CRUD Album" < "CRUD Album Updated" < "Zebra Album"
+    assert(field_asc->front().title == "Another CRUD Album");
+    assert(field_asc->back().title == "Zebra Album");
+
+    auto field_desc = repo.get_by_field("release_year", 2021, "title", false);
+    assert(field_desc.has_value());
+    assert(field_desc->size() >= 3);
+    assert(field_desc->front().title == "Zebra Album");
+    assert(field_desc->back().title == "Another CRUD Album");
+
+    // 7. touch_entity
+    assert(repo.touch_entity(album.id).has_value());
+
+    return true;
+}
+
+bool test_database_triggers_updated_at(SqliteDatabaseContext &ctx) {
+    std::cout << "Running test_database_triggers_updated_at..." << std::endl;
+    auto &db = ctx.get_db();
+
+    // Verify triggers on Album, Artist, Track, Work, Playlist
+    // By updating concrete tables with raw SQL and checking Entity.updated_at
+    const std::vector<std::pair<std::string, std::string>> tests = {
+        {"Album", "album-id-123456"},
+        {"Artist", "artist-id-123456"},
+        {"Track", "track-id-123456"},
+        {"Work", "work-id-123456"},
+        {"Playlist", "playlist-id-123456"},
+    };
+
+    for (const auto &[table, id] : tests) {
+        // Set Entity.updated_at to a fixed past time
+        {
+            SQLite::Statement reset_stmt(db, "UPDATE Entity SET updated_at = '2000-01-01 00:00:00' WHERE id = ?");
+            reset_stmt.bind(1, id);
+            reset_stmt.exec();
+        }
+
+        // Verify it was reset
+        {
+            SQLite::Statement check_stmt(db, "SELECT updated_at FROM Entity WHERE id = ?");
+            check_stmt.bind(1, id);
+            assert(check_stmt.executeStep());
+            assert(std::string(check_stmt.getColumn(0).getText()) == "2000-01-01 00:00:00");
+        }
+
+        // Direct SQL update on concrete table to trigger AFTER UPDATE
+        {
+            std::string update_sql;
+            if (table == "Artist") {
+                update_sql = "UPDATE Artist SET name = name || '_trg' WHERE id = ?";
+            } else {
+                update_sql = "UPDATE " + table + " SET title = title || '_trg' WHERE id = ?";
+            }
+            SQLite::Statement trigger_update(db, update_sql);
+            trigger_update.bind(1, id);
+            int rows = trigger_update.exec();
+            assert(rows == 1);
+        }
+
+        // Verify Entity.updated_at was updated by the trigger (no longer 2000-01-01)
+        {
+            SQLite::Statement check_stmt(db, "SELECT updated_at FROM Entity WHERE id = ?");
+            check_stmt.bind(1, id);
+            assert(check_stmt.executeStep());
+            std::string updated_at = check_stmt.getColumn(0).getText();
+            assert(updated_at != "2000-01-01 00:00:00");
+            std::cout << "Trigger for " << table << " successfully updated Entity.updated_at to " << updated_at << std::endl;
+        }
+    }
+
+    return true;
+}
+
+bool test_artist_repository_crud(SqliteDatabaseContext &ctx) {
+    std::cout << "Running test_artist_repository_crud..." << std::endl;
+    SqliteArtistRepository repo(ctx);
+
+    // 1. Insert
+    Artist artist;
+    artist.id = "artist-crud-1";
+    artist.name = "Queen";
+    artist.musicbrainz_id = "mb-queen-1";
+    artist.spotify_id = "sp-queen-1";
+    artist.ytm_id = "yt-queen-1";
+    assert(repo.insert(artist).has_value());
+
+    // Verify Entity table
+    {
+        auto &db = ctx.get_db();
+        SQLite::Statement check_entity(db, "SELECT entity_type, created_at, updated_at FROM Entity WHERE id = ?");
+        check_entity.bind(1, artist.id);
+        assert(check_entity.executeStep());
+        assert(std::string(check_entity.getColumn(0).getText()) == "artist");
+        assert(std::string(check_entity.getColumn(1).getText()).size() > 0);
+    }
+
+    // 2. Get
+    auto get_res = repo.get(artist.id);
+    assert(get_res.has_value());
+    assert(get_res->id == artist.id);
+    assert(get_res->name == "Queen");
+    assert(get_res->musicbrainz_id == "mb-queen-1");
+    assert(get_res->spotify_id == "sp-queen-1");
+    assert(get_res->ytm_id == "yt-queen-1");
+
+    // Get non-existent
+    auto get_non = repo.get("non-existent-artist-id");
+    assert(!get_non.has_value());
+    assert(get_non.error() == "Artist not found.");
+
+    // 3. Update
+    ArtistUpdate update_data;
+    update_data.id = artist.id;
+    update_data.name = "Queen Band";
+    update_data.spotify_id = "sp-queen-updated";
+    assert(repo.update(update_data).has_value());
+
+    auto get_updated = repo.get(artist.id);
+    assert(get_updated.has_value());
+    assert(get_updated->name == "Queen Band");
+    assert(get_updated->spotify_id == "sp-queen-updated");
+    assert(get_updated->musicbrainz_id == "mb-queen-1");
+
+    // Update non-existent
+    ArtistUpdate unexist_update;
+    unexist_update.id = "non-existent-artist-id";
+    unexist_update.name = "Should Fail";
+    auto update_err = repo.update(unexist_update);
+    assert(!update_err.has_value());
+    assert(update_err.error() == "Artist ID not found.");
+
+    // Empty update on non-existent ID
+    ArtistUpdate empty_unexist_update;
+    empty_unexist_update.id = "non-existent-artist-id";
+    auto empty_unexist_res = repo.update(empty_unexist_update);
+    assert(!empty_unexist_res.has_value());
+    assert(empty_unexist_res.error() == "Artist ID not found.");
+
+    // Empty update on existing ID
+    ArtistUpdate empty_exist_update;
+    empty_exist_update.id = artist.id;
+    auto empty_exist_res = repo.update(empty_exist_update);
+    assert(empty_exist_res.has_value());
+
+    // 4. get_one_by_field
+    auto one_found = repo.get_one_by_field("name", std::string("Queen Band"));
+    assert(one_found.has_value());
+    assert(one_found->has_value());
+    assert(one_found->value().id == artist.id);
+
+    auto one_not_found = repo.get_one_by_field("name", std::string("Unknown Artist"));
+    assert(one_not_found.has_value());
+    assert(!one_not_found->has_value());
+
+    // 5. List and search
+    Artist artist2;
+    artist2.id = "artist-crud-2";
+    artist2.name = "Queen Latifah";
+    assert(repo.insert(artist2).has_value());
+
+    auto list_all = repo.list(0, 10, std::nullopt);
+    assert(list_all.has_value());
+    assert(list_all->total >= 2);
+
+    auto list_search = repo.list(0, 10, "Latifah");
+    assert(list_search.has_value());
+    assert(list_search->total == 1);
+    assert(list_search->items[0].id == "artist-crud-2");
+
+    // 6. touch_entity
+    assert(repo.touch_entity(artist.id).has_value());
+
+    return true;
+}
+
+bool test_entity_rollback_on_insert_failure(SqliteDatabaseContext &ctx) {
+    std::cout << "Running test_entity_rollback_on_insert_failure..." << std::endl;
+
+    // Case 1: Concrete table constraint failure (e.g. duplicate primary key in Album)
+    {
+        SqliteAlbumRepository repo(ctx);
+
+        // Directly insert an Album row with foreign keys temporarily off, so Album has the row but Entity does not
+        ctx.get_db().exec("PRAGMA foreign_keys = OFF;");
+        ctx.get_db().exec("INSERT INTO Album (id, title) VALUES ('dup-album-id', 'Direct Insert');");
+        ctx.get_db().exec("PRAGMA foreign_keys = ON;");
+
+        // Verify Entity does NOT have this ID initially
+        {
+            SQLite::Statement check(ctx.get_db(), "SELECT COUNT(*) FROM Entity WHERE id = 'dup-album-id'");
+            assert(check.executeStep() && check.getColumn(0).getInt() == 0);
+        }
+
+        // Attempt to insert via repository.
+        // Entity insert will succeed, but concrete Album do_insert will throw SQLite::Exception (UNIQUE constraint failed: Album.id)
+        Album dup_album;
+        dup_album.id = "dup-album-id";
+        dup_album.title = "Repo Insert";
+        auto insert_res = repo.insert(dup_album);
+        assert(!insert_res.has_value());
+
+        // Crucial check: Entity row must have been rolled back and NOT exist
+        {
+            SQLite::Statement check(ctx.get_db(), "SELECT COUNT(*) FROM Entity WHERE id = 'dup-album-id'");
+            assert(check.executeStep());
+            int entity_count = check.getColumn(0).getInt();
+            assert(entity_count == 0);
+        }
+
+        // Clean up direct insert
+        ctx.get_db().exec("PRAGMA foreign_keys = OFF;");
+        ctx.get_db().exec("DELETE FROM Album WHERE id = 'dup-album-id';");
+        ctx.get_db().exec("PRAGMA foreign_keys = ON;");
+    }
+
+    // Case 2: Subclass do_insert returns tl::unexpected error
+    {
+        class FailingEntityRepo : public SqliteEntityRepository<Album, AlbumUpdate> {
+          public:
+            explicit FailingEntityRepo(IDatabaseContext &c)
+                : SqliteEntityRepository(c, "Album", "album", "title") {}
+
+          protected:
+            tl::expected<void, std::string> do_insert(SQLite::Database &, const Album &) override {
+                return tl::unexpected("simulated do_insert failure");
+            }
+            void build_update(SqliteUpdateBuilder &, const AlbumUpdate &) const override {}
+        };
+
+        FailingEntityRepo failing_repo(ctx);
+        Album failing_album;
+        failing_album.id = "failing-album-id";
+        failing_album.title = "Failing Album";
+
+        auto res = failing_repo.insert(failing_album);
+        assert(!res.has_value());
+        assert(res.error() == "simulated do_insert failure");
+
+        // Crucial check: Entity row must have been rolled back and NOT exist
+        {
+            SQLite::Statement check(ctx.get_db(), "SELECT COUNT(*) FROM Entity WHERE id = 'failing-album-id'");
+            assert(check.executeStep());
+            int entity_count = check.getColumn(0).getInt();
+            assert(entity_count == 0);
+        }
+    }
+
+    return true;
+}
+
 int main() {
     std::string db_path = "test_repo.db";
     std::filesystem::remove(db_path);
@@ -550,6 +995,11 @@ int main() {
         if (!test_track_album_relationships(ctx)) success = false;
         if (!test_asset_repository_operations(ctx)) success = false;
         if (!test_audio_get_related_versions(ctx)) success = false;
+        if (!test_sqlite_update_builder(ctx)) success = false;
+        if (!test_entity_repository_crud(ctx)) success = false;
+        if (!test_artist_repository_crud(ctx)) success = false;
+        if (!test_entity_rollback_on_insert_failure(ctx)) success = false;
+        if (!test_database_triggers_updated_at(ctx)) success = false;
     } catch (const std::exception &e) {
         std::cerr << "Exception in repository tests: " << e.what() << std::endl;
         success = false;

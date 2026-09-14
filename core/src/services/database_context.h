@@ -7,8 +7,21 @@
 #include <SQLiteCpp/SQLiteCpp.h>
 #include <memory>
 #include <string>
+#include <tl/expected.hpp>
+#include <type_traits>
 
 namespace lyra {
+
+namespace detail {
+template <typename T>
+struct is_expected_type : std::false_type {};
+
+template <typename T, typename E>
+struct is_expected_type<tl::expected<T, E>> : std::true_type {};
+
+template <typename T>
+inline constexpr bool is_expected_v = is_expected_type<std::decay_t<T>>::value;
+} // namespace detail
 
 /**
  * @brief Interface for transaction management.
@@ -36,6 +49,32 @@ class IDatabaseContext {
      * @brief Provides direct access to the database for repository operations.
      */
     virtual SQLite::Database &get_db() = 0;
+
+    /**
+     * @brief Executes an action within a transaction.
+     * Automatically commits if the action succeeds (or if tl::expected has_value()),
+     * and rolls back if an exception is thrown or error returned.
+     */
+    template <typename Func>
+    auto with_transaction(Func &&action) -> decltype(action()) {
+        auto tx = begin_transaction();
+        using ReturnType = decltype(action());
+        if constexpr (std::is_same_v<ReturnType, void>) {
+            action();
+            tx->commit();
+            return;
+        } else {
+            auto result = action();
+            if constexpr (detail::is_expected_v<ReturnType>) {
+                if (result.has_value()) {
+                    tx->commit();
+                }
+            } else {
+                tx->commit();
+            }
+            return result;
+        }
+    }
 };
 
 class SqliteDatabaseContext : public IDatabaseContext {

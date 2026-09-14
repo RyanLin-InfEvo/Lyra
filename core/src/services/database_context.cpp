@@ -295,6 +295,46 @@ void SqliteDatabaseContext::init_schema() {
 
     m_db.exec("CREATE INDEX IF NOT EXISTS idx_Image_file_hash ON Image (file_hash);");
     m_db.exec("CREATE INDEX IF NOT EXISTS idx_EntityImages_image_hash ON Entity_Images (image_hash);");
+
+    m_db.exec(R"(
+        CREATE TRIGGER IF NOT EXISTS trg_Album_updated_at
+        AFTER UPDATE ON Album
+        BEGIN
+          UPDATE Entity SET updated_at = datetime('now') WHERE id = NEW.id;
+        END;
+    )");
+
+    m_db.exec(R"(
+        CREATE TRIGGER IF NOT EXISTS trg_Artist_updated_at
+        AFTER UPDATE ON Artist
+        BEGIN
+          UPDATE Entity SET updated_at = datetime('now') WHERE id = NEW.id;
+        END;
+    )");
+
+    m_db.exec(R"(
+        CREATE TRIGGER IF NOT EXISTS trg_Track_updated_at
+        AFTER UPDATE ON Track
+        BEGIN
+          UPDATE Entity SET updated_at = datetime('now') WHERE id = NEW.id;
+        END;
+    )");
+
+    m_db.exec(R"(
+        CREATE TRIGGER IF NOT EXISTS trg_Work_updated_at
+        AFTER UPDATE ON Work
+        BEGIN
+          UPDATE Entity SET updated_at = datetime('now') WHERE id = NEW.id;
+        END;
+    )");
+
+    m_db.exec(R"(
+        CREATE TRIGGER IF NOT EXISTS trg_Playlist_updated_at
+        AFTER UPDATE ON Playlist
+        BEGIN
+          UPDATE Entity SET updated_at = datetime('now') WHERE id = NEW.id;
+        END;
+    )");
 }
 
 std::unique_ptr<ITransaction> SqliteDatabaseContext::begin_transaction() {

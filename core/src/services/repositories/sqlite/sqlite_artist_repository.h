@@ -6,10 +6,11 @@
 
 #include "../../database_context.h"
 #include "../i_artist_repository.h"
+#include "sqlite_entity_repository.h"
 
 namespace lyra {
 
-class SqliteArtistRepository : public IArtistRepository {
+class SqliteArtistRepository : public IArtistRepository, public SqliteEntityRepository<Artist, ArtistUpdate> {
   public:
     explicit SqliteArtistRepository(IDatabaseContext &context);
 
@@ -20,8 +21,9 @@ class SqliteArtistRepository : public IArtistRepository {
         int offset, int limit, const std::optional<std::string> &search) override;
     tl::expected<std::vector<Artist>, std::string> get_by_name(const std::string &name) override;
 
-  private:
-    IDatabaseContext &m_context;
+  protected:
+    tl::expected<void, std::string> do_insert(SQLite::Database &db, const Artist &artist) override;
+    void build_update(SqliteUpdateBuilder &builder, const ArtistUpdate &data) const override;
 };
 
 } // namespace lyra
