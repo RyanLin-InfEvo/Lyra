@@ -1067,8 +1067,10 @@ json Router::handleGetPlaylistTracks(const json &params) {
         return ApiResponse::error({ErrorType::MissingParameter, "Missing 'id' or 'playlist_id' parameter"});
     }
 
-    std::vector<std::string> tracks = m_playlist_controller->get_tracks(playlist_id);
-    return ApiResponse::success(tracks);
+    auto tracks = m_playlist_controller->get_tracks(playlist_id);
+    if (tracks) return ApiResponse::success(tracks.value());
+
+    return ApiResponse::error({ErrorType::DatabaseError, tracks.error()});
 }
 
 json Router::handleGetTracksByTitle(const json &params) {

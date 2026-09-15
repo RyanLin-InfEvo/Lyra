@@ -79,8 +79,11 @@ namespace SqliteHelper {
 template <typename T>
 inline std::optional<T> fetch_one(SQLite::Statement &query) {
     if (query.executeStep()) {
-        return SqliteMappers::map<T>(query);
+        auto result = SqliteMappers::map<T>(query);
+        query.reset();
+        return result;
     }
+    query.reset();
     return std::nullopt;
 }
 
@@ -93,6 +96,7 @@ inline std::vector<T> fetch_all(SQLite::Statement &query, size_t reserve_count =
     while (query.executeStep()) {
         items.push_back(SqliteMappers::map<T>(query));
     }
+    query.reset();
     return items;
 }
 

@@ -106,15 +106,20 @@ tl::expected<void, std::string> SqlitePlaylistRepository::remove_track(
     }
 }
 
-std::vector<std::string> SqlitePlaylistRepository::get_tracks(const std::string &playlist_id) {
-    auto &db = m_context.get_db();
+tl::expected<std::vector<std::string>, std::string> SqlitePlaylistRepository::get_tracks(
+    const std::string &playlist_id) {
+    try {
+        auto &db = m_context.get_db();
 
-    SQLite::Statement query(
-        db, "SELECT track_id FROM Playlist_Track WHERE playlist_id = ? ORDER BY position ASC, track_id ASC");
-    query.bind(1, playlist_id);
-    return SqliteHelper::fetch_all(query, [](SQLite::Statement &q) {
-        return q.getColumn(0).getString();
-    });
+        SQLite::Statement query(
+            db, "SELECT track_id FROM Playlist_Track WHERE playlist_id = ? ORDER BY position ASC, track_id ASC");
+        query.bind(1, playlist_id);
+        return SqliteHelper::fetch_all(query, [](SQLite::Statement &q) {
+            return q.getColumn(0).getString();
+        });
+    } catch (const std::exception &e) {
+        return tl::unexpected(e.what());
+    }
 }
 
 tl::expected<std::string, std::string> SqlitePlaylistRepository::get_first_track_id(

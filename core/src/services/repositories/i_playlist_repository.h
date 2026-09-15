@@ -30,7 +30,7 @@ class IPlaylistRepository {
         const std::string &playlist_id, const std::string &track_id, std::optional<int> position) = 0;
     virtual tl::expected<void, std::string> remove_track(
         const std::string &playlist_id, const std::string &track_id) = 0;
-    virtual std::vector<std::string> get_tracks(
+    virtual tl::expected<std::vector<std::string>, std::string> get_tracks(
         const std::string &playlist_id) = 0;
     virtual tl::expected<std::string, std::string> get_first_track_id(
         const std::string &playlist_id) = 0;

@@ -1428,10 +1428,11 @@ bool test_playlist_repository_crud(SqliteDatabaseContext &ctx) {
     assert(repo.add_track(playlist.id, pl_track1.id, 2).has_value());
     assert(repo.add_track(playlist.id, pl_track2.id, 1).has_value());
 
-    auto tracks = repo.get_tracks(playlist.id);
-    assert(tracks.size() == 2);
-    assert(tracks[0] == pl_track2.id); // position 1 comes first
-    assert(tracks[1] == pl_track1.id); // position 2 comes second
+    auto tracks_res = repo.get_tracks(playlist.id);
+    assert(tracks_res.has_value());
+    assert(tracks_res->size() == 2);
+    assert((*tracks_res)[0] == pl_track2.id); // position 1 comes first
+    assert((*tracks_res)[1] == pl_track1.id); // position 2 comes second
 
     auto first_found = repo.get_first_track_id(playlist.id);
     assert(first_found.has_value());
@@ -1440,8 +1441,9 @@ bool test_playlist_repository_crud(SqliteDatabaseContext &ctx) {
     // Remove track
     assert(repo.remove_track(playlist.id, pl_track2.id).has_value());
     auto tracks_after = repo.get_tracks(playlist.id);
-    assert(tracks_after.size() == 1);
-    assert(tracks_after[0] == pl_track1.id);
+    assert(tracks_after.has_value());
+    assert(tracks_after->size() == 1);
+    assert((*tracks_after)[0] == pl_track1.id);
 
     // Removing already removed track fails
     auto rem_again = repo.remove_track(playlist.id, pl_track2.id);

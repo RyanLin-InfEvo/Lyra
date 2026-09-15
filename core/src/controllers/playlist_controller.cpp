@@ -40,7 +40,7 @@ tl::expected<void, std::string> PlaylistController::remove_track(const std::stri
     return m_repo.remove_track(playlist_id, track_id);
 }
 
-std::vector<std::string> PlaylistController::get_tracks(const std::string &playlist_id) {
+tl::expected<std::vector<std::string>, std::string> PlaylistController::get_tracks(const std::string &playlist_id) {
     return m_repo.get_tracks(playlist_id);
 }
 
