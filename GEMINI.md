@@ -30,12 +30,19 @@ SPDX-License-Identifier: AGPL-3.0-or-later
     *   If a subagent invokes its own subagent, the maximum hierarchy depth is strictly limited to 1 nested level (Primary -> Subagent -> Nested Subagent; recursive generation of deeper descendants is strictly prohibited).
     *   The final commit gating and user-facing reporting interface must strictly remain anchored to the Primary Agent.
 
-## 3. Post-Implementation Quality Assurance
+## 3. Post-Implementation Quality Assurance & Adversarial Code Audit (審計與對抗性代碼審查)
 *   **Self-Correction Phase:** After completing any modification, the agent MUST proactively check for:
-    *   Security vulnerabilities (e.g., credential leaks, unsafe memory usage, input validation).
+    *   Security vulnerabilities (e.g., credential leaks, unsafe memory usage, input validation, SQL injection/identifier escaping).
     *   Data integrity & anti-bandaid checks (root-cause resolution, diagnostic observability, self-healing references, and domain topology adherence).
     *   Violations of project-specific best practices.
-*   **Subagent Final Review:** Once potential issues are resolved (or if none are found), the agent MUST invoke a subagent (e.g., `codebase_investigator` or `self`) to perform a "final confirmation" (會後確認) to ensure overall system integrity and adherence to standards.
+*   **Independent Adversarial Code Audit (獨立紅隊對抗性審計，取代軟性會後確認):**
+    Once potential issues are resolved (or if none are found), the agent MUST invoke a subagent (e.g., `codebase_investigator` or `self`) to perform an independent, adversarial code audit before proposing a commit.
+    *   **Prohibition of Confirmation-Bias Prompting (禁止導向性打勾審查):** The orchestrator MUST NOT provide a biased checklist of "what was implemented" or instruct the reviewer to "verify and issue sign-off". The audit prompt MUST be strictly adversarial and open-ended (e.g., *"Perform an adversarial code audit on the worktree. Search for implementation defects, interface/seam mismatches, missing DB indexes, false-positive returns, deviations from best practices, and hidden edge cases. Do not assume tests passing implies correctness."*).
+    *   **Three-Dimensional Seam Audit (跨接縫三維審查邊界):** The audit scope MUST NOT be restricted to lines in `git diff`. The reviewer MUST explicitly verify:
+        1.  *Contract & Interface Seam:* Do all concrete repository methods have corresponding declarations in the abstract interfaces (e.g., `I*Repository`), marked with `override`?
+        2.  *Persistence & Schema Seam:* Do new query predicates (e.g., `WHERE`, `ORDER BY`, lookups like `pcm_hash`) have appropriate backing database indexes in schema definitions? Do state mutations validate affected rows (e.g., `exec() == 0` guards)?
+        3.  *Error Handling & Type Symmetry:* Are error contracts unified (e.g., `tl::expected` instead of bare types)? Are statement lifecycles deterministic (e.g., `query.reset()`)?
+    *   **Anti-Rubber-Stamping Rule (嚴禁橡皮圖章):** Green unit/integration tests are a prerequisite, NOT a substitute for critical code review. The audit subagent's objective is to actively attempt to falsify the implementation's completeness.
 
 ## 4. Engineering & Implementation Standards Reference
 *   **Implementation Standards Authority:** All concrete C++ engineering rules (including CMake source registration and code formatting), Flutter UI modular design system standards (facade contracts, semantic tokens, layout safety, controller lifecycle, and elimination of redundant status badges), and test suite execution workflows MUST strictly adhere to .agents/AGENTS.md
