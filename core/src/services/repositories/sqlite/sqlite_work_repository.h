@@ -6,10 +6,11 @@
 
 #include "../../database_context.h"
 #include "../i_work_repository.h"
+#include "sqlite_entity_repository.h"
 
 namespace lyra {
 
-class SqliteWorkRepository : public IWorkRepository {
+class SqliteWorkRepository : public IWorkRepository, public SqliteEntityRepository<Work, WorkUpdate> {
   public:
     explicit SqliteWorkRepository(IDatabaseContext &context);
 
@@ -20,8 +21,12 @@ class SqliteWorkRepository : public IWorkRepository {
         int offset, int limit, const std::optional<std::string> &search) override;
     tl::expected<std::vector<Work>, std::string> get_by_title(const std::string &title) override;
 
-  private:
-    IDatabaseContext &m_context;
+    tl::expected<std::optional<Work>, std::string> get_by_iswc(const std::string &iswc) override;
+    tl::expected<std::vector<Work>, std::string> get_by_musicbrainz_id(const std::string &musicbrainz_id) override;
+
+  protected:
+    tl::expected<void, std::string> do_insert(SQLite::Database &db, const Work &work) override;
+    void build_update(SqliteUpdateBuilder &builder, const WorkUpdate &data) const override;
 };
 
 } // namespace lyra

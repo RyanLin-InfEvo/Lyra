@@ -116,6 +116,16 @@ class SqliteUpdateBuilder {
     }
 
     /**
+     * @brief Explicitly sets a column to NULL in the UPDATE statement.
+     * @param col_name The column name to set to NULL.
+     * @return Reference to this builder for method chaining.
+     */
+    SqliteUpdateBuilder &set_null(const std::string &col_name) {
+        m_assignments.push_back(SqliteHelper::quote_identifier(col_name) + " = NULL");
+        return *this;
+    }
+
+    /**
      * @brief Configures a WHERE equality clause on the entity ID column.
      * @param id The entity ID value to match.
      * @param id_column The ID column name (defaults to "id").

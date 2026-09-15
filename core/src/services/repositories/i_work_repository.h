@@ -22,6 +22,8 @@ class IWorkRepository {
     virtual tl::expected<PaginatedResult<Work>, std::string> list(
         int offset, int limit, const std::optional<std::string> &search) = 0;
     virtual tl::expected<std::vector<Work>, std::string> get_by_title(const std::string &title) = 0;
+    virtual tl::expected<std::optional<Work>, std::string> get_by_iswc(const std::string &iswc) = 0;
+    virtual tl::expected<std::vector<Work>, std::string> get_by_musicbrainz_id(const std::string &mbid) = 0;
 };
 
 } // namespace lyra

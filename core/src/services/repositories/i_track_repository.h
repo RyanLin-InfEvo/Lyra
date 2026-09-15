@@ -35,6 +35,7 @@ class ITrackRepository {
     virtual tl::expected<std::optional<std::string>, std::string> get_album_id_by_track(const std::string &track_id) = 0;
 
     virtual tl::expected<std::vector<Track>, std::string> get_by_title(const std::string &title) = 0;
+    virtual tl::expected<std::vector<Track>, std::string> get_by_pcm_hash(const std::string &pcm_hash) = 0;
 };
 
 } // namespace lyra

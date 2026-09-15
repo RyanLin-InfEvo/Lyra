@@ -236,7 +236,10 @@ class SqliteEntityRepository {
                               SqliteHelper::quote_identifier("id") + " = ?";
             SQLite::Statement update_entity(db, sql);
             update_entity.bind(1, id);
-            update_entity.exec();
+            int affected = update_entity.exec();
+            if (affected == 0) {
+                return tl::unexpected(m_table_name + " with ID '" + id + "' not found.");
+            }
             return {};
         } catch (const std::exception &e) {
             return tl::unexpected(e.what());

@@ -6,10 +6,11 @@
 
 #include "../../database_context.h"
 #include "../i_playlist_repository.h"
+#include "sqlite_entity_repository.h"
 
 namespace lyra {
 
-class SqlitePlaylistRepository : public IPlaylistRepository {
+class SqlitePlaylistRepository : public IPlaylistRepository, public SqliteEntityRepository<Playlist, PlaylistUpdate> {
   public:
     explicit SqlitePlaylistRepository(IDatabaseContext &context);
 
@@ -19,14 +20,17 @@ class SqlitePlaylistRepository : public IPlaylistRepository {
     tl::expected<PaginatedResult<Playlist>, std::string> list(
         int offset, int limit, const std::optional<std::string> &search) override;
 
-    tl::expected<void, std::string> add_track(const std::string &playlist_id, const std::string &track_id, std::optional<int> position) override;
-    tl::expected<void, std::string> remove_track(const std::string &playlist_id, const std::string &track_id) override;
+    tl::expected<void, std::string> add_track(
+        const std::string &playlist_id, const std::string &track_id, std::optional<int> position) override;
+    tl::expected<void, std::string> remove_track(
+        const std::string &playlist_id, const std::string &track_id) override;
     std::vector<std::string> get_tracks(const std::string &playlist_id) override;
     tl::expected<std::string, std::string> get_first_track_id(const std::string &playlist_id) override;
     tl::expected<std::vector<Playlist>, std::string> get_by_title(const std::string &title) override;
 
-  private:
-    IDatabaseContext &m_context;
+  protected:
+    tl::expected<void, std::string> do_insert(SQLite::Database &db, const Playlist &playlist) override;
+    void build_update(SqliteUpdateBuilder &builder, const PlaylistUpdate &data) const override;
 };
 
 } // namespace lyra

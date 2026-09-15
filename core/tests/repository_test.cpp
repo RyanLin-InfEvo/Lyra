@@ -624,6 +624,31 @@ bool test_sqlite_update_builder(SqliteDatabaseContext &ctx) {
         assert(get_opt_res->title == "Updated Via Temp Optional");
     }
 
+    // 9. set_null method
+    {
+        SqliteUpdateBuilder null_sql_builder("Track", "track-null-1");
+        null_sql_builder.set("title", std::string("Track Title")).set_null("recording_location");
+        assert(null_sql_builder.build_sql() ==
+               "UPDATE \"Track\" SET \"title\" = ?, \"recording_location\" = NULL WHERE \"id\" = ?");
+
+        SqliteTrackRepository track_repo(ctx);
+        Track track_null;
+        track_null.id = "track-null-test";
+        track_null.pcm_hash = "pcm-hash-null-test";
+        track_null.title = "Null Test Title";
+        track_null.recording_location = "Tokyo Studio";
+        assert(track_repo.insert(track_null).has_value());
+
+        SqliteUpdateBuilder null_exec_builder("Track", track_null.id);
+        null_exec_builder.set_null("recording_location");
+        auto null_exec_res = null_exec_builder.execute(ctx.get_db());
+        assert(null_exec_res.has_value());
+
+        auto get_res = track_repo.get(track_null.id);
+        assert(get_res.has_value());
+        assert(!get_res->recording_location.has_value());
+    }
+
     return true;
 }
 
@@ -741,6 +766,9 @@ bool test_entity_repository_crud(SqliteDatabaseContext &ctx) {
 
     // 7. touch_entity
     assert(repo.touch_entity(album.id).has_value());
+    auto touch_nonexistent = repo.touch_entity("non-existent-album-id");
+    assert(!touch_nonexistent.has_value());
+    assert(touch_nonexistent.error() == "Album with ID 'non-existent-album-id' not found.");
 
     return true;
 }
@@ -980,6 +1008,459 @@ bool test_entity_rollback_on_insert_failure(SqliteDatabaseContext &ctx) {
     return true;
 }
 
+bool test_work_repository_crud(SqliteDatabaseContext &ctx) {
+    std::cout << "Running test_work_repository_crud..." << std::endl;
+    SqliteWorkRepository repo(ctx);
+
+    // 1. Insert
+    Work work;
+    work.id = "work-crud-1";
+    work.title = "Moonlight Sonata";
+    work.composition_start_year = 1801;
+    work.composition_end_year = 1802;
+    work.composition_date_text = "1801-1802";
+    work.iswc = "T-000.000.001-Z";
+    work.musicbrainz_id = "mb-work-123";
+    assert(repo.insert(work).has_value());
+
+    // Verify Entity table
+    {
+        auto &db = ctx.get_db();
+        SQLite::Statement check_entity(db, "SELECT entity_type, created_at, updated_at FROM Entity WHERE id = ?");
+        check_entity.bind(1, work.id);
+        assert(check_entity.executeStep());
+        assert(std::string(check_entity.getColumn(0).getText()) == "work");
+        assert(std::string(check_entity.getColumn(1).getText()).size() > 0);
+    }
+
+    // 2. Get
+    auto get_res = repo.get(work.id);
+    assert(get_res.has_value());
+    assert(get_res->id == work.id);
+    assert(get_res->title == "Moonlight Sonata");
+    assert(get_res->composition_start_year == 1801);
+    assert(get_res->composition_end_year == 1802);
+    assert(get_res->composition_date_text == "1801-1802");
+    assert(get_res->iswc == "T-000.000.001-Z");
+    assert(get_res->musicbrainz_id == "mb-work-123");
+
+    // Get non-existent
+    auto get_non = repo.get("non-existent-work-id");
+    assert(!get_non.has_value());
+    assert(get_non.error() == "Work not found.");
+
+    // 3. Update
+    WorkUpdate update_data;
+    update_data.id = work.id;
+    update_data.title = "Piano Sonata No. 14";
+    update_data.composition_end_year = 1801;
+    update_data.iswc = "T-000.000.002-Z";
+    assert(repo.update(update_data).has_value());
+
+    auto get_updated = repo.get(work.id);
+    assert(get_updated.has_value());
+    assert(get_updated->title == "Piano Sonata No. 14");
+    assert(get_updated->composition_start_year == 1801);
+    assert(get_updated->composition_end_year == 1801);
+    assert(get_updated->iswc == "T-000.000.002-Z");
+    assert(get_updated->musicbrainz_id == "mb-work-123");
+
+    // Update non-existent
+    WorkUpdate unexist_update;
+    unexist_update.id = "non-existent-work-id";
+    unexist_update.title = "Should Fail";
+    auto update_err = repo.update(unexist_update);
+    assert(!update_err.has_value());
+    assert(update_err.error() == "Work ID not found.");
+
+    // Empty update on non-existent ID
+    WorkUpdate empty_unexist_update;
+    empty_unexist_update.id = "non-existent-work-id";
+    auto empty_unexist_res = repo.update(empty_unexist_update);
+    assert(!empty_unexist_res.has_value());
+    assert(empty_unexist_res.error() == "Work ID not found.");
+
+    // Empty update on existing ID
+    WorkUpdate empty_exist_update;
+    empty_exist_update.id = work.id;
+    auto empty_exist_res = repo.update(empty_exist_update);
+    assert(empty_exist_res.has_value());
+
+    // 4. get_one_by_field / get_by_iswc / get_by_musicbrainz_id via IWorkRepository&
+    IWorkRepository &iwork_repo = repo;
+    auto iswc_found = iwork_repo.get_by_iswc("T-000.000.002-Z");
+    assert(iswc_found.has_value());
+    assert(iswc_found->has_value());
+    assert(iswc_found->value().id == work.id);
+
+    auto iswc_not_found = iwork_repo.get_by_iswc("non-existent-iswc");
+    assert(iswc_not_found.has_value());
+    assert(!iswc_not_found->has_value());
+
+    auto mb_found = iwork_repo.get_by_musicbrainz_id("mb-work-123");
+    assert(mb_found.has_value());
+    assert(mb_found->size() == 1);
+    assert(mb_found->front().id == work.id);
+
+    auto mb_not_found = iwork_repo.get_by_musicbrainz_id("non-existent-mb");
+    assert(mb_not_found.has_value());
+    assert(mb_not_found->empty());
+
+    // 5. List and search
+    Work work2;
+    work2.id = "work-crud-2";
+    work2.title = "Symphony No. 5";
+    work2.iswc = "T-000.000.005-Z";
+    assert(repo.insert(work2).has_value());
+
+    auto list_all = repo.list(0, 10, std::nullopt);
+    assert(list_all.has_value());
+    assert(list_all->total >= 2);
+
+    auto list_search = repo.list(0, 10, "Sonata");
+    assert(list_search.has_value());
+    assert(list_search->total == 1);
+    assert(list_search->items[0].id == "work-crud-1");
+
+    // 6. touch_entity
+    assert(repo.touch_entity(work.id).has_value());
+    auto touch_unexist = repo.touch_entity("non-existent-work-id");
+    assert(!touch_unexist.has_value());
+    assert(touch_unexist.error() == "Work with ID 'non-existent-work-id' not found.");
+
+    return true;
+}
+
+bool test_track_repository_crud(SqliteDatabaseContext &ctx) {
+    std::cout << "Running test_track_repository_crud..." << std::endl;
+    SqliteTrackRepository repo(ctx);
+    SqliteArtistRepository artist_repo(ctx);
+
+    // 1. Insert
+    Track track;
+    track.id = "track-crud-1";
+    track.pcm_hash = "pcm-crud-1-hash";
+    track.work_id = "work-crud-1";
+    track.title = "Piano Sonata No. 14: Adagio sostenuto";
+    track.recording_year = 2021;
+    track.recording_month = 5;
+    track.recording_day = 12;
+    track.recording_location = "Vienna Concert Hall";
+    track.duration = 320000;
+    track.isrc = "US-ABC-21-00001";
+    track.musicbrainz_id = "mb-track-1";
+    track.ytm_id = "yt-track-1";
+    track.spotify_id = "sp-track-1";
+    assert(repo.insert(track).has_value());
+
+    // Verify Entity table
+    {
+        auto &db = ctx.get_db();
+        SQLite::Statement check_entity(db, "SELECT entity_type, created_at, updated_at FROM Entity WHERE id = ?");
+        check_entity.bind(1, track.id);
+        assert(check_entity.executeStep());
+        assert(std::string(check_entity.getColumn(0).getText()) == "track");
+        assert(std::string(check_entity.getColumn(1).getText()).size() > 0);
+    }
+
+    // 2. Get
+    auto get_res = repo.get(track.id);
+    assert(get_res.has_value());
+    assert(get_res->id == track.id);
+    assert(get_res->pcm_hash == "pcm-crud-1-hash");
+    assert(get_res->work_id == "work-crud-1");
+    assert(get_res->title == "Piano Sonata No. 14: Adagio sostenuto");
+    assert(get_res->recording_year == 2021);
+    assert(get_res->recording_month == 5);
+    assert(get_res->recording_day == 12);
+    assert(get_res->recording_location == "Vienna Concert Hall");
+    assert(get_res->duration == 320000);
+    assert(get_res->isrc == "US-ABC-21-00001");
+    assert(get_res->musicbrainz_id == "mb-track-1");
+    assert(get_res->ytm_id == "yt-track-1");
+    assert(get_res->spotify_id == "sp-track-1");
+
+    // Get non-existent
+    auto get_non = repo.get("non-existent-track-id");
+    assert(!get_non.has_value());
+    assert(get_non.error() == "Track not found.");
+
+    // 3. Update
+    TrackUpdate update_data;
+    update_data.id = track.id;
+    update_data.title = "Adagio sostenuto (Remastered)";
+    update_data.duration = 321500;
+    update_data.spotify_id = "sp-track-updated";
+    assert(repo.update(update_data).has_value());
+
+    auto get_updated = repo.get(track.id);
+    assert(get_updated.has_value());
+    assert(get_updated->title == "Adagio sostenuto (Remastered)");
+    assert(get_updated->duration == 321500);
+    assert(get_updated->spotify_id == "sp-track-updated");
+    assert(get_updated->pcm_hash == "pcm-crud-1-hash");
+    assert(get_updated->recording_year == 2021);
+
+    // Update non-existent
+    TrackUpdate unexist_update;
+    unexist_update.id = "non-existent-track-id";
+    unexist_update.title = "Should Fail";
+    auto update_err = repo.update(unexist_update);
+    assert(!update_err.has_value());
+    assert(update_err.error() == "Track ID not found.");
+
+    // Empty update on non-existent ID
+    TrackUpdate empty_unexist_update;
+    empty_unexist_update.id = "non-existent-track-id";
+    auto empty_unexist_res = repo.update(empty_unexist_update);
+    assert(!empty_unexist_res.has_value());
+    assert(empty_unexist_res.error() == "Track ID not found.");
+
+    // Empty update on existing ID
+    TrackUpdate empty_exist_update;
+    empty_exist_update.id = track.id;
+    auto empty_exist_res = repo.update(empty_exist_update);
+    assert(empty_exist_res.has_value());
+
+    // 4. get_by_pcm_hash
+    auto pcm_found = repo.get_by_pcm_hash("pcm-crud-1-hash");
+    assert(pcm_found.has_value());
+    assert(pcm_found->size() == 1);
+    assert(pcm_found->front().id == track.id);
+
+    auto pcm_not_found = repo.get_by_pcm_hash("pcm-unknown");
+    assert(pcm_not_found.has_value());
+    assert(pcm_not_found->empty());
+
+    // 5. List and search
+    Track track2;
+    track2.id = "track-crud-2";
+    track2.pcm_hash = "pcm-crud-2-hash";
+    track2.title = "Für Elise";
+    assert(repo.insert(track2).has_value());
+
+    auto list_all = repo.list(0, 10, std::nullopt);
+    assert(list_all.has_value());
+    assert(list_all->total >= 2);
+
+    auto list_search = repo.list(0, 10, "Remastered");
+    assert(list_search.has_value());
+    assert(list_search->total == 1);
+    assert(list_search->items[0].id == "track-crud-1");
+
+    // 6. Track-Artist Relations (add_artist, update_artist, remove_artist)
+    Artist artist;
+    artist.id = "artist-track-rel-1";
+    artist.name = "Ludwig van Beethoven";
+    assert(artist_repo.insert(artist).has_value());
+
+    // Test add_artist
+    TrackArtistParams artist_params;
+    artist_params.track_id = track.id;
+    artist_params.artist_id = artist.id;
+    artist_params.role = ArtistRole::Main;
+    artist_params.position = 1;
+    auto add_art_res = repo.add_artist(artist_params);
+    assert(add_art_res.has_value());
+
+    // Verify DB
+    {
+        auto &db = ctx.get_db();
+        SQLite::Statement check_ta(db, "SELECT role, position FROM Track_Artist WHERE track_id = ? AND artist_id = ?");
+        check_ta.bind(1, track.id);
+        check_ta.bind(2, artist.id);
+        assert(check_ta.executeStep());
+        assert(std::string(check_ta.getColumn(0).getText()) == "main");
+        assert(check_ta.getColumn(1).getInt() == 1);
+    }
+
+    // Test update_artist
+    artist_params.role = ArtistRole::Performer;
+    artist_params.position = 3;
+    auto upd_art_res = repo.update_artist(artist_params);
+    assert(upd_art_res.has_value());
+
+    {
+        auto &db = ctx.get_db();
+        SQLite::Statement check_ta(db, "SELECT role, position FROM Track_Artist WHERE track_id = ? AND artist_id = ?");
+        check_ta.bind(1, track.id);
+        check_ta.bind(2, artist.id);
+        assert(check_ta.executeStep());
+        assert(std::string(check_ta.getColumn(0).getText()) == "performer");
+        assert(check_ta.getColumn(1).getInt() == 3);
+    }
+
+    // Test remove_artist
+    auto rem_art_res = repo.remove_artist(track.id, artist.id);
+    assert(rem_art_res.has_value());
+
+    // Second remove should fail
+    auto rem_again = repo.remove_artist(track.id, artist.id);
+    assert(!rem_again.has_value());
+    assert(rem_again.error() == "Relation not found or already removed.");
+
+    // Add artist with invalid track/artist
+    TrackArtistParams bad_track_params = artist_params;
+    bad_track_params.track_id = "non-existent-track";
+    assert(!repo.add_artist(bad_track_params).has_value());
+
+    TrackArtistParams bad_artist_params = artist_params;
+    bad_artist_params.artist_id = "non-existent-artist";
+    assert(!repo.add_artist(bad_artist_params).has_value());
+
+    // 7. Track-Album foreign key validation
+    TrackAlbumParams bad_album_params;
+    bad_album_params.track_id = track.id;
+    bad_album_params.album_id = "non-existent-album";
+    assert(!repo.add_album(bad_album_params).has_value());
+
+    // 8. touch_entity
+    assert(repo.touch_entity(track.id).has_value());
+    auto touch_unexist = repo.touch_entity("non-existent-track-id");
+    assert(!touch_unexist.has_value());
+    assert(touch_unexist.error() == "Track with ID 'non-existent-track-id' not found.");
+
+    return true;
+}
+
+bool test_playlist_repository_crud(SqliteDatabaseContext &ctx) {
+    std::cout << "Running test_playlist_repository_crud..." << std::endl;
+    SqlitePlaylistRepository repo(ctx);
+    SqliteTrackRepository track_repo(ctx);
+
+    // 1. Insert
+    Playlist playlist;
+    playlist.id = "playlist-crud-1";
+    playlist.title = "Classical Masterpieces";
+    playlist.description = "Essential classical music tracks";
+    assert(repo.insert(playlist).has_value());
+
+    // Verify Entity table
+    {
+        auto &db = ctx.get_db();
+        SQLite::Statement check_entity(db, "SELECT entity_type, created_at, updated_at FROM Entity WHERE id = ?");
+        check_entity.bind(1, playlist.id);
+        assert(check_entity.executeStep());
+        assert(std::string(check_entity.getColumn(0).getText()) == "playlist");
+        assert(std::string(check_entity.getColumn(1).getText()).size() > 0);
+    }
+
+    // 2. Get
+    auto get_res = repo.get(playlist.id);
+    assert(get_res.has_value());
+    assert(get_res->id == playlist.id);
+    assert(get_res->title == "Classical Masterpieces");
+    assert(get_res->description == "Essential classical music tracks");
+
+    // Get non-existent
+    auto get_non = repo.get("non-existent-playlist-id");
+    assert(!get_non.has_value());
+    assert(get_non.error() == "Playlist not found.");
+
+    // 3. Update
+    PlaylistUpdate update_data;
+    update_data.id = playlist.id;
+    update_data.title = "Top Classical Tracks";
+    update_data.description = "Updated description";
+    assert(repo.update(update_data).has_value());
+
+    auto get_updated = repo.get(playlist.id);
+    assert(get_updated.has_value());
+    assert(get_updated->title == "Top Classical Tracks");
+    assert(get_updated->description == "Updated description");
+
+    // Update non-existent
+    PlaylistUpdate unexist_update;
+    unexist_update.id = "non-existent-playlist-id";
+    unexist_update.title = "Should Fail";
+    auto update_err = repo.update(unexist_update);
+    assert(!update_err.has_value());
+    assert(update_err.error() == "Playlist ID not found.");
+
+    // Empty update on non-existent ID
+    PlaylistUpdate empty_unexist_update;
+    empty_unexist_update.id = "non-existent-playlist-id";
+    auto empty_unexist_res = repo.update(empty_unexist_update);
+    assert(!empty_unexist_res.has_value());
+    assert(empty_unexist_res.error() == "Playlist ID not found.");
+
+    // Empty update on existing ID
+    PlaylistUpdate empty_exist_update;
+    empty_exist_update.id = playlist.id;
+    auto empty_exist_res = repo.update(empty_exist_update);
+    assert(empty_exist_res.has_value());
+
+    // 4. List and search
+    Playlist playlist2;
+    playlist2.id = "playlist-crud-2";
+    playlist2.title = "Jazz Essentials";
+    playlist2.description = "Smooth jazz collection";
+    assert(repo.insert(playlist2).has_value());
+
+    auto list_all = repo.list(0, 10, std::nullopt);
+    assert(list_all.has_value());
+    assert(list_all->total >= 2);
+
+    auto list_search = repo.list(0, 10, "Jazz");
+    assert(list_search.has_value());
+    assert(list_search->total == 1);
+    assert(list_search->items[0].id == "playlist-crud-2");
+
+    // 5. Relations: add_track, remove_track, get_tracks, get_first_track_id
+    Track pl_track1;
+    pl_track1.id = "track-pl-1";
+    pl_track1.pcm_hash = "pcm-pl-1";
+    pl_track1.title = "Track One";
+    assert(track_repo.insert(pl_track1).has_value());
+
+    Track pl_track2;
+    pl_track2.id = "track-pl-2";
+    pl_track2.pcm_hash = "pcm-pl-2";
+    pl_track2.title = "Track Two";
+    assert(track_repo.insert(pl_track2).has_value());
+
+    // Initially empty
+    auto first_empty = repo.get_first_track_id(playlist.id);
+    assert(!first_empty.has_value());
+    assert(first_empty.error() == "Playlist is empty.");
+
+    // Add tracks with explicit position ordering
+    assert(repo.add_track(playlist.id, pl_track1.id, 2).has_value());
+    assert(repo.add_track(playlist.id, pl_track2.id, 1).has_value());
+
+    auto tracks = repo.get_tracks(playlist.id);
+    assert(tracks.size() == 2);
+    assert(tracks[0] == pl_track2.id); // position 1 comes first
+    assert(tracks[1] == pl_track1.id); // position 2 comes second
+
+    auto first_found = repo.get_first_track_id(playlist.id);
+    assert(first_found.has_value());
+    assert(*first_found == pl_track2.id);
+
+    // Remove track
+    assert(repo.remove_track(playlist.id, pl_track2.id).has_value());
+    auto tracks_after = repo.get_tracks(playlist.id);
+    assert(tracks_after.size() == 1);
+    assert(tracks_after[0] == pl_track1.id);
+
+    // Removing already removed track fails
+    auto rem_again = repo.remove_track(playlist.id, pl_track2.id);
+    assert(!rem_again.has_value());
+    assert(rem_again.error() == "Track not found in playlist.");
+
+    // Relation error handling
+    assert(!repo.add_track("non-existent-pl", pl_track1.id, 1).has_value());
+    assert(!repo.add_track(playlist.id, "non-existent-track", 1).has_value());
+
+    // 6. touch_entity
+    assert(repo.touch_entity(playlist.id).has_value());
+    auto touch_unexist = repo.touch_entity("non-existent-pl-id");
+    assert(!touch_unexist.has_value());
+    assert(touch_unexist.error() == "Playlist with ID 'non-existent-pl-id' not found.");
+
+    return true;
+}
+
 int main() {
     std::string db_path = "test_repo.db";
     std::filesystem::remove(db_path);
@@ -998,6 +1479,9 @@ int main() {
         if (!test_sqlite_update_builder(ctx)) success = false;
         if (!test_entity_repository_crud(ctx)) success = false;
         if (!test_artist_repository_crud(ctx)) success = false;
+        if (!test_work_repository_crud(ctx)) success = false;
+        if (!test_track_repository_crud(ctx)) success = false;
+        if (!test_playlist_repository_crud(ctx)) success = false;
         if (!test_entity_rollback_on_insert_failure(ctx)) success = false;
         if (!test_database_triggers_updated_at(ctx)) success = false;
     } catch (const std::exception &e) {
