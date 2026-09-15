@@ -97,7 +97,11 @@ class LyraPlayerBar extends StatelessWidget {
       child: Stack(
         clipBehavior: Clip.none,
         children: [
-          // 1. Top Full-Width Progress Scrubber (Flush with left & right edges, like YouTube Music)
+          // 1. Top Full-Width Progress Scrubber (Flush with left & right edges, like YouTube Music).
+          // NOTE: DO NOT change `top: -6.0` or remove `clipBehavior: Clip.none`!
+          // The scrubber container is 14.0 pt tall with the track centered at internal y=6.0.
+          // Therefore, `top: -6.0` places the track exactly flush with the player bar's top border (y=0.0).
+          // In addition, `clipBehavior: Clip.none` ensures the hover timestamp tooltip (top: -26.0) is not clipped.
           Positioned(
             top: -6.0,
             left: 0,
@@ -131,9 +135,7 @@ class LyraPlayerBar extends StatelessWidget {
                         child: Icon(
                           LucideIcons.shuffle,
                           size: 15.0,
-                          color: isShuffle
-                              ? tokens.primary
-                              : tokens.textMuted.withValues(alpha: 0.6),
+                          color: isShuffle ? tokens.primary : tokens.textMuted,
                         ),
                       ),
                       const SizedBox(width: 8.0),
@@ -195,7 +197,7 @@ class LyraPlayerBar extends StatelessWidget {
                           size: 15.0,
                           color: repeatMode != RepeatMode.off
                               ? tokens.primary
-                              : tokens.textMuted.withValues(alpha: 0.6),
+                              : tokens.textMuted,
                         ),
                       ),
 
@@ -330,8 +332,9 @@ class LyraPlayerBar extends StatelessWidget {
                                                   LyraTypography.small(
                                                     tokens,
                                                   ).copyWith(
-                                                    fontSize: 9.0,
-                                                    fontWeight: FontWeight.bold,
+                                                    fontSize: 10.5,
+                                                    fontWeight: FontWeight.w600,
+                                                    letterSpacing: 0.2,
                                                   ),
                                             ),
                                           ),

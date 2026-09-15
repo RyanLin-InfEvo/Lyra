@@ -394,7 +394,7 @@ void main() {
               w is Container &&
               w.decoration is BoxDecoration &&
               (w.decoration as BoxDecoration).shape == BoxShape.circle &&
-              w.constraints?.minWidth == 36.0,
+              w.constraints?.minWidth == 46.0,
         ),
       );
       expect(playContainerFinder, findsOneWidget);
@@ -455,7 +455,7 @@ void main() {
               w is Container &&
               w.decoration is BoxDecoration &&
               (w.decoration as BoxDecoration).shape == BoxShape.circle &&
-              w.constraints?.minWidth == 36.0,
+              w.constraints?.minWidth == 46.0,
         ),
       );
       expect(playContainerFinder, findsOneWidget);

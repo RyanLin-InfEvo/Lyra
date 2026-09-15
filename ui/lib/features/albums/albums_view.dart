@@ -186,8 +186,9 @@ class _AlbumCardState extends State<_AlbumCard> {
                               child: Text(
                                 album.format ?? 'FLAC',
                                 style: LyraTypography.small(tokens).copyWith(
-                                  fontSize: 9.0,
-                                  fontWeight: FontWeight.bold,
+                                  fontSize: 10.5,
+                                  fontWeight: FontWeight.w600,
+                                  letterSpacing: 0.2,
                                 ),
                               ),
                             ),

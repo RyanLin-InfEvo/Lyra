@@ -238,8 +238,16 @@ void main() {
       final initialRowSize = tester.getSize(rowFinder);
       final initialButtonSize = tester.getSize(copyButtonFinder);
 
-      expect(initialButtonSize.width, equals(24.0));
-      expect(initialButtonSize.height, equals(24.0));
+      expect(initialButtonSize.width, equals(28.0));
+      expect(initialButtonSize.height, equals(28.0));
+
+      final containerFinder = find.descendant(
+        of: copyButtonFinder,
+        matching: find.byType(AnimatedContainer),
+      );
+      final visualSize = tester.getSize(containerFinder);
+      expect(visualSize.width, equals(24.0));
+      expect(visualSize.height, equals(24.0));
 
       // Tap copy button
       await tester.tap(copyButtonFinder);

@@ -254,8 +254,17 @@ void main() {
 
         final buttonFinder = find.byType(LyraCopyButton);
         final initialSize = tester.getSize(buttonFinder);
-        expect(initialSize.width, equals(24.0));
-        expect(initialSize.height, equals(24.0));
+        expect(initialSize.width, equals(28.0));
+        expect(initialSize.height, equals(28.0));
+
+        // Verify visual container footprint remains 24x24
+        final containerFinder = find.descendant(
+          of: buttonFinder,
+          matching: find.byType(AnimatedContainer),
+        );
+        final visualSize = tester.getSize(containerFinder);
+        expect(visualSize.width, equals(24.0));
+        expect(visualSize.height, equals(24.0));
 
         // 1. Hover state
         final gesture = await tester.createGesture(
@@ -483,6 +492,111 @@ void main() {
         equals('keyboard_copy_text'),
       );
       expect(find.byIcon(LucideIcons.check), findsOneWidget);
+    });
+
+    testWidgets('displays blue focus ring with width 2.0 when focused', (
+      tester,
+    ) async {
+      final focusNode = FocusNode();
+      addTearDown(focusNode.dispose);
+      final tokens = LyraThemeTokens.dark();
+
+      await tester.pumpWidget(
+        _buildTestApp(
+          child: LyraCopyButton(text: 'focus_ring_text', focusNode: focusNode),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      focusNode.requestFocus();
+      await tester.pumpAndSettle();
+
+      final containerFinder = find.descendant(
+        of: find.byType(LyraCopyButton),
+        matching: find.byType(AnimatedContainer),
+      );
+      final focusedContainer = tester.widget<AnimatedContainer>(
+        containerFinder,
+      );
+      final deco = focusedContainer.decoration as BoxDecoration;
+      expect(deco.border?.top.color, equals(tokens.ring));
+      expect(deco.border?.top.width, equals(2.0));
+    });
+  });
+
+  group('Accessibility & Tactile Feedback', () {
+    testWidgets('exposes Semantics node with button, label, and onTap action', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        _buildTestApp(
+          child: const LyraCopyButton(
+            text: 'semantics_text',
+            tooltip: 'Copy text',
+            copiedTooltip: 'Copied text',
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(
+        tester.getSemantics(find.byType(LyraCopyButton)),
+        matchesSemantics(
+          isButton: true,
+          isEnabled: true,
+          hasEnabledState: true,
+          hasTapAction: true,
+          label: 'Copy text',
+        ),
+      );
+
+      // Tap to copy
+      await tester.tap(find.byType(LyraCopyButton));
+      await tester.pumpAndSettle();
+
+      expect(
+        tester.getSemantics(find.byType(LyraCopyButton)),
+        matchesSemantics(
+          isButton: true,
+          isEnabled: true,
+          hasEnabledState: true,
+          hasTapAction: true,
+          label: 'Copied text',
+          value: 'Copied',
+        ),
+      );
+    });
+
+    testWidgets('applies tactile scale-down transform when pressed', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        _buildTestApp(child: const LyraCopyButton(text: 'tactile_test_text')),
+      );
+      await tester.pumpAndSettle();
+
+      final gesture = await tester.startGesture(
+        tester.getCenter(find.byType(LyraCopyButton)),
+      );
+      await tester.pump(const Duration(milliseconds: 150));
+
+      final transformFinder = find.descendant(
+        of: find.byType(LyraCopyButton),
+        matching: find.byType(Transform),
+      );
+      expect(transformFinder, findsWidgets);
+
+      final transformWidget = tester.widget<Transform>(transformFinder.first);
+      expect(
+        transformWidget.transform,
+        equals(Matrix4.diagonal3Values(0.96, 0.96, 1.0)),
+      );
+
+      await gesture.up();
+      await tester.pump();
+
+      final releasedTransform = tester.widget<Transform>(transformFinder.first);
+      expect(releasedTransform.transform, equals(Matrix4.identity()));
     });
   });
 }

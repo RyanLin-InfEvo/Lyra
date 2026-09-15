@@ -7,6 +7,7 @@ import 'package:shadcn_ui/shadcn_ui.dart';
 import '../contracts/lyra_contracts.dart';
 import '../tokens/lyra_tokens.dart';
 import 'lyra_design_system_factory.dart';
+import 'lyra_design_system_scope.dart';
 
 /// Shadcn implementation of the LyraDesignSystemFactory.
 class ShadcnFactory extends LyraDesignSystemFactory {
@@ -151,6 +152,41 @@ class ShadcnFactory extends LyraDesignSystemFactory {
     Color? backgroundColor,
     Border? border,
   }) {
+    if (variant == LyraCardVariant.elevated) {
+      return Builder(
+        key: key,
+        builder: (context) {
+          final tokens =
+              LyraDesignSystemScope.maybeOf(context)?.tokens ??
+              LyraThemeTokens.dark();
+          return ShadCard(
+            title: title,
+            description: description,
+            footer: footer,
+            leading: leading,
+            trailing: trailing,
+            padding: padding,
+            width: width,
+            height: height,
+            backgroundColor: backgroundColor,
+            border: border != null
+                ? ShadBorder.all(
+                    color: border.top.color,
+                    width: border.top.width,
+                  )
+                : null,
+            shadows: [
+              BoxShadow(
+                color: tokens.text.withValues(alpha: 0.08),
+                blurRadius: 16,
+                offset: const Offset(0, 4),
+              ),
+            ],
+            child: child,
+          );
+        },
+      );
+    }
     return ShadCard(
       key: key,
       title: title,
@@ -165,6 +201,7 @@ class ShadcnFactory extends LyraDesignSystemFactory {
       border: border != null
           ? ShadBorder.all(color: border.top.color, width: border.top.width)
           : null,
+      shadows: null,
       child: child,
     );
   }
@@ -242,13 +279,20 @@ class ShadcnFactory extends LyraDesignSystemFactory {
           child: child,
         );
       case LyraBadgeVariant.success:
-        return ShadBadge(
+        return Builder(
           key: key,
-          onPressed: onPressed,
-          padding: padding,
-          backgroundColor: LyraColors.emerald600,
-          foregroundColor: const Color(0xFFFFFFFF),
-          child: child,
+          builder: (context) {
+            final tokens =
+                LyraDesignSystemScope.maybeOf(context)?.tokens ??
+                LyraThemeTokens.dark();
+            return ShadBadge(
+              onPressed: onPressed,
+              padding: padding,
+              backgroundColor: tokens.success,
+              foregroundColor: tokens.successForeground,
+              child: child,
+            );
+          },
         );
     }
   }
@@ -302,6 +346,15 @@ class ShadcnFactory extends LyraDesignSystemFactory {
       title: title,
       description: description,
       actions: actions ?? const [],
+      closeIcon: onClose != null
+          ? ShadIconButton.ghost(
+              icon: const Icon(LucideIcons.x, size: 16),
+              width: 20,
+              height: 20,
+              padding: EdgeInsets.zero,
+              onPressed: onClose,
+            )
+          : null,
       child: child,
     );
   }

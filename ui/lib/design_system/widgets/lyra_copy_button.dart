@@ -131,6 +131,7 @@ class LyraCopyButton extends StatefulWidget {
 class _LyraCopyButtonState extends State<LyraCopyButton> {
   bool _isHovered = false;
   bool _isFocused = false;
+  bool _isPressed = false;
   bool _isCopied = false;
   Timer? _resetTimer;
 
@@ -183,7 +184,10 @@ class _LyraCopyButtonState extends State<LyraCopyButton> {
         color: tokens.success.withValues(alpha: 0.5),
         width: 1.0,
       );
-    } else if (isHoveredOrFocused) {
+    } else if (_isFocused) {
+      backgroundColor = tokens.secondary.withValues(alpha: 0.5);
+      border = Border.all(color: tokens.ring, width: 2.0);
+    } else if (_isHovered) {
       backgroundColor = tokens.secondary.withValues(alpha: 0.5);
       border = Border.all(
         color: tokens.text.withValues(alpha: 0.25),
@@ -275,6 +279,21 @@ class _LyraCopyButtonState extends State<LyraCopyButton> {
       child: switcher,
     );
 
+    final interactiveContainer = ConstrainedBox(
+      constraints: const BoxConstraints(minWidth: 28.0, minHeight: 28.0),
+      child: Center(
+        widthFactor: 1.0,
+        heightFactor: 1.0,
+        child: Transform(
+          transform: _isPressed
+              ? Matrix4.diagonal3Values(0.96, 0.96, 1.0)
+              : Matrix4.identity(),
+          alignment: Alignment.center,
+          child: container,
+        ),
+      ),
+    );
+
     final String? activeTooltip = _isCopied
         ? (widget.copiedTooltip ?? widget.tooltip)
         : widget.tooltip;
@@ -297,8 +316,11 @@ class _LyraCopyButtonState extends State<LyraCopyButton> {
         },
         child: GestureDetector(
           behavior: HitTestBehavior.opaque,
+          onTapDown: (_) => setState(() => _isPressed = true),
+          onTapUp: (_) => setState(() => _isPressed = false),
+          onTapCancel: () => setState(() => _isPressed = false),
           onTap: _handleCopy,
-          child: container,
+          child: interactiveContainer,
         ),
       ),
     );
@@ -311,6 +333,15 @@ class _LyraCopyButtonState extends State<LyraCopyButton> {
       );
     }
 
-    return result;
+    return Semantics(
+      button: true,
+      enabled: true,
+      label: _isCopied
+          ? (widget.copiedTooltip ?? 'Copied to clipboard')
+          : (widget.tooltip ?? 'Copy to clipboard'),
+      value: _isCopied ? 'Copied' : null,
+      onTap: _handleCopy,
+      child: result,
+    );
   }
 }

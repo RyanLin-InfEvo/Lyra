@@ -105,7 +105,7 @@ class LyraThemeTokens {
       foreground: LyraColors.zinc50, // #fafafa
       card: LyraColors.zinc900, // #18181b
       cardForeground: LyraColors.zinc50,
-      border: LyraColors.zinc800, // #27272a
+      border: LyraColors.zinc700, // #3f3f46
       text: LyraColors.zinc50, // #fafafa
       textMuted: LyraColors.zinc400, // #a1a1aa
       primary: LyraColors.zinc50,
@@ -120,7 +120,7 @@ class LyraThemeTokens {
       destructiveForeground: LyraColors.zinc50,
       ring: LyraColors.blue500, // #3b82f6
       success: LyraColors.emerald500,
-      successForeground: LyraColors.zinc50,
+      successForeground: LyraColors.zinc950,
       warning: LyraColors.amber500,
       warningForeground: LyraColors.zinc950,
     );
@@ -151,7 +151,7 @@ class LyraThemeTokens {
       success: LyraColors.emerald600,
       successForeground: Color(0xFFFFFFFF),
       warning: LyraColors.amber600,
-      warningForeground: Color(0xFFFFFFFF),
+      warningForeground: LyraColors.zinc950,
     );
   }
 

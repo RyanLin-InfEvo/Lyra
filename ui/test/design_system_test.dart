@@ -4,12 +4,14 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shadcn_ui/shadcn_ui.dart';
+import 'package:ui/design_system/contracts/lyra_contracts.dart';
 import 'package:ui/design_system/factory/lyra_design_system_scope.dart';
 import 'package:ui/design_system/factory/shadcn_factory.dart';
 import 'package:ui/design_system/tokens/lyra_tokens.dart';
 import 'package:ui/design_system/widgets/lyra_badge.dart';
 import 'package:ui/design_system/widgets/lyra_button.dart';
 import 'package:ui/design_system/widgets/lyra_card.dart';
+import 'package:ui/design_system/widgets/lyra_dialog.dart';
 import 'package:ui/design_system/widgets/lyra_input.dart';
 
 Widget _buildTestApp({
@@ -59,10 +61,11 @@ void main() {
       expect(tokens.isDark, isTrue);
       expect(tokens.background, equals(LyraColors.zinc950));
       expect(tokens.card, equals(LyraColors.zinc900));
-      expect(tokens.border, equals(LyraColors.zinc800));
+      expect(tokens.border, equals(LyraColors.zinc700));
       expect(tokens.text, equals(LyraColors.zinc50));
       expect(tokens.textMuted, equals(LyraColors.zinc400));
       expect(tokens.ring, equals(LyraColors.blue500));
+      expect(tokens.successForeground, equals(LyraColors.zinc950));
     });
 
     test('LyraThemeTokens light mode sets zinc light palette', () {
@@ -71,6 +74,7 @@ void main() {
       expect(tokens.background, equals(const Color(0xFFFFFFFF)));
       expect(tokens.text, equals(LyraColors.zinc950));
       expect(tokens.border, equals(LyraColors.zinc200));
+      expect(tokens.warningForeground, equals(LyraColors.zinc950));
     });
 
     test('LyraAnimation defines standard motion durations and curves', () {
@@ -145,6 +149,44 @@ void main() {
       expect(find.text('Card Description'), findsOneWidget);
       expect(find.text('Card Body Content'), findsOneWidget);
       expect(find.text('Card Footer'), findsOneWidget);
+    });
+
+    testWidgets('LyraCard renders elevated variant with shadows', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        _buildTestApp(
+          child: const LyraCard(
+            variant: LyraCardVariant.elevated,
+            child: Text('Elevated Card Content'),
+          ),
+        ),
+      );
+
+      expect(find.text('Elevated Card Content'), findsOneWidget);
+      final card = tester.widget<ShadCard>(find.byType(ShadCard));
+      expect(card.shadows, isNotNull);
+      expect(card.shadows, isNotEmpty);
+    });
+
+    testWidgets('LyraDialog wires onClose callback to close button', (
+      tester,
+    ) async {
+      bool closed = false;
+      await tester.pumpWidget(
+        _buildTestApp(
+          child: LyraDialog(
+            title: const Text('Test Dialog'),
+            onClose: () => closed = true,
+            child: const Text('Dialog Content'),
+          ),
+        ),
+      );
+
+      expect(find.text('Test Dialog'), findsOneWidget);
+      expect(find.byIcon(LucideIcons.x), findsOneWidget);
+      await tester.tap(find.byIcon(LucideIcons.x));
+      expect(closed, isTrue);
     });
 
     testWidgets('LyraBadge renders variants correctly', (tester) async {
