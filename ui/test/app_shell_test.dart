@@ -842,13 +842,13 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.byType(AssetInspectorDrawer), findsNothing);
 
-      // 5. Open Inspector via Track row info icon
-      final trackInfoIcons = find.descendant(
+      // 5. Open Inspector via Track row resolution badge
+      final firstTrackResolutionBadge = find.descendant(
         of: find.byType(TracksView),
-        matching: find.byIcon(LucideIcons.info),
+        matching: find.textContaining('24-bit/96kHz'),
       );
-      expect(trackInfoIcons, findsWidgets);
-      await tester.tap(trackInfoIcons.first);
+      expect(firstTrackResolutionBadge, findsWidgets);
+      await tester.tap(firstTrackResolutionBadge.first);
       await tester.pumpAndSettle();
 
       expect(find.byType(AssetInspectorDrawer), findsOneWidget);
@@ -1090,12 +1090,14 @@ void main() {
       await tester.pumpWidget(_buildAppShellTest());
       await tester.pumpAndSettle();
 
-      // In initial Tracks view, verify ALBUM is visible
-      expect(find.text('ALBUM'), findsOneWidget);
-
-      // Right-click Tracks header to toggle off ALBUM
       final tracksHeader = find.byKey(const Key('tracks_table_header'));
       expect(tracksHeader, findsOneWidget);
+
+      // In initial Tracks view, verify Album is visible
+      expect(
+        find.descendant(of: tracksHeader, matching: find.text('Album')),
+        findsOneWidget,
+      );
 
       final gesture = await tester.createGesture(
         kind: PointerDeviceKind.mouse,
@@ -1108,8 +1110,11 @@ void main() {
       await tester.tap(find.byKey(const Key('track_col_menu_album')));
       await tester.pumpAndSettle();
 
-      // ALBUM is now hidden
-      expect(find.text('ALBUM'), findsNothing);
+      // Album is now hidden
+      expect(
+        find.descendant(of: tracksHeader, matching: find.text('Album')),
+        findsNothing,
+      );
 
       // Switch to Works tab
       await tester.tap(find.text('Works'));
@@ -1134,8 +1139,12 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.byType(TracksView), findsOneWidget);
 
-      // Verify ALBUM is still hidden (session persistence)
-      expect(find.text('ALBUM'), findsNothing);
+      final tracksHeaderAgain = find.byKey(const Key('tracks_table_header'));
+      // Verify Album is still hidden (session persistence)
+      expect(
+        find.descendant(of: tracksHeaderAgain, matching: find.text('Album')),
+        findsNothing,
+      );
 
       // Switch back to Works tab
       await tester.tap(find.text('Works'));
@@ -1157,7 +1166,7 @@ void main() {
     await tester.pumpWidget(_buildAppShellTest());
     await tester.pumpAndSettle();
 
-    // 1. In TracksView, verify # is to the left of TIME
+    // 1. In TracksView, verify # is to the left of Time
     final tracksHeader = find.byKey(const Key('tracks_table_header'));
     expect(tracksHeader, findsOneWidget);
     expect(
@@ -1165,13 +1174,13 @@ void main() {
       lessThan(
         tester
             .getTopLeft(
-              find.descendant(of: tracksHeader, matching: find.text('TIME')),
+              find.descendant(of: tracksHeader, matching: find.text('Time')),
             )
             .dx,
       ),
     );
 
-    // Right-click Tracks header to reorder TIME to the front
+    // Right-click Tracks header to reorder Time to the front
     final gesture = await tester.createGesture(
       kind: PointerDeviceKind.mouse,
       buttons: kSecondaryMouseButton,
@@ -1194,7 +1203,7 @@ void main() {
     expect(
       tester
           .getTopLeft(
-            find.descendant(of: tracksHeader, matching: find.text('TIME')),
+            find.descendant(of: tracksHeader, matching: find.text('Time')),
           )
           .dx,
       lessThan(tester.getTopLeft(find.text('#')).dx),
@@ -1238,10 +1247,27 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.byType(TracksView), findsOneWidget);
 
-    // Verify TIME is STILL to the left of # (column order preserved across tabs)
+    // Verify Time is STILL to the left of # (column order preserved across tabs)
+    final tracksHeaderRevisited = find.byKey(const Key('tracks_table_header'));
     expect(
-      tester.getTopLeft(find.text('TIME')).dx,
-      lessThan(tester.getTopLeft(find.text('#')).dx),
+      tester
+          .getTopLeft(
+            find.descendant(
+              of: tracksHeaderRevisited,
+              matching: find.text('Time'),
+            ),
+          )
+          .dx,
+      lessThan(
+        tester
+            .getTopLeft(
+              find.descendant(
+                of: tracksHeaderRevisited,
+                matching: find.text('#'),
+              ),
+            )
+            .dx,
+      ),
     );
 
     // 4. Switch back to Works tab

@@ -358,4 +358,85 @@ class ShadcnFactory extends LyraDesignSystemFactory {
       child: child,
     );
   }
+
+  @override
+  Widget createSwitch({
+    Key? key,
+    required bool value,
+    ValueChanged<bool>? onChanged,
+    bool enabled = true,
+    FocusNode? focusNode,
+    bool autofocus = false,
+  }) {
+    if (autofocus) {
+      if (focusNode != null) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          focusNode.requestFocus();
+        });
+      } else {
+        return _AutofocusSwitchWrapper(
+          switchKey: key,
+          value: value,
+          onChanged: onChanged,
+          enabled: enabled,
+        );
+      }
+    }
+    return ShadSwitch(
+      key: key,
+      value: value,
+      onChanged: onChanged,
+      enabled: enabled,
+      focusNode: focusNode,
+    );
+  }
+}
+
+class _AutofocusSwitchWrapper extends StatefulWidget {
+  final Key? switchKey;
+  final bool value;
+  final ValueChanged<bool>? onChanged;
+  final bool enabled;
+
+  const _AutofocusSwitchWrapper({
+    this.switchKey,
+    required this.value,
+    this.onChanged,
+    this.enabled = true,
+  });
+
+  @override
+  State<_AutofocusSwitchWrapper> createState() =>
+      _AutofocusSwitchWrapperState();
+}
+
+class _AutofocusSwitchWrapperState extends State<_AutofocusSwitchWrapper> {
+  final FocusNode _focusNode = FocusNode();
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        _focusNode.requestFocus();
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _focusNode.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return ShadSwitch(
+      key: widget.switchKey,
+      value: widget.value,
+      onChanged: widget.onChanged,
+      enabled: widget.enabled,
+      focusNode: _focusNode,
+    );
+  }
 }

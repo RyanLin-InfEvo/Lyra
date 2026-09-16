@@ -1,19 +1,26 @@
 // SPDX-FileCopyrightText: 2026 Tzu-Ting Lin
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart'
     show
         ClampingScrollPhysics,
         Colors,
         Material,
         ReorderableDragStartListener,
-        ReorderableListView;
+        ReorderableListView,
+        Tooltip;
 import 'package:flutter/widgets.dart';
 import 'package:shadcn_ui/shadcn_ui.dart';
+
+import '../../design_system/contracts/lyra_contracts.dart';
 
 import '../../design_system/factory/lyra_design_system_scope.dart';
 import '../../design_system/tokens/lyra_tokens.dart';
 import '../../design_system/widgets/lyra_badge.dart';
+import '../../design_system/widgets/lyra_button.dart';
+import '../../design_system/widgets/lyra_copy_button.dart';
 import '../../widgets/draggable_columns_overlay.dart';
 import '../models/track.dart';
 
@@ -46,7 +53,7 @@ class TrackColumn {
 
   static const TrackColumn title = TrackColumn._(
     name: 'title',
-    headerLabel: 'TITLE & ARTIST',
+    headerLabel: 'Title & Artist',
     label: 'Title & Artist',
     flex: 5,
     isMandatory: true,
@@ -54,7 +61,7 @@ class TrackColumn {
 
   static const TrackColumn album = TrackColumn._(
     name: 'album',
-    headerLabel: 'ALBUM',
+    headerLabel: 'Album',
     label: 'Album',
     flex: 4,
   );
@@ -62,21 +69,21 @@ class TrackColumn {
   /// Best resolution format badge (e.g. 24-bit/96kHz) and audio version count.
   static const TrackColumn resolution = TrackColumn._(
     name: 'resolution',
-    headerLabel: 'RESOLUTION',
+    headerLabel: 'Resolution',
     label: 'Resolution',
     flex: 3,
   );
 
   static const TrackColumn duration = TrackColumn._(
     name: 'duration',
-    headerLabel: 'TIME',
-    label: 'TIME',
+    headerLabel: 'Time',
+    label: 'Time',
     width: 76.0,
   );
 
   static const TrackColumn work = TrackColumn._(
     name: 'work',
-    headerLabel: 'WORK',
+    headerLabel: 'Work',
     label: 'Work / Composition',
     flex: 4,
     defaultVisible: false,
@@ -92,17 +99,17 @@ class TrackColumn {
 
   static const TrackColumn year = TrackColumn._(
     name: 'year',
-    headerLabel: 'YEAR',
+    headerLabel: 'Year',
     label: 'Year Date',
-    width: 60.0,
+    width: 74.0,
     defaultVisible: false,
   );
 
   static const TrackColumn musicbrainzId = TrackColumn._(
     name: 'musicbrainzId',
-    headerLabel: 'MUSICBRAINZ ID',
+    headerLabel: 'MusicBrainz ID',
     label: 'MusicBrainz ID',
-    flex: 3,
+    width: 260.0,
     defaultVisible: false,
   );
 
@@ -116,7 +123,7 @@ class TrackColumn {
 
   static const TrackColumn genre = TrackColumn._(
     name: 'genre',
-    headerLabel: 'GENRE',
+    headerLabel: 'Genre',
     label: 'Genre',
     flex: 2,
     defaultVisible: false,
@@ -124,9 +131,9 @@ class TrackColumn {
 
   static const TrackColumn trackNumber = TrackColumn._(
     name: 'trackNumber',
-    headerLabel: 'TRK#',
+    headerLabel: 'Trk#',
     label: 'Track #',
-    width: 50.0,
+    width: 66.0,
     defaultVisible: false,
   );
 
@@ -183,6 +190,7 @@ class TracksView extends StatefulWidget {
   final ValueChanged<Set<TrackColumn>>? onVisibleColumnsChanged;
   final List<TrackColumn>? columnOrder;
   final ValueChanged<List<TrackColumn>>? onColumnOrderChanged;
+  final VoidCallback? onImport;
 
   const TracksView({
     super.key,
@@ -200,6 +208,7 @@ class TracksView extends StatefulWidget {
     this.onVisibleColumnsChanged,
     this.columnOrder,
     this.onColumnOrderChanged,
+    this.onImport,
   });
 
   @override
@@ -211,6 +220,25 @@ class _TracksViewState extends State<TracksView> {
   late Set<TrackColumn> _internalVisibleColumns;
   late final OverlayPortalController _columnsOverlayController;
   late final ValueNotifier<Offset> _columnsPositionNotifier;
+  TrackColumn? _sortColumn;
+  bool _sortAscending = true;
+
+  void _handleSort(TrackColumn col) {
+    if (col == TrackColumn.index) return;
+    setState(() {
+      if (_sortColumn == col) {
+        if (_sortAscending) {
+          _sortAscending = false;
+        } else {
+          _sortColumn = null;
+          _sortAscending = true;
+        }
+      } else {
+        _sortColumn = col;
+        _sortAscending = true;
+      }
+    });
+  }
 
   @override
   void initState() {
@@ -319,60 +347,84 @@ class _TracksViewState extends State<TracksView> {
   }
 
   Widget _buildHeaderCell(TrackColumn col, LyraThemeTokens tokens) {
-    Widget child;
-    if (col == TrackColumn.duration) {
-      child = Align(
+    Widget cellContent;
+    final isSortable = col != TrackColumn.index;
+    final isSorted = _sortColumn == col;
+    final sortIcon = isSorted
+        ? Icon(
+            _sortAscending ? LucideIcons.arrowUp : LucideIcons.arrowDown,
+            size: 12.0,
+            color: tokens.primary,
+          )
+        : null;
+
+    final headerTextStyle = LyraTypography.small(tokens).copyWith(
+      color: isSorted ? tokens.text : tokens.textMuted,
+      fontWeight: FontWeight.bold,
+    );
+
+    if (col == TrackColumn.index) {
+      cellContent = Align(
+        alignment: Alignment.centerLeft,
+        child: Text(col.headerLabel, style: headerTextStyle),
+      );
+    } else if (col == TrackColumn.duration ||
+        col == TrackColumn.trackNumber ||
+        col == TrackColumn.year) {
+      cellContent = Align(
         alignment: Alignment.centerRight,
         child: Padding(
           padding: const EdgeInsets.only(right: 16.0),
-          child: Text(
-            col.headerLabel,
-            style: LyraTypography.small(
-              tokens,
-            ).copyWith(color: tokens.textMuted, fontWeight: FontWeight.bold),
-          ),
-        ),
-      );
-    } else if (col == TrackColumn.index) {
-      child = Align(
-        alignment: Alignment.centerLeft,
-        child: Text(
-          col.headerLabel,
-          style: LyraTypography.small(
-            tokens,
-          ).copyWith(color: tokens.textMuted, fontWeight: FontWeight.bold),
-        ),
-      );
-    } else if (col == TrackColumn.trackNumber) {
-      child = Align(
-        alignment: Alignment.centerLeft,
-        child: Padding(
-          padding: const EdgeInsets.only(right: 16.0),
-          child: Text(
-            col.headerLabel,
-            style: LyraTypography.small(
-              tokens,
-            ).copyWith(color: tokens.textMuted, fontWeight: FontWeight.bold),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Flexible(
+                child: Text(
+                  col.headerLabel,
+                  style: headerTextStyle,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+              if (sortIcon != null) ...[const SizedBox(width: 4.0), sortIcon],
+            ],
           ),
         ),
       );
     } else {
-      child = Padding(
-        padding: const EdgeInsets.only(right: 16.0),
-        child: Text(
-          col.headerLabel,
-          style: LyraTypography.small(
-            tokens,
-          ).copyWith(color: tokens.textMuted, fontWeight: FontWeight.bold),
-          overflow: TextOverflow.ellipsis,
+      cellContent = Align(
+        alignment: Alignment.centerLeft,
+        child: Padding(
+          padding: const EdgeInsets.only(right: 16.0),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Flexible(
+                child: Text(
+                  col.headerLabel,
+                  style: headerTextStyle,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+              if (sortIcon != null) ...[const SizedBox(width: 4.0), sortIcon],
+            ],
+          ),
         ),
       );
     }
 
+    final interactiveChild = MouseRegion(
+      cursor: isSortable ? SystemMouseCursors.click : SystemMouseCursors.basic,
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: isSortable ? () => _handleSort(col) : null,
+        child: cellContent,
+      ),
+    );
+
     if (col.width != null) {
-      return SizedBox(width: col.width, child: child);
+      return SizedBox(width: col.width, child: interactiveChild);
     } else {
-      return Expanded(flex: col.flex ?? 1, child: child);
+      return Expanded(flex: col.flex ?? 1, child: interactiveChild);
     }
   }
 
@@ -431,28 +483,61 @@ class _TracksViewState extends State<TracksView> {
                   : 'Try adjusting your search query or import new audio files.',
               style: LyraTypography.muted(tokens),
             ),
+            if (widget.filterLabel == null && widget.onImport != null) ...[
+              const SizedBox(height: LyraSpacing.md),
+              LyraButton.primary(
+                onPressed: widget.onImport,
+                leading: const Icon(LucideIcons.plus, size: 16.0),
+                child: const Text('Import Audio'),
+              ),
+            ],
             if (widget.filterLabel != null && widget.onClearFilter != null) ...[
               const SizedBox(height: LyraSpacing.md),
-              MouseRegion(
-                cursor: SystemMouseCursors.click,
-                child: GestureDetector(
-                  onTap: widget.onClearFilter,
-                  child: LyraBadge.secondary(
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: const [
-                        Icon(LucideIcons.x, size: 12.0),
-                        SizedBox(width: 4.0),
-                        Text('Clear filter'),
-                      ],
-                    ),
-                  ),
-                ),
+              LyraButton.outline(
+                size: LyraButtonSize.sm,
+                onPressed: widget.onClearFilter,
+                leading: const Icon(LucideIcons.x, size: 14.0),
+                child: const Text('Clear filter'),
               ),
             ],
           ],
         ),
       );
+    }
+
+    final displayTracks = List<Track>.of(widget.tracks);
+    if (_sortColumn != null) {
+      displayTracks.sort((a, b) {
+        int cmp = switch (_sortColumn!.name) {
+          'title' => a.displayTitle.toLowerCase().compareTo(
+            b.displayTitle.toLowerCase(),
+          ),
+          'album' => (a.album).toLowerCase().compareTo((b.album).toLowerCase()),
+          'duration' => (a.durationMs ?? 0).compareTo(b.durationMs ?? 0),
+          'year' => (a.year ?? 0).compareTo(b.year ?? 0),
+          'trackNumber' => (a.trackNumber ?? 0).compareTo(b.trackNumber ?? 0),
+          'work' => (a.workTitle ?? '').toLowerCase().compareTo(
+            (b.workTitle ?? '').toLowerCase(),
+          ),
+          'genre' => (a.genre ?? '').toLowerCase().compareTo(
+            (b.genre ?? '').toLowerCase(),
+          ),
+          'resolution' => a.formattedQuality.toLowerCase().compareTo(
+            b.formattedQuality.toLowerCase(),
+          ),
+          'iswc' => (a.iswc ?? '').toLowerCase().compareTo(
+            (b.iswc ?? '').toLowerCase(),
+          ),
+          'isrc' => (a.isrc ?? '').toLowerCase().compareTo(
+            (b.isrc ?? '').toLowerCase(),
+          ),
+          'musicbrainzId' => (a.musicbrainzId ?? '').toLowerCase().compareTo(
+            (b.musicbrainzId ?? '').toLowerCase(),
+          ),
+          _ => 0,
+        };
+        return _sortAscending ? cmp : -cmp;
+      });
     }
 
     return Column(
@@ -479,33 +564,34 @@ class _TracksViewState extends State<TracksView> {
               ),
               if (widget.filterLabel != null) ...[
                 const SizedBox(width: LyraSpacing.lg),
-                LyraBadge.secondary(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 8.0,
-                    vertical: 4.0,
+                Container(
+                  padding: EdgeInsets.only(
+                    left: 8.0,
+                    top: widget.onClearFilter != null ? 2.0 : 4.0,
+                    bottom: widget.onClearFilter != null ? 2.0 : 4.0,
+                    right: widget.onClearFilter != null ? 3.0 : 8.0,
+                  ),
+                  decoration: BoxDecoration(
+                    color: tokens.secondary.withValues(alpha: 0.6),
+                    borderRadius: BorderRadius.circular(6.0),
+                    border: Border.all(color: tokens.border, width: 1.0),
                   ),
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       Text(
                         widget.filterLabel!,
-                        style: LyraTypography.small(
-                          tokens,
-                        ).copyWith(fontSize: 11.0, fontWeight: FontWeight.w500),
+                        style: LyraTypography.small(tokens).copyWith(
+                          fontSize: 12.0,
+                          fontWeight: FontWeight.w500,
+                          color: tokens.text,
+                        ),
                       ),
                       if (widget.onClearFilter != null) ...[
-                        const SizedBox(width: 6.0),
-                        MouseRegion(
-                          cursor: SystemMouseCursors.click,
-                          child: GestureDetector(
-                            behavior: HitTestBehavior.opaque,
-                            onTap: widget.onClearFilter,
-                            child: Icon(
-                              LucideIcons.x,
-                              size: 12.0,
-                              color: tokens.textMuted,
-                            ),
-                          ),
+                        const SizedBox(width: 4.0),
+                        _FilterCloseButton(
+                          onTap: widget.onClearFilter,
+                          tokens: tokens,
                         ),
                       ],
                     ],
@@ -579,10 +665,13 @@ class _TracksViewState extends State<TracksView> {
         Expanded(
           child: ListView.builder(
             padding: const EdgeInsets.symmetric(vertical: LyraSpacing.xs),
-            itemCount: widget.tracks.length,
-            itemExtent: 56.0,
+            itemCount: displayTracks.length,
+            itemExtent: math.max(
+              56.0,
+              56.0 * MediaQuery.textScalerOf(context).scale(1.0),
+            ),
             itemBuilder: (context, index) {
-              final track = widget.tracks[index];
+              final track = displayTracks[index];
               final isCurrent = widget.currentTrack?.id == track.id;
               final versionCount =
                   widget.audioVersionCounts?[track.id] ??
@@ -810,24 +899,26 @@ class _TrackRowState extends State<_TrackRow> {
                       fontWeight: widget.isCurrent
                           ? FontWeight.bold
                           : FontWeight.normal,
+                      fontFeatures: const [FontFeature.tabularFigures()],
                     ),
                   ),
           ),
         );
       case 'trackNumber':
         return SizedBox(
-          width: col.width ?? 50.0,
+          width: col.width ?? 66.0,
           child: Align(
-            alignment: Alignment.centerLeft,
+            alignment: Alignment.centerRight,
             child: Padding(
               padding: const EdgeInsets.only(right: 16.0),
               child: Text(
                 widget.track.trackNumber != null
                     ? '${widget.track.trackNumber}'
                     : '-',
-                style: LyraTypography.small(
-                  tokens,
-                ).copyWith(color: tokens.textMuted),
+                style: LyraTypography.small(tokens).copyWith(
+                  color: tokens.textMuted,
+                  fontFeatures: const [FontFeature.tabularFigures()],
+                ),
               ),
             ),
           ),
@@ -897,59 +988,29 @@ class _TrackRowState extends State<_TrackRow> {
             padding: const EdgeInsets.only(right: 16.0),
             child: Align(
               alignment: Alignment.centerLeft,
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Flexible(
-                    child: MouseRegion(
-                      cursor:
-                          (widget.onInspectAudio ?? widget.onInspect) != null
-                          ? SystemMouseCursors.click
-                          : SystemMouseCursors.basic,
-                      child: GestureDetector(
-                        behavior: HitTestBehavior.opaque,
-                        onTap: widget.onInspectAudio ?? widget.onInspect,
-                        child: LyraBadge.secondary(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 6.0,
-                            vertical: 2.0,
-                          ),
-                          child: Text(
-                            widget.versionCount > 1
-                                ? '${widget.track.formattedQuality} · ${widget.versionCount} versions'
-                                : widget.track.formattedQuality,
-                            style: LyraTypography.small(tokens).copyWith(
-                              fontSize: 10.0,
-                              fontWeight: FontWeight.w600,
-                            ),
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ),
-                      ),
+              child: MouseRegion(
+                cursor: (widget.onInspectAudio ?? widget.onInspect) != null
+                    ? SystemMouseCursors.click
+                    : SystemMouseCursors.basic,
+                child: GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: widget.onInspectAudio ?? widget.onInspect,
+                  child: LyraBadge.outline(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 6.0,
+                      vertical: 2.0,
+                    ),
+                    child: Text(
+                      widget.versionCount > 1
+                          ? '${widget.track.formattedQuality} · ${widget.versionCount} versions'
+                          : widget.track.formattedQuality,
+                      style: LyraTypography.small(
+                        tokens,
+                      ).copyWith(fontSize: 10.0, fontWeight: FontWeight.w600),
+                      overflow: TextOverflow.ellipsis,
                     ),
                   ),
-                  if (widget.onInspectAudio != null ||
-                      widget.onInspect != null) ...[
-                    const SizedBox(width: 4.0),
-                    MouseRegion(
-                      cursor: SystemMouseCursors.click,
-                      child: GestureDetector(
-                        behavior: HitTestBehavior.opaque,
-                        onTap: widget.onInspectAudio ?? widget.onInspect,
-                        child: Padding(
-                          padding: const EdgeInsets.all(2.0),
-                          child: Icon(
-                            LucideIcons.info,
-                            size: 14.0,
-                            color: _isHovered
-                                ? tokens.primary
-                                : tokens.textMuted,
-                          ),
-                        ),
-                      ),
-                    ),
-                  ],
-                ],
+                ),
               ),
             ),
           ),
@@ -963,45 +1024,57 @@ class _TrackRowState extends State<_TrackRow> {
               padding: const EdgeInsets.only(right: 16.0),
               child: Text(
                 widget.track.formattedDuration,
-                style: LyraTypography.small(
-                  tokens,
-                ).copyWith(color: tokens.textMuted),
+                style: LyraTypography.small(tokens).copyWith(
+                  color: tokens.textMuted,
+                  fontFeatures: const [FontFeature.tabularFigures()],
+                ),
               ),
             ),
           ),
         );
       case 'year':
         return SizedBox(
-          width: col.width ?? 60.0,
-          child: Padding(
-            padding: const EdgeInsets.only(right: 16.0),
-            child: Text(
-              widget.track.year != null ? '${widget.track.year}' : '-',
-              style: LyraTypography.small(
-                tokens,
-              ).copyWith(color: tokens.textMuted),
-              overflow: TextOverflow.ellipsis,
+          width: col.width ?? 74.0,
+          child: Align(
+            alignment: Alignment.centerRight,
+            child: Padding(
+              padding: const EdgeInsets.only(right: 16.0),
+              child: Text(
+                widget.track.year != null ? '${widget.track.year}' : '-',
+                style: LyraTypography.small(tokens).copyWith(
+                  color: tokens.textMuted,
+                  fontFeatures: const [FontFeature.tabularFigures()],
+                ),
+                overflow: TextOverflow.ellipsis,
+              ),
             ),
           ),
         );
       case 'iswc':
+        final val = widget.track.iswc;
         return SizedBox(
           width: col.width ?? 140.0,
           child: Padding(
             padding: const EdgeInsets.only(right: 16.0),
-            child: widget.track.iswc != null
+            child: (val != null && val.isNotEmpty)
                 ? Align(
                     alignment: Alignment.centerLeft,
-                    child: LyraBadge.outline(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 6.0,
-                        vertical: 2.0,
-                      ),
-                      child: Text(
-                        widget.track.iswc!,
-                        style: LyraTypography.mono(tokens, fontSize: 10.0),
-                        overflow: TextOverflow.ellipsis,
-                      ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Flexible(
+                          child: Text(
+                            val,
+                            style: LyraTypography.mono(
+                              tokens,
+                              fontSize: 11.0,
+                            ).copyWith(color: tokens.textMuted),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                        const SizedBox(width: 4.0),
+                        LyraCopyButton(text: val, tooltip: 'Copy ISWC'),
+                      ],
                     ),
                   )
                 : Text(
@@ -1013,23 +1086,30 @@ class _TrackRowState extends State<_TrackRow> {
           ),
         );
       case 'isrc':
+        final val = widget.track.isrc;
         return SizedBox(
           width: col.width ?? 130.0,
           child: Padding(
             padding: const EdgeInsets.only(right: 16.0),
-            child: widget.track.isrc != null
+            child: (val != null && val.isNotEmpty)
                 ? Align(
                     alignment: Alignment.centerLeft,
-                    child: LyraBadge.outline(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 6.0,
-                        vertical: 2.0,
-                      ),
-                      child: Text(
-                        widget.track.isrc!,
-                        style: LyraTypography.mono(tokens, fontSize: 10.0),
-                        overflow: TextOverflow.ellipsis,
-                      ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Flexible(
+                          child: Text(
+                            val,
+                            style: LyraTypography.mono(
+                              tokens,
+                              fontSize: 11.0,
+                            ).copyWith(color: tokens.textMuted),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                        const SizedBox(width: 4.0),
+                        LyraCopyButton(text: val, tooltip: 'Copy ISRC'),
+                      ],
                     ),
                   )
                 : Text(
@@ -1041,23 +1121,33 @@ class _TrackRowState extends State<_TrackRow> {
           ),
         );
       case 'musicbrainzId':
-        return Expanded(
-          flex: col.flex ?? 3,
+        final val = widget.track.musicbrainzId;
+        return SizedBox(
+          width: col.width ?? 260.0,
           child: Padding(
             padding: const EdgeInsets.only(right: 16.0),
-            child: widget.track.musicbrainzId != null
+            child: (val != null && val.isNotEmpty)
                 ? Align(
                     alignment: Alignment.centerLeft,
-                    child: LyraBadge.outline(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 6.0,
-                        vertical: 2.0,
-                      ),
-                      child: Text(
-                        widget.track.musicbrainzId!,
-                        style: LyraTypography.mono(tokens, fontSize: 10.0),
-                        overflow: TextOverflow.ellipsis,
-                      ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Flexible(
+                          child: Text(
+                            val,
+                            style: LyraTypography.mono(
+                              tokens,
+                              fontSize: 11.0,
+                            ).copyWith(color: tokens.textMuted),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                        const SizedBox(width: 4.0),
+                        LyraCopyButton(
+                          text: val,
+                          tooltip: 'Copy MusicBrainz ID',
+                        ),
+                      ],
                     ),
                   )
                 : Text(
@@ -1126,6 +1216,57 @@ class _TrackRowState extends State<_TrackRow> {
                   if (widget.visibleColumns.contains(col))
                     _buildCell(col, tokens),
               ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _FilterCloseButton extends StatefulWidget {
+  final VoidCallback? onTap;
+  final LyraThemeTokens tokens;
+
+  const _FilterCloseButton({required this.onTap, required this.tokens});
+
+  @override
+  State<_FilterCloseButton> createState() => _FilterCloseButtonState();
+}
+
+class _FilterCloseButtonState extends State<_FilterCloseButton> {
+  bool _isHovered = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = widget.tokens;
+    return Semantics(
+      button: true,
+      enabled: widget.onTap != null,
+      label: 'Clear filter',
+      onTap: widget.onTap,
+      child: Tooltip(
+        message: 'Clear filter',
+        child: MouseRegion(
+          cursor: SystemMouseCursors.click,
+          onEnter: (_) => setState(() => _isHovered = true),
+          onExit: (_) => setState(() => _isHovered = false),
+          child: GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: widget.onTap,
+            child: Container(
+              padding: const EdgeInsets.all(4.0),
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(4.0),
+                color: _isHovered
+                    ? tokens.muted.withValues(alpha: 0.4)
+                    : Colors.transparent,
+              ),
+              child: Icon(
+                LucideIcons.x,
+                size: 13.0,
+                color: _isHovered ? tokens.text : tokens.textMuted,
+              ),
             ),
           ),
         ),

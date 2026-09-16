@@ -9,11 +9,16 @@ import 'package:shadcn_ui/shadcn_ui.dart';
 import 'package:ui/design_system/factory/lyra_design_system_scope.dart';
 import 'package:ui/design_system/factory/shadcn_factory.dart';
 import 'package:ui/design_system/tokens/lyra_tokens.dart';
+import 'package:ui/design_system/widgets/lyra_badge.dart';
+import 'package:ui/design_system/widgets/lyra_switch.dart';
+import 'package:ui/features/albums/albums_view.dart';
 import 'package:ui/features/artists/artists_view.dart';
+import 'package:ui/features/models/album.dart';
 import 'package:ui/features/models/artist.dart';
 import 'package:ui/features/models/playlist.dart';
 import 'package:ui/features/models/work.dart';
 import 'package:ui/features/playlists/playlists_view.dart';
+import 'package:ui/features/settings/settings_view.dart';
 import 'package:ui/features/works/works_view.dart';
 
 Widget _buildViewTest(Widget child, {ValueNotifier<ThemeMode>? themeNotifier}) {
@@ -746,6 +751,107 @@ void main() {
           themeLight.colorScheme.card,
           equals(const ShadZincColorScheme.light().card),
         );
+      },
+    );
+  });
+
+  group('AlbumsView Tests', () {
+    testWidgets(
+      'AlbumsView renders header without redundant total count badge',
+      (tester) async {
+        const sampleAlbums = [
+          Album(
+            id: 'alb-1',
+            title: 'Kind of Blue',
+            artist: 'Miles Davis',
+            year: 1959,
+            trackCount: 5,
+            format: 'FLAC 24/192',
+          ),
+        ];
+
+        await tester.pumpWidget(
+          _buildViewTest(const AlbumsView(albums: sampleAlbums)),
+        );
+        await tester.pumpAndSettle();
+
+        expect(find.text('Albums'), findsOneWidget);
+        expect(find.text('1 releases in master quality'), findsOneWidget);
+
+        // Verify redundant header total badge is eliminated
+        expect(
+          find.descendant(
+            of: find.byType(LyraBadge),
+            matching: find.text('1 Total'),
+          ),
+          findsNothing,
+        );
+
+        // Card format badge should still be present
+        expect(find.text('FLAC 24/192'), findsOneWidget);
+      },
+    );
+  });
+
+  group('SettingsView Tests', () {
+    testWidgets(
+      'SettingsView renders toggle switches, handles toggling, and eliminates redundant header badges',
+      (tester) async {
+        await tester.pumpWidget(_buildViewTest(const SettingsView()));
+        await tester.pumpAndSettle();
+
+        // 1. Verify header and titles
+        expect(find.text('Settings'), findsOneWidget);
+        expect(find.text('Audio Output'), findsOneWidget);
+        expect(find.text('CAS Storage'), findsOneWidget);
+
+        // 2. Verify redundant badges eliminated:
+        // Audio Output header badge ('Exclusive Mode') must NOT exist
+        expect(
+          find.descendant(
+            of: find.byType(LyraBadge),
+            matching: find.text('Exclusive Mode'),
+          ),
+          findsNothing,
+        );
+
+        // 3. Verify presence of LyraSwitch instances (Exclusive Mode, DoP, SHA-256)
+        final switches = find.byType(LyraSwitch);
+        expect(switches, findsNWidgets(3));
+
+        final exclusiveSwitch = switches.at(0);
+        final dopSwitch = switches.at(1);
+        final shaSwitch = switches.at(2);
+
+        expect(tester.widget<LyraSwitch>(exclusiveSwitch).value, isTrue);
+        expect(tester.widget<LyraSwitch>(dopSwitch).value, isFalse);
+        expect(tester.widget<LyraSwitch>(shaSwitch).value, isTrue);
+
+        // 4. Toggle Exclusive Mode switch
+        await tester.tap(exclusiveSwitch);
+        await tester.pumpAndSettle();
+        expect(tester.widget<LyraSwitch>(exclusiveSwitch).value, isFalse);
+
+        // Toggle back
+        await tester.tap(exclusiveSwitch);
+        await tester.pumpAndSettle();
+        expect(tester.widget<LyraSwitch>(exclusiveSwitch).value, isTrue);
+
+        // 5. Toggle DSD over PCM (DoP) switch
+        await tester.tap(dopSwitch);
+        await tester.pumpAndSettle();
+        expect(tester.widget<LyraSwitch>(dopSwitch).value, isTrue);
+
+        // 6. Toggle Verify SHA-256 switch
+        await tester.tap(shaSwitch);
+        await tester.pumpAndSettle();
+        expect(tester.widget<LyraSwitch>(shaSwitch).value, isFalse);
+
+        // 7. Verify legitimate badge still remains (e.g. 'Block-level CAS')
+        expect(find.text('Block-level CAS'), findsOneWidget);
+
+        // 8. Verify setting rows have MergeSemantics for accessibility
+        expect(find.byType(MergeSemantics), findsNWidgets(5));
       },
     );
   });

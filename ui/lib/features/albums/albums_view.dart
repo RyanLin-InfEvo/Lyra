@@ -62,8 +62,6 @@ class AlbumsView extends StatelessWidget {
                   ),
                 ],
               ),
-              const Spacer(),
-              LyraBadge.secondary(child: Text('${albums.length} Total')),
             ],
           ),
         ),

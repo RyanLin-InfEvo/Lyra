@@ -89,4 +89,14 @@ abstract class LyraDesignSystemFactory {
     List<Widget>? actions,
     VoidCallback? onClose,
   });
+
+  /// Creates a toggle switch.
+  Widget createSwitch({
+    Key? key,
+    required bool value,
+    ValueChanged<bool>? onChanged,
+    bool enabled = true,
+    FocusNode? focusNode,
+    bool autofocus = false,
+  });
 }

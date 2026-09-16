@@ -13,6 +13,7 @@ import 'package:ui/design_system/widgets/lyra_button.dart';
 import 'package:ui/design_system/widgets/lyra_card.dart';
 import 'package:ui/design_system/widgets/lyra_dialog.dart';
 import 'package:ui/design_system/widgets/lyra_input.dart';
+import 'package:ui/design_system/widgets/lyra_switch.dart';
 
 Widget _buildTestApp({
   required Widget child,
@@ -234,6 +235,98 @@ void main() {
       await tester.enterText(find.byType(LyraInput), 'FLAC 24/96');
       expect(controller.text, equals('FLAC 24/96'));
       expect(changedText, equals('FLAC 24/96'));
+    });
+
+    testWidgets(
+      'LyraSwitch verifies initial value, toggling, and disabled state',
+      (tester) async {
+        bool switchValue = false;
+        const bool disabledSwitchValue = true;
+        bool disabledToggled = false;
+
+        await tester.pumpWidget(
+          _buildTestApp(
+            child: StatefulBuilder(
+              builder: (context, setState) {
+                return Column(
+                  children: [
+                    LyraSwitch(
+                      key: const Key('active_switch'),
+                      value: switchValue,
+                      onChanged: (val) => setState(() => switchValue = val),
+                    ),
+                    LyraSwitch(
+                      key: const Key('disabled_switch'),
+                      value: disabledSwitchValue,
+                      enabled: false,
+                      onChanged: (val) => disabledToggled = true,
+                    ),
+                  ],
+                );
+              },
+            ),
+          ),
+        );
+
+        // Verify initial values
+        final activeSwitch = find.byKey(const Key('active_switch')).first;
+        final disabledSwitch = find.byKey(const Key('disabled_switch')).first;
+
+        final activeShad = tester.widget<ShadSwitch>(
+          find.byType(ShadSwitch).first,
+        );
+        expect(activeShad.value, isFalse);
+        expect(activeShad.enabled, isTrue);
+
+        final disabledShad = tester.widget<ShadSwitch>(
+          find.byType(ShadSwitch).last,
+        );
+        expect(disabledShad.value, isTrue);
+        expect(disabledShad.enabled, isFalse);
+
+        // Tap active switch -> triggers onChanged with true
+        await tester.tap(activeSwitch);
+        await tester.pumpAndSettle();
+        expect(switchValue, isTrue);
+
+        // Tap again -> triggers onChanged with false
+        await tester.tap(activeSwitch);
+        await tester.pumpAndSettle();
+        expect(switchValue, isFalse);
+
+        // Tap disabled switch -> should not trigger callback
+        await tester.tap(disabledSwitch, warnIfMissed: false);
+        await tester.pumpAndSettle();
+        expect(disabledToggled, isFalse);
+        expect(disabledSwitchValue, isTrue);
+      },
+    );
+
+    testWidgets('LyraSwitch passes focusNode and autofocus to ShadSwitch', (
+      tester,
+    ) async {
+      final focusNode = FocusNode();
+      addTearDown(focusNode.dispose);
+
+      await tester.pumpWidget(
+        _buildTestApp(
+          child: LyraSwitch(
+            value: true,
+            autofocus: true,
+            focusNode: focusNode,
+            onChanged: (_) {},
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final lyraSwitch = tester.widget<LyraSwitch>(find.byType(LyraSwitch));
+      expect(lyraSwitch.focusNode, equals(focusNode));
+      expect(lyraSwitch.autofocus, isTrue);
+
+      final shadSwitch = tester.widget<ShadSwitch>(find.byType(ShadSwitch));
+      expect(shadSwitch.focusNode, equals(focusNode));
+      expect(focusNode.hasFocus, isTrue);
     });
   });
 

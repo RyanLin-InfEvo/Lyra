@@ -578,7 +578,11 @@ class _AppShellState extends State<AppShell> {
             tracks: effectiveTracks,
             currentTrack: _currentTrack,
             isPlaying: _isPlaying,
-            filterLabel: _activeTrackFilter?.label,
+            filterLabel:
+                _activeTrackFilter?.label ??
+                (_searchController.text.isNotEmpty
+                    ? 'Search: "${_searchController.text}"'
+                    : null),
             audioVersionCounts: _audioVersionCounts,
             visibleColumns: _trackVisibleColumns,
             columnOrder: _trackColumnOrder,
@@ -591,11 +595,16 @@ class _AppShellState extends State<AppShell> {
             onClearFilter: () => setState(() {
               _activeTrackFilter = null;
               _selectedTagId = null;
+              if (_searchController.text.isNotEmpty) {
+                _searchController.clear();
+                _loadCatalog();
+              }
             }),
             onTrackSelected: _onTrackSelected,
             onTogglePlay: _togglePlay,
             onInspectTrack: _openInspectorForTrack,
             onInspectAudio: _openInspectorForAudio,
+            onImport: _showImportDialog,
           ),
         );
       case AppTab.works:

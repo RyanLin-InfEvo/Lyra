@@ -10,6 +10,7 @@ import '../../design_system/tokens/lyra_tokens.dart';
 import '../../design_system/widgets/lyra_badge.dart';
 import '../../design_system/widgets/lyra_button.dart';
 import '../../design_system/widgets/lyra_card.dart';
+import '../../design_system/widgets/lyra_switch.dart';
 
 /// Settings view managing Theme options, Audio Output, and CAS Storage preferences.
 class SettingsView extends StatefulWidget {
@@ -112,8 +113,6 @@ class _SettingsViewState extends State<SettingsView> {
                     ),
                     const SizedBox(width: LyraSpacing.sm),
                     Text('Audio Output', style: LyraTypography.h3(tokens)),
-                    const Spacer(),
-                    LyraBadge.success(child: const Text('Exclusive Mode')),
                   ],
                 ),
                 const SizedBox(height: LyraSpacing.xs),
@@ -128,14 +127,9 @@ class _SettingsViewState extends State<SettingsView> {
                   title: 'Exclusive Mode',
                   description:
                       'Bypass system mixer for direct hardware stream delivery',
-                  trailing: LyraButton(
-                    size: LyraButtonSize.sm,
-                    variant: _exclusiveMode
-                        ? LyraButtonVariant.primary
-                        : LyraButtonVariant.outline,
-                    onPressed: () =>
-                        setState(() => _exclusiveMode = !_exclusiveMode),
-                    child: Text(_exclusiveMode ? 'Enabled' : 'Disabled'),
+                  trailing: LyraSwitch(
+                    value: _exclusiveMode,
+                    onChanged: (val) => setState(() => _exclusiveMode = val),
                   ),
                   tokens: tokens,
                 ),
@@ -174,13 +168,9 @@ class _SettingsViewState extends State<SettingsView> {
                   title: 'DSD over PCM (DoP)',
                   description:
                       'Encapsulate DSD stream payload inside PCM frames',
-                  trailing: LyraButton(
-                    size: LyraButtonSize.sm,
-                    variant: _dopEnabled
-                        ? LyraButtonVariant.primary
-                        : LyraButtonVariant.outline,
-                    onPressed: () => setState(() => _dopEnabled = !_dopEnabled),
-                    child: Text(_dopEnabled ? 'Enabled' : 'Disabled'),
+                  trailing: LyraSwitch(
+                    value: _dopEnabled,
+                    onChanged: (val) => setState(() => _dopEnabled = val),
                   ),
                   tokens: tokens,
                 ),
@@ -218,13 +208,9 @@ class _SettingsViewState extends State<SettingsView> {
                   title: 'Verify SHA-256 on import',
                   description:
                       'Compute cryptographic checksum when adding audio tracks',
-                  trailing: LyraButton(
-                    size: LyraButtonSize.sm,
-                    variant: _autoVerify
-                        ? LyraButtonVariant.primary
-                        : LyraButtonVariant.outline,
-                    onPressed: () => setState(() => _autoVerify = !_autoVerify),
-                    child: Text(_autoVerify ? 'Active' : 'Bypass'),
+                  trailing: LyraSwitch(
+                    value: _autoVerify,
+                    onChanged: (val) => setState(() => _autoVerify = val),
                   ),
                   tokens: tokens,
                 ),
@@ -264,30 +250,32 @@ class _SettingRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Row(
-      children: [
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                title,
-                style: LyraTypography.p(
-                  tokens,
-                ).copyWith(fontWeight: FontWeight.w600),
-              ),
-              Text(
-                description,
-                style: LyraTypography.small(
-                  tokens,
-                ).copyWith(color: tokens.textMuted),
-              ),
-            ],
+    return MergeSemantics(
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: LyraTypography.p(
+                    tokens,
+                  ).copyWith(fontWeight: FontWeight.w600),
+                ),
+                Text(
+                  description,
+                  style: LyraTypography.small(
+                    tokens,
+                  ).copyWith(color: tokens.textMuted),
+                ),
+              ],
+            ),
           ),
-        ),
-        const SizedBox(width: LyraSpacing.md),
-        trailing,
-      ],
+          const SizedBox(width: LyraSpacing.md),
+          trailing,
+        ],
+      ),
     );
   }
 }

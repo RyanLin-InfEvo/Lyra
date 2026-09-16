@@ -9,6 +9,7 @@ import 'package:shadcn_ui/shadcn_ui.dart';
 import 'package:ui/design_system/factory/lyra_design_system_scope.dart';
 import 'package:ui/design_system/factory/shadcn_factory.dart';
 import 'package:ui/design_system/tokens/lyra_tokens.dart';
+import 'package:ui/design_system/widgets/lyra_button.dart';
 import 'package:ui/features/models/track.dart';
 import 'package:ui/features/tracks/tracks_view.dart';
 
@@ -28,6 +29,7 @@ Widget _buildTracksViewTest({
   List<TrackColumn>? columnOrder,
   ValueChanged<List<TrackColumn>>? onColumnOrderChanged,
   ValueNotifier<ThemeMode>? themeNotifier,
+  VoidCallback? onImport,
 }) {
   final themeModeNotifier =
       themeNotifier ?? ValueNotifier<ThemeMode>(ThemeMode.dark);
@@ -72,6 +74,7 @@ Widget _buildTracksViewTest({
                 onVisibleColumnsChanged: onVisibleColumnsChanged,
                 columnOrder: columnOrder,
                 onColumnOrderChanged: onColumnOrderChanged,
+                onImport: onImport,
               ),
             ),
           ),
@@ -248,10 +251,53 @@ void main() {
       expect(find.text('Tracks Library'), findsOneWidget);
       expect(find.text('Album: Test Album'), findsOneWidget);
 
+      final filterText = tester.widget<Text>(find.text('Album: Test Album'));
+      expect(filterText.style?.fontSize, equals(12.0));
+      expect(filterText.style?.fontWeight, equals(FontWeight.w500));
+
+      expect(find.byTooltip('Clear filter'), findsOneWidget);
+      expect(
+        find.byWidgetPredicate(
+          (w) => w is Semantics && w.properties.label == 'Clear filter',
+        ),
+        findsOneWidget,
+      );
+
       // Tap clear button (X icon)
       await tester.tap(find.byIcon(LucideIcons.x));
       await tester.pumpAndSettle();
       expect(clearClicked, isTrue);
+    },
+  );
+
+  testWidgets(
+    'TracksView header filter token displays close button with hover state',
+    (tester) async {
+      await tester.pumpWidget(
+        _buildTracksViewTest(
+          tracks: sampleTracks,
+          filterLabel: 'Album: Test Album',
+          onClearFilter: () {},
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final iconFinder = find.byIcon(LucideIcons.x);
+      expect(iconFinder, findsOneWidget);
+
+      final iconBeforeHover = tester.widget<Icon>(iconFinder);
+      expect(iconBeforeHover.color, equals(LyraThemeTokens.dark().textMuted));
+
+      final gesture = await tester.createGesture(kind: PointerDeviceKind.mouse);
+      await gesture.addPointer(location: Offset.zero);
+      addTearDown(gesture.removePointer);
+      await tester.pump();
+
+      await gesture.moveTo(tester.getCenter(iconFinder));
+      await tester.pumpAndSettle();
+
+      final iconAfterHover = tester.widget<Icon>(iconFinder);
+      expect(iconAfterHover.color, equals(LyraThemeTokens.dark().text));
     },
   );
 
@@ -336,20 +382,14 @@ void main() {
       expect(find.text('CAS HASH'), findsNothing);
       expect(find.text('aaaaaa...aaaa'), findsNothing);
 
-      // Verify the info inspection icons are present adjacent to resolution badges
-      final infoIcons = find.byIcon(LucideIcons.info);
-      expect(infoIcons, findsNWidgets(2));
+      // Verify info icons are removed
+      expect(find.byIcon(LucideIcons.info), findsNothing);
 
       final resolutionBadgeFinder = find.text('24-bit/96kHz');
       expect(resolutionBadgeFinder, findsOneWidget);
 
-      final badgeTopLeft = tester.getTopLeft(resolutionBadgeFinder);
-      final infoIconTopLeft = tester.getTopLeft(infoIcons.first);
-      // Info icon is placed to the right of the resolution badge in the same row
-      expect(infoIconTopLeft.dx, greaterThan(badgeTopLeft.dx));
-
-      // 1. Click info icon for Track One
-      await tester.tap(infoIcons.first);
+      // 1. Click resolution badge for Track One
+      await tester.tap(resolutionBadgeFinder);
       await tester.pumpAndSettle();
 
       expect(inspectedTrack?.id, equals('1'));
@@ -357,8 +397,8 @@ void main() {
       // Reset
       inspectedTrack = null;
 
-      // 2. Click the explicit info icon for Track Two
-      await tester.tap(infoIcons.at(1));
+      // 2. Click the resolution badge for Track Two
+      await tester.tap(find.text('1-bit/5644.8kHz'));
       await tester.pumpAndSettle();
 
       expect(inspectedTrack?.id, equals('2'));
@@ -401,14 +441,14 @@ void main() {
       // Reset
       inspectedAudioTrack = null;
 
-      // Verify audioWaveform is no longer rendered in the row
-      expect(find.byIcon(LucideIcons.audioWaveform), findsNothing);
+      // Verify info icon is no longer rendered in the row
+      expect(find.byIcon(LucideIcons.info), findsNothing);
 
-      // Tap info icon for track 2
-      final infoIcons = find.byIcon(LucideIcons.info);
-      expect(infoIcons, findsNWidgets(2));
+      // Tap resolution badge for track 2
+      final track2Badge = find.text('1-bit/5644.8kHz');
+      expect(track2Badge, findsOneWidget);
 
-      await tester.tap(infoIcons.at(1));
+      await tester.tap(track2Badge);
       await tester.pumpAndSettle();
 
       expect(inspectedAudioTrack?.id, equals('2'));
@@ -435,10 +475,10 @@ void main() {
 
         // Verify initial state: all columns visible in header
         expect(find.text('#'), findsOneWidget);
-        expect(find.text('TITLE & ARTIST'), findsOneWidget);
-        expect(find.text('ALBUM'), findsOneWidget);
-        expect(find.text('RESOLUTION'), findsOneWidget);
-        expect(find.text('TIME'), findsOneWidget);
+        expect(find.text('Title & Artist'), findsOneWidget);
+        expect(find.text('Album'), findsOneWidget);
+        expect(find.text('Resolution'), findsOneWidget);
+        expect(find.text('Time'), findsOneWidget);
 
         // Verify rows show album and duration
         expect(find.text('Album X'), findsOneWidget);
@@ -461,14 +501,33 @@ void main() {
         await tester.pumpAndSettle();
 
         // Verify context menu is now open with checkboxes for each column
-        expect(find.text('Track Number'), findsOneWidget);
-        expect(find.text('Title & Artist'), findsOneWidget);
-        expect(find.text('Album'), findsOneWidget);
-        expect(find.text('Resolution'), findsOneWidget);
+        final columnsWindow = find.byKey(const Key('tracks_columns_window'));
+        expect(
+          find.descendant(
+            of: columnsWindow,
+            matching: find.text('Track Number'),
+          ),
+          findsOneWidget,
+        );
+        expect(
+          find.descendant(
+            of: columnsWindow,
+            matching: find.text('Title & Artist'),
+          ),
+          findsOneWidget,
+        );
+        expect(
+          find.descendant(of: columnsWindow, matching: find.text('Album')),
+          findsOneWidget,
+        );
+        expect(
+          find.descendant(of: columnsWindow, matching: find.text('Resolution')),
+          findsOneWidget,
+        );
         expect(
           find.descendant(
             of: find.byKey(const Key('track_col_menu_duration')),
-            matching: find.text('TIME'),
+            matching: find.text('Time'),
           ),
           findsOneWidget,
         );
@@ -480,26 +539,35 @@ void main() {
         expect(albumCheckboxFinder, findsOneWidget);
         expect(tester.widget<ShadCheckbox>(albumCheckboxFinder).value, isTrue);
 
-        // 1. Toggle off ALBUM
+        // 1. Toggle off Album
         await tester.tap(find.byKey(const Key('track_col_menu_album')));
         await tester.pumpAndSettle();
 
-        // Header and rows should no longer display ALBUM
-        expect(find.text('ALBUM'), findsNothing);
+        // Header and rows should no longer display Album
+        expect(
+          find.descendant(of: header, matching: find.text('Album')),
+          findsNothing,
+        );
         expect(find.text('Album X'), findsNothing);
         expect(find.text('Album Y'), findsNothing);
         expect(tester.widget<ShadCheckbox>(albumCheckboxFinder).value, isFalse);
         expect(changedColumns?.contains(TrackColumn.album), isFalse);
 
         // Other columns remain visible
-        expect(find.text('TITLE & ARTIST'), findsOneWidget);
-        expect(find.text('RESOLUTION'), findsOneWidget);
         expect(
-          find.descendant(of: header, matching: find.text('TIME')),
+          find.descendant(of: header, matching: find.text('Title & Artist')),
+          findsOneWidget,
+        );
+        expect(
+          find.descendant(of: header, matching: find.text('Resolution')),
+          findsOneWidget,
+        );
+        expect(
+          find.descendant(of: header, matching: find.text('Time')),
           findsOneWidget,
         );
 
-        // 2. Toggle off RESOLUTION
+        // 2. Toggle off Resolution
         final resCheckboxFinder = find.byKey(
           const Key('track_col_checkbox_resolution'),
         );
@@ -507,7 +575,10 @@ void main() {
         await tester.tap(find.byKey(const Key('track_col_menu_resolution')));
         await tester.pumpAndSettle();
 
-        expect(find.text('RESOLUTION'), findsNothing);
+        expect(
+          find.descendant(of: header, matching: find.text('Resolution')),
+          findsNothing,
+        );
         expect(tester.widget<ShadCheckbox>(resCheckboxFinder).value, isFalse);
         expect(changedColumns?.contains(TrackColumn.resolution), isFalse);
 
@@ -518,18 +589,24 @@ void main() {
         await tester.pumpAndSettle();
 
         // Mandatory title column is still checked and visible
-        expect(find.text('TITLE & ARTIST'), findsOneWidget);
+        expect(
+          find.descendant(of: header, matching: find.text('Title & Artist')),
+          findsOneWidget,
+        );
         expect(find.text('Track One'), findsOneWidget);
         final titleCheckboxFinder = find.byKey(
           const Key('track_col_checkbox_title'),
         );
         expect(tester.widget<ShadCheckbox>(titleCheckboxFinder).value, isTrue);
 
-        // 4. Toggle ALBUM back on
+        // 4. Toggle Album back on
         await tester.tap(find.byKey(const Key('track_col_menu_album')));
         await tester.pumpAndSettle();
 
-        expect(find.text('ALBUM'), findsOneWidget);
+        expect(
+          find.descendant(of: header, matching: find.text('Album')),
+          findsOneWidget,
+        );
         expect(find.text('Album X'), findsOneWidget);
         expect(find.text('Album Y'), findsOneWidget);
         expect(tester.widget<ShadCheckbox>(albumCheckboxFinder).value, isTrue);
@@ -569,14 +646,17 @@ void main() {
         );
         expect(tester.widget<ShadCheckbox>(albumCheckboxFinder).value, isTrue);
 
-        // Tap to toggle off ALBUM
+        // Tap to toggle off Album
         await tester.tap(find.byKey(const Key('track_col_menu_album')));
         // Single frame pump - instant visual feedback before table settle
         await tester.pump();
         expect(tester.widget<ShadCheckbox>(albumCheckboxFinder).value, isFalse);
 
         await tester.pumpAndSettle();
-        expect(find.text('ALBUM'), findsNothing);
+        expect(
+          find.descendant(of: header, matching: find.text('Album')),
+          findsNothing,
+        );
       },
     );
 
@@ -634,12 +714,12 @@ void main() {
         );
         await tester.pumpAndSettle();
 
-        // Initially: # is first column, TIME is last column
+        // Initially: # is first column, Time is last column
         final header = find.byKey(const Key('tracks_table_header'));
         final headerHashFinder = find.text('#');
         final headerTimeFinder = find.descendant(
           of: header,
-          matching: find.text('TIME'),
+          matching: find.text('Time'),
         );
         expect(
           tester.getTopLeft(headerHashFinder).dx,
@@ -673,10 +753,10 @@ void main() {
         expect(newColumnOrder, isNotNull);
         expect(newColumnOrder!.first, equals(TrackColumn.duration));
 
-        // In table header, TIME should now be to the left of #
+        // In table header, Time should now be to the left of #
         final newTimeLeft = tester
             .getTopLeft(
-              find.descendant(of: header, matching: find.text('TIME')),
+              find.descendant(of: header, matching: find.text('Time')),
             )
             .dx;
         final newHashLeft = tester.getTopLeft(find.text('#')).dx;
@@ -697,7 +777,7 @@ void main() {
         final restoredHashLeft = tester.getTopLeft(find.text('#')).dx;
         final restoredTimeLeft = tester
             .getTopLeft(
-              find.descendant(of: header, matching: find.text('TIME')),
+              find.descendant(of: header, matching: find.text('Time')),
             )
             .dx;
         expect(restoredHashLeft, lessThan(restoredTimeLeft));
@@ -723,8 +803,8 @@ void main() {
 
         // Should safely fallback to default columns without throwing
         expect(find.text('#'), findsOneWidget);
-        expect(find.text('TITLE & ARTIST'), findsOneWidget);
-        expect(find.text('TIME'), findsOneWidget);
+        expect(find.text('Title & Artist'), findsOneWidget);
+        expect(find.text('Time'), findsOneWidget);
 
         // 2. Test partial columnOrder (e.g. only duration specified)
         await tester.pumpWidget(
@@ -736,10 +816,10 @@ void main() {
         await tester.pumpAndSettle();
 
         // duration should be first, and remaining columns appended safely
-        final durationLeft = tester.getTopLeft(find.text('TIME')).dx;
+        final durationLeft = tester.getTopLeft(find.text('Time')).dx;
         final hashLeft = tester.getTopLeft(find.text('#')).dx;
         expect(durationLeft, lessThan(hashLeft));
-        expect(find.text('TITLE & ARTIST'), findsOneWidget);
+        expect(find.text('Title & Artist'), findsOneWidget);
       },
     );
 
@@ -790,13 +870,13 @@ void main() {
         await tester.pumpAndSettle();
 
         // Initially new columns are not visible
-        expect(find.text('WORK'), findsNothing);
+        expect(find.text('Work'), findsNothing);
         expect(find.text('ISWC'), findsNothing);
-        expect(find.text('YEAR'), findsNothing);
-        expect(find.text('MUSICBRAINZ ID'), findsNothing);
+        expect(find.text('Year'), findsNothing);
+        expect(find.text('MusicBrainz ID'), findsNothing);
         expect(find.text('ISRC'), findsNothing);
-        expect(find.text('GENRE'), findsNothing);
-        expect(find.text('TRK#'), findsNothing);
+        expect(find.text('Genre'), findsNothing);
+        expect(find.text('Trk#'), findsNothing);
 
         // Open context menu
         final header = find.byKey(const Key('tracks_table_header'));
@@ -827,7 +907,7 @@ void main() {
         // Verify headers are now rendered
         final tableHeader = find.byKey(const Key('tracks_table_header'));
         expect(
-          find.descendant(of: tableHeader, matching: find.text('WORK')),
+          find.descendant(of: tableHeader, matching: find.text('Work')),
           findsOneWidget,
         );
         expect(
@@ -835,13 +915,13 @@ void main() {
           findsOneWidget,
         );
         expect(
-          find.descendant(of: tableHeader, matching: find.text('YEAR')),
+          find.descendant(of: tableHeader, matching: find.text('Year')),
           findsOneWidget,
         );
         expect(
           find.descendant(
             of: tableHeader,
-            matching: find.text('MUSICBRAINZ ID'),
+            matching: find.text('MusicBrainz ID'),
           ),
           findsOneWidget,
         );
@@ -850,11 +930,11 @@ void main() {
           findsOneWidget,
         );
         expect(
-          find.descendant(of: tableHeader, matching: find.text('GENRE')),
+          find.descendant(of: tableHeader, matching: find.text('Genre')),
           findsOneWidget,
         );
         expect(
-          find.descendant(of: tableHeader, matching: find.text('TRK#')),
+          find.descendant(of: tableHeader, matching: find.text('Trk#')),
           findsOneWidget,
         );
 
@@ -871,7 +951,7 @@ void main() {
         await tester.tap(find.byKey(const Key('track_col_menu_work')));
         await tester.pumpAndSettle();
         expect(
-          find.descendant(of: tableHeader, matching: find.text('WORK')),
+          find.descendant(of: tableHeader, matching: find.text('Work')),
           findsNothing,
         );
         expect(find.text('Symphony No. 9 "Choral"'), findsNothing);
@@ -948,9 +1028,9 @@ void main() {
         );
         await tester.pumpAndSettle();
 
-        // Check header separation between TIME and TITLE & ARTIST
-        final timeHeaderFinder = find.text('TIME');
-        final titleHeaderFinder = find.text('TITLE & ARTIST');
+        // Check header separation between Time and Title & Artist
+        final timeHeaderFinder = find.text('Time');
+        final titleHeaderFinder = find.text('Title & Artist');
         expect(timeHeaderFinder, findsOneWidget);
         expect(titleHeaderFinder, findsOneWidget);
 
@@ -973,10 +1053,10 @@ void main() {
     );
 
     testWidgets(
-      'TracksView newly added columns appear before TIME by default',
+      'TracksView newly added columns appear before Time by default',
       (tester) async {
         expect(TrackColumn.values.last, equals(TrackColumn.duration));
-        expect(TrackColumn.duration.label, equals('TIME'));
+        expect(TrackColumn.duration.label, equals('Time'));
         expect(TrackColumn.duration.width, equals(76.0));
       },
     );
@@ -1068,6 +1148,274 @@ void main() {
         await tester.tapAt(const Offset(10, 10));
         await tester.pumpAndSettle();
         expect(find.byKey(const Key('tracks_columns_window')), findsNothing);
+      },
+    );
+
+    testWidgets(
+      'TracksView column header sorting works ascending, descending, and reset',
+      (tester) async {
+        tester.view.physicalSize = const Size(1280, 800);
+        tester.view.devicePixelRatio = 1.0;
+        addTearDown(tester.view.resetPhysicalSize);
+
+        const unsortedTracks = [
+          Track(
+            id: '1',
+            title: 'Zebra',
+            artistName: 'Artist A',
+            albumTitle: 'Album X',
+            format: 'FLAC 24/96',
+            durationMs: 252000,
+            sampleRate: 96000,
+            bitDepth: 24,
+          ),
+          Track(
+            id: '2',
+            title: 'Alpha',
+            artistName: 'Artist B',
+            albumTitle: 'Album Y',
+            format: 'DSD 5.6MHz',
+            durationMs: 330000,
+            sampleRate: 5644800,
+            bitDepth: 1,
+          ),
+        ];
+
+        await tester.pumpWidget(_buildTracksViewTest(tracks: unsortedTracks));
+        await tester.pumpAndSettle();
+
+        // Initially unsorted: Zebra is first, Alpha is second
+        expect(
+          tester.getTopLeft(find.text('Zebra')).dy,
+          lessThan(tester.getTopLeft(find.text('Alpha')).dy),
+        );
+
+        // Tap Title & Artist header to sort ascending
+        final titleHeader = find.text('Title & Artist');
+        await tester.tap(titleHeader);
+        await tester.pumpAndSettle();
+
+        // Now sorted ascending: Alpha is first, Zebra is second
+        expect(
+          tester.getTopLeft(find.text('Alpha')).dy,
+          lessThan(tester.getTopLeft(find.text('Zebra')).dy),
+        );
+        expect(find.byIcon(LucideIcons.arrowUp), findsOneWidget);
+
+        // Tap Title & Artist header again to sort descending
+        await tester.tap(titleHeader);
+        await tester.pumpAndSettle();
+
+        // Now sorted descending: Zebra is first, Alpha is second
+        expect(
+          tester.getTopLeft(find.text('Zebra')).dy,
+          lessThan(tester.getTopLeft(find.text('Alpha')).dy),
+        );
+        expect(find.byIcon(LucideIcons.arrowDown), findsOneWidget);
+
+        // Tap Title & Artist header again to reset sort
+        await tester.tap(titleHeader);
+        await tester.pumpAndSettle();
+
+        // Unsorted again: Zebra is first, Alpha is second
+        expect(
+          tester.getTopLeft(find.text('Zebra')).dy,
+          lessThan(tester.getTopLeft(find.text('Alpha')).dy),
+        );
+        expect(find.byIcon(LucideIcons.arrowUp), findsNothing);
+        expect(find.byIcon(LucideIcons.arrowDown), findsNothing);
+      },
+    );
+
+    testWidgets(
+      'TracksView renders Import Audio CTA button in empty state and triggers onImport',
+      (tester) async {
+        bool importCalled = false;
+        await tester.pumpWidget(
+          _buildTracksViewTest(
+            tracks: const [],
+            onImport: () => importCalled = true,
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        expect(find.text('No tracks found'), findsOneWidget);
+        final importButton = find.text('Import Audio');
+        expect(importButton, findsOneWidget);
+
+        await tester.tap(importButton);
+        await tester.pumpAndSettle();
+
+        expect(importCalled, isTrue);
+
+        // Verify Import Audio is NOT shown when filterLabel is present
+        await tester.pumpWidget(
+          _buildTracksViewTest(
+            tracks: const [],
+            filterLabel: 'Test',
+            onImport: () => importCalled = true,
+          ),
+        );
+        await tester.pumpAndSettle();
+        expect(find.text('Import Audio'), findsNothing);
+      },
+    );
+
+    testWidgets(
+      'TracksView renders fallback dash for empty string iswc, isrc, and musicbrainzId',
+      (tester) async {
+        tester.view.physicalSize = const Size(1920, 1080);
+        tester.view.devicePixelRatio = 1.0;
+        addTearDown(tester.view.resetPhysicalSize);
+
+        const emptyMetaTracks = [
+          Track(
+            id: 'trk-empty-1',
+            title: 'Empty Meta Track',
+            artistName: 'Artist',
+            albumTitle: 'Album',
+            iswc: '',
+            isrc: '',
+            musicbrainzId: '',
+          ),
+        ];
+
+        await tester.pumpWidget(
+          _buildTracksViewTest(
+            tracks: emptyMetaTracks,
+            visibleColumns: {
+              TrackColumn.title,
+              TrackColumn.iswc,
+              TrackColumn.isrc,
+              TrackColumn.musicbrainzId,
+            },
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        // Check fallback '-'
+        expect(find.text('-'), findsNWidgets(3));
+      },
+    );
+
+    testWidgets(
+      'TracksView sorts by resolution, iswc, isrc, and musicbrainzId',
+      (tester) async {
+        tester.view.physicalSize = const Size(1920, 1080);
+        tester.view.devicePixelRatio = 1.0;
+        addTearDown(tester.view.resetPhysicalSize);
+
+        const sortTracks = [
+          Track(
+            id: 'trk-b',
+            title: 'Track B',
+            artistName: 'Artist',
+            albumTitle: 'Album',
+            format: 'MP3',
+            sampleRate: 44100,
+            bitDepth: 16,
+            iswc: 'T-222',
+            isrc: 'ISRC-B',
+            musicbrainzId: 'mb-b',
+          ),
+          Track(
+            id: 'trk-a',
+            title: 'Track A',
+            artistName: 'Artist',
+            albumTitle: 'Album',
+            format: 'FLAC',
+            sampleRate: 96000,
+            bitDepth: 24,
+            iswc: 'T-111',
+            isrc: 'ISRC-A',
+            musicbrainzId: 'mb-a',
+          ),
+        ];
+
+        await tester.pumpWidget(
+          _buildTracksViewTest(
+            tracks: sortTracks,
+            visibleColumns: {
+              TrackColumn.title,
+              TrackColumn.resolution,
+              TrackColumn.iswc,
+              TrackColumn.isrc,
+              TrackColumn.musicbrainzId,
+            },
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        // 1. Sort by resolution
+        await tester.tap(find.text('Resolution'));
+        await tester.pumpAndSettle();
+        expect(find.text('Track A'), findsOneWidget);
+
+        // 2. Sort by iswc
+        await tester.tap(find.text('ISWC'));
+        await tester.pumpAndSettle();
+        expect(find.text('T-111'), findsOneWidget);
+
+        // 3. Sort by isrc
+        await tester.tap(find.text('ISRC'));
+        await tester.pumpAndSettle();
+        expect(find.text('ISRC-A'), findsOneWidget);
+
+        // 4. Sort by musicbrainzId
+        await tester.tap(find.text('MusicBrainz ID'));
+        await tester.pumpAndSettle();
+        expect(find.text('mb-a'), findsOneWidget);
+      },
+    );
+
+    testWidgets(
+      'TracksView triggers onClearFilter via LyraButton.outline in empty state',
+      (tester) async {
+        bool clearCalled = false;
+        await tester.pumpWidget(
+          _buildTracksViewTest(
+            tracks: const [],
+            filterLabel: 'Active Filter',
+            onClearFilter: () => clearCalled = true,
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        expect(find.text('Clear filter'), findsOneWidget);
+        expect(find.byType(LyraButton), findsOneWidget);
+        await tester.tap(find.text('Clear filter'));
+        await tester.pumpAndSettle();
+
+        expect(clearCalled, isTrue);
+      },
+    );
+
+    testWidgets(
+      'TracksView adapts itemExtent dynamically under text scaling without overflow',
+      (tester) async {
+        tester.view.physicalSize = const Size(1920, 1080);
+        tester.view.devicePixelRatio = 1.0;
+        addTearDown(tester.view.resetPhysicalSize);
+
+        const tracks = [
+          Track(
+            id: 'trk-1',
+            title: 'Track 1',
+            artistName: 'Artist 1',
+            albumTitle: 'Album 1',
+          ),
+        ];
+
+        await tester.pumpWidget(
+          MediaQuery(
+            data: const MediaQueryData(textScaler: TextScaler.linear(1.5)),
+            child: _buildTracksViewTest(tracks: tracks),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        final listView = tester.widget<ListView>(find.byType(ListView).first);
+        expect(listView.itemExtent, 56.0 * 1.5);
       },
     );
   });
