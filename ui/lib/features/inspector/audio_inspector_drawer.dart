@@ -27,7 +27,7 @@ class AudioInspectorDrawer extends StatelessWidget {
   final MusicService? musicService;
   final VoidCallback onClose;
   final void Function(String newPcmHash)? onActiveAudioChanged;
-  final double width;
+  final double? width;
 
   const AudioInspectorDrawer({
     super.key,
@@ -38,15 +38,19 @@ class AudioInspectorDrawer extends StatelessWidget {
     this.musicService,
     required this.onClose,
     this.onActiveAudioChanged,
-    this.width = 420.0,
+    this.width,
   });
 
   @override
   Widget build(BuildContext context) {
     final tokens = LyraDesignSystemScope.of(context).tokens;
+    final screenWidth = MediaQuery.sizeOf(context).width;
+    final drawerWidth =
+        width ??
+        (screenWidth < 1200 ? (screenWidth * 0.35).clamp(320.0, 420.0) : 420.0);
 
     return Container(
-      width: width,
+      width: drawerWidth,
       decoration: BoxDecoration(
         color: tokens.card,
         border: Border(left: BorderSide(color: tokens.border, width: 1.0)),

@@ -9,6 +9,7 @@ import 'package:shadcn_ui/shadcn_ui.dart';
 import 'package:ui/design_system/factory/lyra_design_system_scope.dart';
 import 'package:ui/design_system/factory/shadcn_factory.dart';
 import 'package:ui/design_system/tokens/lyra_tokens.dart';
+import 'package:ui/design_system/widgets/lyra_input.dart';
 import 'package:ui/features/albums/albums_view.dart';
 import 'package:ui/features/artists/artists_view.dart';
 import 'package:ui/features/cas_pool/cas_view.dart';
@@ -323,32 +324,15 @@ void main() {
       expect(find.text('Lyra Audio'), findsOneWidget);
       expect(find.text('LIBRARY'), findsOneWidget);
       expect(find.text('Playlists'), findsOneWidget);
-      expect(
-        find.descendant(
-          of: find.byType(LyraSidebar),
-          matching: find.text('Collapse'),
-        ),
-        findsOneWidget,
-      );
+      expect(find.byTooltip('Collapse sidebar'), findsOneWidget);
 
       // 2. Toggle collapse manually on wide desktop
-      await tester.tap(
-        find.descendant(
-          of: find.byType(LyraSidebar),
-          matching: find.text('Collapse'),
-        ),
-      );
+      await tester.tap(find.byTooltip('Collapse sidebar'));
       await tester.pumpAndSettle();
 
       expect(find.text('LIBRARY'), findsNothing);
       expect(find.text('Playlists'), findsNothing);
-      expect(
-        find.descendant(
-          of: find.byType(LyraSidebar),
-          matching: find.text('Collapse'),
-        ),
-        findsNothing,
-      );
+      expect(find.byTooltip('Expand sidebar'), findsOneWidget);
 
       // 3. Small Screen (< 900px, e.g. 800px) -> Effective collapsed
       tester.view.physicalSize = const Size(800, 600);
@@ -377,12 +361,7 @@ void main() {
       await tester.pumpAndSettle();
 
       // Collapse sidebar
-      await tester.tap(
-        find.descendant(
-          of: find.byType(LyraSidebar),
-          matching: find.text('Collapse'),
-        ),
-      );
+      await tester.tap(find.byTooltip('Collapse sidebar'));
       await tester.pumpAndSettle();
 
       // 1. Sidebar width is 64.0
@@ -456,13 +435,14 @@ void main() {
       expect(settingsIcon, findsOneWidget);
       expect(tester.getCenter(settingsIcon).dx, 31.5);
 
-      // 4. Collapse toggle icon is centered at x = 31.5
-      final toggleIcon = find.descendant(
-        of: sidebarFinder,
-        matching: find.byIcon(LucideIcons.chevronRight),
+      // 4. Collapse toggle icon is not present at sidebar bottom per HIG
+      expect(
+        find.descendant(
+          of: sidebarFinder,
+          matching: find.byIcon(LucideIcons.chevronRight),
+        ),
+        findsNothing,
       );
-      expect(toggleIcon, findsOneWidget);
-      expect(tester.getCenter(toggleIcon).dx, 31.5);
 
       // 5. Verify text labels are hidden
       expect(find.text('Tracks'), findsNothing);
@@ -1275,4 +1255,290 @@ void main() {
       lessThan(tester.getTopLeft(find.text('#')).dx),
     );
   });
+
+  testWidgets(
+    'Desktop keyboard shortcuts: Spacebar toggles playback guarded against text input',
+    (tester) async {
+      await tester.pumpWidget(_buildAppShellTest());
+      await tester.pumpAndSettle();
+
+      // Initial state: not playing, Play button shown
+      expect(find.byIcon(LucideIcons.play), findsOneWidget);
+      expect(find.byIcon(LucideIcons.pause), findsNothing);
+
+      // Press Space when not in text input -> Toggles to playing
+      await tester.sendKeyEvent(LogicalKeyboardKey.space);
+      await tester.pumpAndSettle();
+
+      expect(find.byIcon(LucideIcons.pause), findsOneWidget);
+      expect(find.byIcon(LucideIcons.play), findsNothing);
+
+      // Press Space again -> Toggles to paused
+      await tester.sendKeyEvent(LogicalKeyboardKey.space);
+      await tester.pumpAndSettle();
+
+      expect(find.byIcon(LucideIcons.play), findsOneWidget);
+      expect(find.byIcon(LucideIcons.pause), findsNothing);
+
+      // Focus the search bar EditableText
+      final searchInput = find.byType(EditableText).first;
+      await tester.tap(searchInput);
+      await tester.pumpAndSettle();
+
+      // Ensure search input is focused
+      expect(
+        FocusManager.instance.primaryFocus?.context
+            ?.findAncestorWidgetOfExactType<EditableText>(),
+        isNotNull,
+      );
+
+      // Press Space while typing in search bar -> Should NOT trigger playback
+      await tester.sendKeyEvent(LogicalKeyboardKey.space);
+      await tester.pumpAndSettle();
+
+      expect(find.byIcon(LucideIcons.play), findsOneWidget);
+      expect(find.byIcon(LucideIcons.pause), findsNothing);
+    },
+  );
+
+  testWidgets(
+    'Desktop keyboard shortcuts: Meta+F/Ctrl+F focuses search input and Meta+I/Ctrl+I toggles inspector drawer',
+    (tester) async {
+      await tester.pumpWidget(_buildAppShellTest());
+      await tester.pumpAndSettle();
+
+      // Inspector drawer initially closed
+      expect(find.byType(AudioInspectorDrawer), findsNothing);
+
+      // Meta+I toggles inspector drawer open
+      await tester.sendKeyDownEvent(LogicalKeyboardKey.meta);
+      await tester.sendKeyEvent(LogicalKeyboardKey.keyI);
+      await tester.sendKeyUpEvent(LogicalKeyboardKey.meta);
+      await tester.pumpAndSettle();
+
+      expect(find.byType(AudioInspectorDrawer), findsOneWidget);
+
+      // Meta+I toggles inspector drawer closed
+      await tester.sendKeyDownEvent(LogicalKeyboardKey.meta);
+      await tester.sendKeyEvent(LogicalKeyboardKey.keyI);
+      await tester.sendKeyUpEvent(LogicalKeyboardKey.meta);
+      await tester.pumpAndSettle();
+
+      expect(find.byType(AudioInspectorDrawer), findsNothing);
+
+      // Ctrl+I toggles inspector drawer open
+      await tester.sendKeyDownEvent(LogicalKeyboardKey.control);
+      await tester.sendKeyEvent(LogicalKeyboardKey.keyI);
+      await tester.sendKeyUpEvent(LogicalKeyboardKey.control);
+      await tester.pumpAndSettle();
+
+      expect(find.byType(AudioInspectorDrawer), findsOneWidget);
+
+      // Meta+F focuses search bar
+      await tester.sendKeyDownEvent(LogicalKeyboardKey.meta);
+      await tester.sendKeyEvent(LogicalKeyboardKey.keyF);
+      await tester.sendKeyUpEvent(LogicalKeyboardKey.meta);
+      await tester.pumpAndSettle();
+
+      final searchInput = find.byType(EditableText).first;
+      expect(
+        tester.widget<EditableText>(searchInput).focusNode.hasFocus,
+        isTrue,
+      );
+    },
+  );
+
+  testWidgets(
+    'Desktop keyboard shortcuts: Meta+I/Ctrl+I in expanded NowPlayingView toggles Details tab',
+    (tester) async {
+      await tester.pumpWidget(_buildAppShellTest());
+      await tester.pumpAndSettle();
+
+      // Expand NowPlayingView
+      await tester.tap(find.byTooltip('Expand Now Playing'));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(NowPlayingView), findsOneWidget);
+      // Initially Tab 0 (Up Next)
+      expect(find.byType(AudioInspectorContent), findsNothing);
+
+      // Meta+I toggles to Details (Tab 2)
+      await tester.sendKeyDownEvent(LogicalKeyboardKey.meta);
+      await tester.sendKeyEvent(LogicalKeyboardKey.keyI);
+      await tester.sendKeyUpEvent(LogicalKeyboardKey.meta);
+      await tester.pumpAndSettle();
+
+      expect(find.byType(AudioInspectorContent), findsOneWidget);
+
+      // Ctrl+I toggles back to Up Next (Tab 0)
+      await tester.sendKeyDownEvent(LogicalKeyboardKey.control);
+      await tester.sendKeyEvent(LogicalKeyboardKey.keyI);
+      await tester.sendKeyUpEvent(LogicalKeyboardKey.control);
+      await tester.pumpAndSettle();
+
+      expect(find.byType(AudioInspectorContent), findsNothing);
+    },
+  );
+
+  testWidgets(
+    'Native dialog routing: Import Audio opens as modal dialog route and dismisses on cancel',
+    (tester) async {
+      await tester.pumpWidget(_buildAppShellTest());
+      await tester.pumpAndSettle();
+
+      // Tap Import Audio
+      await tester.tap(find.text('Import Audio'));
+      await tester.pumpAndSettle();
+
+      // Modal dialog is open
+      expect(find.text('Import Audio to CAS Pool'), findsOneWidget);
+
+      // Tap Cancel button inside modal dialog
+      await tester.tap(find.text('Cancel'));
+      await tester.pumpAndSettle();
+
+      // Modal dialog is dismissed
+      expect(find.text('Import Audio to CAS Pool'), findsNothing);
+    },
+  );
+
+  testWidgets(
+    'Native dialog routing: Add to Playlist opens as modal dialog route and allows creating new playlist',
+    (tester) async {
+      await tester.pumpWidget(_buildAppShellTest());
+      await tester.pumpAndSettle();
+
+      // Start playing a track so player bar has currentTrack
+      await tester.tap(find.text('Hotel California (Live on MTV 1994)').first);
+      await tester.pumpAndSettle();
+
+      // Tap Add to Playlist in Player Bar
+      final addToPlaylistFinder = find.byTooltip('Add to Playlist');
+      expect(addToPlaylistFinder, findsOneWidget);
+      await tester.tap(addToPlaylistFinder);
+      await tester.pumpAndSettle();
+
+      // Modal dialog route is open
+      expect(find.text('Add to Playlist'), findsOneWidget);
+
+      // Tap New Playlist in dialog
+      await tester.tap(find.text('New Playlist'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Create & Add'), findsOneWidget);
+      expect(find.text('Enter a name for the new playlist'), findsOneWidget);
+
+      // Tap Back in dialog
+      await tester.tap(find.text('Back'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Add to Playlist'), findsOneWidget);
+
+      // Press Escape to dismiss dialog route
+      await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+      await tester.pumpAndSettle();
+
+      expect(find.text('Add to Playlist'), findsNothing);
+    },
+  );
+
+  testWidgets(
+    'submitting search with enter collapses expanded NowPlayingView and displays search results',
+    (tester) async {
+      await tester.pumpWidget(_buildAppShellTest());
+      await tester.pumpAndSettle();
+
+      // Expand NowPlayingView by tapping expand button on PlayerBar
+      expect(find.byTooltip('Expand Now Playing'), findsOneWidget);
+      await tester.tap(find.byTooltip('Expand Now Playing'));
+      await tester.pumpAndSettle();
+
+      // Verify NowPlayingView is visible / expanded
+      expect(find.byType(NowPlayingView), findsOneWidget);
+      final expandedSlide = tester.widget<AnimatedSlide>(
+        find.byKey(const ValueKey('now_playing_animated_slide')),
+      );
+      expect(expandedSlide.offset, equals(Offset.zero));
+
+      final nowPlayingNotifier =
+          tester
+                  .widget<ValueListenableBuilder<bool>>(
+                    find.byKey(const ValueKey('now_playing_expanded_builder')),
+                  )
+                  .valueListenable
+              as ValueNotifier<bool>;
+      expect(nowPlayingNotifier.value, isTrue);
+
+      // Enter search text into find.byType(LyraInput)
+      final searchInput = find.byType(LyraInput);
+      expect(searchInput, findsOneWidget);
+      await tester.enterText(searchInput, 'So What');
+      await tester.pumpAndSettle();
+
+      // Trigger submit action (Enter / done action)
+      await tester.testTextInput.receiveAction(TextInputAction.done);
+      await tester.pumpAndSettle();
+
+      // Verify NowPlayingView is collapsed
+      expect(nowPlayingNotifier.value, isFalse);
+      final collapsedSlide = tester.widget<AnimatedSlide>(
+        find.byKey(const ValueKey('now_playing_animated_slide')),
+      );
+      expect(collapsedSlide.offset, equals(const Offset(0.0, 1.0)));
+      expect(find.byTooltip('Expand Now Playing'), findsOneWidget);
+
+      // Verify search results are displayed
+      expect(find.text('So What'), findsWidgets);
+      expect(
+        find.descendant(
+          of: find.byType(TracksView),
+          matching: find.text('Hotel California (Live on MTV 1994)'),
+        ),
+        findsNothing,
+      );
+    },
+  );
+
+  testWidgets(
+    'submitting search with enter from non-library tab switches to tracks tab and collapses NowPlayingView',
+    (tester) async {
+      await tester.pumpWidget(_buildAppShellTest());
+      await tester.pumpAndSettle();
+
+      // Navigate to Settings tab
+      await tester.tap(find.text('Settings'));
+      await tester.pumpAndSettle();
+      expect(find.byType(SettingsView), findsOneWidget);
+
+      // Expand NowPlayingView
+      await tester.tap(find.byTooltip('Expand Now Playing'));
+      await tester.pumpAndSettle();
+
+      final nowPlayingNotifier =
+          tester
+                  .widget<ValueListenableBuilder<bool>>(
+                    find.byKey(const ValueKey('now_playing_expanded_builder')),
+                  )
+                  .valueListenable
+              as ValueNotifier<bool>;
+      expect(nowPlayingNotifier.value, isTrue);
+
+      // Enter search text and submit
+      final searchInput = find.byType(LyraInput);
+      await tester.enterText(searchInput, 'Eagles');
+      await tester.pumpAndSettle();
+
+      await tester.testTextInput.receiveAction(TextInputAction.done);
+      await tester.pumpAndSettle();
+
+      // NowPlayingView is collapsed
+      expect(nowPlayingNotifier.value, isFalse);
+
+      // Current tab was switched to Tracks and displays results
+      expect(find.byType(TracksView), findsOneWidget);
+      expect(find.byType(SettingsView), findsNothing);
+      expect(find.text('Hotel California (Live on MTV 1994)'), findsWidgets);
+      expect(find.text('So What'), findsNothing);
+    },
+  );
 }

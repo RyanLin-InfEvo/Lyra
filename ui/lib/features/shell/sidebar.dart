@@ -28,7 +28,7 @@ class LyraSidebar extends StatefulWidget {
   final AppTab currentTab;
   final ValueChanged<AppTab> onTabSelected;
   final bool isCollapsed;
-  final VoidCallback onToggleCollapse;
+  final VoidCallback? onToggleCollapse;
   final List<Playlist> playlists;
   final String? selectedPlaylistId;
   final ValueChanged<Playlist>? onPlaylistSelected;
@@ -44,7 +44,7 @@ class LyraSidebar extends StatefulWidget {
     required this.currentTab,
     required this.onTabSelected,
     required this.isCollapsed,
-    required this.onToggleCollapse,
+    this.onToggleCollapse,
     this.playlists = const [],
     this.selectedPlaylistId,
     this.onPlaylistSelected,
@@ -75,9 +75,12 @@ class _LyraSidebarState extends State<LyraSidebar> {
   Widget build(BuildContext context) {
     final tokens = LyraDesignSystemScope.of(context).tokens;
 
+    final targetWidth = widget.isCollapsed ? 64.0 : 210.0;
+
     return AnimatedContainer(
       duration: const Duration(milliseconds: 200),
-      width: widget.isCollapsed ? 64.0 : 210.0,
+      curve: Curves.easeInOutCubic,
+      width: targetWidth,
       child: Container(
         key: const Key('sidebar_inner_container'),
         clipBehavior: Clip.hardEdge,
@@ -91,21 +94,15 @@ class _LyraSidebarState extends State<LyraSidebar> {
             // Header / Logo
             Container(
               height: 64.0,
-              padding: widget.isCollapsed
-                  ? EdgeInsets.zero
-                  : const EdgeInsets.symmetric(horizontal: LyraSpacing.md),
-              alignment: widget.isCollapsed
-                  ? Alignment.center
-                  : Alignment.centerLeft,
+              padding: const EdgeInsets.only(left: 15.5),
+              alignment: Alignment.centerLeft,
               decoration: BoxDecoration(
                 border: Border(
                   bottom: BorderSide(color: tokens.border, width: 1.0),
                 ),
               ),
               child: Row(
-                mainAxisAlignment: widget.isCollapsed
-                    ? MainAxisAlignment.center
-                    : MainAxisAlignment.start,
+                mainAxisAlignment: MainAxisAlignment.start,
                 children: [
                   Container(
                     width: 32.0,
@@ -127,8 +124,10 @@ class _LyraSidebarState extends State<LyraSidebar> {
                     Expanded(
                       child: Text(
                         'Lyra Audio',
-                        style: LyraTypography.h4(tokens),
+                        maxLines: 1,
+                        softWrap: false,
                         overflow: TextOverflow.ellipsis,
+                        style: LyraTypography.h4(tokens),
                       ),
                     ),
                   ],
@@ -154,6 +153,9 @@ class _LyraSidebarState extends State<LyraSidebar> {
                       ),
                       child: Text(
                         'LIBRARY',
+                        maxLines: 1,
+                        softWrap: false,
+                        overflow: TextOverflow.clip,
                         style: LyraTypography.small(tokens).copyWith(
                           color: tokens.textMuted,
                           fontWeight: FontWeight.bold,
@@ -274,6 +276,9 @@ class _LyraSidebarState extends State<LyraSidebar> {
                       ),
                       child: Text(
                         'SYSTEM',
+                        maxLines: 1,
+                        softWrap: false,
+                        overflow: TextOverflow.clip,
                         style: LyraTypography.small(tokens).copyWith(
                           color: tokens.textMuted,
                           fontWeight: FontWeight.bold,
@@ -299,49 +304,6 @@ class _LyraSidebarState extends State<LyraSidebar> {
                 ],
               ),
             ),
-
-            // Collapse Toggle Button
-            Container(
-              padding: const EdgeInsets.all(LyraSpacing.sm),
-              decoration: BoxDecoration(
-                border: Border(
-                  top: BorderSide(color: tokens.border, width: 1.0),
-                ),
-              ),
-              child: LyraButton.ghost(
-                width: double.infinity,
-                size: LyraButtonSize.sm,
-                mainAxisAlignment: widget.isCollapsed
-                    ? MainAxisAlignment.center
-                    : MainAxisAlignment.start,
-                crossAxisAlignment: CrossAxisAlignment.center,
-                padding: widget.isCollapsed
-                    ? EdgeInsets.zero
-                    : const EdgeInsets.symmetric(
-                        horizontal: LyraSpacing.sm,
-                        vertical: LyraSpacing.xs,
-                      ),
-                onPressed: widget.onToggleCollapse,
-                leading: Icon(
-                  widget.isCollapsed
-                      ? LucideIcons.chevronRight
-                      : LucideIcons.chevronLeft,
-                  size: 16.0,
-                  color: tokens.textMuted,
-                ),
-                child: widget.isCollapsed
-                    ? null
-                    : Flexible(
-                        child: Text(
-                          'Collapse',
-                          style: LyraTypography.small(
-                            tokens,
-                          ).copyWith(color: tokens.textMuted),
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ),
-              ),
-            ),
           ],
         ),
       ),
@@ -361,6 +323,16 @@ class _LyraSidebarState extends State<LyraSidebar> {
     VoidCallback? onHeaderClick,
   }) {
     final isSelected = widget.currentTab == tab;
+    final buttonPadding = widget.isCollapsed
+        ? const EdgeInsets.only(
+            left: 15.5,
+            top: LyraSpacing.xs,
+            bottom: LyraSpacing.xs,
+          )
+        : const EdgeInsets.symmetric(
+            horizontal: LyraSpacing.sm,
+            vertical: LyraSpacing.xs,
+          );
 
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 1.0),
@@ -375,47 +347,52 @@ class _LyraSidebarState extends State<LyraSidebar> {
             variant: isSelected
                 ? LyraButtonVariant.secondary
                 : LyraButtonVariant.ghost,
-            padding: EdgeInsets.only(
-              left: LyraSpacing.sm,
-              right: hasSubItems ? 28.0 : LyraSpacing.sm,
-              top: LyraSpacing.xs,
-              bottom: LyraSpacing.xs,
-            ),
+            padding: buttonPadding,
             onPressed: onHeaderClick ?? () => widget.onTabSelected(tab),
             leading: Icon(
               icon,
               size: 16.0,
               color: isSelected ? tokens.text : tokens.textMuted,
             ),
-            child: Flexible(
-              child: Text(
-                label,
-                style: LyraTypography.small(tokens).copyWith(
-                  fontSize: 13.0,
-                  fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
-                  color: isSelected ? tokens.text : tokens.textMuted,
-                ),
-                overflow: TextOverflow.ellipsis,
-              ),
-            ),
+            child: widget.isCollapsed
+                ? null
+                : Flexible(
+                    child: Text(
+                      label,
+                      maxLines: 1,
+                      softWrap: false,
+                      overflow: TextOverflow.ellipsis,
+                      style: LyraTypography.small(tokens).copyWith(
+                        fontSize: 13.0,
+                        fontWeight: isSelected
+                            ? FontWeight.w600
+                            : FontWeight.normal,
+                        color: isSelected ? tokens.text : tokens.textMuted,
+                      ),
+                    ),
+                  ),
           ),
-          if (hasSubItems)
+          if (hasSubItems && !widget.isCollapsed)
             Positioned(
               right: 4.0,
-              child: MouseRegion(
-                cursor: SystemMouseCursors.click,
-                child: GestureDetector(
-                  key: chevronKey,
-                  behavior: HitTestBehavior.opaque,
-                  onTap: onToggle,
-                  child: Padding(
-                    padding: const EdgeInsets.all(4.0),
-                    child: Icon(
-                      isExpanded
-                          ? LucideIcons.chevronDown
-                          : LucideIcons.chevronRight,
-                      size: 14.0,
-                      color: tokens.textMuted,
+              child: AnimatedOpacity(
+                opacity: widget.isCollapsed ? 0.0 : 1.0,
+                duration: const Duration(milliseconds: 150),
+                child: MouseRegion(
+                  cursor: SystemMouseCursors.click,
+                  child: GestureDetector(
+                    key: chevronKey,
+                    behavior: HitTestBehavior.opaque,
+                    onTap: onToggle,
+                    child: Padding(
+                      padding: const EdgeInsets.all(4.0),
+                      child: Icon(
+                        isExpanded
+                            ? LucideIcons.chevronDown
+                            : LucideIcons.chevronRight,
+                        size: 14.0,
+                        color: tokens.textMuted,
+                      ),
                     ),
                   ),
                 ),
@@ -434,25 +411,28 @@ class _LyraSidebarState extends State<LyraSidebar> {
     required String label,
   }) {
     final isSelected = widget.currentTab == tab;
+    final buttonPadding = widget.isCollapsed
+        ? const EdgeInsets.only(
+            left: 15.5,
+            top: LyraSpacing.xs,
+            bottom: LyraSpacing.xs,
+          )
+        : const EdgeInsets.symmetric(
+            horizontal: LyraSpacing.sm,
+            vertical: LyraSpacing.xs,
+          );
 
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 1.0),
       child: LyraButton(
         width: double.infinity,
         size: LyraButtonSize.sm,
-        mainAxisAlignment: widget.isCollapsed
-            ? MainAxisAlignment.center
-            : MainAxisAlignment.start,
+        mainAxisAlignment: MainAxisAlignment.start,
         crossAxisAlignment: CrossAxisAlignment.center,
         variant: isSelected
             ? LyraButtonVariant.secondary
             : LyraButtonVariant.ghost,
-        padding: widget.isCollapsed
-            ? EdgeInsets.zero
-            : const EdgeInsets.symmetric(
-                horizontal: LyraSpacing.sm,
-                vertical: LyraSpacing.xs,
-              ),
+        padding: buttonPadding,
         onPressed: () => widget.onTabSelected(tab),
         leading: Icon(
           icon,
@@ -464,6 +444,9 @@ class _LyraSidebarState extends State<LyraSidebar> {
             : Flexible(
                 child: Text(
                   label,
+                  maxLines: 1,
+                  softWrap: false,
+                  overflow: TextOverflow.ellipsis,
                   style: LyraTypography.small(tokens).copyWith(
                     fontSize: 13.0,
                     fontWeight: isSelected
@@ -471,7 +454,6 @@ class _LyraSidebarState extends State<LyraSidebar> {
                         : FontWeight.normal,
                     color: isSelected ? tokens.text : tokens.textMuted,
                   ),
-                  overflow: TextOverflow.ellipsis,
                 ),
               ),
       ),
@@ -517,12 +499,14 @@ class _LyraSidebarState extends State<LyraSidebar> {
         child: Flexible(
           child: Text(
             playlist.displayTitle,
+            maxLines: 1,
+            softWrap: false,
+            overflow: TextOverflow.ellipsis,
             style: LyraTypography.small(tokens).copyWith(
               fontSize: 13.0,
               fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
               color: isSelected ? tokens.text : tokens.textMuted,
             ),
-            overflow: TextOverflow.ellipsis,
           ),
         ),
       ),
@@ -566,12 +550,14 @@ class _LyraSidebarState extends State<LyraSidebar> {
         child: Flexible(
           child: Text(
             tag.displayName,
+            maxLines: 1,
+            softWrap: false,
+            overflow: TextOverflow.ellipsis,
             style: LyraTypography.small(tokens).copyWith(
               fontSize: 13.0,
               fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
               color: isSelected ? tokens.text : tokens.textMuted,
             ),
-            overflow: TextOverflow.ellipsis,
           ),
         ),
       ),

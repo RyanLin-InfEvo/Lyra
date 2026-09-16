@@ -24,7 +24,7 @@ Widget _buildAudioInspectorTestWidget({
   VoidCallback? onClose,
   void Function(String newPcmHash)? onActiveAudioChanged,
   ValueNotifier<ThemeMode>? themeNotifier,
-  double width = 420.0,
+  double? width,
 }) {
   final themeModeNotifier =
       themeNotifier ?? ValueNotifier<ThemeMode>(ThemeMode.dark);
@@ -260,6 +260,34 @@ void main() {
       await tester.pumpAndSettle();
       expect(tester.getSize(copyButtonFinder), equals(initialButtonSize));
       expect(tester.getSize(rowFinder), equals(initialRowSize));
+    },
+  );
+
+  testWidgets(
+    'AudioInspectorDrawer adapts width dynamically according to screen constraints',
+    (tester) async {
+      final drawerFinder = find.byType(AudioInspectorDrawer);
+
+      // 1. Wide desktop (1400px >= 1200px) -> 420px
+      tester.view.physicalSize = const Size(1400, 900);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+
+      await tester.pumpWidget(_buildAudioInspectorTestWidget());
+      await tester.pumpAndSettle();
+      expect(tester.getSize(drawerFinder).width, equals(420.0));
+
+      // 2. Compact desktop (1000px < 1200px) -> 1000 * 0.35 = 350px
+      tester.view.physicalSize = const Size(1000, 900);
+      await tester.pumpWidget(_buildAudioInspectorTestWidget());
+      await tester.pumpAndSettle();
+      expect(tester.getSize(drawerFinder).width, equals(350.0));
+
+      // 3. Small screen (800px < 1200px) -> clamped to min 320px (800 * 0.35 = 280 -> 320)
+      tester.view.physicalSize = const Size(800, 900);
+      await tester.pumpWidget(_buildAudioInspectorTestWidget());
+      await tester.pumpAndSettle();
+      expect(tester.getSize(drawerFinder).width, equals(320.0));
     },
   );
 }

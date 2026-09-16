@@ -3,6 +3,7 @@
 
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../../design_system/contracts/lyra_contracts.dart';
@@ -66,15 +67,11 @@ class AppShell extends StatefulWidget {
 
 class _AppShellState extends State<AppShell> {
   late final TextEditingController _searchController;
+  late final FocusNode _searchFocusNode;
   late final PlaybackQueueController _playbackController;
   late final AudioDeviceController _audioDeviceController;
   AppTab _currentTab = AppTab.tracks;
   bool _isSidebarCollapsed = false;
-  bool _showImportModal = false;
-  bool _showAddToPlaylistModal = false;
-  bool _isCreatingPlaylistInModal = false;
-  late final TextEditingController _newPlaylistNameController =
-      TextEditingController();
   final ValueNotifier<bool> _isNowPlayingExpandedNotifier = ValueNotifier<bool>(
     false,
   );
@@ -151,9 +148,11 @@ class _AppShellState extends State<AppShell> {
   @override
   void initState() {
     super.initState();
+    HardwareKeyboard.instance.addHandler(_handleGlobalKeyEvent);
     _isNowPlayingVisible = _isNowPlayingExpandedNotifier.value;
     _isNowPlayingExpandedNotifier.addListener(_onNowPlayingExpandedChanged);
     _searchController = TextEditingController();
+    _searchFocusNode = FocusNode();
     _audioDeviceController = AudioDeviceController();
     _playbackController =
         widget.playbackController ??
@@ -170,7 +169,8 @@ class _AppShellState extends State<AppShell> {
 
   @override
   void dispose() {
-    _newPlaylistNameController.dispose();
+    HardwareKeyboard.instance.removeHandler(_handleGlobalKeyEvent);
+    _searchFocusNode.dispose();
     _audioDeviceController.dispose();
     _volumeNotifier.dispose();
     _nowPlayingTabNotifier.dispose();
@@ -246,6 +246,27 @@ class _AppShellState extends State<AppShell> {
     _loadCatalog(query: query);
   }
 
+  void _onSearchSubmitted(String query) {
+    if (query.isNotEmpty) {
+      _activeTrackFilter = null;
+      _selectedTagId = null;
+    }
+    _loadCatalog(query: query);
+
+    if (_isNowPlayingExpandedNotifier.value) {
+      _collapseNowPlaying();
+    }
+
+    if (_currentTab != AppTab.tracks &&
+        _currentTab != AppTab.albums &&
+        _currentTab != AppTab.artists &&
+        _currentTab != AppTab.works) {
+      setState(() {
+        _currentTab = AppTab.tracks;
+      });
+    }
+  }
+
   void _onTrackSelected(Track track) {
     final effectiveTracks = _activeTrackFilter != null
         ? _tracks.where(_activeTrackFilter!.predicate).toList()
@@ -306,22 +327,133 @@ class _AppShellState extends State<AppShell> {
     }
   }
 
-  Future<void> _handleCreatePlaylistWithName(String rawName) async {
-    if (_currentTrack == null) return;
-    final trimmed = rawName.trim();
-    final title = trimmed.isNotEmpty
-        ? trimmed
-        : 'New Playlist ${_playlists.length + 1}';
-    await widget.musicService.createPlaylist(
-      title: title,
-      trackIds: [_currentTrack!.id],
-    );
-    await _loadCatalog();
-    if (!mounted) return;
+  void _toggleSidebar() {
     setState(() {
-      _isCreatingPlaylistInModal = false;
-      _showAddToPlaylistModal = false;
+      _isSidebarCollapsed = !_isSidebarCollapsed;
     });
+  }
+
+  void _toggleAudioInspector() {
+    if (_isNowPlayingExpandedNotifier.value) {
+      // Toggle between Details (tab 2) and Up Next (tab 0) in NowPlayingView
+      if (_nowPlayingTabNotifier.value == 2) {
+        _nowPlayingTabNotifier.value = 0;
+      } else {
+        _nowPlayingTabNotifier.value = 2;
+      }
+    } else {
+      _toggleInspector();
+    }
+  }
+
+  bool _handleGlobalKeyEvent(KeyEvent event) {
+    if (event is! KeyDownEvent) {
+      return false;
+    }
+
+    final isEditingText =
+        FocusManager.instance.primaryFocus?.context
+            ?.findAncestorWidgetOfExactType<EditableText>() !=
+        null;
+    final isMetaOrCtrl =
+        HardwareKeyboard.instance.isMetaPressed ||
+        HardwareKeyboard.instance.isControlPressed ||
+        HardwareKeyboard.instance.isLogicalKeyPressed(
+          LogicalKeyboardKey.meta,
+        ) ||
+        HardwareKeyboard.instance.isLogicalKeyPressed(
+          LogicalKeyboardKey.control,
+        );
+
+    if (event.logicalKey == LogicalKeyboardKey.space) {
+      if (!isEditingText) {
+        _togglePlay();
+        return true;
+      }
+      return false;
+    }
+
+    if (isMetaOrCtrl && event.logicalKey == LogicalKeyboardKey.keyF) {
+      _searchFocusNode.requestFocus();
+      return true;
+    }
+
+    if (isMetaOrCtrl && event.logicalKey == LogicalKeyboardKey.keyI) {
+      _toggleAudioInspector();
+      return true;
+    }
+
+    return false;
+  }
+
+  void _showImportDialog() {
+    final scope = LyraDesignSystemScope.of(context);
+    showDialog<void>(
+      context: context,
+      barrierDismissible: true,
+      builder: (ctx) => LyraDesignSystemScope(
+        factory: scope.factory,
+        tokens: scope.tokens,
+        themeModeNotifier: scope.themeModeNotifier,
+        child: LyraImportModal(
+          onImport:
+              ({
+                required String title,
+                required String artist,
+                required String album,
+                required String format,
+                required int sampleRate,
+                required int bitDepth,
+                required String simulatedHash,
+              }) async {
+                final track = await widget.musicService.importTrack(
+                  title: title,
+                  artist: artist,
+                  album: album,
+                  format: format,
+                  sampleRate: sampleRate,
+                  bitDepth: bitDepth,
+                  simulatedHash: simulatedHash,
+                );
+                await _loadCatalog();
+                return track;
+              },
+          onClose: () => Navigator.of(ctx).pop(),
+        ),
+      ),
+    );
+  }
+
+  void _showAddToPlaylistDialog() {
+    if (_currentTrack == null) return;
+    final scope = LyraDesignSystemScope.of(context);
+    showDialog<void>(
+      context: context,
+      barrierDismissible: true,
+      builder: (ctx) => LyraDesignSystemScope(
+        factory: scope.factory,
+        tokens: scope.tokens,
+        themeModeNotifier: scope.themeModeNotifier,
+        child: _AddToPlaylistDialog(
+          track: _currentTrack!,
+          playlists: _playlists,
+          musicService: widget.musicService,
+          onPlaylistUpdated: (updatedPlaylist) {
+            setState(() {
+              _playlists = [
+                for (final p in _playlists)
+                  if (p.id == updatedPlaylist.id) updatedPlaylist else p,
+              ];
+              _sidebarPlaylists = [
+                for (final p in _sidebarPlaylists)
+                  if (p.id == updatedPlaylist.id) updatedPlaylist else p,
+              ];
+            });
+            _loadCatalog();
+          },
+        ),
+      ),
+    );
   }
 
   void _onVolumeChanged(double volume) {
@@ -585,8 +717,12 @@ class _AppShellState extends State<AppShell> {
     return RepaintBoundary(
       child: LyraHeaderBar(
         searchController: _searchController,
+        searchFocusNode: _searchFocusNode,
         onSearchChanged: _onSearchChanged,
-        onImportPressed: () => setState(() => _showImportModal = true),
+        onSearchSubmitted: _onSearchSubmitted,
+        onImportPressed: _showImportDialog,
+        onToggleSidebar: _toggleSidebar,
+        isSidebarCollapsed: _isSidebarCollapsed,
       ),
     );
   }
@@ -616,10 +752,7 @@ class _AppShellState extends State<AppShell> {
                 onCycleRepeat: () => _playbackController.cycleRepeatMode(),
                 onAddToPlaylist: _currentTrack == null
                     ? null
-                    : () => setState(() {
-                        _showAddToPlaylistModal = true;
-                        _isCreatingPlaylistInModal = false;
-                      }),
+                    : _showAddToPlaylistDialog,
                 onInspectTrack: _handlePlayerBarInspectTrack,
                 onInspectAudio: _handlePlayerBarInspectAudio,
                 onTogglePlay: _togglePlay,
@@ -640,421 +773,381 @@ class _AppShellState extends State<AppShell> {
   Widget build(BuildContext context) {
     final tokens = LyraDesignSystemScope.of(context).tokens;
 
-    return Scaffold(
-      backgroundColor: tokens.background,
-      body: LayoutBuilder(
-        builder: (context, constraints) {
-          final isCompact = constraints.maxWidth < 900;
-          final effectiveSidebarCollapsed = _isSidebarCollapsed || isCompact;
+    return Focus(
+      autofocus: true,
+      child: Scaffold(
+        backgroundColor: tokens.background,
+        body: LayoutBuilder(
+          builder: (context, constraints) {
+            final isCompact = constraints.maxWidth < 900;
+            final effectiveSidebarCollapsed = _isSidebarCollapsed || isCompact;
 
-          return Stack(
-            children: [
-              // 3-Pane Desktop Layout
-              Row(
-                children: [
-                  // Sidebar (Left)
-                  RepaintBoundary(
-                    child: LyraSidebar(
-                      currentTab: _currentTab,
-                      isCollapsed: effectiveSidebarCollapsed,
-                      playlists: _sidebarPlaylists,
-                      selectedPlaylistId: _selectedPlaylistId,
-                      onPlaylistSelected: (pl) {
-                        setState(() {
-                          _selectedPlaylistId = pl.id;
-                          _selectedTagId = null;
-                          _currentTab = AppTab.playlists;
-                        });
-                      },
-                      tags: _tags,
-                      selectedTagId: _selectedTagId,
-                      onTagSelected: _filterByTag,
-                      onTagsHeaderSelected: () {
-                        setState(() {
-                          _selectedTagId = null;
-                          _selectedPlaylistId = null;
-                          _currentTab = AppTab.tags;
-                        });
-                      },
-                      onTabSelected: (tab) => setState(() {
-                        if (tab == AppTab.tracks) {
-                          _activeTrackFilter = null;
-                          _selectedTagId = null;
-                        } else if (tab != AppTab.playlists &&
-                            tab != AppTab.tags) {
-                          _selectedPlaylistId = null;
-                          _selectedTagId = null;
-                        }
-                        _currentTab = tab;
-                      }),
-                      onToggleCollapse: () => setState(
-                        () => _isSidebarCollapsed = !_isSidebarCollapsed,
-                      ),
-                    ),
+            return Row(
+              children: [
+                // Sidebar (Left)
+                RepaintBoundary(
+                  child: LyraSidebar(
+                    currentTab: _currentTab,
+                    isCollapsed: effectiveSidebarCollapsed,
+                    playlists: _sidebarPlaylists,
+                    selectedPlaylistId: _selectedPlaylistId,
+                    onPlaylistSelected: (pl) {
+                      setState(() {
+                        _selectedPlaylistId = pl.id;
+                        _selectedTagId = null;
+                        _currentTab = AppTab.playlists;
+                      });
+                    },
+                    tags: _tags,
+                    selectedTagId: _selectedTagId,
+                    onTagSelected: _filterByTag,
+                    onTagsHeaderSelected: () {
+                      setState(() {
+                        _selectedTagId = null;
+                        _selectedPlaylistId = null;
+                        _currentTab = AppTab.tags;
+                      });
+                    },
+                    onTabSelected: (tab) => setState(() {
+                      if (tab == AppTab.tracks) {
+                        _activeTrackFilter = null;
+                        _selectedTagId = null;
+                      } else if (tab != AppTab.playlists &&
+                          tab != AppTab.tags) {
+                        _selectedPlaylistId = null;
+                        _selectedTagId = null;
+                      }
+                      _currentTab = tab;
+                    }),
+                    onToggleCollapse: _toggleSidebar,
                   ),
+                ),
 
-                  // Right Pane (Header + Main Area + Player Bar)
-                  Expanded(
-                    child: Column(
-                      children: [
-                        // Header Bar (Top)
-                        _buildHeader(),
+                // Right Pane (Header + Main Area + Player Bar)
+                Expanded(
+                  child: Column(
+                    children: [
+                      // Header Bar (Top)
+                      _buildHeader(),
 
-                        // Main View Content + Docked Inspector Drawer + Now Playing Overlay (Center)
-                        Expanded(
-                          child: Stack(
-                            children: [
-                              Row(
-                                children: [
-                                  Expanded(
-                                    child: Container(
-                                      color: tokens.background,
-                                      child: _buildMainContent(),
+                      // Main View Content + Docked Inspector Drawer + Now Playing Overlay (Center)
+                      Expanded(
+                        child: Stack(
+                          children: [
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: Container(
+                                    color: tokens.background,
+                                    child: _buildMainContent(),
+                                  ),
+                                ),
+                                if (_isInspectorOpen)
+                                  RepaintBoundary(
+                                    child: AudioInspectorDrawer(
+                                      track:
+                                          _inspectedTrack ??
+                                          (_inspectedAsset != null
+                                              ? null
+                                              : _currentTrack),
+                                      asset: _inspectedAsset,
+                                      musicService: widget.musicService,
+                                      onClose: _closeInspector,
+                                      onActiveAudioChanged: (newPcmHash) {
+                                        _loadCatalog();
+                                      },
                                     ),
                                   ),
-                                  if (_isInspectorOpen)
-                                    RepaintBoundary(
-                                      child: AudioInspectorDrawer(
-                                        track:
-                                            _inspectedTrack ??
-                                            (_inspectedAsset != null
-                                                ? null
-                                                : _currentTrack),
-                                        asset: _inspectedAsset,
-                                        musicService: widget.musicService,
-                                        onClose: _closeInspector,
-                                        onActiveAudioChanged: (newPcmHash) {
-                                          _loadCatalog();
-                                        },
+                              ],
+                            ),
+
+                            // Now Playing View Overlay (Pre-warmed offscreen and animated via AnimatedSlide)
+                            Positioned.fill(
+                              child: ValueListenableBuilder<bool>(
+                                key: const ValueKey(
+                                  'now_playing_expanded_builder',
+                                ),
+                                valueListenable: _isNowPlayingExpandedNotifier,
+                                builder: (context, isNowPlayingExpanded, _) {
+                                  final bool isVisible =
+                                      _isNowPlayingVisible ||
+                                      isNowPlayingExpanded;
+
+                                  return RepaintBoundary(
+                                    child: AnimatedSlide(
+                                      key: const ValueKey(
+                                        'now_playing_animated_slide',
                                       ),
-                                    ),
-                                ],
-                              ),
-
-                              // Now Playing View Overlay (Pre-warmed offscreen and animated via AnimatedSlide)
-                              Positioned.fill(
-                                child: ValueListenableBuilder<bool>(
-                                  valueListenable:
-                                      _isNowPlayingExpandedNotifier,
-                                  builder: (context, isNowPlayingExpanded, _) {
-                                    final bool isVisible =
-                                        _isNowPlayingVisible ||
-                                        isNowPlayingExpanded;
-
-                                    return RepaintBoundary(
-                                      child: AnimatedSlide(
+                                      offset: isNowPlayingExpanded
+                                          ? Offset.zero
+                                          : const Offset(0.0, 1.0),
+                                      duration: widget.nowPlayingDuration,
+                                      curve: widget.nowPlayingCurve,
+                                      onEnd: _onNowPlayingSlideEnd,
+                                      child: IgnorePointer(
                                         key: const ValueKey(
-                                          'now_playing_animated_slide',
+                                          'now_playing_ignore_pointer',
                                         ),
-                                        offset: isNowPlayingExpanded
-                                            ? Offset.zero
-                                            : const Offset(0.0, 1.0),
-                                        duration: widget.nowPlayingDuration,
-                                        curve: widget.nowPlayingCurve,
-                                        onEnd: _onNowPlayingSlideEnd,
-                                        child: IgnorePointer(
+                                        ignoring: !isNowPlayingExpanded,
+                                        child: Visibility(
                                           key: const ValueKey(
-                                            'now_playing_ignore_pointer',
+                                            'now_playing_visibility',
                                           ),
-                                          ignoring: !isNowPlayingExpanded,
-                                          child: Visibility(
-                                            key: const ValueKey(
-                                              'now_playing_visibility',
-                                            ),
-                                            visible: isVisible,
-                                            maintainState: true,
-                                            child: RepaintBoundary(
-                                              child: DecoratedBox(
-                                                decoration: BoxDecoration(
-                                                  boxShadow: [
-                                                    BoxShadow(
-                                                      color: Colors.black
-                                                          .withValues(
-                                                            alpha: 0.45,
-                                                          ),
-                                                      blurRadius: 28.0,
-                                                      offset: const Offset(
-                                                        0,
-                                                        -6,
-                                                      ),
-                                                    ),
-                                                  ],
-                                                ),
-                                                child: NowPlayingView(
-                                                  track: _currentTrack,
-                                                  playbackController:
-                                                      _playbackController,
-                                                  onCollapse:
-                                                      _collapseNowPlaying,
-                                                  isExpanded:
-                                                      isNowPlayingExpanded,
-                                                  musicService:
-                                                      widget.musicService,
-                                                  selectedTabNotifier:
-                                                      _nowPlayingTabNotifier,
-                                                  queueSource:
-                                                      _activeTrackFilter != null
-                                                      ? _activeTrackFilter!
-                                                            .label
-                                                      : (_currentTab ==
-                                                                AppTab.playlists
-                                                            ? 'Playing from Playlist'
-                                                            : 'Playing from Library'),
-                                                ),
+                                          visible: isVisible,
+                                          maintainState: true,
+                                          child: RepaintBoundary(
+                                            child: DecoratedBox(
+                                              decoration: BoxDecoration(
+                                                boxShadow: [
+                                                  BoxShadow(
+                                                    color: Colors.black
+                                                        .withValues(
+                                                          alpha: 0.45,
+                                                        ),
+                                                    blurRadius: 28.0,
+                                                    offset: const Offset(0, -6),
+                                                  ),
+                                                ],
+                                              ),
+                                              child: NowPlayingView(
+                                                track: _currentTrack,
+                                                playbackController:
+                                                    _playbackController,
+                                                onCollapse: _collapseNowPlaying,
+                                                isExpanded:
+                                                    isNowPlayingExpanded,
+                                                musicService:
+                                                    widget.musicService,
+                                                selectedTabNotifier:
+                                                    _nowPlayingTabNotifier,
+                                                queueSource:
+                                                    _activeTrackFilter != null
+                                                    ? _activeTrackFilter!.label
+                                                    : (_currentTab ==
+                                                              AppTab.playlists
+                                                          ? 'Playing from Playlist'
+                                                          : 'Playing from Library'),
                                               ),
                                             ),
                                           ),
                                         ),
                                       ),
-                                    );
-                                  },
-                                ),
+                                    ),
+                                  );
+                                },
                               ),
-                            ],
-                          ),
-                        ),
-
-                        // Fixed Player Bar (Bottom)
-                        _buildBottomPlayer(),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-
-              // Import Audio Modal Overlay
-              if (_showImportModal)
-                Container(
-                  color: const Color(0x80000000),
-                  alignment: Alignment.center,
-                  child: ImportAudioModal(
-                    onImport:
-                        ({
-                          required String title,
-                          required String artist,
-                          required String album,
-                          required String format,
-                          required int sampleRate,
-                          required int bitDepth,
-                          required String simulatedHash,
-                        }) async {
-                          final track = await widget.musicService.importTrack(
-                            title: title,
-                            artist: artist,
-                            album: album,
-                            format: format,
-                            sampleRate: sampleRate,
-                            bitDepth: bitDepth,
-                            simulatedHash: simulatedHash,
-                          );
-                          await _loadCatalog();
-                          return track;
-                        },
-                    onClose: () => setState(() => _showImportModal = false),
-                  ),
-                ),
-
-              // Add to Playlist Modal Overlay
-              if (_showAddToPlaylistModal && _currentTrack != null) ...[
-                Positioned.fill(
-                  child: GestureDetector(
-                    key: const ValueKey('add_to_playlist_backdrop'),
-                    behavior: HitTestBehavior.opaque,
-                    onTap: () => setState(() {
-                      _showAddToPlaylistModal = false;
-                      _isCreatingPlaylistInModal = false;
-                    }),
-                    child: Container(color: const Color(0x80000000)),
-                  ),
-                ),
-                Center(
-                  child: LyraDialog(
-                    title: Text(
-                      _isCreatingPlaylistInModal
-                          ? 'New Playlist'
-                          : 'Add to Playlist',
-                      style: LyraTypography.h4(tokens),
-                    ),
-                    description: Text(
-                      _isCreatingPlaylistInModal
-                          ? 'Enter a name for the new playlist'
-                          : 'Add "${_currentTrack!.displayTitle}" to a playlist',
-                      style: LyraTypography.muted(tokens),
-                    ),
-                    child: ConstrainedBox(
-                      constraints: BoxConstraints(
-                        maxWidth: 440.0,
-                        maxHeight: _isCreatingPlaylistInModal
-                            ? double.infinity
-                            : 650.0,
-                      ),
-                      child: _isCreatingPlaylistInModal
-                          ? Column(
-                              mainAxisSize: MainAxisSize.min,
-                              crossAxisAlignment: CrossAxisAlignment.stretch,
-                              children: [
-                                const SizedBox(height: LyraSpacing.sm),
-                                LyraInput(
-                                  controller: _newPlaylistNameController,
-                                  autofocus: true,
-                                  placeholder: 'Playlist title',
-                                  onSubmitted: (name) =>
-                                      _handleCreatePlaylistWithName(name),
-                                ),
-                                const SizedBox(height: LyraSpacing.lg),
-                                Row(
-                                  mainAxisAlignment: MainAxisAlignment.end,
-                                  children: [
-                                    LyraButton.ghost(
-                                      size: LyraButtonSize.sm,
-                                      onPressed: () => setState(
-                                        () =>
-                                            _isCreatingPlaylistInModal = false,
-                                      ),
-                                      child: const Text('Back'),
-                                    ),
-                                    const SizedBox(width: LyraSpacing.sm),
-                                    LyraButton.primary(
-                                      size: LyraButtonSize.sm,
-                                      onPressed: () =>
-                                          _handleCreatePlaylistWithName(
-                                            _newPlaylistNameController.text,
-                                          ),
-                                      child: const Text('Create & Add'),
-                                    ),
-                                  ],
-                                ),
-                              ],
-                            )
-                          : Stack(
-                              children: [
-                                if (_playlists.isEmpty)
-                                  Padding(
-                                    padding: const EdgeInsets.only(
-                                      top: LyraSpacing.lg,
-                                      bottom: 56.0,
-                                      left: LyraSpacing.sm,
-                                      right: LyraSpacing.sm,
-                                    ),
-                                    child: Text(
-                                      'No playlists available. Create a playlist first.',
-                                      style: LyraTypography.muted(tokens),
-                                    ),
-                                  )
-                                else
-                                  ListView.builder(
-                                    shrinkWrap: true,
-                                    padding: const EdgeInsets.only(
-                                      bottom: 48.0,
-                                    ),
-                                    itemCount: _playlists.length,
-                                    itemBuilder: (context, index) {
-                                      final playlist = _playlists[index];
-                                      return Padding(
-                                        padding: const EdgeInsets.symmetric(
-                                          vertical: LyraSpacing.xs,
-                                        ),
-                                        child: _PlaylistModalItem(
-                                          playlist: playlist,
-                                          tokens: tokens,
-                                          onTap: () {
-                                            if (_currentTrack == null) return;
-                                            final trackId = _currentTrack!.id;
-                                            final updatedTrackIds =
-                                                List<String>.from(
-                                                  playlist.trackIds,
-                                                );
-                                            if (!updatedTrackIds.contains(
-                                              trackId,
-                                            )) {
-                                              updatedTrackIds.add(trackId);
-                                            }
-                                            final updatedPlaylist = playlist
-                                                .copyWith(
-                                                  trackIds: updatedTrackIds,
-                                                );
-                                            if (widget.musicService
-                                                is MockMusicService) {
-                                              (widget.musicService
-                                                      as MockMusicService)
-                                                  .addTrackToPlaylist(
-                                                    playlist.id,
-                                                    trackId,
-                                                  );
-                                            }
-                                            setState(() {
-                                              _playlists = [
-                                                for (final p in _playlists)
-                                                  if (p.id == playlist.id)
-                                                    updatedPlaylist
-                                                  else
-                                                    p,
-                                              ];
-                                              _sidebarPlaylists = [
-                                                for (final p
-                                                    in _sidebarPlaylists)
-                                                  if (p.id == playlist.id)
-                                                    updatedPlaylist
-                                                  else
-                                                    p,
-                                              ];
-                                              _showAddToPlaylistModal = false;
-                                            });
-                                          },
-                                        ),
-                                      );
-                                    },
-                                  ),
-                                Positioned(
-                                  bottom: 8.0,
-                                  right: 8.0,
-                                  child: Container(
-                                    decoration: BoxDecoration(
-                                      borderRadius: LyraRadius.mdRadius,
-                                      boxShadow: [
-                                        BoxShadow(
-                                          color: tokens.primary.withValues(
-                                            alpha: 0.35,
-                                          ),
-                                          blurRadius: 10.0,
-                                          offset: const Offset(0, 3),
-                                        ),
-                                      ],
-                                    ),
-                                    child: LyraButton.primary(
-                                      size: LyraButtonSize.sm,
-                                      leading: const Icon(
-                                        LucideIcons.plus,
-                                        size: 15.0,
-                                      ),
-                                      child: const Text('New Playlist'),
-                                      onPressed: () {
-                                        setState(() {
-                                          _isCreatingPlaylistInModal = true;
-                                          _newPlaylistNameController.text =
-                                              'New Playlist ${_playlists.length + 1}';
-                                          _newPlaylistNameController.selection =
-                                              TextSelection(
-                                                baseOffset: 0,
-                                                extentOffset:
-                                                    _newPlaylistNameController
-                                                        .text
-                                                        .length,
-                                              );
-                                        });
-                                      },
-                                    ),
-                                  ),
-                                ),
-                              ],
                             ),
-                    ),
+                          ],
+                        ),
+                      ),
+
+                      // Fixed Player Bar (Bottom)
+                      _buildBottomPlayer(),
+                    ],
                   ),
                 ),
               ],
-            ],
-          );
-        },
+            );
+          },
+        ),
+      ),
+    );
+  }
+}
+
+/// Modal dialog for adding a track to an existing playlist or creating a new one.
+class _AddToPlaylistDialog extends StatefulWidget {
+  final Track track;
+  final List<Playlist> playlists;
+  final MusicService musicService;
+  final ValueChanged<Playlist> onPlaylistUpdated;
+
+  const _AddToPlaylistDialog({
+    required this.track,
+    required this.playlists,
+    required this.musicService,
+    required this.onPlaylistUpdated,
+  });
+
+  @override
+  State<_AddToPlaylistDialog> createState() => _AddToPlaylistDialogState();
+}
+
+class _AddToPlaylistDialogState extends State<_AddToPlaylistDialog> {
+  bool _isCreatingPlaylist = false;
+  late final TextEditingController _newPlaylistNameController;
+
+  @override
+  void initState() {
+    super.initState();
+    _newPlaylistNameController = TextEditingController();
+  }
+
+  @override
+  void dispose() {
+    _newPlaylistNameController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _handleCreatePlaylistWithName(String rawName) async {
+    final trimmed = rawName.trim();
+    final title = trimmed.isNotEmpty
+        ? trimmed
+        : 'New Playlist ${widget.playlists.length + 1}';
+    final newPl = await widget.musicService.createPlaylist(
+      title: title,
+      trackIds: [widget.track.id],
+    );
+    widget.onPlaylistUpdated(newPl);
+    if (mounted) {
+      Navigator.of(context).pop();
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = LyraDesignSystemScope.of(context).tokens;
+
+    return Center(
+      child: LyraDialog(
+        title: Text(
+          _isCreatingPlaylist ? 'New Playlist' : 'Add to Playlist',
+          style: LyraTypography.h4(tokens),
+        ),
+        description: Text(
+          _isCreatingPlaylist
+              ? 'Enter a name for the new playlist'
+              : 'Add "${widget.track.displayTitle}" to a playlist',
+          style: LyraTypography.muted(tokens),
+        ),
+        child: ConstrainedBox(
+          constraints: BoxConstraints(
+            maxWidth: 440.0,
+            maxHeight: _isCreatingPlaylist ? double.infinity : 650.0,
+          ),
+          child: _isCreatingPlaylist
+              ? Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    const SizedBox(height: LyraSpacing.sm),
+                    LyraInput(
+                      controller: _newPlaylistNameController,
+                      autofocus: true,
+                      placeholder: 'Playlist title',
+                      onSubmitted: (name) =>
+                          _handleCreatePlaylistWithName(name),
+                    ),
+                    const SizedBox(height: LyraSpacing.lg),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.end,
+                      children: [
+                        LyraButton.ghost(
+                          size: LyraButtonSize.sm,
+                          onPressed: () =>
+                              setState(() => _isCreatingPlaylist = false),
+                          child: const Text('Back'),
+                        ),
+                        const SizedBox(width: LyraSpacing.sm),
+                        LyraButton.primary(
+                          size: LyraButtonSize.sm,
+                          onPressed: () => _handleCreatePlaylistWithName(
+                            _newPlaylistNameController.text,
+                          ),
+                          child: const Text('Create & Add'),
+                        ),
+                      ],
+                    ),
+                  ],
+                )
+              : Stack(
+                  children: [
+                    if (widget.playlists.isEmpty)
+                      Padding(
+                        padding: const EdgeInsets.only(
+                          top: LyraSpacing.lg,
+                          bottom: 56.0,
+                          left: LyraSpacing.sm,
+                          right: LyraSpacing.sm,
+                        ),
+                        child: Text(
+                          'No playlists available. Create a playlist first.',
+                          style: LyraTypography.muted(tokens),
+                        ),
+                      )
+                    else
+                      ListView.builder(
+                        shrinkWrap: true,
+                        padding: const EdgeInsets.only(bottom: 48.0),
+                        itemCount: widget.playlists.length,
+                        itemBuilder: (context, index) {
+                          final playlist = widget.playlists[index];
+                          return Padding(
+                            padding: const EdgeInsets.symmetric(
+                              vertical: LyraSpacing.xs,
+                            ),
+                            child: _PlaylistModalItem(
+                              playlist: playlist,
+                              tokens: tokens,
+                              onTap: () {
+                                final trackId = widget.track.id;
+                                final updatedTrackIds = List<String>.from(
+                                  playlist.trackIds,
+                                );
+                                if (!updatedTrackIds.contains(trackId)) {
+                                  updatedTrackIds.add(trackId);
+                                }
+                                final updatedPlaylist = playlist.copyWith(
+                                  trackIds: updatedTrackIds,
+                                );
+                                if (widget.musicService is MockMusicService) {
+                                  (widget.musicService as MockMusicService)
+                                      .addTrackToPlaylist(playlist.id, trackId);
+                                }
+                                widget.onPlaylistUpdated(updatedPlaylist);
+                                Navigator.of(context).pop();
+                              },
+                            ),
+                          );
+                        },
+                      ),
+                    Positioned(
+                      bottom: 8.0,
+                      right: 8.0,
+                      child: Container(
+                        decoration: BoxDecoration(
+                          borderRadius: LyraRadius.mdRadius,
+                          boxShadow: [
+                            BoxShadow(
+                              color: tokens.primary.withValues(alpha: 0.35),
+                              blurRadius: 10.0,
+                              offset: const Offset(0, 3),
+                            ),
+                          ],
+                        ),
+                        child: LyraButton.primary(
+                          size: LyraButtonSize.sm,
+                          leading: const Icon(LucideIcons.plus, size: 15.0),
+                          child: const Text('New Playlist'),
+                          onPressed: () {
+                            setState(() {
+                              _isCreatingPlaylist = true;
+                              _newPlaylistNameController.text =
+                                  'New Playlist ${widget.playlists.length + 1}';
+                              _newPlaylistNameController.selection =
+                                  TextSelection(
+                                    baseOffset: 0,
+                                    extentOffset:
+                                        _newPlaylistNameController.text.length,
+                                  );
+                            });
+                          },
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+        ),
       ),
     );
   }

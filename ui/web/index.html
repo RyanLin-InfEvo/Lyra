@@ -33,14 +33,18 @@
   <link rel="manifest" href="manifest.json">
 </head>
 <body oncontextmenu="return false;">
-  <!--
-    You can customize the "flutter_bootstrap.js" script.
-    This is useful to provide a custom configuration to the Flutter loader
-    or to give the user feedback during the initialization process.
-
-    For more details:
-    * https://docs.flutter.dev/platform-integration/web/initialization
-  -->
+  <script>
+    window.addEventListener('keydown', function(e) {
+      // Prevent Chrome default "Find in page" when pressing Ctrl+F / Cmd+F
+      if ((e.ctrlKey || e.metaKey) && (e.key === 'f' || e.key === 'F')) {
+        e.preventDefault();
+      }
+      // Prevent Chrome default page scrolling on Space unless typing in input/textarea
+      if (e.key === ' ' && e.target.tagName !== 'INPUT' && e.target.tagName !== 'TEXTAREA') {
+        e.preventDefault();
+      }
+    }, { capture: true });
+  </script>
   <script src="flutter_bootstrap.js" async></script>
 </body>
 </html>

@@ -14,6 +14,8 @@ import '../../design_system/widgets/lyra_input.dart';
 import '../models/track.dart';
 
 /// Modal dialog for importing and hashing audio files into CAS storage.
+typedef LyraImportModal = ImportAudioModal;
+
 class ImportAudioModal extends StatefulWidget {
   final Future<Track> Function({
     required String title,

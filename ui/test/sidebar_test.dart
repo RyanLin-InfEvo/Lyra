@@ -131,7 +131,7 @@ void main() {
     // System items
     expect(find.text('CAS Storage'), findsOneWidget);
     expect(find.text('Settings'), findsOneWidget);
-    expect(find.text('Collapse'), findsOneWidget);
+    expect(find.text('Collapse'), findsNothing);
   });
 
   testWidgets(
@@ -321,20 +321,16 @@ void main() {
     },
   );
 
-  testWidgets('LyraSidebar collapse toggle callback triggers on click', (
-    tester,
-  ) async {
-    bool toggleCalled = false;
+  testWidgets(
+    'LyraSidebar adheres to HIG by not placing collapse toggle at sidebar bottom',
+    (tester) async {
+      await tester.pumpWidget(_buildSidebarTest());
+      await tester.pumpAndSettle();
 
-    await tester.pumpWidget(
-      _buildSidebarTest(onToggleCollapse: () => toggleCalled = true),
-    );
-    await tester.pumpAndSettle();
-
-    await tester.tap(find.text('Collapse'));
-    await tester.pumpAndSettle();
-    expect(toggleCalled, isTrue);
-  });
+      expect(find.text('Collapse'), findsNothing);
+      expect(find.byIcon(LucideIcons.chevronLeft), findsNothing);
+    },
+  );
 
   testWidgets(
     'LyraSidebar in collapsed mode has 64px width and centered icons',
@@ -414,11 +410,13 @@ void main() {
       );
       expect(tester.getCenter(settingsIcon).dx, 31.5);
 
-      final toggleIcon = find.descendant(
-        of: sidebarFinder,
-        matching: find.byIcon(LucideIcons.chevronRight),
+      expect(
+        find.descendant(
+          of: sidebarFinder,
+          matching: find.byIcon(LucideIcons.chevronRight),
+        ),
+        findsNothing,
       );
-      expect(tester.getCenter(toggleIcon).dx, 31.5);
     },
   );
 
@@ -459,6 +457,70 @@ void main() {
 
       final activeTextLight = tester.widget<Text>(find.text('Tracks'));
       expect(activeTextLight.style?.color, equals(LyraColors.zinc950));
+    },
+  );
+
+  testWidgets(
+    'LyraSidebar AnimatedContainer uses easeInOutCubic curve with left-aligned text in expanded mode',
+    (tester) async {
+      await tester.pumpWidget(_buildSidebarTest(isCollapsed: false));
+      await tester.pumpAndSettle();
+
+      final animatedContainer = tester.widget<AnimatedContainer>(
+        find.byType(AnimatedContainer),
+      );
+      expect(animatedContainer.curve, equals(Curves.easeInOutCubic));
+      expect(
+        animatedContainer.duration,
+        equals(const Duration(milliseconds: 200)),
+      );
+
+      // In expanded mode, tracks icon is left-aligned at x = 24.0 and label is left-aligned at x = 40.0
+      final tracksIconExpanded = find.byIcon(LucideIcons.listMusic);
+      expect(tester.getCenter(tracksIconExpanded).dx, equals(24.0));
+      expect(tester.getTopLeft(find.text('Tracks')).dx, equals(40.0));
+
+      // Rebuild in collapsed mode
+      await tester.pumpWidget(_buildSidebarTest(isCollapsed: true));
+      await tester.pumpAndSettle();
+
+      // In collapsed mode, tracks icon is centered at x = 31.5 and text is hidden
+      final tracksIconCollapsed = find.byIcon(LucideIcons.listMusic);
+      expect(tester.getCenter(tracksIconCollapsed).dx, equals(31.5));
+      expect(find.text('Tracks'), findsNothing);
+    },
+  );
+
+  testWidgets(
+    'LyraSidebar expanding from collapsed does not trigger RenderFlex overflow at intermediate widths',
+    (tester) async {
+      tester.view.physicalSize = const Size(1280, 800);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+
+      await tester.pumpWidget(
+        _buildSidebarTest(
+          isCollapsed: true,
+          playlists: samplePlaylists,
+          tags: sampleTags,
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      // Switch to expanded mode and pump through intermediate frames
+      await tester.pumpWidget(
+        _buildSidebarTest(
+          isCollapsed: false,
+          playlists: samplePlaylists,
+          tags: sampleTags,
+        ),
+      );
+      for (int i = 0; i < 20; i++) {
+        await tester.pump(const Duration(milliseconds: 10));
+        expect(tester.takeException(), isNull);
+      }
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull);
     },
   );
 }

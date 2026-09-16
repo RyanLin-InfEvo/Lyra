@@ -495,10 +495,16 @@ void main() {
       await tester.tap(detailsTab);
       await tester.pumpAndSettle();
 
-      // Displays AudioInspectorContent
+      // Displays AudioInspectorContent starting cleanly below tab header without blank vertical gap
       expect(find.byType(AudioInspectorContent), findsOneWidget);
       expect(find.byType(UpNextTab), findsNothing);
       expect(find.byType(LyricsTab), findsNothing);
+
+      final inspectorTop = tester
+          .getTopLeft(find.byType(AudioInspectorContent))
+          .dy;
+      final detailsTabTop = tester.getTopLeft(detailsTab).dy;
+      expect(inspectorTop - detailsTabTop, lessThan(50.0));
 
       // Shows technical info from track
       expect(find.text('24-bit/96kHz'), findsOneWidget);

@@ -335,7 +335,8 @@ class _NowPlayingViewState extends State<NowPlayingView> {
           child: AnimatedSwitcher(
             duration: const Duration(milliseconds: 200),
             layoutBuilder: (currentChild, previousChildren) => Stack(
-              alignment: Alignment.center,
+              fit: StackFit.expand,
+              alignment: Alignment.topCenter,
               children: [...previousChildren, ?currentChild],
             ),
             transitionBuilder: (child, animation) => FadeTransition(
@@ -344,21 +345,27 @@ class _NowPlayingViewState extends State<NowPlayingView> {
               child: child,
             ),
             child: _selectedTabIndex == 0
-                ? UpNextTab(
+                ? SizedBox.expand(
                     key: const ValueKey('up_next_tab'),
-                    playbackController: widget.playbackController,
-                    queueSource: widget.queueSource,
+                    child: UpNextTab(
+                      playbackController: widget.playbackController,
+                      queueSource: widget.queueSource,
+                    ),
                   )
                 : _selectedTabIndex == 1
-                ? LyricsTab(
+                ? SizedBox.expand(
                     key: const ValueKey('lyrics_tab'),
-                    lyrics: effectiveLyrics,
-                    playbackController: widget.playbackController,
+                    child: LyricsTab(
+                      lyrics: effectiveLyrics,
+                      playbackController: widget.playbackController,
+                    ),
                   )
-                : AudioInspectorContent(
+                : SizedBox.expand(
                     key: const ValueKey('inspector_tab'),
-                    track: widget.track,
-                    musicService: widget.musicService,
+                    child: AudioInspectorContent(
+                      track: widget.track,
+                      musicService: widget.musicService,
+                    ),
                   ),
           ),
         ),

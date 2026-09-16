@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Tzu-Ting Lin
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import 'package:flutter/material.dart' show Tooltip;
 import 'package:flutter/widgets.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
@@ -13,14 +14,22 @@ import '../../design_system/widgets/lyra_input.dart';
 /// Top header bar containing search bar, theme switcher, and quick import action.
 class LyraHeaderBar extends StatelessWidget {
   final TextEditingController searchController;
+  final FocusNode? searchFocusNode;
   final ValueChanged<String> onSearchChanged;
+  final ValueChanged<String>? onSearchSubmitted;
   final VoidCallback onImportPressed;
+  final VoidCallback? onToggleSidebar;
+  final bool isSidebarCollapsed;
 
   const LyraHeaderBar({
     super.key,
     required this.searchController,
+    this.searchFocusNode,
     required this.onSearchChanged,
+    this.onSearchSubmitted,
     required this.onImportPressed,
+    this.onToggleSidebar,
+    this.isSidebarCollapsed = false,
   });
 
   @override
@@ -37,14 +46,35 @@ class LyraHeaderBar extends StatelessWidget {
       ),
       child: Row(
         children: [
+          // Sidebar Toggle Button
+          Tooltip(
+            message: isSidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar',
+            child: LyraButton.ghost(
+              size: LyraButtonSize.sm,
+              width: 32.0,
+              height: 32.0,
+              padding: EdgeInsets.zero,
+              onPressed: onToggleSidebar,
+              child: Icon(
+                LucideIcons.panelLeft,
+                size: 18.0,
+                color: tokens.textMuted,
+              ),
+            ),
+          ),
+
+          const SizedBox(width: LyraSpacing.md),
+
           // Search Input
           Expanded(
             child: ConstrainedBox(
               constraints: const BoxConstraints(maxWidth: 420.0),
               child: LyraInput(
                 controller: searchController,
+                focusNode: searchFocusNode,
                 placeholder: 'Search library, tracks, albums, artists...',
                 onChanged: onSearchChanged,
+                onSubmitted: onSearchSubmitted,
                 leading: Icon(
                   LucideIcons.search,
                   size: 16.0,
