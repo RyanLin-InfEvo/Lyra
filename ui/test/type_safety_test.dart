@@ -140,6 +140,20 @@ class EmptyMusicService implements MusicService {
 
   @override
   Future<void> switchTrackAudio(String trackId, String newPcmHash) async {}
+
+  @override
+  Future<void> removeTrackFromPlaylist(
+    String playlistId,
+    String trackId, {
+    int? atIndex,
+  }) async {}
+
+  @override
+  Future<void> reorderPlaylistTracks(
+    String playlistId,
+    int oldIndex,
+    int newIndex,
+  ) async {}
 }
 
 void main() {
@@ -662,6 +676,12 @@ void main() {
 
         // 10. Click a playlist card
         await tester.tap(find.text('Late Night Jazz').first);
+        await tester.pumpAndSettle();
+
+        // Navigate back to Playlists grid
+        await tester.tap(
+          find.byKey(const Key('playlist_detail_back_button')).first,
+        );
         await tester.pumpAndSettle();
 
         // 11. Create a new playlist via New Playlist button

@@ -15,6 +15,7 @@ import 'package:ui/features/artists/artists_view.dart';
 import 'package:ui/features/cas_pool/cas_view.dart';
 import 'package:ui/features/inspector/asset_inspector_drawer.dart';
 import 'package:ui/features/player/views/now_playing_view.dart';
+import 'package:ui/features/playlists/playlist_detail_view.dart';
 import 'package:ui/features/playlists/playlists_view.dart';
 import 'package:ui/features/services/mock_music_service.dart';
 import 'package:ui/features/settings/settings_view.dart';
@@ -307,6 +308,197 @@ void main() {
 
       // Should have newly created playlist in the list
       expect(find.text('New Playlist 4'), findsWidgets);
+    },
+  );
+
+  testWidgets(
+    'AppShell clicking a playlist opens PlaylistDetailView and back navigation returns to PlaylistsView',
+    (tester) async {
+      tester.view.physicalSize = const Size(1280, 800);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+
+      await tester.pumpWidget(_buildAppShellTest());
+      await tester.pumpAndSettle();
+
+      // Navigate to Playlists tab
+      await tester.tap(find.text('Playlists').first);
+      await tester.pumpAndSettle();
+      expect(find.byType(PlaylistsView), findsOneWidget);
+      expect(find.byType(PlaylistDetailView), findsNothing);
+
+      // Click on a playlist card
+      await tester.tap(find.text('Audiophile Reference Master').first);
+      await tester.pumpAndSettle();
+
+      // Verify PlaylistDetailView is now displayed
+      expect(find.byType(PlaylistDetailView), findsOneWidget);
+      expect(find.text('PLAYLIST'), findsOneWidget);
+      expect(find.text('Audiophile Reference Master'), findsWidgets);
+      expect(find.text('Play All'), findsOneWidget);
+      expect(find.text('Shuffle All'), findsOneWidget);
+
+      // Click back button in PlaylistDetailView
+      await tester.tap(
+        find.byKey(const Key('playlist_detail_back_button')).first,
+      );
+      await tester.pumpAndSettle();
+
+      // Verify returned to PlaylistsView
+      expect(find.byType(PlaylistsView), findsOneWidget);
+      expect(find.byType(PlaylistDetailView), findsNothing);
+
+      // Re-enter PlaylistDetailView
+      await tester.tap(find.text('Audiophile Reference Master').first);
+      await tester.pumpAndSettle();
+      expect(find.byType(PlaylistDetailView), findsOneWidget);
+
+      // Click 'Playlists' in sidebar navigation to return to grid
+      await tester.tap(find.text('Playlists').first);
+      await tester.pumpAndSettle();
+      expect(find.byType(PlaylistsView), findsOneWidget);
+      expect(find.byType(PlaylistDetailView), findsNothing);
+    },
+  );
+
+  testWidgets(
+    'AppShell removes duplicate track by index from playlist without affecting earlier instance',
+    (tester) async {
+      tester.view.physicalSize = const Size(1280, 800);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+
+      final service = MockMusicService();
+      final dupPl = await service.createPlaylist(
+        title: 'Duplicates Test',
+        trackIds: const ['trk-001', 'trk-002', 'trk-001'],
+      );
+
+      await tester.pumpWidget(_buildAppShellTest(service: service));
+      await tester.pumpAndSettle();
+
+      // Navigate to Playlists tab
+      await tester.tap(find.text('Playlists').first);
+      await tester.pumpAndSettle();
+
+      // Click on 'Duplicates Test' playlist
+      await tester.tap(find.text('Duplicates Test').first);
+      await tester.pumpAndSettle();
+
+      expect(find.byType(PlaylistDetailView), findsOneWidget);
+      // Key for 2nd instance of trk-001 is playlist_track_trk-001_1
+      final secondInstance = find.byKey(
+        const ValueKey('playlist_track_trk-001_1'),
+      );
+      expect(secondInstance, findsOneWidget);
+
+      // Right-click second instance and remove
+      await tester.tap(
+        secondInstance,
+        buttons: kSecondaryMouseButton,
+        kind: PointerDeviceKind.mouse,
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Remove from Playlist'));
+      await tester.pumpAndSettle();
+
+      // Verify second instance is removed, first instance remains
+      expect(
+        find.byKey(const ValueKey('playlist_track_trk-001_0')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const ValueKey('playlist_track_trk-001_1')),
+        findsNothing,
+      );
+
+      // Verify updated trackIds in service
+      final updatedPlaylists = await service.getPlaylists();
+      final updatedPl = updatedPlaylists.firstWhere((p) => p.id == dupPl.id);
+      expect(updatedPl.trackIds, equals(['trk-001', 'trk-002']));
+    },
+  );
+
+  testWidgets(
+    'AppShell resets _selectedPlaylistId when switching to Playlists tab from another tab',
+    (tester) async {
+      tester.view.physicalSize = const Size(1280, 800);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+
+      await tester.pumpWidget(_buildAppShellTest());
+      await tester.pumpAndSettle();
+
+      // 1. Go to Playlists tab and click a playlist
+      await tester.tap(find.text('Playlists').first);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Audiophile Reference Master').first);
+      await tester.pumpAndSettle();
+      expect(find.byType(PlaylistDetailView), findsOneWidget);
+
+      // 2. Switch to Tracks tab
+      await tester.tap(find.text('Tracks').first);
+      await tester.pumpAndSettle();
+      expect(find.byType(TracksView), findsOneWidget);
+      expect(find.byType(PlaylistDetailView), findsNothing);
+
+      // 3. Switch back to Playlists tab
+      await tester.tap(find.text('Playlists').first);
+      await tester.pumpAndSettle();
+
+      // Should open PlaylistsView grid, NOT the previously selected playlist
+      expect(find.byType(PlaylistsView), findsOneWidget);
+      expect(find.byType(PlaylistDetailView), findsNothing);
+    },
+  );
+
+  testWidgets(
+    'AppShell top search bar does not wipe out tracks when resolving playlist tracks',
+    (tester) async {
+      tester.view.physicalSize = const Size(1280, 800);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+
+      await tester.pumpWidget(_buildAppShellTest());
+      await tester.pumpAndSettle();
+
+      // Type search in top search bar that only matches 'Daft Punk' (trk-003)
+      final searchInput = find.byType(EditableText).first;
+      await tester.enterText(searchInput, 'Daft Punk');
+      await tester.pumpAndSettle();
+
+      // Go to Playlists tab
+      await tester.tap(find.text('Playlists').first);
+      await tester.pumpAndSettle();
+
+      // Click on 'Audiophile Reference Master' which contains trk-001, trk-002, trk-003
+      await tester.tap(find.text('Audiophile Reference Master').first);
+      await tester.pumpAndSettle();
+
+      expect(find.byType(PlaylistDetailView), findsOneWidget);
+      // All 3 tracks should be resolved from _catalogTracks, not lost!
+      expect(
+        find.descendant(
+          of: find.byType(PlaylistDetailView),
+          matching: find.text('Hotel California (Live on MTV 1994)'),
+        ),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(
+          of: find.byType(PlaylistDetailView),
+          matching: find.text('So What'),
+        ),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(
+          of: find.byType(PlaylistDetailView),
+          matching: find.text('Giorgio by Moroder'),
+        ),
+        findsOneWidget,
+      );
     },
   );
 
@@ -1567,4 +1759,114 @@ void main() {
       expect(find.text('So What'), findsNothing);
     },
   );
+
+  testWidgets('clicking any sidebar button collapses expanded NowPlayingView', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(1280, 800);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+
+    await tester.pumpWidget(_buildAppShellTest());
+    await tester.pumpAndSettle();
+
+    final shellState = tester.state<AppShellState>(find.byType(AppShell));
+    final nowPlayingNotifier =
+        tester
+                .widget<ValueListenableBuilder<bool>>(
+                  find.byKey(const ValueKey('now_playing_expanded_builder')),
+                )
+                .valueListenable
+            as ValueNotifier<bool>;
+
+    // 1. Expand NowPlayingView -> click Albums sidebar button -> collapses
+    await tester.tap(find.byTooltip('Expand Now Playing'));
+    await tester.pumpAndSettle();
+    expect(shellState.isNowPlayingExpanded, isTrue);
+    expect(nowPlayingNotifier.value, isTrue);
+
+    await tester.tap(find.text('Albums'));
+    await tester.pumpAndSettle();
+    expect(shellState.isNowPlayingExpanded, isFalse);
+    expect(nowPlayingNotifier.value, isFalse);
+    expect(find.byType(AlbumsView), findsOneWidget);
+
+    // 2. Expand NowPlayingView -> click Tracks sidebar button -> collapses
+    await tester.tap(find.byTooltip('Expand Now Playing'));
+    await tester.pumpAndSettle();
+    expect(shellState.isNowPlayingExpanded, isTrue);
+    expect(nowPlayingNotifier.value, isTrue);
+
+    await tester.tap(find.text('Tracks'));
+    await tester.pumpAndSettle();
+    expect(shellState.isNowPlayingExpanded, isFalse);
+    expect(nowPlayingNotifier.value, isFalse);
+    expect(find.byType(TracksView), findsOneWidget);
+
+    // 3. Expand NowPlayingView -> click Playlists header button -> collapses
+    await tester.tap(find.byTooltip('Expand Now Playing'));
+    await tester.pumpAndSettle();
+    expect(shellState.isNowPlayingExpanded, isTrue);
+    expect(nowPlayingNotifier.value, isTrue);
+
+    await tester.tap(find.text('Playlists'));
+    await tester.pumpAndSettle();
+    expect(shellState.isNowPlayingExpanded, isFalse);
+    expect(nowPlayingNotifier.value, isFalse);
+    expect(find.byType(PlaylistsView), findsOneWidget);
+
+    // 4. Expand NowPlayingView -> click a specific playlist item in sidebar -> collapses
+    await tester.tap(find.byTooltip('Expand Now Playing'));
+    await tester.pumpAndSettle();
+    expect(shellState.isNowPlayingExpanded, isTrue);
+    expect(nowPlayingNotifier.value, isTrue);
+
+    // Find playlist in sidebar (Audiophile Reference Master)
+    final sidebarPlaylist = find.descendant(
+      of: find.byType(LyraSidebar),
+      matching: find.text('Audiophile Reference Master'),
+    );
+    expect(sidebarPlaylist, findsOneWidget);
+    await tester.tap(sidebarPlaylist);
+    await tester.pumpAndSettle();
+    expect(shellState.isNowPlayingExpanded, isFalse);
+    expect(nowPlayingNotifier.value, isFalse);
+    expect(find.byType(PlaylistDetailView), findsOneWidget);
+
+    // 5. Expand NowPlayingView -> click Settings sidebar button -> collapses
+    await tester.tap(find.byTooltip('Expand Now Playing'));
+    await tester.pumpAndSettle();
+    expect(shellState.isNowPlayingExpanded, isTrue);
+    expect(nowPlayingNotifier.value, isTrue);
+
+    await tester.tap(find.text('Settings'));
+    await tester.pumpAndSettle();
+    expect(shellState.isNowPlayingExpanded, isFalse);
+    expect(nowPlayingNotifier.value, isFalse);
+    expect(find.byType(SettingsView), findsOneWidget);
+
+    // 6. Expand NowPlayingView -> click Works sidebar button -> collapses
+    await tester.tap(find.byTooltip('Expand Now Playing'));
+    await tester.pumpAndSettle();
+    expect(shellState.isNowPlayingExpanded, isTrue);
+    expect(nowPlayingNotifier.value, isTrue);
+
+    await tester.tap(find.text('Works'));
+    await tester.pumpAndSettle();
+    expect(shellState.isNowPlayingExpanded, isFalse);
+    expect(nowPlayingNotifier.value, isFalse);
+    expect(find.byType(WorksView), findsOneWidget);
+
+    // 7. Expand NowPlayingView -> click Tags sidebar button -> collapses
+    await tester.tap(find.byTooltip('Expand Now Playing'));
+    await tester.pumpAndSettle();
+    expect(shellState.isNowPlayingExpanded, isTrue);
+    expect(nowPlayingNotifier.value, isTrue);
+
+    await tester.tap(find.text('Tags'));
+    await tester.pumpAndSettle();
+    expect(shellState.isNowPlayingExpanded, isFalse);
+    expect(nowPlayingNotifier.value, isFalse);
+    expect(find.byType(TagsView), findsOneWidget);
+  });
 }

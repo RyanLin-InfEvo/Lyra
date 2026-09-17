@@ -27,6 +27,7 @@ import '../models/track.dart';
 import '../models/work.dart';
 import '../player/controllers/playback_queue_controller.dart';
 import '../player/views/now_playing_view.dart';
+import '../playlists/playlist_detail_view.dart';
 import '../playlists/playlists_view.dart';
 import '../services/mock_music_service.dart';
 import '../services/music_service.dart';
@@ -62,10 +63,10 @@ class AppShell extends StatefulWidget {
   });
 
   @override
-  State<AppShell> createState() => _AppShellState();
+  State<AppShell> createState() => AppShellState();
 }
 
-class _AppShellState extends State<AppShell> {
+class AppShellState extends State<AppShell> {
   late final TextEditingController _searchController;
   late final FocusNode _searchFocusNode;
   late final PlaybackQueueController _playbackController;
@@ -86,6 +87,7 @@ class _AppShellState extends State<AppShell> {
 
   // Catalog State
   List<Track> _tracks = [];
+  List<Track> _catalogTracks = [];
   Map<String, int> _audioVersionCounts = {};
   Map<String, int> _tagTrackCounts = {};
   List<Album> _albums = [];
@@ -111,6 +113,12 @@ class _AppShellState extends State<AppShell> {
     WorkColumn.defaultVisibleColumns,
   );
   List<WorkColumn> _workColumnOrder = List<WorkColumn>.from(WorkColumn.values);
+  Set<TrackColumn> _playlistVisibleColumns = Set<TrackColumn>.from(
+    PlaylistDetailView.defaultVisibleColumns,
+  );
+  List<TrackColumn> _playlistColumnOrder = List<TrackColumn>.from(
+    TrackColumn.values,
+  );
 
   // Playback State delegation
   Track? get _currentTrack => _playbackController.currentTrack;
@@ -219,15 +227,18 @@ class _AppShellState extends State<AppShell> {
 
     setState(() {
       _tracks = tracks;
+      if (query == null || query.isEmpty) {
+        _catalogTracks = tracks;
+        _sidebarPlaylists = playlists;
+      } else if (_catalogTracks.isEmpty) {
+        _catalogTracks = tracks;
+      }
       _audioVersionCounts = versionCounts;
       _tagTrackCounts = tagTrackCounts;
       _albums = albums;
       _works = works;
       _artists = artists;
       _playlists = playlists;
-      if (query == null || query.isEmpty) {
-        _sidebarPlaylists = playlists;
-      }
       _tags = tags;
       _casObjects = casObjects;
       _isLoading = false;
@@ -299,10 +310,18 @@ class _AppShellState extends State<AppShell> {
     _playbackController.seek(position);
   }
 
-  void _collapseNowPlaying() {
-    if (_isNowPlayingExpandedNotifier.value) {
-      _isNowPlayingExpandedNotifier.value = false;
+  bool get isNowPlayingExpanded => _isNowPlayingExpanded;
+  set isNowPlayingExpanded(bool value) => _isNowPlayingExpanded = value;
+
+  bool get _isNowPlayingExpanded => _isNowPlayingExpandedNotifier.value;
+  set _isNowPlayingExpanded(bool value) {
+    if (_isNowPlayingExpandedNotifier.value != value) {
+      _isNowPlayingExpandedNotifier.value = value;
     }
+  }
+
+  void _collapseNowPlaying() {
+    _isNowPlayingExpanded = false;
   }
 
   void _toggleNowPlaying() {
@@ -462,6 +481,7 @@ class _AppShellState extends State<AppShell> {
   }
 
   void _filterByTag(Tag tag) {
+    _isNowPlayingExpanded = false;
     setState(() {
       _selectedTagId = tag.id;
       _selectedPlaylistId = null;
@@ -500,6 +520,155 @@ class _AppShellState extends State<AppShell> {
       _selectedPlaylistId = newPl.id;
       _currentTab = AppTab.playlists;
     });
+  }
+
+  Future<void> _handleRemoveTrackFromPlaylist(
+    String playlistId,
+    int index,
+    Track track,
+  ) async {
+    try {
+      final plIndex = _playlists.indexWhere((p) => p.id == playlistId);
+      final pl = plIndex != -1
+          ? _playlists[plIndex]
+          : _sidebarPlaylists.firstWhere(
+              (p) => p.id == playlistId,
+              orElse: () => const Playlist(id: '', title: ''),
+            );
+      if (pl.id.isEmpty) return;
+
+      int? targetIndex;
+      final trackSource = _catalogTracks.isNotEmpty ? _catalogTracks : _tracks;
+      final trackMap = {for (final t in trackSource) t.id: t};
+
+      // Map visible index in playlistTracks to position in playlist.trackIds
+      final visibleIndices = <int>[];
+      for (var i = 0; i < pl.trackIds.length; i++) {
+        if (trackMap.containsKey(pl.trackIds[i])) {
+          visibleIndices.add(i);
+        }
+      }
+
+      if (index >= 0 && index < visibleIndices.length) {
+        targetIndex = visibleIndices[index];
+      }
+
+      await widget.musicService.removeTrackFromPlaylist(
+        playlistId,
+        track.id,
+        atIndex: targetIndex,
+      );
+
+      if (!mounted) return;
+
+      setState(() {
+        Playlist updatePl(Playlist pl) {
+          if (pl.id != playlistId) return pl;
+          final updatedTrackIds = List<String>.from(pl.trackIds);
+          if (targetIndex != null &&
+              targetIndex >= 0 &&
+              targetIndex < updatedTrackIds.length) {
+            updatedTrackIds.removeAt(targetIndex);
+          } else {
+            updatedTrackIds.remove(track.id);
+          }
+          return pl.copyWith(
+            trackIds: updatedTrackIds,
+            updatedAt: DateTime.now(),
+          );
+        }
+
+        _playlists = _playlists.map(updatePl).toList();
+        _sidebarPlaylists = _sidebarPlaylists.map(updatePl).toList();
+      });
+    } catch (_) {
+      // Async error safety
+    }
+  }
+
+  Future<void> _handleReorderPlaylistTracks(
+    String playlistId,
+    int oldIndex,
+    int newIndex,
+  ) async {
+    try {
+      final plIndex = _playlists.indexWhere((p) => p.id == playlistId);
+      final pl = plIndex != -1
+          ? _playlists[plIndex]
+          : _sidebarPlaylists.firstWhere(
+              (p) => p.id == playlistId,
+              orElse: () => const Playlist(id: '', title: ''),
+            );
+      if (pl.id.isEmpty) return;
+
+      final trackSource = _catalogTracks.isNotEmpty ? _catalogTracks : _tracks;
+      final trackMap = {for (final t in trackSource) t.id: t};
+
+      final visibleToActual = <int>[];
+      for (var i = 0; i < pl.trackIds.length; i++) {
+        if (trackMap.containsKey(pl.trackIds[i])) {
+          visibleToActual.add(i);
+        }
+      }
+
+      int actualOld = oldIndex;
+      int actualNew = newIndex;
+
+      if (visibleToActual.length == pl.trackIds.length) {
+        actualOld = oldIndex;
+        actualNew = newIndex;
+      } else if (visibleToActual.isNotEmpty &&
+          oldIndex >= 0 &&
+          oldIndex < visibleToActual.length) {
+        actualOld = visibleToActual[oldIndex];
+        if (newIndex <= 0) {
+          actualNew = 0;
+        } else if (newIndex >= visibleToActual.length) {
+          actualNew = pl.trackIds.length;
+        } else if (oldIndex < newIndex) {
+          actualNew = visibleToActual[newIndex - 1] + 1;
+        } else {
+          actualNew = visibleToActual[newIndex];
+        }
+      }
+
+      await widget.musicService.reorderPlaylistTracks(
+        playlistId,
+        actualOld,
+        actualNew,
+      );
+
+      if (!mounted) return;
+
+      setState(() {
+        Playlist updatePl(Playlist pl) {
+          if (pl.id != playlistId) return pl;
+          final updatedTrackIds = List<String>.from(pl.trackIds);
+          if (actualOld >= 0 && actualOld < updatedTrackIds.length) {
+            var targetIndex = actualNew;
+            if (actualOld < targetIndex) {
+              targetIndex -= 1;
+            }
+            if (targetIndex >= 0 &&
+                targetIndex < updatedTrackIds.length &&
+                actualOld != targetIndex) {
+              final id = updatedTrackIds.removeAt(actualOld);
+              updatedTrackIds.insert(targetIndex, id);
+              return pl.copyWith(
+                trackIds: updatedTrackIds,
+                updatedAt: DateTime.now(),
+              );
+            }
+          }
+          return pl;
+        }
+
+        _playlists = _playlists.map(updatePl).toList();
+        _sidebarPlaylists = _sidebarPlaylists.map(updatePl).toList();
+      });
+    } catch (_) {
+      // Async error safety
+    }
   }
 
   void _openInspectorForTrack(Track track) {
@@ -671,6 +840,89 @@ class _AppShellState extends State<AppShell> {
           ),
         );
       case AppTab.playlists:
+        if (_selectedPlaylistId != null) {
+          final playlist = _playlists.firstWhere(
+            (p) => p.id == _selectedPlaylistId,
+            orElse: () => _sidebarPlaylists.firstWhere(
+              (p) => p.id == _selectedPlaylistId,
+              orElse: () => const Playlist(id: '', title: ''),
+            ),
+          );
+          if (playlist.id.isNotEmpty) {
+            final trackSource = _catalogTracks.isNotEmpty
+                ? _catalogTracks
+                : _tracks;
+            final trackMap = {for (final t in trackSource) t.id: t};
+            final playlistTracks = [
+              for (final trackId in playlist.trackIds)
+                if (trackMap.containsKey(trackId)) trackMap[trackId]!,
+            ];
+            return RepaintBoundary(
+              child: PlaylistDetailView(
+                playlist: playlist,
+                tracks: playlistTracks,
+                playbackController: _playbackController,
+                currentTrack: _currentTrack,
+                isPlaying: _isPlaying,
+                visibleColumns: _playlistVisibleColumns,
+                columnOrder: _playlistColumnOrder,
+                onVisibleColumnsChanged: (columns) {
+                  _playlistVisibleColumns = columns;
+                },
+                onColumnOrderChanged: (order) {
+                  _playlistColumnOrder = order;
+                },
+                onBack: () => setState(() => _selectedPlaylistId = null),
+                onPlayAll: () {
+                  if (playlistTracks.isNotEmpty) {
+                    _playbackController.play(
+                      playlistTracks.first,
+                      contextQueue: playlistTracks,
+                    );
+                  }
+                },
+                onShuffleAll: () {
+                  if (playlistTracks.isNotEmpty) {
+                    final shuffled = List<Track>.from(playlistTracks)
+                      ..shuffle();
+                    _playbackController.play(
+                      shuffled.first,
+                      contextQueue: shuffled,
+                    );
+                  }
+                },
+                onTrackSelected: (track) {
+                  _playbackController.play(track, contextQueue: playlistTracks);
+                  if (_isInspectorOpen) {
+                    setState(() {
+                      _inspectedTrack = track;
+                      _inspectedAsset = null;
+                    });
+                  }
+                },
+                onPlayNext: (track) => _playbackController.playNext(track),
+                onAddToQueue: (track) => _playbackController.addToQueue(track),
+                onRemoveTrack: (index, track) =>
+                    _handleRemoveTrackFromPlaylist(playlist.id, index, track),
+                onReorderTracks: (oldIndex, newIndex) =>
+                    _handleReorderPlaylistTracks(
+                      playlist.id,
+                      oldIndex,
+                      newIndex,
+                    ),
+                onInspectAudio: (track) {
+                  setState(() {
+                    _inspectedTrack = track;
+                    _inspectedAsset = null;
+                    _isInspectorOpen = true;
+                  });
+                },
+              ),
+            );
+          } else {
+            _selectedPlaylistId = null;
+          }
+        }
         return RepaintBoundary(
           child: PlaylistsView(
             playlists: _playlists,
@@ -802,33 +1054,59 @@ class _AppShellState extends State<AppShell> {
                     playlists: _sidebarPlaylists,
                     selectedPlaylistId: _selectedPlaylistId,
                     onPlaylistSelected: (pl) {
+                      _isNowPlayingExpanded = false;
                       setState(() {
                         _selectedPlaylistId = pl.id;
                         _selectedTagId = null;
                         _currentTab = AppTab.playlists;
                       });
                     },
+                    onPlaylistsHeaderSelected: () {
+                      _isNowPlayingExpanded = false;
+                      setState(() {
+                        _selectedPlaylistId = null;
+                        _selectedTagId = null;
+                        _currentTab = AppTab.playlists;
+                      });
+                    },
                     tags: _tags,
                     selectedTagId: _selectedTagId,
-                    onTagSelected: _filterByTag,
+                    onTagSelected: (tag) {
+                      _isNowPlayingExpanded = false;
+                      _filterByTag(tag);
+                    },
                     onTagsHeaderSelected: () {
+                      _isNowPlayingExpanded = false;
                       setState(() {
                         _selectedTagId = null;
                         _selectedPlaylistId = null;
                         _currentTab = AppTab.tags;
                       });
                     },
-                    onTabSelected: (tab) => setState(() {
-                      if (tab == AppTab.tracks) {
-                        _activeTrackFilter = null;
-                        _selectedTagId = null;
-                      } else if (tab != AppTab.playlists &&
-                          tab != AppTab.tags) {
+                    onTabSelected: (tab) {
+                      _isNowPlayingExpanded = false;
+                      setState(() {
+                        if (tab == AppTab.tracks) {
+                          _activeTrackFilter = null;
+                          _selectedTagId = null;
+                        } else if (tab == AppTab.playlists) {
+                          _selectedPlaylistId = null;
+                          _selectedTagId = null;
+                        } else if (tab != AppTab.tags) {
+                          _selectedPlaylistId = null;
+                          _selectedTagId = null;
+                        }
+                        _currentTab = tab;
+                      });
+                    },
+                    onSettingsPressed: () {
+                      _isNowPlayingExpanded = false;
+                      setState(() {
                         _selectedPlaylistId = null;
                         _selectedTagId = null;
-                      }
-                      _currentTab = tab;
-                    }),
+                        _currentTab = AppTab.settings;
+                      });
+                    },
                     onToggleCollapse: _toggleSidebar,
                   ),
                 ),

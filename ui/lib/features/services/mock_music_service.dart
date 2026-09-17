@@ -576,6 +576,58 @@ class MockMusicService implements MusicService {
   }
 
   @override
+  Future<void> removeTrackFromPlaylist(
+    String playlistId,
+    String trackId, {
+    int? atIndex,
+  }) async {
+    final index = _playlists.indexWhere((p) => p.id == playlistId);
+    if (index != -1) {
+      final pl = _playlists[index];
+      final updatedTrackIds = List<String>.from(pl.trackIds);
+      if (atIndex != null && atIndex >= 0 && atIndex < updatedTrackIds.length) {
+        updatedTrackIds.removeAt(atIndex);
+      } else {
+        updatedTrackIds.remove(trackId);
+      }
+      _playlists[index] = pl.copyWith(
+        trackIds: updatedTrackIds,
+        updatedAt: DateTime.now(),
+      );
+    }
+  }
+
+  @override
+  Future<void> reorderPlaylistTracks(
+    String playlistId,
+    int oldIndex,
+    int newIndex,
+  ) async {
+    final index = _playlists.indexWhere((p) => p.id == playlistId);
+    if (index == -1) return;
+
+    final pl = _playlists[index];
+    final updatedTrackIds = List<String>.from(pl.trackIds);
+    if (oldIndex < 0 || oldIndex >= updatedTrackIds.length) return;
+    if (newIndex < 0) return;
+    if (newIndex > updatedTrackIds.length) newIndex = updatedTrackIds.length;
+
+    var targetIndex = newIndex;
+    if (oldIndex < targetIndex) {
+      targetIndex -= 1;
+    }
+    if (oldIndex == targetIndex) return;
+
+    final trackId = updatedTrackIds.removeAt(oldIndex);
+    updatedTrackIds.insert(targetIndex, trackId);
+
+    _playlists[index] = pl.copyWith(
+      trackIds: updatedTrackIds,
+      updatedAt: DateTime.now(),
+    );
+  }
+
+  @override
   Future<List<CasObject>> getCasObjects() async {
     return List.unmodifiable(_casObjects);
   }

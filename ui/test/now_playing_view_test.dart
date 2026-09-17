@@ -565,12 +565,22 @@ void main() {
         expect(track1PosBefore.dy, lessThan(track2PosBefore.dy));
 
         // Drag the first item's row down past track2 (80px down)
-        final firstRow = find.text('Hotel California (Live on MTV 1994)');
-        await tester.timedDrag(
-          firstRow,
-          const Offset(0, 80),
-          const Duration(milliseconds: 500),
+        final start = tester.getCenter(
+          find.text('Hotel California (Live on MTV 1994)'),
         );
+        final gesture = await tester.createGesture(
+          kind: PointerDeviceKind.mouse,
+        );
+        await gesture.addPointer(location: start);
+        await gesture.down(start);
+        await tester.pump();
+
+        for (var i = 0; i < 8; i++) {
+          await gesture.moveBy(const Offset(0, 10));
+          await tester.pump(const Duration(milliseconds: 50));
+        }
+
+        await gesture.up();
         await tester.pumpAndSettle();
 
         // Queue order should now have track1 moved after track2

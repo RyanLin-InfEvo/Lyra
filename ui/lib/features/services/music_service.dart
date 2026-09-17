@@ -72,4 +72,19 @@ abstract class MusicService {
 
   /// Switch the active Audio version for a given track in the catalog.
   Future<void> switchTrackAudio(String trackId, String newPcmHash);
+
+  /// Remove a track from the specified playlist.
+  /// If [atIndex] is provided, removes the track instance at that specific index.
+  Future<void> removeTrackFromPlaylist(
+    String playlistId,
+    String trackId, {
+    int? atIndex,
+  });
+
+  /// Reorder tracks within the specified playlist.
+  Future<void> reorderPlaylistTracks(
+    String playlistId,
+    int oldIndex,
+    int newIndex,
+  );
 }

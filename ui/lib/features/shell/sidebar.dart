@@ -32,10 +32,12 @@ class LyraSidebar extends StatefulWidget {
   final List<Playlist> playlists;
   final String? selectedPlaylistId;
   final ValueChanged<Playlist>? onPlaylistSelected;
+  final VoidCallback? onPlaylistsHeaderSelected;
   final List<Tag> tags;
   final String? selectedTagId;
   final ValueChanged<Tag>? onTagSelected;
   final VoidCallback? onTagsHeaderSelected;
+  final VoidCallback? onSettingsPressed;
   final bool defaultPlaylistsExpanded;
   final bool defaultTagsExpanded;
 
@@ -48,10 +50,12 @@ class LyraSidebar extends StatefulWidget {
     this.playlists = const [],
     this.selectedPlaylistId,
     this.onPlaylistSelected,
+    this.onPlaylistsHeaderSelected,
     this.tags = const [],
     this.selectedTagId,
     this.onTagSelected,
     this.onTagsHeaderSelected,
+    this.onSettingsPressed,
     this.defaultPlaylistsExpanded = true,
     this.defaultTagsExpanded = true,
   });
@@ -209,6 +213,7 @@ class _LyraSidebarState extends State<LyraSidebar> {
                         });
                       },
                       chevronKey: const Key('playlists_header_chevron'),
+                      onHeaderClick: widget.onPlaylistsHeaderSelected,
                     ),
                     if (_isPlaylistsExpanded) ...[
                       for (final playlist in widget.playlists)
@@ -300,6 +305,12 @@ class _LyraSidebarState extends State<LyraSidebar> {
                     tab: AppTab.settings,
                     icon: LucideIcons.settings,
                     label: 'Settings',
+                    onPressed: widget.onSettingsPressed != null
+                        ? () {
+                            widget.onSettingsPressed!();
+                            widget.onTabSelected(AppTab.settings);
+                          }
+                        : null,
                   ),
                 ],
               ),
@@ -409,6 +420,7 @@ class _LyraSidebarState extends State<LyraSidebar> {
     required AppTab tab,
     required IconData icon,
     required String label,
+    VoidCallback? onPressed,
   }) {
     final isSelected = widget.currentTab == tab;
     final buttonPadding = widget.isCollapsed
@@ -433,7 +445,7 @@ class _LyraSidebarState extends State<LyraSidebar> {
             ? LyraButtonVariant.secondary
             : LyraButtonVariant.ghost,
         padding: buttonPadding,
-        onPressed: () => widget.onTabSelected(tab),
+        onPressed: onPressed ?? () => widget.onTabSelected(tab),
         leading: Icon(
           icon,
           size: 16.0,
@@ -488,8 +500,11 @@ class _LyraSidebarState extends State<LyraSidebar> {
           vertical: LyraSpacing.xs,
         ),
         onPressed: () {
-          widget.onPlaylistSelected?.call(playlist);
-          widget.onTabSelected(AppTab.playlists);
+          if (widget.onPlaylistSelected != null) {
+            widget.onPlaylistSelected!(playlist);
+          } else {
+            widget.onTabSelected(AppTab.playlists);
+          }
         },
         leading: Icon(
           LucideIcons.list,

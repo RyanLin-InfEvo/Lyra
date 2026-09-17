@@ -1,14 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Tzu-Ting Lin
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import 'package:flutter/gestures.dart';
-import 'package:flutter/material.dart'
-    show
-        Material,
-        ReorderableDragStartListener,
-        ReorderableListView,
-        SliverReorderableList,
-        SliverReorderableListState;
+import 'package:flutter/material.dart' show Material, ReorderableListView;
 import 'package:flutter/widgets.dart';
 import 'package:shadcn_ui/shadcn_ui.dart';
 
@@ -18,6 +11,9 @@ import '../../../../design_system/tokens/lyra_tokens.dart';
 import '../../../../design_system/widgets/lyra_button.dart';
 import '../../../models/track.dart';
 import '../../controllers/playback_queue_controller.dart';
+import '../../../../widgets/threshold_reorderable_drag_start_listener.dart';
+
+export '../../../../widgets/threshold_reorderable_drag_start_listener.dart';
 
 /// Up Next tab component displaying the active playback queue, track items, and queue actions.
 class UpNextTab extends StatefulWidget {
@@ -490,110 +486,5 @@ class _QueueItemRowState extends State<_QueueItemRow> {
         ),
       ),
     );
-  }
-}
-
-/// A custom [ReorderableDragStartListener] with a slop threshold before initiating
-/// a drag to prevent accidental drags during normal click/tap actions.
-class ThresholdReorderableDragStartListener
-    extends ReorderableDragStartListener {
-  final double slopThreshold;
-
-  const ThresholdReorderableDragStartListener({
-    super.key,
-    required super.child,
-    required super.index,
-    super.enabled = true,
-    this.slopThreshold = 10.0,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Listener(
-      onPointerDown: enabled
-          ? (PointerDownEvent event) {
-              if (event.buttons != kPrimaryButton) {
-                return;
-              }
-              _startDragging(context, event);
-            }
-          : null,
-      child: child,
-    );
-  }
-
-  @override
-  MultiDragGestureRecognizer createRecognizer() {
-    return ThresholdMultiDragGestureRecognizer(
-      slopThreshold: slopThreshold,
-      debugOwner: this,
-    );
-  }
-
-  void _startDragging(BuildContext context, PointerDownEvent event) {
-    final DeviceGestureSettings? gestureSettings =
-        MediaQuery.maybeGestureSettingsOf(context);
-    final SliverReorderableListState? list = SliverReorderableList.maybeOf(
-      context,
-    );
-    list?.startItemDragReorder(
-      index: index,
-      event: event,
-      recognizer: createRecognizer()..gestureSettings = gestureSettings,
-    );
-  }
-}
-
-/// A custom [MultiDragGestureRecognizer] that enforces a configurable slop threshold
-/// (default 10.0 logical pixels) for mouse pointers before resolving as accepted.
-/// This prevents pointer jitter from misfiring clicks as drag-to-reorder events.
-class ThresholdMultiDragGestureRecognizer extends MultiDragGestureRecognizer {
-  final double slopThreshold;
-
-  ThresholdMultiDragGestureRecognizer({
-    this.slopThreshold = 10.0,
-    super.debugOwner,
-    super.supportedDevices,
-    super.allowedButtonsFilter,
-  });
-
-  @override
-  MultiDragPointerState createNewPointerState(PointerDownEvent event) {
-    return _ThresholdPointerState(
-      event.position,
-      event.kind,
-      gestureSettings,
-      slopThreshold: slopThreshold,
-    );
-  }
-
-  @override
-  String get debugDescription => 'threshold multidrag';
-}
-
-class _ThresholdPointerState extends MultiDragPointerState {
-  final double slopThreshold;
-
-  _ThresholdPointerState(
-    super.initialPosition,
-    super.kind,
-    super.gestureSettings, {
-    required this.slopThreshold,
-  });
-
-  @override
-  void checkForResolutionAfterMove() {
-    assert(pendingDelta != null);
-    final double hitSlop = kind == PointerDeviceKind.mouse
-        ? slopThreshold
-        : (gestureSettings?.touchSlop ?? kTouchSlop);
-    if (pendingDelta!.distance > hitSlop) {
-      resolve(GestureDisposition.accepted);
-    }
-  }
-
-  @override
-  void accepted(GestureMultiDragStartCallback starter) {
-    starter(initialPosition);
   }
 }
