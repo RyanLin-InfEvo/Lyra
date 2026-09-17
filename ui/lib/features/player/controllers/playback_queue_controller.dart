@@ -20,6 +20,25 @@ enum RepeatMode {
   one,
 }
 
+/// Represents an entry in the playback queue with a stable unique [id] and [track].
+class QueueItem {
+  final String id;
+  final Track track;
+
+  const QueueItem({required this.id, required this.track});
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is QueueItem &&
+          runtimeType == other.runtimeType &&
+          id == other.id &&
+          track == other.track;
+
+  @override
+  int get hashCode => Object.hash(id, track);
+}
+
 /// Controller managing audio playback queue state, transport controls, and position progression.
 class PlaybackQueueController extends ChangeNotifier {
   final Duration timerInterval;
@@ -27,6 +46,9 @@ class PlaybackQueueController extends ChangeNotifier {
   final bool autoStartTimer;
 
   final List<Track> _queue = [];
+  final List<String> _queueItemIds = [];
+  int _nextQueueItemId = 0;
+
   int _currentIndex = -1;
   bool _isPlaying = false;
   bool _shuffleMode = false;
@@ -46,8 +68,24 @@ class PlaybackQueueController extends ChangeNotifier {
     this.autoStartTimer = true,
   }) : _random = random ?? Random();
 
+  String _generateQueueItemId() => 'qi_${_nextQueueItemId++}';
+
   /// Unmodifiable view of the current playback queue.
   List<Track> get queue => List.unmodifiable(_queue);
+
+  /// Stable unique IDs for each item currently in [queue].
+  List<String> get queueItemIds => List.unmodifiable(_queueItemIds);
+
+  /// Queue items with stable identities for list rendering and animations.
+  List<QueueItem> get queueItems => List.unmodifiable(
+    List.generate(
+      _queue.length,
+      (i) => QueueItem(
+        id: i < _queueItemIds.length ? _queueItemIds[i] : 'qi_$i',
+        track: _queue[i],
+      ),
+    ),
+  );
 
   /// Index of the currently active track in [queue], or -1 if none.
   int get currentIndex => _currentIndex;
@@ -64,6 +102,14 @@ class PlaybackQueueController extends ChangeNotifier {
   /// Whether shuffle playback order is active.
   bool get shuffleMode => _shuffleMode;
 
+  /// Shuffled order indices (for testing and verification).
+  @visibleForTesting
+  List<int> get shuffledOrder => List.unmodifiable(_shuffledOrder);
+
+  /// Current index in shuffled order (for testing and verification).
+  @visibleForTesting
+  int get shuffledCurrentIndex => _shuffledCurrentIndex;
+
   /// Current repeat mode.
   RepeatMode get repeatMode => _repeatMode;
 
@@ -79,6 +125,9 @@ class PlaybackQueueController extends ChangeNotifier {
       _queue
         ..clear()
         ..addAll(contextQueue);
+      _queueItemIds
+        ..clear()
+        ..addAll(List.generate(_queue.length, (_) => _generateQueueItemId()));
       final idx = _queue.indexOf(track);
       if (idx != -1) {
         _currentIndex = idx;
@@ -88,6 +137,7 @@ class PlaybackQueueController extends ChangeNotifier {
           _currentIndex = idIdx;
         } else {
           _queue.insert(0, track);
+          _queueItemIds.insert(0, _generateQueueItemId());
           _currentIndex = 0;
         }
       }
@@ -103,6 +153,9 @@ class PlaybackQueueController extends ChangeNotifier {
           _queue
             ..clear()
             ..add(track);
+          _queueItemIds
+            ..clear()
+            ..add(_generateQueueItemId());
           _currentIndex = 0;
         }
       }
@@ -113,6 +166,22 @@ class PlaybackQueueController extends ChangeNotifier {
     if (_shuffleMode) {
       _initShuffleOrder();
     }
+    _startPlaybackTimer();
+    notifyListeners();
+  }
+
+  /// Plays the track at [index] in the queue, preserving existing queue IDs and shuffle order.
+  void playQueueItem(int index) {
+    if (index < 0 || index >= _queue.length) return;
+    _currentIndex = index;
+    if (_shuffleMode && _shuffledOrder.isNotEmpty) {
+      final pos = _shuffledOrder.indexOf(index);
+      if (pos != -1) {
+        _shuffledCurrentIndex = pos;
+      }
+    }
+    _positionNotifier.value = Duration.zero;
+    _isPlaying = true;
     _startPlaybackTimer();
     notifyListeners();
   }
@@ -312,6 +381,7 @@ class PlaybackQueueController extends ChangeNotifier {
   /// Appends [track] to the end of the queue.
   void addToQueue(Track track) {
     _queue.add(track);
+    _queueItemIds.add(_generateQueueItemId());
     if (_currentIndex == -1) {
       _currentIndex = 0;
     }
@@ -326,6 +396,9 @@ class PlaybackQueueController extends ChangeNotifier {
     if (tracks.isEmpty) return;
     final startIndex = _queue.length;
     _queue.addAll(tracks);
+    _queueItemIds.addAll(
+      List.generate(tracks.length, (_) => _generateQueueItemId()),
+    );
     if (_currentIndex == -1 && _queue.isNotEmpty) {
       _currentIndex = 0;
     }
@@ -341,6 +414,7 @@ class PlaybackQueueController extends ChangeNotifier {
   void playNext(Track track) {
     if (_queue.isEmpty || _currentIndex < 0) {
       _queue.add(track);
+      _queueItemIds.add(_generateQueueItemId());
       _currentIndex = 0;
       if (_shuffleMode) {
         _shuffledOrder = [0];
@@ -349,6 +423,7 @@ class PlaybackQueueController extends ChangeNotifier {
     } else {
       final insertIndex = _currentIndex + 1;
       _queue.insert(insertIndex, track);
+      _queueItemIds.insert(insertIndex, _generateQueueItemId());
       if (_shuffleMode) {
         for (var i = 0; i < _shuffledOrder.length; i++) {
           if (_shuffledOrder[i] >= insertIndex) {
@@ -384,6 +459,10 @@ class PlaybackQueueController extends ChangeNotifier {
       }
     }
 
+    if (index < _queueItemIds.length) {
+      _queueItemIds.removeAt(index);
+    }
+
     if (index == _currentIndex) {
       _queue.removeAt(index);
       if (_queue.isEmpty) {
@@ -392,7 +471,9 @@ class PlaybackQueueController extends ChangeNotifier {
         _stopPlaybackTimer();
         _positionNotifier.value = Duration.zero;
       } else {
-        if (_currentIndex >= _queue.length) {
+        if (_shuffleMode && _shuffledOrder.isNotEmpty) {
+          _currentIndex = _shuffledOrder[_shuffledCurrentIndex];
+        } else if (_currentIndex >= _queue.length) {
           _currentIndex = _queue.length - 1;
         }
         _positionNotifier.value = Duration.zero;
@@ -419,23 +500,46 @@ class PlaybackQueueController extends ChangeNotifier {
     }
     if (oldIndex == targetIndex) return;
 
-    final current = currentTrack;
     final track = _queue.removeAt(oldIndex);
     _queue.insert(targetIndex, track);
 
-    if (current != null) {
-      _currentIndex = _queue.indexOf(current);
+    if (oldIndex < _queueItemIds.length) {
+      final itemId = _queueItemIds.removeAt(oldIndex);
+      _queueItemIds.insert(targetIndex, itemId);
     }
 
-    if (_shuffleMode) {
-      _initShuffleOrder();
+    if (oldIndex == _currentIndex) {
+      _currentIndex = targetIndex;
+    } else if (oldIndex < _currentIndex && targetIndex >= _currentIndex) {
+      _currentIndex--;
+    } else if (oldIndex > _currentIndex && targetIndex <= _currentIndex) {
+      _currentIndex++;
     }
+
+    if (_shuffleMode && _shuffledOrder.isNotEmpty) {
+      for (var i = 0; i < _shuffledOrder.length; i++) {
+        final val = _shuffledOrder[i];
+        if (val == oldIndex) {
+          _shuffledOrder[i] = targetIndex;
+        } else if (oldIndex < targetIndex &&
+            val > oldIndex &&
+            val <= targetIndex) {
+          _shuffledOrder[i] = val - 1;
+        } else if (oldIndex > targetIndex &&
+            val >= targetIndex &&
+            val < oldIndex) {
+          _shuffledOrder[i] = val + 1;
+        }
+      }
+    }
+
     notifyListeners();
   }
 
   /// Clears the queue and resets all playback state.
   void clearQueue() {
     _queue.clear();
+    _queueItemIds.clear();
     _currentIndex = -1;
     _isPlaying = false;
     _stopPlaybackTimer();

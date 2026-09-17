@@ -35,6 +35,8 @@ class NowPlayingView extends StatefulWidget {
   final ValueNotifier<int>? selectedTabNotifier;
   final int initialTabIndex;
   final ValueChanged<int>? onTabSelected;
+  final void Function(Track track)? onAddToPlaylist;
+  final void Function(Track track)? onInspectAudio;
 
   const NowPlayingView({
     super.key,
@@ -51,6 +53,8 @@ class NowPlayingView extends StatefulWidget {
     this.selectedTabNotifier,
     this.initialTabIndex = 0,
     this.onTabSelected,
+    this.onAddToPlaylist,
+    this.onInspectAudio,
   });
 
   @override
@@ -350,6 +354,8 @@ class _NowPlayingViewState extends State<NowPlayingView> {
                     child: UpNextTab(
                       playbackController: widget.playbackController,
                       queueSource: widget.queueSource,
+                      onAddToPlaylist: widget.onAddToPlaylist,
+                      onInspectAudio: widget.onInspectAudio,
                     ),
                   )
                 : _selectedTabIndex == 1

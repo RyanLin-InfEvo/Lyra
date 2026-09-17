@@ -34,6 +34,8 @@ Widget _buildNowPlayingTest({
   LyricsData? lyrics,
   ValueNotifier<int>? selectedTabNotifier,
   MusicService? musicService,
+  void Function(Track track)? onAddToPlaylist,
+  void Function(Track track)? onInspectAudio,
 }) {
   final themeModeNotifier =
       themeNotifier ?? ValueNotifier<ThemeMode>(ThemeMode.dark);
@@ -74,6 +76,8 @@ Widget _buildNowPlayingTest({
                 lyrics: lyrics,
                 selectedTabNotifier: selectedTabNotifier,
                 musicService: musicService,
+                onAddToPlaylist: onAddToPlaylist,
+                onInspectAudio: onInspectAudio,
               ),
             ),
           ),
@@ -350,29 +354,138 @@ void main() {
       expect(track2Repaint, findsWidgets);
     });
 
-    testWidgets('removes track from queue when clicking remove action', (
-      tester,
-    ) async {
-      final controller = PlaybackQueueController(autoStartTimer: false);
-      addTearDown(controller.dispose);
-      controller.play(track1, contextQueue: [track1, track2, track3]);
+    testWidgets(
+      'permanent remove x button and grip handles are no longer rendered in rows',
+      (tester) async {
+        final controller = PlaybackQueueController(autoStartTimer: false);
+        addTearDown(controller.dispose);
+        controller.play(track1, contextQueue: [track1, track2, track3]);
 
-      await tester.pumpWidget(
-        _buildNowPlayingTest(playbackController: controller),
-      );
-      await tester.pumpAndSettle();
+        await tester.pumpWidget(
+          _buildNowPlayingTest(playbackController: controller),
+        );
+        await tester.pumpAndSettle();
 
-      expect(controller.queue.length, equals(3));
+        // Verify no permanent 'x' buttons or gripVertical icons exist in the row trailing areas
+        expect(find.byIcon(LucideIcons.x), findsNothing);
+        expect(find.byIcon(LucideIcons.gripVertical), findsNothing);
 
-      // Tap remove (X icon) on the last track
-      final removeButtons = find.byIcon(LucideIcons.x);
-      expect(removeButtons, findsNWidgets(3));
-      await tester.tap(removeButtons.last);
-      await tester.pumpAndSettle();
+        // Verify clean duration display in the trailing area for each track
+        expect(find.text(track1.formattedDuration), findsOneWidget);
+        expect(find.text(track2.formattedDuration), findsOneWidget);
+        expect(find.text(track3.formattedDuration), findsOneWidget);
+      },
+    );
 
-      expect(controller.queue.length, equals(2));
-      expect(controller.queue.contains(track3), isFalse);
-    });
+    testWidgets(
+      'right-clicking a row opens context menu with actions and removing from queue works',
+      (tester) async {
+        final controller = PlaybackQueueController(autoStartTimer: false);
+        addTearDown(controller.dispose);
+        controller.play(track1, contextQueue: [track1, track2, track3]);
+
+        await tester.pumpWidget(
+          _buildNowPlayingTest(playbackController: controller),
+        );
+        await tester.pumpAndSettle();
+
+        expect(controller.queue.length, equals(3));
+
+        // Right-click on track 3
+        final track3Finder = find.text('Giorgio by Moroder');
+        await tester.tap(
+          track3Finder,
+          buttons: kSecondaryMouseButton,
+          kind: PointerDeviceKind.mouse,
+        );
+        await tester.pumpAndSettle();
+
+        // Verify context menu items are present
+        expect(find.text('Play Now'), findsOneWidget);
+        expect(find.text('Play Next'), findsOneWidget);
+        expect(find.text('Remove from Queue'), findsOneWidget);
+
+        // Tap "Remove from Queue"
+        await tester.tap(find.text('Remove from Queue'));
+        await tester.pumpAndSettle();
+
+        expect(controller.queue.length, equals(2));
+        expect(controller.queue.contains(track3), isFalse);
+      },
+    );
+
+    testWidgets(
+      'context menu actions invoke playback controls and custom callbacks',
+      (tester) async {
+        final controller = PlaybackQueueController(autoStartTimer: false);
+        addTearDown(controller.dispose);
+        controller.play(track1, contextQueue: [track1, track2, track3]);
+
+        Track? addedToPlaylistTrack;
+        Track? inspectedTrack;
+
+        await tester.pumpWidget(
+          _buildNowPlayingTest(
+            playbackController: controller,
+            onAddToPlaylist: (track) => addedToPlaylistTrack = track,
+            onInspectAudio: (track) => inspectedTrack = track,
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        // Right click track 2 to test "Play Now"
+        await tester.tap(
+          find.text('So What'),
+          buttons: kSecondaryMouseButton,
+          kind: PointerDeviceKind.mouse,
+        );
+        await tester.pumpAndSettle();
+        expect(find.text('Play Now'), findsOneWidget);
+        expect(find.text('Add to Playlist...'), findsOneWidget);
+        expect(find.text('Inspect Audio...'), findsOneWidget);
+
+        await tester.tap(find.text('Play Now'));
+        await tester.pumpAndSettle();
+
+        expect(controller.currentTrack, equals(track2));
+
+        // Right click track 3 to test "Play Next"
+        await tester.tap(
+          find.text('Giorgio by Moroder'),
+          buttons: kSecondaryMouseButton,
+          kind: PointerDeviceKind.mouse,
+        );
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('Play Next'));
+        await tester.pumpAndSettle();
+
+        // After playNext on track3 (when current is track2), track3 is next after track2
+        expect(controller.queue[1], equals(track2));
+        expect(controller.queue[2], equals(track3));
+
+        // Right click track 2 to test "Add to Playlist..."
+        await tester.tap(
+          find.text('So What'),
+          buttons: kSecondaryMouseButton,
+          kind: PointerDeviceKind.mouse,
+        );
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('Add to Playlist...'));
+        await tester.pumpAndSettle();
+        expect(addedToPlaylistTrack, equals(track2));
+
+        // Right click track 2 to test "Inspect Audio..."
+        await tester.tap(
+          find.text('So What'),
+          buttons: kSecondaryMouseButton,
+          kind: PointerDeviceKind.mouse,
+        );
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('Inspect Audio...'));
+        await tester.pumpAndSettle();
+        expect(inspectedTrack, equals(track2));
+      },
+    );
 
     testWidgets('clears queue when clicking clear queue button', (
       tester,
@@ -427,6 +540,211 @@ void main() {
         await tester.pumpAndSettle();
 
         expect(track2Finder, findsOneWidget);
+      },
+    );
+
+    testWidgets(
+      'whole-row dragging with movement >= 10px reorders queue in controller and view',
+      (tester) async {
+        final controller = PlaybackQueueController(autoStartTimer: false);
+        addTearDown(controller.dispose);
+        controller.play(track1, contextQueue: [track1, track2, track3]);
+
+        await tester.pumpWidget(
+          _buildNowPlayingTest(playbackController: controller),
+        );
+        await tester.pumpAndSettle();
+
+        // Initial queue order: track1, track2, track3
+        expect(controller.queue, equals([track1, track2, track3]));
+
+        final track1PosBefore = tester.getTopLeft(
+          find.text('Hotel California (Live on MTV 1994)'),
+        );
+        final track2PosBefore = tester.getTopLeft(find.text('So What'));
+        expect(track1PosBefore.dy, lessThan(track2PosBefore.dy));
+
+        // Drag the first item's row down past track2 (80px down)
+        final firstRow = find.text('Hotel California (Live on MTV 1994)');
+        await tester.timedDrag(
+          firstRow,
+          const Offset(0, 80),
+          const Duration(milliseconds: 500),
+        );
+        await tester.pumpAndSettle();
+
+        // Queue order should now have track1 moved after track2
+        expect(controller.queue, equals([track2, track1, track3]));
+
+        // Verify visual coordinates updated in the widget tree
+        final track1PosAfter = tester.getTopLeft(
+          find.text('Hotel California (Live on MTV 1994)'),
+        );
+        final track2PosAfter = tester.getTopLeft(find.text('So What'));
+        expect(track2PosAfter.dy, lessThan(track1PosAfter.dy));
+
+        // Also test programmatic reorderQueue updates the view reactively
+        controller.reorderQueue(0, 3);
+        await tester.pumpAndSettle();
+
+        expect(controller.queue.last, equals(track2));
+        expect(find.text('So What'), findsOneWidget);
+      },
+    );
+
+    testWidgets(
+      'mouse dragging (movement >= 10px) initiates reordering drag and reorders queue',
+      (tester) async {
+        final controller = PlaybackQueueController(autoStartTimer: false);
+        addTearDown(controller.dispose);
+        controller.play(track1, contextQueue: [track1, track2, track3]);
+
+        await tester.pumpWidget(
+          _buildNowPlayingTest(playbackController: controller),
+        );
+        await tester.pumpAndSettle();
+
+        expect(controller.queue, equals([track1, track2, track3]));
+
+        // Mouse drag track 1 down 80px (past track 2) in steps
+        final start = tester.getCenter(
+          find.text('Hotel California (Live on MTV 1994)'),
+        );
+        final gesture = await tester.createGesture(
+          kind: PointerDeviceKind.mouse,
+        );
+        await gesture.addPointer(location: start);
+        await gesture.down(start);
+        await tester.pump();
+
+        // Drag down exceeding the 10px slop threshold
+        for (var i = 0; i < 8; i++) {
+          await gesture.moveBy(const Offset(0, 10));
+          await tester.pump(const Duration(milliseconds: 50));
+        }
+
+        // Release mouse button
+        await gesture.up();
+        await tester.pumpAndSettle();
+
+        // Queue order should now have track1 moved after track2
+        expect(controller.queue, equals([track2, track1, track3]));
+      },
+    );
+
+    testWidgets(
+      'mouse pointer movement under slop threshold (< 10px) triggers play onTap rather than drag',
+      (tester) async {
+        final controller = PlaybackQueueController(autoStartTimer: false);
+        addTearDown(controller.dispose);
+        controller.play(track1, contextQueue: [track1, track2, track3]);
+
+        await tester.pumpWidget(
+          _buildNowPlayingTest(playbackController: controller),
+        );
+        await tester.pumpAndSettle();
+
+        expect(controller.currentTrack, equals(track1));
+        expect(controller.currentIndex, equals(0));
+
+        // Perform a small mouse jitter (5px movement, which is < 10px slop threshold) on track 2
+        final target = tester.getCenter(find.text('So What'));
+        final gesture = await tester.createGesture(
+          kind: PointerDeviceKind.mouse,
+        );
+        await gesture.addPointer(location: target);
+        await gesture.down(target);
+        // Move by 5px (below 10px slop threshold)
+        await gesture.moveBy(const Offset(0, 5));
+        await tester.pump();
+        // Release pointer
+        await gesture.up();
+        await tester.pumpAndSettle();
+
+        // Queue order must NOT have changed
+        expect(controller.queue, equals([track1, track2, track3]));
+
+        // But onTap was triggered, so current track switched to track2!
+        expect(controller.currentTrack, equals(track2));
+        expect(controller.currentIndex, equals(1));
+      },
+    );
+
+    testWidgets('drag listener is disabled when queue has single track', (
+      tester,
+    ) async {
+      final controller = PlaybackQueueController(autoStartTimer: false);
+      addTearDown(controller.dispose);
+      controller.play(track1, contextQueue: [track1]);
+
+      await tester.pumpWidget(
+        _buildNowPlayingTest(playbackController: controller),
+      );
+      await tester.pumpAndSettle();
+
+      final dragListenerFinder = find.byType(
+        ThresholdReorderableDragStartListener,
+      );
+      expect(dragListenerFinder, findsOneWidget);
+      final ThresholdReorderableDragStartListener dragListener = tester.widget(
+        dragListenerFinder,
+      );
+      expect(dragListener.enabled, isFalse);
+    });
+
+    testWidgets(
+      'tapping a duplicate track in UpNextTab selects that exact index without resetting _queueItemIds',
+      (tester) async {
+        final controller = PlaybackQueueController(autoStartTimer: false);
+        addTearDown(controller.dispose);
+
+        // Queue with duplicate track1 at index 0 and index 2: [track1, track2, track1]
+        controller.play(track1, contextQueue: [track1, track2, track1]);
+        expect(controller.currentIndex, equals(0));
+
+        final initialItemIds = List<String>.from(controller.queueItemIds);
+        expect(initialItemIds.length, equals(3));
+        expect(initialItemIds[0], isNot(equals(initialItemIds[2])));
+
+        await tester.pumpWidget(
+          _buildNowPlayingTest(playbackController: controller),
+        );
+        await tester.pumpAndSettle();
+
+        // Target the second instance of track1 in the queue (index 2)
+        final secondTrack1Row = find.byKey(
+          ValueKey('queue_item_${initialItemIds[2]}'),
+        );
+        expect(secondTrack1Row, findsOneWidget);
+
+        // Tap the second instance of track1 in the queue (index 2)
+        await tester.tap(secondTrack1Row);
+        await tester.pumpAndSettle();
+
+        // Verify currentIndex moved directly to index 2, not resetting to index 0
+        expect(controller.currentIndex, equals(2));
+        expect(controller.currentTrack, equals(track1));
+
+        // Verify queueItemIds were preserved and not regenerated
+        expect(controller.queueItemIds, equals(initialItemIds));
+
+        // Test context menu "Play Now" on the first instance of track1 (index 0)
+        final firstTrack1Row = find.byKey(
+          ValueKey('queue_item_${initialItemIds[0]}'),
+        );
+        await tester.tap(
+          firstTrack1Row,
+          buttons: kSecondaryMouseButton,
+          kind: PointerDeviceKind.mouse,
+        );
+        await tester.pumpAndSettle();
+
+        expect(find.text('Play Now'), findsOneWidget);
+        await tester.tap(find.text('Play Now'));
+        await tester.pumpAndSettle();
+
+        expect(controller.currentIndex, equals(0));
+        expect(controller.queueItemIds, equals(initialItemIds));
       },
     );
   });

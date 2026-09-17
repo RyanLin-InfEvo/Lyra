@@ -424,8 +424,9 @@ class _AppShellState extends State<AppShell> {
     );
   }
 
-  void _showAddToPlaylistDialog() {
-    if (_currentTrack == null) return;
+  void _showAddToPlaylistDialog([Track? track]) {
+    final effectiveTrack = track ?? _currentTrack;
+    if (effectiveTrack == null) return;
     final scope = LyraDesignSystemScope.of(context);
     showDialog<void>(
       context: context,
@@ -435,7 +436,7 @@ class _AppShellState extends State<AppShell> {
         tokens: scope.tokens,
         themeModeNotifier: scope.themeModeNotifier,
         child: _AddToPlaylistDialog(
-          track: _currentTrack!,
+          track: effectiveTrack,
           playlists: _playlists,
           musicService: widget.musicService,
           onPlaylistUpdated: (updatedPlaylist) {
@@ -929,6 +930,10 @@ class _AppShellState extends State<AppShell> {
                                                     widget.musicService,
                                                 selectedTabNotifier:
                                                     _nowPlayingTabNotifier,
+                                                onAddToPlaylist:
+                                                    _showAddToPlaylistDialog,
+                                                onInspectAudio:
+                                                    _openInspectorForAudio,
                                                 queueSource:
                                                     _activeTrackFilter != null
                                                     ? _activeTrackFilter!.label

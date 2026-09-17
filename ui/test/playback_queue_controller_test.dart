@@ -120,6 +120,78 @@ void main() {
       expect(controller.currentIndex, equals(0));
       expect(controller.currentTrack, equals(track1));
     });
+
+    test(
+      'playQueueItem(index) plays specific item without re-generating IDs or jumping on duplicate tracks',
+      () {
+        final controller = PlaybackQueueController(autoStartTimer: false);
+        addTearDown(controller.dispose);
+
+        // Queue with duplicate track1 at index 0 and index 2: [track1, track2, track1, track3]
+        controller.play(track1, contextQueue: [track1, track2, track1, track3]);
+        expect(controller.currentIndex, equals(0));
+        final originalIds = List<String>.from(controller.queueItemIds);
+
+        // Play the duplicate track1 at index 2
+        controller.playQueueItem(2);
+        expect(controller.currentIndex, equals(2));
+        expect(controller.currentTrack, equals(track1));
+        expect(controller.isPlaying, isTrue);
+        expect(controller.positionNotifier.value, equals(Duration.zero));
+        // IDs must not churn / be regenerated
+        expect(controller.queueItemIds, equals(originalIds));
+
+        // Out-of-bounds index calls should be safely ignored
+        controller.playQueueItem(-1);
+        expect(controller.currentIndex, equals(2));
+        controller.playQueueItem(999);
+        expect(controller.currentIndex, equals(2));
+      },
+    );
+
+    test(
+      'playQueueItem(index) in shuffle mode synchronizes shuffledCurrentIndex without resetting shuffle order',
+      () {
+        final controller = PlaybackQueueController(
+          autoStartTimer: false,
+          random: Random(42),
+        );
+        addTearDown(controller.dispose);
+
+        controller.play(track1, contextQueue: [track1, track2, track1, track3]);
+        controller.setShuffle(true);
+
+        final originalShuffleOrder = List<int>.from(controller.shuffledOrder);
+        final originalIds = List<String>.from(controller.queueItemIds);
+
+        // Select duplicate track at index 2
+        controller.playQueueItem(2);
+        expect(controller.currentIndex, equals(2));
+        expect(controller.shuffledOrder, equals(originalShuffleOrder));
+        expect(
+          controller.shuffledCurrentIndex,
+          equals(controller.shuffledOrder.indexOf(2)),
+        );
+        expect(
+          controller.shuffledOrder[controller.shuffledCurrentIndex],
+          equals(2),
+        );
+        expect(controller.queueItemIds, equals(originalIds));
+
+        // Select track at index 3
+        controller.playQueueItem(3);
+        expect(controller.currentIndex, equals(3));
+        expect(controller.shuffledOrder, equals(originalShuffleOrder));
+        expect(
+          controller.shuffledCurrentIndex,
+          equals(controller.shuffledOrder.indexOf(3)),
+        );
+        expect(
+          controller.shuffledOrder[controller.shuffledCurrentIndex],
+          equals(3),
+        );
+      },
+    );
   });
 
   group('PlaybackQueueController - Repeat Modes (next and previous)', () {
@@ -417,6 +489,89 @@ void main() {
       expect(controller.currentTrack, equals(track2));
     });
 
+    test(
+      'reorderQueue with duplicate tracks preserves correct currentIndex and item identity',
+      () {
+        final controller = PlaybackQueueController(autoStartTimer: false);
+        addTearDown(controller.dispose);
+
+        // Queue with duplicate track1 at index 0 and index 2: [track1, track2, track1]
+        controller.play(track1, contextQueue: [track1, track2, track1]);
+        expect(controller.queue, equals([track1, track2, track1]));
+        expect(controller.currentIndex, equals(0));
+
+        // Advance to index 2 (the second track1)
+        controller.next(); // index 1 (track2)
+        controller.next(); // index 2 (second track1)
+        expect(controller.currentIndex, equals(2));
+        expect(controller.currentTrack, equals(track1));
+
+        final stableIdsBefore = List<String>.from(controller.queueItemIds);
+        expect(stableIdsBefore.length, equals(3));
+        expect(stableIdsBefore[0], isNot(equals(stableIdsBefore[2])));
+
+        // Reorder index 0 (first track1) to index 1 (Flutter ReorderCallback convention: newIndex 2 -> targetIndex 1)
+        controller.reorderQueue(0, 2);
+        expect(controller.queue, equals([track2, track1, track1]));
+
+        // With pure index arithmetic, currentIndex must remain 2 (still pointing to the second track1),
+        // NOT falsely jump to index 1 due to indexOf(current) returning first match!
+        expect(controller.currentIndex, equals(2));
+        expect(controller.currentTrack, equals(track1));
+        expect(controller.queueItemIds[2], equals(stableIdsBefore[2]));
+        expect(controller.queueItemIds[1], equals(stableIdsBefore[0]));
+
+        // Move the currently playing item (index 2) to index 0: queue becomes [track1, track2, track1]
+        controller.reorderQueue(2, 0);
+        expect(controller.queue, equals([track1, track2, track1]));
+        expect(controller.currentIndex, equals(0));
+        expect(controller.currentTrack, equals(track1));
+        expect(controller.queueItemIds[0], equals(stableIdsBefore[2]));
+      },
+    );
+
+    test(
+      'reorderQueue in shuffle mode preserves shuffle session and play order',
+      () {
+        final controller = PlaybackQueueController(
+          autoStartTimer: false,
+          random: Random(42),
+        );
+        addTearDown(controller.dispose);
+
+        controller.play(track1, contextQueue: [track1, track2, track3]);
+        controller.setShuffle(true);
+
+        // Record the expected playback sequence from current shuffle session
+        final initialShuffledOrder = List<int>.from(controller.shuffledOrder);
+        final initialQueue = List<Track>.from(controller.queue);
+        final plannedSequence = initialShuffledOrder
+            .map((i) => initialQueue[i])
+            .toList();
+
+        // Reorder an item in the queue: move index 2 to index 0
+        controller.reorderQueue(2, 0);
+
+        // Queue order changed
+        expect(controller.queue, equals([track3, track1, track2]));
+
+        // In the new queue, mapped shuffled order should yield the exact same planned sequence
+        final newShuffledOrder = List<int>.from(controller.shuffledOrder);
+        final remappedSequence = newShuffledOrder
+            .map((i) => controller.queue[i])
+            .toList();
+
+        expect(remappedSequence, equals(plannedSequence));
+
+        // Stepping through next() plays the planned sequence seamlessly without re-randomization
+        expect(controller.currentTrack, equals(plannedSequence[0]));
+        controller.next();
+        expect(controller.currentTrack, equals(plannedSequence[1]));
+        controller.next();
+        expect(controller.currentTrack, equals(plannedSequence[2]));
+      },
+    );
+
     test('clearQueue resets all playback state and queue', () {
       final controller = PlaybackQueueController(autoStartTimer: false);
       addTearDown(controller.dispose);
@@ -503,6 +658,62 @@ void main() {
       expect(controller.isPlaying, isTrue);
       expect(controller.currentTrack, isNotNull);
     });
+
+    test(
+      'removeFromQueue for current track in shuffle mode synchronizes currentIndex with shuffledCurrentIndex',
+      () {
+        final controller = PlaybackQueueController(
+          autoStartTimer: false,
+          random: Random(42),
+        );
+        addTearDown(controller.dispose);
+
+        controller.play(track1, contextQueue: [track1, track2, track3]);
+        controller.setShuffle(true);
+
+        // Verify initial synchronization
+        expect(
+          controller.currentIndex,
+          equals(controller.shuffledOrder[controller.shuffledCurrentIndex]),
+        );
+
+        // Remove the currently playing track
+        final currentIdx = controller.currentIndex;
+        controller.removeFromQueue(currentIdx);
+
+        // Verify queue length decreased
+        expect(controller.queue.length, equals(2));
+
+        // _currentIndex must match _shuffledOrder[_shuffledCurrentIndex]
+        expect(
+          controller.currentIndex,
+          equals(controller.shuffledOrder[controller.shuffledCurrentIndex]),
+        );
+        expect(
+          controller.currentTrack,
+          equals(controller.queue[controller.currentIndex]),
+        );
+
+        // Remove the current track again
+        controller.removeFromQueue(controller.currentIndex);
+        expect(controller.queue.length, equals(1));
+        expect(
+          controller.currentIndex,
+          equals(controller.shuffledOrder[controller.shuffledCurrentIndex]),
+        );
+        expect(
+          controller.currentTrack,
+          equals(controller.queue[controller.currentIndex]),
+        );
+
+        // Remove the final track
+        controller.removeFromQueue(controller.currentIndex);
+        expect(controller.queue, isEmpty);
+        expect(controller.currentIndex, equals(-1));
+        expect(controller.currentTrack, isNull);
+        expect(controller.isPlaying, isFalse);
+      },
+    );
   });
 
   group('PlaybackQueueController - Disposal', () {
