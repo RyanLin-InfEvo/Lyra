@@ -18,6 +18,7 @@ import 'package:ui/features/models/artist.dart';
 import 'package:ui/features/models/playlist.dart';
 import 'package:ui/features/models/work.dart';
 import 'package:ui/features/playlists/playlists_view.dart';
+import 'package:ui/features/settings/services/preferences_service.dart';
 import 'package:ui/features/settings/settings_view.dart';
 import 'package:ui/features/works/works_view.dart';
 
@@ -797,7 +798,10 @@ void main() {
     testWidgets(
       'SettingsView renders toggle switches, handles toggling, and eliminates redundant header badges',
       (tester) async {
-        await tester.pumpWidget(_buildViewTest(const SettingsView()));
+        final prefs = InMemoryPreferencesService(audioExclusiveMode: true);
+        await tester.pumpWidget(
+          _buildViewTest(SettingsView(preferencesService: prefs)),
+        );
         await tester.pumpAndSettle();
 
         // 1. Verify header and titles
@@ -831,21 +835,25 @@ void main() {
         await tester.tap(exclusiveSwitch);
         await tester.pumpAndSettle();
         expect(tester.widget<LyraSwitch>(exclusiveSwitch).value, isFalse);
+        expect(prefs.audioExclusiveMode, isFalse);
 
         // Toggle back
         await tester.tap(exclusiveSwitch);
         await tester.pumpAndSettle();
         expect(tester.widget<LyraSwitch>(exclusiveSwitch).value, isTrue);
+        expect(prefs.audioExclusiveMode, isTrue);
 
         // 5. Toggle DSD over PCM (DoP) switch
         await tester.tap(dopSwitch);
         await tester.pumpAndSettle();
         expect(tester.widget<LyraSwitch>(dopSwitch).value, isTrue);
+        expect(prefs.audioDopEnabled, isTrue);
 
         // 6. Toggle Verify SHA-256 switch
         await tester.tap(shaSwitch);
         await tester.pumpAndSettle();
         expect(tester.widget<LyraSwitch>(shaSwitch).value, isFalse);
+        expect(prefs.casAutoVerify, isFalse);
 
         // 7. Verify legitimate badge still remains (e.g. 'Block-level CAS')
         expect(find.text('Block-level CAS'), findsOneWidget);

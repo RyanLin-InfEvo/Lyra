@@ -11,20 +11,46 @@ import '../../design_system/widgets/lyra_badge.dart';
 import '../../design_system/widgets/lyra_button.dart';
 import '../../design_system/widgets/lyra_card.dart';
 import '../../design_system/widgets/lyra_switch.dart';
+import 'services/preferences_service.dart';
 
 /// Settings view managing Theme options, Audio Output, and CAS Storage preferences.
 class SettingsView extends StatefulWidget {
-  const SettingsView({super.key});
+  final PreferencesService? preferencesService;
+
+  const SettingsView({super.key, this.preferencesService});
 
   @override
   State<SettingsView> createState() => _SettingsViewState();
 }
 
 class _SettingsViewState extends State<SettingsView> {
-  bool _exclusiveMode = true;
-  bool _dopEnabled = false;
-  int _bufferSize = 128;
-  bool _autoVerify = true;
+  late bool _exclusiveMode;
+  late bool _dopEnabled;
+  late int _bufferSize;
+  late bool _autoVerify;
+
+  @override
+  void initState() {
+    super.initState();
+    _exclusiveMode = widget.preferencesService?.audioExclusiveMode ?? false;
+    _bufferSize = widget.preferencesService?.audioBufferSize ?? 256;
+    _dopEnabled = widget.preferencesService?.audioDopEnabled ?? false;
+    _autoVerify = widget.preferencesService?.casAutoVerify ?? true;
+  }
+
+  @override
+  void didUpdateWidget(covariant SettingsView oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.preferencesService != widget.preferencesService &&
+        widget.preferencesService != null) {
+      setState(() {
+        _exclusiveMode = widget.preferencesService!.audioExclusiveMode;
+        _bufferSize = widget.preferencesService!.audioBufferSize;
+        _dopEnabled = widget.preferencesService!.audioDopEnabled;
+        _autoVerify = widget.preferencesService!.casAutoVerify;
+      });
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -79,7 +105,9 @@ class _SettingsViewState extends State<SettingsView> {
                       label: 'Zinc Dark',
                       mode: ThemeMode.dark,
                       isSelected: currentThemeMode == ThemeMode.dark,
-                      onTap: () => scope.setThemeMode(ThemeMode.dark),
+                      onTap: () {
+                        scope.setThemeMode(ThemeMode.dark);
+                      },
                       tokens: tokens,
                     ),
                     const SizedBox(width: LyraSpacing.md),
@@ -87,7 +115,9 @@ class _SettingsViewState extends State<SettingsView> {
                       label: 'Zinc Light',
                       mode: ThemeMode.light,
                       isSelected: currentThemeMode == ThemeMode.light,
-                      onTap: () => scope.setThemeMode(ThemeMode.light),
+                      onTap: () {
+                        scope.setThemeMode(ThemeMode.light);
+                      },
                       tokens: tokens,
                     ),
                   ],
@@ -129,7 +159,10 @@ class _SettingsViewState extends State<SettingsView> {
                       'Bypass system mixer for direct hardware stream delivery',
                   trailing: LyraSwitch(
                     value: _exclusiveMode,
-                    onChanged: (val) => setState(() => _exclusiveMode = val),
+                    onChanged: (val) {
+                      setState(() => _exclusiveMode = val);
+                      widget.preferencesService?.setAudioExclusiveMode(val);
+                    },
                   ),
                   tokens: tokens,
                 ),
@@ -152,7 +185,10 @@ class _SettingsViewState extends State<SettingsView> {
                           variant: isSel
                               ? LyraButtonVariant.primary
                               : LyraButtonVariant.outline,
-                          onPressed: () => setState(() => _bufferSize = buf),
+                          onPressed: () {
+                            setState(() => _bufferSize = buf);
+                            widget.preferencesService?.setAudioBufferSize(buf);
+                          },
                           child: Text('$buf'),
                         ),
                       );
@@ -170,7 +206,10 @@ class _SettingsViewState extends State<SettingsView> {
                       'Encapsulate DSD stream payload inside PCM frames',
                   trailing: LyraSwitch(
                     value: _dopEnabled,
-                    onChanged: (val) => setState(() => _dopEnabled = val),
+                    onChanged: (val) {
+                      setState(() => _dopEnabled = val);
+                      widget.preferencesService?.setAudioDopEnabled(val);
+                    },
                   ),
                   tokens: tokens,
                 ),
@@ -210,7 +249,10 @@ class _SettingsViewState extends State<SettingsView> {
                       'Compute cryptographic checksum when adding audio tracks',
                   trailing: LyraSwitch(
                     value: _autoVerify,
-                    onChanged: (val) => setState(() => _autoVerify = val),
+                    onChanged: (val) {
+                      setState(() => _autoVerify = val);
+                      widget.preferencesService?.setCasAutoVerify(val);
+                    },
                   ),
                   tokens: tokens,
                 ),

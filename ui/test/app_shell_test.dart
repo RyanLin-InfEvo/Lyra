@@ -18,6 +18,7 @@ import 'package:ui/features/player/views/now_playing_view.dart';
 import 'package:ui/features/playlists/playlist_detail_view.dart';
 import 'package:ui/features/playlists/playlists_view.dart';
 import 'package:ui/features/services/mock_music_service.dart';
+import 'package:ui/features/settings/services/preferences_service.dart';
 import 'package:ui/features/settings/settings_view.dart';
 import 'package:ui/features/shell/app_shell.dart';
 import 'package:ui/features/shell/header_bar.dart';
@@ -32,6 +33,7 @@ Widget _buildAppShellTest({
   ValueNotifier<ThemeMode>? themeNotifier,
   Curve? nowPlayingCurve,
   Duration? nowPlayingDuration,
+  PreferencesService? preferencesService,
 }) {
   final themeModeNotifier =
       themeNotifier ?? ValueNotifier<ThemeMode>(ThemeMode.dark);
@@ -65,6 +67,7 @@ Widget _buildAppShellTest({
               musicService: musicService,
               nowPlayingCurve: nowPlayingCurve ?? LyraAnimation.defaultCurve,
               nowPlayingDuration: nowPlayingDuration ?? LyraAnimation.sheet,
+              preferencesService: preferencesService,
             ),
           ),
         );
@@ -1868,5 +1871,170 @@ void main() {
     expect(shellState.isNowPlayingExpanded, isFalse);
     expect(nowPlayingNotifier.value, isFalse);
     expect(find.byType(TagsView), findsOneWidget);
+  });
+
+  group('AppShell Preferences & State Persistence Tests', () {
+    testWidgets(
+      'AppShell restores sidebar collapsed state, volume, and custom column orders from PreferencesService',
+      (tester) async {
+        tester.view.physicalSize = const Size(1280, 800);
+        tester.view.devicePixelRatio = 1.0;
+        addTearDown(tester.view.resetPhysicalSize);
+
+        final prefs = InMemoryPreferencesService(
+          isSidebarCollapsed: true,
+          volume: 0.42,
+          trackColumnOrder: [
+            'duration',
+            'title',
+            'album',
+            'resolution',
+            'index',
+          ],
+          trackVisibleColumns: {'duration', 'title', 'album'},
+          workColumnOrder: ['date', 'title', 'composer'],
+          workVisibleColumns: {'date', 'title'},
+          playlistColumnOrder: ['duration', 'title'],
+          playlistVisibleColumns: {'duration', 'title'},
+        );
+
+        await tester.pumpWidget(_buildAppShellTest(preferencesService: prefs));
+        await tester.pumpAndSettle();
+
+        final shellState = tester.state<AppShellState>(find.byType(AppShell));
+
+        // 1. Sidebar is collapsed initially
+        expect(shellState.isSidebarCollapsed, isTrue);
+
+        // 2. Volume is initialized to saved value
+        expect(shellState.volumeNotifier.value, 0.42);
+
+        // 3. Track columns restored
+        expect(shellState.trackColumnOrder.first, TrackColumn.duration);
+        expect(shellState.trackVisibleColumns.map((c) => c.name).toSet(), {
+          'duration',
+          'title',
+          'album',
+        });
+
+        // 4. Work columns restored
+        expect(shellState.workColumnOrder.first, WorkColumn.date);
+        expect(shellState.workVisibleColumns.map((c) => c.name).toSet(), {
+          'date',
+          'title',
+        });
+
+        // 5. Playlist columns restored
+        expect(shellState.playlistColumnOrder.first, TrackColumn.duration);
+        expect(shellState.playlistVisibleColumns.map((c) => c.name).toSet(), {
+          'duration',
+          'title',
+        });
+      },
+    );
+
+    testWidgets(
+      'Toggling sidebar or modifying volume/columns updates PreferencesService',
+      (tester) async {
+        tester.view.physicalSize = const Size(1280, 800);
+        tester.view.devicePixelRatio = 1.0;
+        addTearDown(tester.view.resetPhysicalSize);
+
+        final prefs = InMemoryPreferencesService(
+          isSidebarCollapsed: false,
+          volume: 0.85,
+        );
+
+        await tester.pumpWidget(_buildAppShellTest(preferencesService: prefs));
+        await tester.pumpAndSettle();
+
+        final shellState = tester.state<AppShellState>(find.byType(AppShell));
+
+        // 1. Toggle sidebar via header button
+        expect(prefs.isSidebarCollapsed, isFalse);
+        final toggleSidebarFinder = find.byTooltip('Collapse sidebar');
+        expect(toggleSidebarFinder, findsOneWidget);
+        await tester.tap(toggleSidebarFinder);
+        await tester.pumpAndSettle();
+
+        expect(shellState.isSidebarCollapsed, isTrue);
+        expect(prefs.isSidebarCollapsed, isTrue);
+
+        // Toggle back
+        final expandSidebarFinder = find.byTooltip('Expand sidebar');
+        expect(expandSidebarFinder, findsOneWidget);
+        await tester.tap(expandSidebarFinder);
+        await tester.pumpAndSettle();
+
+        expect(shellState.isSidebarCollapsed, isFalse);
+        expect(prefs.isSidebarCollapsed, isFalse);
+
+        // 2. Modify volume updates PreferencesService (debounced)
+        shellState.volumeNotifier.value = 0.35;
+        await tester.pump(const Duration(milliseconds: 300));
+        await tester.pumpAndSettle();
+        expect(prefs.volume, 0.35);
+
+        // 3. Modifying track columns updates PreferencesService
+        final tracksView = tester.widget<TracksView>(find.byType(TracksView));
+        tracksView.onColumnOrderChanged?.call([
+          TrackColumn.album,
+          TrackColumn.title,
+        ]);
+        await tester.pumpAndSettle();
+        expect(prefs.getTrackColumnOrder(), ['album', 'title']);
+
+        tracksView.onVisibleColumnsChanged?.call({
+          TrackColumn.title,
+          TrackColumn.album,
+        });
+        await tester.pumpAndSettle();
+        expect(prefs.getTrackVisibleColumns(), {'title', 'album'});
+
+        // 4. Switch to Works tab and modify work columns
+        await tester.tap(find.text('Works'));
+        await tester.pumpAndSettle();
+
+        final worksView = tester.widget<WorksView>(find.byType(WorksView));
+        worksView.onColumnOrderChanged?.call([
+          WorkColumn.composer,
+          WorkColumn.title,
+        ]);
+        await tester.pumpAndSettle();
+        expect(prefs.getWorkColumnOrder(), ['composer', 'title']);
+
+        worksView.onVisibleColumnsChanged?.call({
+          WorkColumn.title,
+          WorkColumn.composer,
+        });
+        await tester.pumpAndSettle();
+        expect(prefs.getWorkVisibleColumns(), {'title', 'composer'});
+
+        // 5. Switch to Playlists tab, open playlist detail, and modify playlist columns
+        await tester.tap(find.text('Playlists'));
+        await tester.pumpAndSettle();
+
+        // Tap the first playlist card
+        await tester.tap(find.text('Audiophile Reference Master').first);
+        await tester.pumpAndSettle();
+
+        final playlistDetail = tester.widget<PlaylistDetailView>(
+          find.byType(PlaylistDetailView),
+        );
+        playlistDetail.onColumnOrderChanged?.call([
+          TrackColumn.duration,
+          TrackColumn.title,
+        ]);
+        await tester.pumpAndSettle();
+        expect(prefs.getPlaylistColumnOrder(), ['duration', 'title']);
+
+        playlistDetail.onVisibleColumnsChanged?.call({
+          TrackColumn.duration,
+          TrackColumn.title,
+        });
+        await tester.pumpAndSettle();
+        expect(prefs.getPlaylistVisibleColumns(), {'duration', 'title'});
+      },
+    );
   });
 }

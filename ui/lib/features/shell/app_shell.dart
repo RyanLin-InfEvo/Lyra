@@ -31,6 +31,7 @@ import '../playlists/playlist_detail_view.dart';
 import '../playlists/playlists_view.dart';
 import '../services/mock_music_service.dart';
 import '../services/music_service.dart';
+import '../settings/services/preferences_service.dart';
 import '../settings/settings_view.dart';
 import '../tags/tags_view.dart';
 import '../tracks/tracks_view.dart';
@@ -53,6 +54,7 @@ class AppShell extends StatefulWidget {
   final PlaybackQueueController? playbackController;
   final Curve nowPlayingCurve;
   final Duration nowPlayingDuration;
+  final PreferencesService? preferencesService;
 
   const AppShell({
     super.key,
@@ -60,6 +62,7 @@ class AppShell extends StatefulWidget {
     this.playbackController,
     this.nowPlayingCurve = LyraAnimation.deceleration,
     this.nowPlayingDuration = LyraAnimation.normal,
+    this.preferencesService,
   });
 
   @override
@@ -72,13 +75,14 @@ class AppShellState extends State<AppShell> {
   late final PlaybackQueueController _playbackController;
   late final AudioDeviceController _audioDeviceController;
   AppTab _currentTab = AppTab.tracks;
-  bool _isSidebarCollapsed = false;
+  late bool _isSidebarCollapsed;
   final ValueNotifier<bool> _isNowPlayingExpandedNotifier = ValueNotifier<bool>(
     false,
   );
   bool _isNowPlayingVisible = false;
   final ValueNotifier<int> _nowPlayingTabNotifier = ValueNotifier<int>(0);
-  final ValueNotifier<double> _volumeNotifier = ValueNotifier<double>(0.85);
+  late final ValueNotifier<double> _volumeNotifier;
+  Timer? _volumeDebounceTimer;
 
   // Inspector Drawer State (Phase 4.3)
   bool _isInspectorOpen = false;
@@ -103,22 +107,12 @@ class AppShellState extends State<AppShell> {
   bool _isLoading = true;
 
   // Table Customization State
-  Set<TrackColumn> _trackVisibleColumns = Set<TrackColumn>.from(
-    TrackColumn.defaultVisibleColumns,
-  );
-  List<TrackColumn> _trackColumnOrder = List<TrackColumn>.from(
-    TrackColumn.values,
-  );
-  Set<WorkColumn> _workVisibleColumns = Set<WorkColumn>.from(
-    WorkColumn.defaultVisibleColumns,
-  );
-  List<WorkColumn> _workColumnOrder = List<WorkColumn>.from(WorkColumn.values);
-  Set<TrackColumn> _playlistVisibleColumns = Set<TrackColumn>.from(
-    PlaylistDetailView.defaultVisibleColumns,
-  );
-  List<TrackColumn> _playlistColumnOrder = List<TrackColumn>.from(
-    TrackColumn.values,
-  );
+  late Set<TrackColumn> _trackVisibleColumns;
+  late List<TrackColumn> _trackColumnOrder;
+  late Set<WorkColumn> _workVisibleColumns;
+  late List<WorkColumn> _workColumnOrder;
+  late Set<TrackColumn> _playlistVisibleColumns;
+  late List<TrackColumn> _playlistColumnOrder;
 
   // Playback State delegation
   Track? get _currentTrack => _playbackController.currentTrack;
@@ -157,6 +151,13 @@ class AppShellState extends State<AppShell> {
   void initState() {
     super.initState();
     HardwareKeyboard.instance.addHandler(_handleGlobalKeyEvent);
+    _isSidebarCollapsed =
+        widget.preferencesService?.isSidebarCollapsed ?? false;
+    _volumeNotifier = ValueNotifier<double>(
+      widget.preferencesService?.volume ?? 0.85,
+    );
+    _volumeNotifier.addListener(_onVolumeNotifierChanged);
+    _initColumns();
     _isNowPlayingVisible = _isNowPlayingExpandedNotifier.value;
     _isNowPlayingExpandedNotifier.addListener(_onNowPlayingExpandedChanged);
     _searchController = TextEditingController();
@@ -169,6 +170,142 @@ class AppShellState extends State<AppShell> {
     _loadCatalog();
   }
 
+  void _onVolumeNotifierChanged() {
+    _volumeDebounceTimer?.cancel();
+    _volumeDebounceTimer = Timer(const Duration(milliseconds: 300), () {
+      widget.preferencesService?.setVolume(_volumeNotifier.value);
+    });
+  }
+
+  void _initColumns() {
+    final trackColumnMap = {
+      for (final col in TrackColumn.values) col.name: col,
+    };
+    final savedTrackOrder = widget.preferencesService?.getTrackColumnOrder();
+    if (savedTrackOrder != null) {
+      final restored = savedTrackOrder
+          .map((name) => trackColumnMap[name])
+          .whereType<TrackColumn>()
+          .toList();
+      for (final col in TrackColumn.values) {
+        if (!restored.contains(col)) {
+          restored.add(col);
+        }
+      }
+      _trackColumnOrder = restored;
+    } else {
+      _trackColumnOrder = List<TrackColumn>.from(TrackColumn.values);
+    }
+
+    final savedTrackVisible = widget.preferencesService
+        ?.getTrackVisibleColumns();
+    if (savedTrackVisible != null) {
+      final restored = savedTrackVisible
+          .map((name) => trackColumnMap[name])
+          .whereType<TrackColumn>()
+          .toSet();
+      if (restored.isEmpty) {
+        _trackVisibleColumns = Set<TrackColumn>.from(
+          TrackColumn.defaultVisibleColumns,
+        );
+      } else {
+        _trackVisibleColumns = restored;
+      }
+      for (final col in TrackColumn.values) {
+        if (col.isMandatory) {
+          _trackVisibleColumns.add(col);
+        }
+      }
+    } else {
+      _trackVisibleColumns = Set<TrackColumn>.from(
+        TrackColumn.defaultVisibleColumns,
+      );
+    }
+
+    final workColumnMap = {for (final col in WorkColumn.values) col.name: col};
+    final savedWorkOrder = widget.preferencesService?.getWorkColumnOrder();
+    if (savedWorkOrder != null) {
+      final restored = savedWorkOrder
+          .map((name) => workColumnMap[name])
+          .whereType<WorkColumn>()
+          .toList();
+      for (final col in WorkColumn.values) {
+        if (!restored.contains(col)) {
+          restored.add(col);
+        }
+      }
+      _workColumnOrder = restored;
+    } else {
+      _workColumnOrder = List<WorkColumn>.from(WorkColumn.values);
+    }
+
+    final savedWorkVisible = widget.preferencesService?.getWorkVisibleColumns();
+    if (savedWorkVisible != null) {
+      final restored = savedWorkVisible
+          .map((name) => workColumnMap[name])
+          .whereType<WorkColumn>()
+          .toSet();
+      if (restored.isEmpty) {
+        _workVisibleColumns = Set<WorkColumn>.from(
+          WorkColumn.defaultVisibleColumns,
+        );
+      } else {
+        _workVisibleColumns = restored;
+      }
+      for (final col in WorkColumn.values) {
+        if (col.isMandatory) {
+          _workVisibleColumns.add(col);
+        }
+      }
+    } else {
+      _workVisibleColumns = Set<WorkColumn>.from(
+        WorkColumn.defaultVisibleColumns,
+      );
+    }
+
+    final savedPlaylistOrder = widget.preferencesService
+        ?.getPlaylistColumnOrder();
+    if (savedPlaylistOrder != null) {
+      final restored = savedPlaylistOrder
+          .map((name) => trackColumnMap[name])
+          .whereType<TrackColumn>()
+          .toList();
+      for (final col in TrackColumn.values) {
+        if (!restored.contains(col)) {
+          restored.add(col);
+        }
+      }
+      _playlistColumnOrder = restored;
+    } else {
+      _playlistColumnOrder = List<TrackColumn>.from(TrackColumn.values);
+    }
+
+    final savedPlaylistVisible = widget.preferencesService
+        ?.getPlaylistVisibleColumns();
+    if (savedPlaylistVisible != null) {
+      final restored = savedPlaylistVisible
+          .map((name) => trackColumnMap[name])
+          .whereType<TrackColumn>()
+          .toSet();
+      if (restored.isEmpty) {
+        _playlistVisibleColumns = Set<TrackColumn>.from(
+          PlaylistDetailView.defaultVisibleColumns,
+        );
+      } else {
+        _playlistVisibleColumns = restored;
+      }
+      for (final col in TrackColumn.values) {
+        if (col.isMandatory) {
+          _playlistVisibleColumns.add(col);
+        }
+      }
+    } else {
+      _playlistVisibleColumns = Set<TrackColumn>.from(
+        PlaylistDetailView.defaultVisibleColumns,
+      );
+    }
+  }
+
   void _onPlaybackChanged() {
     if (mounted) {
       setState(() {});
@@ -177,9 +314,14 @@ class AppShellState extends State<AppShell> {
 
   @override
   void dispose() {
+    if (_volumeDebounceTimer?.isActive ?? false) {
+      _volumeDebounceTimer?.cancel();
+      widget.preferencesService?.setVolume(_volumeNotifier.value);
+    }
     HardwareKeyboard.instance.removeHandler(_handleGlobalKeyEvent);
     _searchFocusNode.dispose();
     _audioDeviceController.dispose();
+    _volumeNotifier.removeListener(_onVolumeNotifierChanged);
     _volumeNotifier.dispose();
     _nowPlayingTabNotifier.dispose();
     _playbackController.removeListener(_onPlaybackChanged);
@@ -313,6 +455,15 @@ class AppShellState extends State<AppShell> {
   bool get isNowPlayingExpanded => _isNowPlayingExpanded;
   set isNowPlayingExpanded(bool value) => _isNowPlayingExpanded = value;
 
+  bool get isSidebarCollapsed => _isSidebarCollapsed;
+  ValueNotifier<double> get volumeNotifier => _volumeNotifier;
+  List<TrackColumn> get trackColumnOrder => _trackColumnOrder;
+  Set<TrackColumn> get trackVisibleColumns => _trackVisibleColumns;
+  List<WorkColumn> get workColumnOrder => _workColumnOrder;
+  Set<WorkColumn> get workVisibleColumns => _workVisibleColumns;
+  List<TrackColumn> get playlistColumnOrder => _playlistColumnOrder;
+  Set<TrackColumn> get playlistVisibleColumns => _playlistVisibleColumns;
+
   bool get _isNowPlayingExpanded => _isNowPlayingExpandedNotifier.value;
   set _isNowPlayingExpanded(bool value) {
     if (_isNowPlayingExpandedNotifier.value != value) {
@@ -350,6 +501,7 @@ class AppShellState extends State<AppShell> {
     setState(() {
       _isSidebarCollapsed = !_isSidebarCollapsed;
     });
+    widget.preferencesService?.setSidebarCollapsed(_isSidebarCollapsed);
   }
 
   void _toggleAudioInspector() {
@@ -758,9 +910,15 @@ class AppShellState extends State<AppShell> {
             columnOrder: _trackColumnOrder,
             onVisibleColumnsChanged: (columns) {
               _trackVisibleColumns = columns;
+              widget.preferencesService?.setTrackVisibleColumns(
+                columns.map((c) => c.name).toSet(),
+              );
             },
             onColumnOrderChanged: (order) {
               _trackColumnOrder = order;
+              widget.preferencesService?.setTrackColumnOrder(
+                order.map((c) => c.name).toList(),
+              );
             },
             onClearFilter: () => setState(() {
               _activeTrackFilter = null;
@@ -785,9 +943,15 @@ class AppShellState extends State<AppShell> {
             columnOrder: _workColumnOrder,
             onVisibleColumnsChanged: (columns) {
               _workVisibleColumns = columns;
+              widget.preferencesService?.setWorkVisibleColumns(
+                columns.map((c) => c.name).toSet(),
+              );
             },
             onColumnOrderChanged: (order) {
               _workColumnOrder = order;
+              widget.preferencesService?.setWorkColumnOrder(
+                order.map((c) => c.name).toList(),
+              );
             },
             onWorkSelected: (work) {
               setState(() {
@@ -868,9 +1032,15 @@ class AppShellState extends State<AppShell> {
                 columnOrder: _playlistColumnOrder,
                 onVisibleColumnsChanged: (columns) {
                   _playlistVisibleColumns = columns;
+                  widget.preferencesService?.setPlaylistVisibleColumns(
+                    columns.map((c) => c.name).toSet(),
+                  );
                 },
                 onColumnOrderChanged: (order) {
                   _playlistColumnOrder = order;
+                  widget.preferencesService?.setPlaylistColumnOrder(
+                    order.map((c) => c.name).toList(),
+                  );
                 },
                 onBack: () => setState(() => _selectedPlaylistId = null),
                 onPlayAll: () {
@@ -971,7 +1141,9 @@ class AppShellState extends State<AppShell> {
           ),
         );
       case AppTab.settings:
-        return const RepaintBoundary(child: SettingsView());
+        return RepaintBoundary(
+          child: SettingsView(preferencesService: widget.preferencesService),
+        );
     }
   }
 
