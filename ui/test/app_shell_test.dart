@@ -13,6 +13,7 @@ import 'package:ui/design_system/widgets/lyra_input.dart';
 import 'package:ui/features/albums/albums_view.dart';
 import 'package:ui/features/artists/artists_view.dart';
 import 'package:ui/features/cas_pool/cas_view.dart';
+import 'package:ui/features/common/context_menu_coordinator.dart';
 import 'package:ui/features/inspector/asset_inspector_drawer.dart';
 import 'package:ui/features/player/views/now_playing_view.dart';
 import 'package:ui/features/playlists/playlist_detail_view.dart';
@@ -2034,6 +2035,195 @@ void main() {
         });
         await tester.pumpAndSettle();
         expect(prefs.getPlaylistVisibleColumns(), {'duration', 'title'});
+      },
+    );
+
+    testWidgets(
+      'TracksView context menu Go to Album and Go to Artist filter tracks and update view',
+      (tester) async {
+        tester.view.physicalSize = const Size(1280, 800);
+        tester.view.devicePixelRatio = 1.0;
+        addTearDown(tester.view.resetPhysicalSize);
+
+        await tester.pumpWidget(_buildAppShellTest());
+        await tester.pumpAndSettle();
+
+        // Right-click on first track in TracksView
+        final trackFinder = find
+            .text('Hotel California (Live on MTV 1994)')
+            .first;
+        await tester.tap(
+          trackFinder,
+          buttons: kSecondaryMouseButton,
+          kind: PointerDeviceKind.mouse,
+        );
+        await tester.pumpAndSettle();
+
+        expect(find.text('Go to Album'), findsOneWidget);
+        await tester.tap(find.text('Go to Album'));
+        await tester.pumpAndSettle();
+
+        // Filter token in header should show "Album: Hell Freezes Over"
+        expect(find.text('Album: Hell Freezes Over'), findsOneWidget);
+
+        // Clear filter by tapping X on badge
+        await tester.tap(find.byIcon(LucideIcons.x).first);
+        await tester.pumpAndSettle();
+        expect(find.text('Album: Hell Freezes Over'), findsNothing);
+
+        // Right-click and choose Go to Artist
+        await tester.tap(
+          trackFinder,
+          buttons: kSecondaryMouseButton,
+          kind: PointerDeviceKind.mouse,
+        );
+        await tester.pumpAndSettle();
+
+        expect(find.text('Go to Artist'), findsOneWidget);
+        await tester.tap(find.text('Go to Artist'));
+        await tester.pumpAndSettle();
+
+        expect(find.text('Artist: Eagles'), findsOneWidget);
+      },
+    );
+
+    testWidgets(
+      'navigating to Album/Artist from UpNextTab collapses NowPlayingView, clears sidebar selection, and filters tracks',
+      (tester) async {
+        tester.view.physicalSize = const Size(1280, 800);
+        tester.view.devicePixelRatio = 1.0;
+        addTearDown(tester.view.resetPhysicalSize);
+
+        await tester.pumpWidget(_buildAppShellTest());
+        await tester.pumpAndSettle();
+
+        // 1. Play first track so queue is active and player bar is visible
+        await tester.tap(
+          find.text('Hotel California (Live on MTV 1994)').first,
+        );
+        await tester.pumpAndSettle();
+
+        // 2. Select 'Audiophile' tag in sidebar to establish non-null _selectedTagId
+        await tester.tap(find.text('Audiophile'));
+        await tester.pumpAndSettle();
+        expect(find.text('Tag: Audiophile'), findsOneWidget);
+
+        // 3. Expand NowPlayingView
+        expect(find.byTooltip('Expand Now Playing'), findsOneWidget);
+        await tester.tap(find.byTooltip('Expand Now Playing'));
+        await tester.pumpAndSettle();
+
+        final nowPlayingNotifier =
+            tester
+                    .widget<ValueListenableBuilder<bool>>(
+                      find.byKey(
+                        const ValueKey('now_playing_expanded_builder'),
+                      ),
+                    )
+                    .valueListenable
+                as ValueNotifier<bool>;
+        expect(nowPlayingNotifier.value, isTrue);
+
+        // 4. In UpNextTab, right click on 'So What' row
+        final soWhatFinder = find.descendant(
+          of: find.byKey(const ValueKey('up_next_tab')),
+          matching: find.text('So What'),
+        );
+        expect(soWhatFinder, findsOneWidget);
+        await tester.tap(
+          soWhatFinder,
+          buttons: kSecondaryMouseButton,
+          kind: PointerDeviceKind.mouse,
+        );
+        await tester.pumpAndSettle();
+
+        expect(find.text('Go to Album'), findsOneWidget);
+
+        // 5. Tap 'Go to Album'
+        await tester.tap(find.text('Go to Album'));
+        await tester.pumpAndSettle();
+
+        // NowPlayingView must be collapsed
+        expect(nowPlayingNotifier.value, isFalse);
+        final collapsedSlide = tester.widget<AnimatedSlide>(
+          find.byKey(const ValueKey('now_playing_animated_slide')),
+        );
+        expect(collapsedSlide.offset, isNot(equals(Offset.zero)));
+
+        // Sidebar selection for Tag must be cleared
+        expect(find.text('Tag: Audiophile'), findsNothing);
+
+        // TracksView is visible and filtered to 'Album: Kind of Blue'
+        expect(find.byType(TracksView), findsOneWidget);
+        expect(find.text('Album: Kind of Blue'), findsOneWidget);
+
+        // 'So What' matches, while 'Hotel California' does not and is filtered out of TracksView
+        expect(
+          find.descendant(
+            of: find.byType(TracksView),
+            matching: find.text('So What'),
+          ),
+          findsOneWidget,
+        );
+        expect(
+          find.descendant(
+            of: find.byType(TracksView),
+            matching: find.text('Hotel California (Live on MTV 1994)'),
+          ),
+          findsNothing,
+        );
+      },
+    );
+
+    testWidgets(
+      'cross-widget context menu transfer closes TracksView context menu when UpNextTab row is right-clicked',
+      (tester) async {
+        tester.view.physicalSize = const Size(1280, 800);
+        tester.view.devicePixelRatio = 1.0;
+        addTearDown(tester.view.resetPhysicalSize);
+
+        await tester.pumpWidget(_buildAppShellTest());
+        await tester.pumpAndSettle();
+
+        // 1. Play first track to populate player queue
+        await tester.tap(
+          find.text('Hotel California (Live on MTV 1994)').first,
+        );
+        await tester.pumpAndSettle();
+
+        // 2. Right-click on first track in TracksView
+        final trackFinder = find
+            .text('Hotel California (Live on MTV 1994)')
+            .first;
+        await tester.tap(
+          trackFinder,
+          buttons: kSecondaryMouseButton,
+          kind: PointerDeviceKind.mouse,
+        );
+        await tester.pumpAndSettle();
+
+        expect(find.text('Add to Playlist...'), findsOneWidget);
+
+        // 3. Expand NowPlayingView
+        await tester.tap(find.byTooltip('Expand Now Playing'));
+        await tester.pumpAndSettle();
+
+        // 4. In UpNextTab, right-click on 'So What'
+        final soWhatFinder = find.descendant(
+          of: find.byKey(const ValueKey('up_next_tab')),
+          matching: find.text('So What'),
+        );
+        await tester.tap(
+          soWhatFinder,
+          buttons: kSecondaryMouseButton,
+          kind: PointerDeviceKind.mouse,
+        );
+        await tester.pumpAndSettle();
+
+        // Exactly one context menu should be active and open
+        expect(find.text('Remove from Queue'), findsOneWidget);
+        // The active controller belongs to the UpNextTab context menu
+        expect(LyraContextMenuCoordinator.activeController, isNotNull);
       },
     );
   });

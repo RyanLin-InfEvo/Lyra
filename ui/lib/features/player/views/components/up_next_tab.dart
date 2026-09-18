@@ -9,6 +9,7 @@ import '../../../../design_system/contracts/lyra_contracts.dart';
 import '../../../../design_system/factory/lyra_design_system_scope.dart';
 import '../../../../design_system/tokens/lyra_tokens.dart';
 import '../../../../design_system/widgets/lyra_button.dart';
+import '../../../common/context_menu_coordinator.dart';
 import '../../../models/track.dart';
 import '../../controllers/playback_queue_controller.dart';
 import '../../../../widgets/threshold_reorderable_drag_start_listener.dart';
@@ -21,6 +22,8 @@ class UpNextTab extends StatefulWidget {
   final String? queueSource;
   final void Function(Track track)? onAddToPlaylist;
   final void Function(Track track)? onInspectAudio;
+  final ValueChanged<String>? onGoToAlbum;
+  final ValueChanged<String>? onGoToArtist;
 
   const UpNextTab({
     super.key,
@@ -28,6 +31,8 @@ class UpNextTab extends StatefulWidget {
     this.queueSource,
     this.onAddToPlaylist,
     this.onInspectAudio,
+    this.onGoToAlbum,
+    this.onGoToArtist,
   });
 
   @override
@@ -193,47 +198,55 @@ class _UpNextTabState extends State<UpNextTab> {
                       ),
                     ),
                   )
-                : ReorderableListView.builder(
-                    scrollController: _scrollController,
-                    itemCount: queue.length,
-                    itemExtent: 64.0,
-                    buildDefaultDragHandles: false,
-                    proxyDecorator: (child, index, animation) =>
-                        _proxyDecorator(child, index, animation, tokens),
-                    onReorder: (oldIndex, newIndex) {
-                      widget.playbackController.reorderQueue(
-                        oldIndex,
-                        newIndex,
-                      );
+                : NotificationListener<ScrollStartNotification>(
+                    onNotification: (notification) {
+                      LyraContextMenuCoordinator.hideActive();
+                      return false;
                     },
-                    padding: const EdgeInsets.symmetric(
-                      vertical: LyraSpacing.xs,
-                      horizontal: LyraSpacing.sm,
-                    ),
-                    itemBuilder: (context, index) {
-                      final track = queue[index];
-                      final isCurrent = index == currentIndex;
-                      final queueItemIds =
-                          widget.playbackController.queueItemIds;
-                      final itemId = index < queueItemIds.length
-                          ? queueItemIds[index]
-                          : 'qi_${track.id}_$index';
+                    child: ReorderableListView.builder(
+                      scrollController: _scrollController,
+                      itemCount: queue.length,
+                      itemExtent: 64.0,
+                      buildDefaultDragHandles: false,
+                      proxyDecorator: (child, index, animation) =>
+                          _proxyDecorator(child, index, animation, tokens),
+                      onReorder: (oldIndex, newIndex) {
+                        widget.playbackController.reorderQueue(
+                          oldIndex,
+                          newIndex,
+                        );
+                      },
+                      padding: const EdgeInsets.symmetric(
+                        vertical: LyraSpacing.xs,
+                        horizontal: LyraSpacing.sm,
+                      ),
+                      itemBuilder: (context, index) {
+                        final track = queue[index];
+                        final isCurrent = index == currentIndex;
+                        final queueItemIds =
+                            widget.playbackController.queueItemIds;
+                        final itemId = index < queueItemIds.length
+                            ? queueItemIds[index]
+                            : 'qi_${track.id}_$index';
 
-                      return _QueueItemRow(
-                        key: ValueKey('queue_item_$itemId'),
-                        track: track,
-                        index: index,
-                        isCurrent: isCurrent,
-                        canReorder: queue.length > 1,
-                        tokens: tokens,
-                        onTap: () {
-                          widget.playbackController.playQueueItem(index);
-                        },
-                        playbackController: widget.playbackController,
-                        onAddToPlaylist: widget.onAddToPlaylist,
-                        onInspectAudio: widget.onInspectAudio,
-                      );
-                    },
+                        return _QueueItemRow(
+                          key: ValueKey('queue_item_$itemId'),
+                          track: track,
+                          index: index,
+                          isCurrent: isCurrent,
+                          canReorder: queue.length > 1,
+                          tokens: tokens,
+                          onTap: () {
+                            widget.playbackController.playQueueItem(index);
+                          },
+                          playbackController: widget.playbackController,
+                          onAddToPlaylist: widget.onAddToPlaylist,
+                          onInspectAudio: widget.onInspectAudio,
+                          onGoToAlbum: widget.onGoToAlbum,
+                          onGoToArtist: widget.onGoToArtist,
+                        );
+                      },
+                    ),
                   ),
           ),
         ],
@@ -294,6 +307,8 @@ class _QueueItemRow extends StatefulWidget {
   final PlaybackQueueController playbackController;
   final void Function(Track track)? onAddToPlaylist;
   final void Function(Track track)? onInspectAudio;
+  final ValueChanged<String>? onGoToAlbum;
+  final ValueChanged<String>? onGoToArtist;
 
   const _QueueItemRow({
     super.key,
@@ -306,6 +321,8 @@ class _QueueItemRow extends StatefulWidget {
     required this.playbackController,
     this.onAddToPlaylist,
     this.onInspectAudio,
+    this.onGoToAlbum,
+    this.onGoToArtist,
   });
 
   @override
@@ -314,6 +331,33 @@ class _QueueItemRow extends StatefulWidget {
 
 class _QueueItemRowState extends State<_QueueItemRow> {
   bool _isHovered = false;
+  late final ShadContextMenuController _contextMenuController =
+      ShadContextMenuController();
+
+  @override
+  void initState() {
+    super.initState();
+    _contextMenuController.addListener(_handleContextMenuChanged);
+  }
+
+  void _handleContextMenuChanged() {
+    if (_contextMenuController.isOpen) {
+      LyraContextMenuCoordinator.setActive(_contextMenuController);
+    } else if (LyraContextMenuCoordinator.isActive(_contextMenuController)) {
+      LyraContextMenuCoordinator.hideActive();
+    }
+    if (mounted) {
+      setState(() {});
+    }
+  }
+
+  @override
+  void dispose() {
+    _contextMenuController.removeListener(_handleContextMenuChanged);
+    LyraContextMenuCoordinator.onDisposed(_contextMenuController);
+    _contextMenuController.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -328,8 +372,10 @@ class _QueueItemRowState extends State<_QueueItemRow> {
         index: index,
         enabled: widget.canReorder,
         child: ShadContextMenuRegion(
+          controller: _contextMenuController,
           tapEnabled: false,
           constraints: const BoxConstraints(minWidth: 180),
+          popoverReverseDuration: const Duration(milliseconds: 50),
           items: [
             ShadContextMenuItem(
               leading: const Icon(LucideIcons.play, size: 16.0),
@@ -339,7 +385,7 @@ class _QueueItemRowState extends State<_QueueItemRow> {
               child: const Text('Play Now'),
             ),
             ShadContextMenuItem(
-              leading: const Icon(LucideIcons.listPlus, size: 16.0),
+              leading: const Icon(LucideIcons.listStart, size: 16.0),
               onPressed: () {
                 widget.playbackController.playNext(track);
               },
@@ -352,6 +398,22 @@ class _QueueItemRowState extends State<_QueueItemRow> {
                   widget.onAddToPlaylist!(track);
                 },
                 child: const Text('Add to Playlist...'),
+              ),
+            if (widget.onGoToAlbum != null && track.album.trim().isNotEmpty)
+              ShadContextMenuItem(
+                leading: const Icon(LucideIcons.disc, size: 16.0),
+                onPressed: () {
+                  widget.onGoToAlbum!(track.album);
+                },
+                child: const Text('Go to Album'),
+              ),
+            if (widget.onGoToArtist != null && track.artist.trim().isNotEmpty)
+              ShadContextMenuItem(
+                leading: const Icon(LucideIcons.mic2, size: 16.0),
+                onPressed: () {
+                  widget.onGoToArtist!(track.artist);
+                },
+                child: const Text('Go to Artist'),
               ),
             ShadContextMenuItem(
               leading: const Icon(LucideIcons.trash2, size: 16.0),
@@ -374,7 +436,10 @@ class _QueueItemRowState extends State<_QueueItemRow> {
             onEnter: (_) => setState(() => _isHovered = true),
             onExit: (_) => setState(() => _isHovered = false),
             child: GestureDetector(
-              onTap: onTap,
+              onTap: () {
+                LyraContextMenuCoordinator.hideActive();
+                onTap();
+              },
               behavior: HitTestBehavior.opaque,
               child: AnimatedContainer(
                 duration: const Duration(milliseconds: 120),
@@ -386,7 +451,7 @@ class _QueueItemRowState extends State<_QueueItemRow> {
                 decoration: BoxDecoration(
                   color: isCurrent
                       ? tokens.secondary
-                      : (_isHovered
+                      : (_isHovered || _contextMenuController.isOpen
                             ? tokens.secondary.withValues(alpha: 0.5)
                             : const Color(0x00000000)),
                   borderRadius: LyraRadius.mdRadius,

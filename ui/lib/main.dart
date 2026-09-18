@@ -102,6 +102,55 @@ class _LyraAppState extends State<LyraApp> {
             colorScheme: isDark
                 ? const ShadZincColorScheme.dark()
                 : const ShadZincColorScheme.light(),
+            popoverTheme: const ShadPopoverTheme(
+              reverseDuration: Duration(milliseconds: 50),
+            ),
+            contextMenuTheme: ShadContextMenuTheme(
+              constraints: const BoxConstraints(minWidth: 180),
+              padding: const EdgeInsets.symmetric(
+                vertical: 4.0,
+                horizontal: 4.0,
+              ),
+              itemPadding: const EdgeInsets.symmetric(
+                horizontal: 8.0,
+                vertical: 6.0,
+              ),
+              popoverReverseDuration: const Duration(milliseconds: 50),
+              effects: [
+                FadeEffect(
+                  duration: const Duration(milliseconds: 80),
+                  curve: Curves.easeOutCubic,
+                ),
+                ScaleEffect(
+                  begin: const Offset(0.98, 0.98),
+                  end: const Offset(1.0, 1.0),
+                  duration: const Duration(milliseconds: 80),
+                  curve: Curves.easeOutCubic,
+                ),
+              ],
+              decoration: ShadDecoration(
+                color: tokens.card.withValues(alpha: 0.92),
+                border: ShadBorder.all(
+                  color: tokens.border.withValues(alpha: 0.8),
+                  width: 1.0,
+                  radius: BorderRadius.circular(6.0),
+                ),
+              ),
+              shadows: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.20),
+                  blurRadius: 16.0,
+                  offset: const Offset(0, 8),
+                  spreadRadius: -2.0,
+                ),
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.12),
+                  blurRadius: 6.0,
+                  offset: const Offset(0, 2),
+                  spreadRadius: 0,
+                ),
+              ],
+            ),
           );
 
           return ShadTheme(

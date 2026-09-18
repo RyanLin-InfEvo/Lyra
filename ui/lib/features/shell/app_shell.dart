@@ -475,6 +475,37 @@ class AppShellState extends State<AppShell> {
     _isNowPlayingExpanded = false;
   }
 
+  void _navigateToAlbum(String albumTitle) {
+    final title = albumTitle.trim();
+    if (title.isEmpty) return;
+    _collapseNowPlaying();
+    setState(() {
+      _selectedTagId = null;
+      _selectedPlaylistId = null;
+      _activeTrackFilter = TrackFilter(
+        label: 'Album: $title',
+        predicate: (t) => t.album.trim().toLowerCase() == title.toLowerCase(),
+      );
+      _currentTab = AppTab.tracks;
+    });
+  }
+
+  void _navigateToArtist(String artistName) {
+    final name = artistName.trim();
+    if (name.isEmpty) return;
+    _collapseNowPlaying();
+    setState(() {
+      _selectedTagId = null;
+      _selectedPlaylistId = null;
+      _activeTrackFilter = TrackFilter(
+        label: 'Artist: $name',
+        predicate: (t) =>
+            t.artist.trim().toLowerCase().contains(name.toLowerCase()),
+      );
+      _currentTab = AppTab.tracks;
+    });
+  }
+
   void _toggleNowPlaying() {
     _isNowPlayingExpandedNotifier.value = !_isNowPlayingExpandedNotifier.value;
   }
@@ -930,8 +961,13 @@ class AppShellState extends State<AppShell> {
             }),
             onTrackSelected: _onTrackSelected,
             onTogglePlay: _togglePlay,
+            onPlayNext: (track) => _playbackController.playNext(track),
+            onAddToQueue: (track) => _playbackController.addToQueue(track),
+            onAddToPlaylist: _showAddToPlaylistDialog,
             onInspectTrack: _openInspectorForTrack,
             onInspectAudio: _openInspectorForAudio,
+            onGoToAlbum: _navigateToAlbum,
+            onGoToArtist: _navigateToArtist,
             onImport: _showImportDialog,
           ),
         );
@@ -974,33 +1010,14 @@ class AppShellState extends State<AppShell> {
         return RepaintBoundary(
           child: AlbumsView(
             albums: _albums,
-            onAlbumSelected: (album) {
-              setState(() {
-                _activeTrackFilter = TrackFilter(
-                  label: 'Album: ${album.title}',
-                  predicate: (track) =>
-                      track.album.toLowerCase() == album.title.toLowerCase(),
-                );
-                _currentTab = AppTab.tracks;
-              });
-            },
+            onAlbumSelected: (album) => _navigateToAlbum(album.title),
           ),
         );
       case AppTab.artists:
         return RepaintBoundary(
           child: ArtistsView(
             artists: _artists,
-            onArtistSelected: (artist) {
-              setState(() {
-                _activeTrackFilter = TrackFilter(
-                  label: 'Artist: ${artist.name}',
-                  predicate: (track) => track.artist.toLowerCase().contains(
-                    artist.name.toLowerCase(),
-                  ),
-                );
-                _currentTab = AppTab.tracks;
-              });
-            },
+            onArtistSelected: (artist) => _navigateToArtist(artist.name),
           ),
         );
       case AppTab.playlists:
@@ -1030,6 +1047,8 @@ class AppShellState extends State<AppShell> {
                 isPlaying: _isPlaying,
                 visibleColumns: _playlistVisibleColumns,
                 columnOrder: _playlistColumnOrder,
+                onGoToAlbum: _navigateToAlbum,
+                onGoToArtist: _navigateToArtist,
                 onVisibleColumnsChanged: (columns) {
                   _playlistVisibleColumns = columns;
                   widget.preferencesService?.setPlaylistVisibleColumns(
@@ -1384,6 +1403,8 @@ class AppShellState extends State<AppShell> {
                                                     _showAddToPlaylistDialog,
                                                 onInspectAudio:
                                                     _openInspectorForAudio,
+                                                onGoToAlbum: _navigateToAlbum,
+                                                onGoToArtist: _navigateToArtist,
                                                 queueSource:
                                                     _activeTrackFilter != null
                                                     ? _activeTrackFilter!.label

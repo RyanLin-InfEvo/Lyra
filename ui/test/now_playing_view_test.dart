@@ -36,6 +36,8 @@ Widget _buildNowPlayingTest({
   MusicService? musicService,
   void Function(Track track)? onAddToPlaylist,
   void Function(Track track)? onInspectAudio,
+  ValueChanged<String>? onGoToAlbum,
+  ValueChanged<String>? onGoToArtist,
 }) {
   final themeModeNotifier =
       themeNotifier ?? ValueNotifier<ThemeMode>(ThemeMode.dark);
@@ -78,6 +80,8 @@ Widget _buildNowPlayingTest({
                 musicService: musicService,
                 onAddToPlaylist: onAddToPlaylist,
                 onInspectAudio: onInspectAudio,
+                onGoToAlbum: onGoToAlbum,
+                onGoToArtist: onGoToArtist,
               ),
             ),
           ),
@@ -484,6 +488,198 @@ void main() {
         await tester.tap(find.text('Inspect Audio...'));
         await tester.pumpAndSettle();
         expect(inspectedTrack, equals(track2));
+      },
+    );
+
+    testWidgets(
+      'UpNextTab context menu includes Go to Album and Go to Artist and triggers callbacks',
+      (tester) async {
+        final controller = PlaybackQueueController(autoStartTimer: false);
+        addTearDown(controller.dispose);
+        controller.play(track1, contextQueue: [track1, track2, track3]);
+
+        String? goToAlbumTitle;
+        String? goToArtistName;
+
+        await tester.pumpWidget(
+          _buildNowPlayingTest(
+            playbackController: controller,
+            onGoToAlbum: (a) => goToAlbumTitle = a,
+            onGoToArtist: (a) => goToArtistName = a,
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        // Right-click track 1
+        await tester.tap(
+          find.text(track1.displayTitle),
+          buttons: kSecondaryMouseButton,
+          kind: PointerDeviceKind.mouse,
+        );
+        await tester.pumpAndSettle();
+
+        expect(find.text('Go to Album'), findsOneWidget);
+        expect(find.text('Go to Artist'), findsOneWidget);
+        expect(
+          find.descendant(
+            of: find.byType(ShadContextMenu),
+            matching: find.byIcon(LucideIcons.disc),
+          ),
+          findsOneWidget,
+        );
+        expect(
+          find.descendant(
+            of: find.byType(ShadContextMenu),
+            matching: find.byIcon(LucideIcons.mic2),
+          ),
+          findsOneWidget,
+        );
+
+        // Tap Go to Album
+        await tester.tap(find.text('Go to Album'));
+        await tester.pumpAndSettle();
+        expect(goToAlbumTitle, equals(track1.album));
+        expect(find.text('Go to Album'), findsNothing);
+
+        // Right-click again and tap Go to Artist
+        await tester.tap(
+          find.text(track1.displayTitle),
+          buttons: kSecondaryMouseButton,
+          kind: PointerDeviceKind.mouse,
+        );
+        await tester.pumpAndSettle();
+
+        await tester.tap(find.text('Go to Artist'));
+        await tester.pumpAndSettle();
+        expect(goToArtistName, equals(track1.artist));
+        expect(find.text('Go to Artist'), findsNothing);
+      },
+    );
+
+    testWidgets(
+      'UpNextTab right-clicking row 1 then row 2 transfers context menu without residual menu',
+      (tester) async {
+        final controller = PlaybackQueueController(autoStartTimer: false);
+        addTearDown(controller.dispose);
+        controller.play(track1, contextQueue: [track1, track2, track3]);
+
+        String? selectedAlbum;
+
+        await tester.pumpWidget(
+          _buildNowPlayingTest(
+            playbackController: controller,
+            onGoToAlbum: (a) => selectedAlbum = a,
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        // 1. Right click on Row 3 (Giorgio by Moroder)
+        await tester.tap(
+          find.text('Giorgio by Moroder'),
+          buttons: kSecondaryMouseButton,
+          kind: PointerDeviceKind.mouse,
+        );
+        await tester.pumpAndSettle();
+
+        expect(find.text('Play Now'), findsOneWidget);
+        expect(find.text('Go to Album'), findsOneWidget);
+
+        // 2. Right click on Row 2 (So What) which is above Row 3 without closing Row 3's menu first
+        await tester.tap(
+          find.text('So What'),
+          buttons: kSecondaryMouseButton,
+          kind: PointerDeviceKind.mouse,
+        );
+        await tester.pumpAndSettle();
+
+        // Should have exactly one context menu open, no residual menu
+        expect(find.text('Play Now'), findsOneWidget);
+        expect(find.text('Go to Album'), findsOneWidget);
+
+        // Tap Go to Album - should act on Track 2 (Kind of Blue)
+        await tester.tap(find.text('Go to Album'));
+        await tester.pumpAndSettle();
+
+        expect(selectedAlbum, equals(track2.album));
+        expect(find.text('Go to Album'), findsNothing);
+      },
+    );
+
+    testWidgets(
+      'UpNextTab left-clicking another row dismisses context menu and plays that row',
+      (tester) async {
+        final controller = PlaybackQueueController(autoStartTimer: false);
+        addTearDown(controller.dispose);
+        controller.play(track1, contextQueue: [track1, track2, track3]);
+
+        await tester.pumpWidget(
+          _buildNowPlayingTest(playbackController: controller),
+        );
+        await tester.pumpAndSettle();
+
+        // 1. Right click on Row 3 (Giorgio by Moroder)
+        await tester.tap(
+          find.text('Giorgio by Moroder'),
+          buttons: kSecondaryMouseButton,
+          kind: PointerDeviceKind.mouse,
+        );
+        await tester.pumpAndSettle();
+
+        expect(find.text('Play Now'), findsOneWidget);
+
+        // 2. Left click on Row 2 (So What) which is unoccluded above Row 3
+        await tester.tap(find.text('So What'));
+        await tester.pumpAndSettle();
+
+        // Context menu should be dismissed immediately
+        expect(find.text('Play Now'), findsNothing);
+
+        // Active queue item should be index 1 (track2)
+        expect(controller.currentIndex, equals(1));
+      },
+    );
+
+    testWidgets(
+      'UpNextTab scrolling the queue list dismisses the context menu',
+      (tester) async {
+        final controller = PlaybackQueueController(autoStartTimer: false);
+        addTearDown(controller.dispose);
+        final manyTracks = List.generate(
+          30,
+          (i) => Track(
+            id: 'qi_$i',
+            title: 'Queue Track $i',
+            artistName: 'Artist $i',
+            albumTitle: 'Album $i',
+            durationMs: 180000,
+          ),
+        );
+        controller.play(manyTracks[0], contextQueue: manyTracks);
+
+        await tester.pumpWidget(
+          _buildNowPlayingTest(playbackController: controller),
+        );
+        await tester.pumpAndSettle();
+
+        // 1. Right click on first queue item
+        await tester.tap(
+          find.text('Queue Track 0'),
+          buttons: kSecondaryMouseButton,
+          kind: PointerDeviceKind.mouse,
+        );
+        await tester.pumpAndSettle();
+
+        expect(find.text('Play Now'), findsOneWidget);
+
+        // 2. Scroll the queue list downwards
+        await tester.drag(
+          find.byType(ReorderableListView),
+          const Offset(0, -100),
+        );
+        await tester.pumpAndSettle();
+
+        // Context menu should be dismissed
+        expect(find.text('Play Now'), findsNothing);
       },
     );
 

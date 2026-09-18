@@ -37,6 +37,8 @@ class NowPlayingView extends StatefulWidget {
   final ValueChanged<int>? onTabSelected;
   final void Function(Track track)? onAddToPlaylist;
   final void Function(Track track)? onInspectAudio;
+  final ValueChanged<String>? onGoToAlbum;
+  final ValueChanged<String>? onGoToArtist;
 
   const NowPlayingView({
     super.key,
@@ -55,6 +57,8 @@ class NowPlayingView extends StatefulWidget {
     this.onTabSelected,
     this.onAddToPlaylist,
     this.onInspectAudio,
+    this.onGoToAlbum,
+    this.onGoToArtist,
   });
 
   @override
@@ -356,6 +360,8 @@ class _NowPlayingViewState extends State<NowPlayingView> {
                       queueSource: widget.queueSource,
                       onAddToPlaylist: widget.onAddToPlaylist,
                       onInspectAudio: widget.onInspectAudio,
+                      onGoToAlbum: widget.onGoToAlbum,
+                      onGoToArtist: widget.onGoToArtist,
                     ),
                   )
                 : _selectedTabIndex == 1

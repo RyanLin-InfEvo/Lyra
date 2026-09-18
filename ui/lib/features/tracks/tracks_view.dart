@@ -22,6 +22,7 @@ import '../../design_system/widgets/lyra_badge.dart';
 import '../../design_system/widgets/lyra_button.dart';
 import '../../design_system/widgets/lyra_copy_button.dart';
 import '../../widgets/draggable_columns_overlay.dart';
+import '../common/context_menu_coordinator.dart';
 import '../models/track.dart';
 
 /// Columns available in the Tracks table.
@@ -181,8 +182,13 @@ class TracksView extends StatefulWidget {
   final bool isPlaying;
   final ValueChanged<Track> onTrackSelected;
   final VoidCallback onTogglePlay;
+  final ValueChanged<Track>? onPlayNext;
+  final ValueChanged<Track>? onAddToQueue;
+  final ValueChanged<Track>? onAddToPlaylist;
   final ValueChanged<Track>? onInspectTrack;
   final ValueChanged<Track>? onInspectAudio;
+  final ValueChanged<String>? onGoToAlbum;
+  final ValueChanged<String>? onGoToArtist;
   final Map<String, int>? audioVersionCounts;
   final String? filterLabel;
   final VoidCallback? onClearFilter;
@@ -199,8 +205,13 @@ class TracksView extends StatefulWidget {
     required this.isPlaying,
     required this.onTrackSelected,
     required this.onTogglePlay,
+    this.onPlayNext,
+    this.onAddToQueue,
+    this.onAddToPlaylist,
     this.onInspectTrack,
     this.onInspectAudio,
+    this.onGoToAlbum,
+    this.onGoToArtist,
     this.audioVersionCounts,
     this.filterLabel,
     this.onClearFilter,
@@ -663,47 +674,65 @@ class _TracksViewState extends State<TracksView> {
 
         // Table Rows
         Expanded(
-          child: ListView.builder(
-            padding: const EdgeInsets.symmetric(vertical: LyraSpacing.xs),
-            itemCount: displayTracks.length,
-            itemExtent: math.max(
-              56.0,
-              56.0 * MediaQuery.textScalerOf(context).scale(1.0),
-            ),
-            itemBuilder: (context, index) {
-              final track = displayTracks[index];
-              final isCurrent = widget.currentTrack?.id == track.id;
-              final versionCount =
-                  widget.audioVersionCounts?[track.id] ??
-                  widget.audioVersionCounts?[track.pcmHash] ??
-                  1;
+          child: NotificationListener<ScrollStartNotification>(
+            onNotification: (notification) {
+              LyraContextMenuCoordinator.hideActive();
+              return false;
+            },
+            child: ListView.builder(
+              padding: const EdgeInsets.symmetric(vertical: LyraSpacing.xs),
+              itemCount: displayTracks.length,
+              itemExtent: math.max(
+                56.0,
+                56.0 * MediaQuery.textScalerOf(context).scale(1.0),
+              ),
+              itemBuilder: (context, index) {
+                final track = displayTracks[index];
+                final isCurrent = widget.currentTrack?.id == track.id;
+                final versionCount =
+                    widget.audioVersionCounts?[track.id] ??
+                    widget.audioVersionCounts?[track.pcmHash] ??
+                    1;
 
-              return _TrackRow(
-                index: index + 1,
-                track: track,
-                isCurrent: isCurrent,
-                isPlaying: isCurrent && widget.isPlaying,
-                versionCount: versionCount,
-                columnOrder: _effectiveColumnOrder,
-                visibleColumns: _effectiveVisibleColumns,
-                onTap: () {
-                  if (isCurrent) {
-                    widget.onTogglePlay();
-                  } else {
-                    widget.onTrackSelected(track);
-                  }
-                },
-                onInspect: widget.onInspectTrack != null
-                    ? () => widget.onInspectTrack!(track)
-                    : null,
-                onInspectAudio: widget.onInspectAudio != null
+                final onInspectAudio = widget.onInspectAudio != null
                     ? () => widget.onInspectAudio!(track)
                     : (widget.onInspectTrack != null
                           ? () => widget.onInspectTrack!(track)
-                          : null),
-                tokens: tokens,
-              );
-            },
+                          : null);
+
+                return _TrackRow(
+                  key: ValueKey(track.id),
+                  index: index + 1,
+                  track: track,
+                  isCurrent: isCurrent,
+                  isPlaying: isCurrent && widget.isPlaying,
+                  versionCount: versionCount,
+                  columnOrder: _effectiveColumnOrder,
+                  visibleColumns: _effectiveVisibleColumns,
+                  onTap: () {
+                    if (isCurrent) {
+                      widget.onTogglePlay();
+                    } else {
+                      widget.onTrackSelected(track);
+                    }
+                  },
+                  onPlayNow: () => widget.onTrackSelected(track),
+                  onPlayNext: widget.onPlayNext != null
+                      ? () => widget.onPlayNext!(track)
+                      : null,
+                  onAddToQueue: widget.onAddToQueue != null
+                      ? () => widget.onAddToQueue!(track)
+                      : null,
+                  onAddToPlaylist: widget.onAddToPlaylist != null
+                      ? () => widget.onAddToPlaylist!(track)
+                      : null,
+                  onInspectAudio: onInspectAudio,
+                  onGoToAlbum: widget.onGoToAlbum,
+                  onGoToArtist: widget.onGoToArtist,
+                  tokens: tokens,
+                );
+              },
+            ),
           ),
         ),
       ],
@@ -850,21 +879,32 @@ class _TrackRow extends StatefulWidget {
   final bool isPlaying;
   final int versionCount;
   final VoidCallback onTap;
-  final VoidCallback? onInspect;
+  final VoidCallback? onPlayNow;
+  final VoidCallback? onPlayNext;
+  final VoidCallback? onAddToQueue;
+  final VoidCallback? onAddToPlaylist;
   final VoidCallback? onInspectAudio;
+  final ValueChanged<String>? onGoToAlbum;
+  final ValueChanged<String>? onGoToArtist;
   final LyraThemeTokens tokens;
   final List<TrackColumn> columnOrder;
   final Set<TrackColumn> visibleColumns;
 
   const _TrackRow({
+    super.key,
     required this.index,
     required this.track,
     required this.isCurrent,
     required this.isPlaying,
     this.versionCount = 1,
     required this.onTap,
-    this.onInspect,
+    this.onPlayNow,
+    this.onPlayNext,
+    this.onAddToQueue,
+    this.onAddToPlaylist,
     this.onInspectAudio,
+    this.onGoToAlbum,
+    this.onGoToArtist,
     required this.tokens,
     required this.columnOrder,
     required this.visibleColumns,
@@ -876,6 +916,33 @@ class _TrackRow extends StatefulWidget {
 
 class _TrackRowState extends State<_TrackRow> {
   bool _isHovered = false;
+  late final ShadContextMenuController _contextMenuController =
+      ShadContextMenuController();
+
+  @override
+  void initState() {
+    super.initState();
+    _contextMenuController.addListener(_handleContextMenuChanged);
+  }
+
+  void _handleContextMenuChanged() {
+    if (_contextMenuController.isOpen) {
+      LyraContextMenuCoordinator.setActive(_contextMenuController);
+    } else if (LyraContextMenuCoordinator.isActive(_contextMenuController)) {
+      LyraContextMenuCoordinator.hideActive();
+    }
+    if (mounted) {
+      setState(() {});
+    }
+  }
+
+  @override
+  void dispose() {
+    _contextMenuController.removeListener(_handleContextMenuChanged);
+    LyraContextMenuCoordinator.onDisposed(_contextMenuController);
+    _contextMenuController.dispose();
+    super.dispose();
+  }
 
   Widget _buildRowCell(TrackColumn col, LyraThemeTokens tokens) {
     switch (col.name) {
@@ -989,12 +1056,12 @@ class _TrackRowState extends State<_TrackRow> {
             child: Align(
               alignment: Alignment.centerLeft,
               child: MouseRegion(
-                cursor: (widget.onInspectAudio ?? widget.onInspect) != null
+                cursor: widget.onInspectAudio != null
                     ? SystemMouseCursors.click
                     : SystemMouseCursors.basic,
                 child: GestureDetector(
                   behavior: HitTestBehavior.opaque,
-                  onTap: widget.onInspectAudio ?? widget.onInspect,
+                  onTap: widget.onInspectAudio,
                   child: LyraBadge.outline(
                     padding: const EdgeInsets.symmetric(
                       horizontal: 6.0,
@@ -1183,39 +1250,94 @@ class _TrackRowState extends State<_TrackRow> {
   @override
   Widget build(BuildContext context) {
     final tokens = widget.tokens;
+    final track = widget.track;
+    final isHighlighted =
+        widget.isCurrent || _isHovered || _contextMenuController.isOpen;
 
     return RepaintBoundary(
-      child: MouseRegion(
-        onEnter: (_) => setState(() => _isHovered = true),
-        onExit: (_) => setState(() => _isHovered = false),
-        child: GestureDetector(
-          behavior: HitTestBehavior.opaque,
-          onTap: widget.onTap,
-          onSecondaryTap: widget.onInspectAudio ?? widget.onInspect,
-          child: Container(
-            padding: const EdgeInsets.symmetric(
-              horizontal: LyraSpacing.xl,
-              vertical: LyraSpacing.sm,
+      child: ShadContextMenuRegion(
+        controller: _contextMenuController,
+        tapEnabled: false,
+        constraints: const BoxConstraints(minWidth: 180),
+        popoverReverseDuration: const Duration(milliseconds: 50),
+        items: [
+          ShadContextMenuItem(
+            leading: const Icon(LucideIcons.play, size: 16.0),
+            onPressed: widget.onPlayNow ?? widget.onTap,
+            child: const Text('Play Now'),
+          ),
+          if (widget.onPlayNext != null)
+            ShadContextMenuItem(
+              leading: const Icon(LucideIcons.listStart, size: 16.0),
+              onPressed: widget.onPlayNext,
+              child: const Text('Play Next'),
             ),
-            decoration: BoxDecoration(
-              color: widget.isCurrent
-                  ? tokens.secondary
-                  : _isHovered
-                  ? tokens.secondary.withValues(alpha: 0.5)
-                  : null,
-              border: Border(
-                bottom: BorderSide(
-                  color: tokens.border.withValues(alpha: 0.4),
-                  width: 1.0,
+          if (widget.onAddToQueue != null)
+            ShadContextMenuItem(
+              leading: const Icon(LucideIcons.listEnd, size: 16.0),
+              onPressed: widget.onAddToQueue,
+              child: const Text('Add to Queue'),
+            ),
+          if (widget.onAddToPlaylist != null)
+            ShadContextMenuItem(
+              leading: const Icon(LucideIcons.folderPlus, size: 16.0),
+              onPressed: widget.onAddToPlaylist,
+              child: const Text('Add to Playlist...'),
+            ),
+          if (widget.onGoToAlbum != null && track.album.trim().isNotEmpty)
+            ShadContextMenuItem(
+              leading: const Icon(LucideIcons.disc, size: 16.0),
+              onPressed: () => widget.onGoToAlbum!(track.album),
+              child: const Text('Go to Album'),
+            ),
+          if (widget.onGoToArtist != null && track.artist.trim().isNotEmpty)
+            ShadContextMenuItem(
+              leading: const Icon(LucideIcons.mic2, size: 16.0),
+              onPressed: () => widget.onGoToArtist!(track.artist),
+              child: const Text('Go to Artist'),
+            ),
+          if (widget.onInspectAudio != null)
+            ShadContextMenuItem(
+              leading: const Icon(LucideIcons.info, size: 16.0),
+              onPressed: widget.onInspectAudio,
+              child: const Text('Inspect Audio'),
+            ),
+        ],
+        child: MouseRegion(
+          cursor: SystemMouseCursors.click,
+          onEnter: (_) => setState(() => _isHovered = true),
+          onExit: (_) => setState(() => _isHovered = false),
+          child: GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: () {
+              LyraContextMenuCoordinator.hideActive();
+              widget.onTap();
+            },
+            child: Container(
+              padding: const EdgeInsets.symmetric(
+                horizontal: LyraSpacing.xl,
+                vertical: LyraSpacing.sm,
+              ),
+              decoration: BoxDecoration(
+                color: widget.isCurrent
+                    ? tokens.secondary
+                    : isHighlighted
+                    ? tokens.secondary.withValues(alpha: 0.5)
+                    : null,
+                border: Border(
+                  bottom: BorderSide(
+                    color: tokens.border.withValues(alpha: 0.4),
+                    width: 1.0,
+                  ),
                 ),
               ),
-            ),
-            child: Row(
-              children: [
-                for (final col in widget.columnOrder)
-                  if (widget.visibleColumns.contains(col))
-                    _buildCell(col, tokens),
-              ],
+              child: Row(
+                children: [
+                  for (final col in widget.columnOrder)
+                    if (widget.visibleColumns.contains(col))
+                      _buildCell(col, tokens),
+                ],
+              ),
             ),
           ),
         ),

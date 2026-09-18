@@ -19,8 +19,13 @@ Widget _buildTracksViewTest({
   bool isPlaying = false,
   ValueChanged<Track>? onTrackSelected,
   VoidCallback? onTogglePlay,
+  ValueChanged<Track>? onPlayNext,
+  ValueChanged<Track>? onAddToQueue,
+  ValueChanged<Track>? onAddToPlaylist,
   ValueChanged<Track>? onInspectTrack,
   ValueChanged<Track>? onInspectAudio,
+  ValueChanged<String>? onGoToAlbum,
+  ValueChanged<String>? onGoToArtist,
   Map<String, int>? audioVersionCounts,
   String? filterLabel,
   VoidCallback? onClearFilter,
@@ -65,8 +70,13 @@ Widget _buildTracksViewTest({
                 isPlaying: isPlaying,
                 onTrackSelected: onTrackSelected ?? (_) {},
                 onTogglePlay: onTogglePlay ?? () {},
+                onPlayNext: onPlayNext,
+                onAddToQueue: onAddToQueue,
+                onAddToPlaylist: onAddToPlaylist,
                 onInspectTrack: onInspectTrack,
                 onInspectAudio: onInspectAudio,
+                onGoToAlbum: onGoToAlbum,
+                onGoToArtist: onGoToArtist,
                 audioVersionCounts: audioVersionCounts,
                 filterLabel: filterLabel,
                 onClearFilter: onClearFilter,
@@ -1418,5 +1428,448 @@ void main() {
         expect(listView.itemExtent, 56.0 * 1.5);
       },
     );
+
+    group('TracksView Desktop Context Menu Tests', () {
+      testWidgets(
+        'TracksView right-clicking track row displays context menu with all items and triggers each callback',
+        (tester) async {
+          Track? playNowTrack;
+          Track? playNextTrack;
+          Track? addToQueueTrack;
+          Track? addToPlaylistTrack;
+          Track? inspectAudioTrack;
+          String? goToAlbumTitle;
+          String? goToArtistName;
+
+          await tester.pumpWidget(
+            _buildTracksViewTest(
+              tracks: sampleTracks,
+              onTrackSelected: (t) => playNowTrack = t,
+              onPlayNext: (t) => playNextTrack = t,
+              onAddToQueue: (t) => addToQueueTrack = t,
+              onAddToPlaylist: (t) => addToPlaylistTrack = t,
+              onInspectAudio: (t) => inspectAudioTrack = t,
+              onGoToAlbum: (album) => goToAlbumTitle = album,
+              onGoToArtist: (artist) => goToArtistName = artist,
+            ),
+          );
+          await tester.pumpAndSettle();
+
+          // 1. Right click on first track row ('Track One') and test 'Play Now'
+          await tester.tap(
+            find.text('Track One'),
+            buttons: kSecondaryMouseButton,
+            kind: PointerDeviceKind.mouse,
+          );
+          await tester.pumpAndSettle();
+
+          // Immediately assert that onTrackSelected was NOT invoked
+          expect(playNowTrack, isNull);
+
+          // Verify all menu items and icons are present
+          expect(find.text('Play Now'), findsOneWidget);
+          expect(find.text('Play Next'), findsOneWidget);
+          expect(find.text('Add to Queue'), findsOneWidget);
+          expect(find.text('Add to Playlist...'), findsOneWidget);
+          expect(find.text('Go to Album'), findsOneWidget);
+          expect(find.text('Go to Artist'), findsOneWidget);
+          expect(find.text('Inspect Audio'), findsOneWidget);
+
+          expect(find.byIcon(LucideIcons.listStart), findsOneWidget);
+          expect(find.byIcon(LucideIcons.listEnd), findsOneWidget);
+          expect(find.byIcon(LucideIcons.folderPlus), findsOneWidget);
+          expect(find.byIcon(LucideIcons.disc), findsOneWidget);
+          expect(find.byIcon(LucideIcons.mic2), findsOneWidget);
+
+          await tester.tap(find.text('Play Now'));
+          await tester.pumpAndSettle();
+          expect(playNowTrack, equals(sampleTracks[0]));
+          expect(find.text('Play Now'), findsNothing);
+
+          // 2. Right click on first track row and tap 'Play Next'
+          await tester.tap(
+            find.text('Track One'),
+            buttons: kSecondaryMouseButton,
+            kind: PointerDeviceKind.mouse,
+          );
+          await tester.pumpAndSettle();
+          expect(playNextTrack, isNull);
+
+          await tester.tap(find.text('Play Next'));
+          await tester.pumpAndSettle();
+          expect(playNextTrack, equals(sampleTracks[0]));
+          expect(find.text('Play Now'), findsNothing);
+
+          // 3. Right click on second track row ('Track Two') and tap 'Add to Queue'
+          await tester.tap(
+            find.text('Track Two'),
+            buttons: kSecondaryMouseButton,
+            kind: PointerDeviceKind.mouse,
+          );
+          await tester.pumpAndSettle();
+          expect(addToQueueTrack, isNull);
+
+          await tester.tap(find.text('Add to Queue'));
+          await tester.pumpAndSettle();
+          expect(addToQueueTrack, equals(sampleTracks[1]));
+          expect(find.text('Play Now'), findsNothing);
+
+          // 4. Right click on second track row and tap 'Add to Playlist...'
+          await tester.tap(
+            find.text('Track Two'),
+            buttons: kSecondaryMouseButton,
+            kind: PointerDeviceKind.mouse,
+          );
+          await tester.pumpAndSettle();
+          expect(addToPlaylistTrack, isNull);
+
+          await tester.tap(find.text('Add to Playlist...'));
+          await tester.pumpAndSettle();
+          expect(addToPlaylistTrack, equals(sampleTracks[1]));
+          expect(find.text('Play Now'), findsNothing);
+
+          // 5. Right click on first track row and tap 'Go to Album'
+          await tester.tap(
+            find.text('Track One'),
+            buttons: kSecondaryMouseButton,
+            kind: PointerDeviceKind.mouse,
+          );
+          await tester.pumpAndSettle();
+          expect(goToAlbumTitle, isNull);
+
+          await tester.tap(find.text('Go to Album'));
+          await tester.pumpAndSettle();
+          expect(goToAlbumTitle, equals('Album X'));
+          expect(find.text('Go to Album'), findsNothing);
+
+          // 6. Right click on first track row and tap 'Go to Artist'
+          await tester.tap(
+            find.text('Track One'),
+            buttons: kSecondaryMouseButton,
+            kind: PointerDeviceKind.mouse,
+          );
+          await tester.pumpAndSettle();
+          expect(goToArtistName, isNull);
+
+          await tester.tap(find.text('Go to Artist'));
+          await tester.pumpAndSettle();
+          expect(goToArtistName, equals('Artist A'));
+          expect(find.text('Go to Artist'), findsNothing);
+
+          // 7. Right click on second track row and tap 'Inspect Audio'
+          await tester.tap(
+            find.text('Track Two'),
+            buttons: kSecondaryMouseButton,
+            kind: PointerDeviceKind.mouse,
+          );
+          await tester.pumpAndSettle();
+          expect(inspectAudioTrack, isNull);
+
+          await tester.tap(find.text('Inspect Audio'));
+          await tester.pumpAndSettle();
+          expect(inspectAudioTrack, equals(sampleTracks[1]));
+          expect(find.text('Play Now'), findsNothing);
+        },
+      );
+
+      testWidgets(
+        'TracksView context menu conditionally hides optional items when callbacks are null',
+        (tester) async {
+          await tester.pumpWidget(_buildTracksViewTest(tracks: sampleTracks));
+          await tester.pumpAndSettle();
+
+          // Right click on track row
+          await tester.tap(
+            find.text('Track One'),
+            buttons: kSecondaryMouseButton,
+            kind: PointerDeviceKind.mouse,
+          );
+          await tester.pumpAndSettle();
+
+          // Play Now is always visible
+          expect(find.text('Play Now'), findsOneWidget);
+
+          // Optional items are hidden because callbacks are null
+          expect(find.text('Play Next'), findsNothing);
+          expect(find.text('Add to Queue'), findsNothing);
+          expect(find.text('Add to Playlist...'), findsNothing);
+          expect(find.text('Go to Album'), findsNothing);
+          expect(find.text('Go to Artist'), findsNothing);
+          expect(find.text('Inspect Audio'), findsNothing);
+        },
+      );
+
+      testWidgets(
+        'TracksView context menu Inspect Audio falls back to onInspectTrack when onInspectAudio is null',
+        (tester) async {
+          Track? inspectedTrack;
+
+          await tester.pumpWidget(
+            _buildTracksViewTest(
+              tracks: sampleTracks,
+              onInspectTrack: (t) => inspectedTrack = t,
+            ),
+          );
+          await tester.pumpAndSettle();
+
+          await tester.tap(
+            find.text('Track One'),
+            buttons: kSecondaryMouseButton,
+            kind: PointerDeviceKind.mouse,
+          );
+          await tester.pumpAndSettle();
+
+          expect(find.text('Inspect Audio'), findsOneWidget);
+          await tester.tap(find.text('Inspect Audio'));
+          await tester.pumpAndSettle();
+          expect(inspectedTrack, equals(sampleTracks[0]));
+          expect(find.text('Play Now'), findsNothing);
+        },
+      );
+
+      testWidgets(
+        'TracksView outside tap dismisses context menu without executing actions',
+        (tester) async {
+          Track? playNowTrack;
+          Track? playNextTrack;
+
+          await tester.pumpWidget(
+            _buildTracksViewTest(
+              tracks: sampleTracks,
+              onTrackSelected: (t) => playNowTrack = t,
+              onPlayNext: (t) => playNextTrack = t,
+            ),
+          );
+          await tester.pumpAndSettle();
+
+          // 1. Right click on first track row ('Track One')
+          await tester.tap(
+            find.text('Track One'),
+            buttons: kSecondaryMouseButton,
+            kind: PointerDeviceKind.mouse,
+          );
+          await tester.pumpAndSettle();
+
+          expect(find.text('Play Now'), findsOneWidget);
+
+          // 2. Tap outside on 'Tracks Library' title
+          await tester.tap(find.text('Tracks Library'));
+          await tester.pumpAndSettle();
+
+          // Context menu should be dismissed
+          expect(find.text('Play Now'), findsNothing);
+
+          // No action should have been triggered
+          expect(playNowTrack, isNull);
+          expect(playNextTrack, isNull);
+        },
+      );
+
+      testWidgets(
+        'TracksView right-clicking Row 1 then Row 2 transfers context menu without duplicate overlays',
+        (tester) async {
+          Track? playNowTrack;
+
+          await tester.pumpWidget(
+            _buildTracksViewTest(
+              tracks: sampleTracks,
+              onTrackSelected: (t) => playNowTrack = t,
+            ),
+          );
+          await tester.pumpAndSettle();
+
+          // 1. Right click on first track row ('Track One')
+          await tester.tap(
+            find.text('Track One'),
+            buttons: kSecondaryMouseButton,
+            kind: PointerDeviceKind.mouse,
+          );
+          await tester.pumpAndSettle();
+
+          expect(find.text('Play Now'), findsOneWidget);
+
+          // 2. Right click on second track row ('Track Two')
+          await tester.tap(
+            find.text('Track Two'),
+            buttons: kSecondaryMouseButton,
+            kind: PointerDeviceKind.mouse,
+          );
+          await tester.pumpAndSettle();
+
+          // Exactly one context menu overlay should be present, not duplicates
+          expect(find.text('Play Now'), findsOneWidget);
+
+          // 3. Tapping 'Play Now' should act on Track Two (the newly selected row)
+          await tester.tap(find.text('Play Now'));
+          await tester.pumpAndSettle();
+
+          expect(playNowTrack, equals(sampleTracks[1]));
+          expect(find.text('Play Now'), findsNothing);
+        },
+      );
+
+      testWidgets(
+        'TracksView Play Now from context menu on already-playing track triggers onTrackSelected rather than onTogglePlay',
+        (tester) async {
+          Track? selectedTrack;
+          bool togglePlayCalled = false;
+
+          await tester.pumpWidget(
+            _buildTracksViewTest(
+              tracks: sampleTracks,
+              currentTrack: sampleTracks[0],
+              isPlaying: true,
+              onTrackSelected: (t) => selectedTrack = t,
+              onTogglePlay: () => togglePlayCalled = true,
+            ),
+          );
+          await tester.pumpAndSettle();
+
+          // Right click on the currently playing track ('Track One')
+          await tester.tap(
+            find.text('Track One'),
+            buttons: kSecondaryMouseButton,
+            kind: PointerDeviceKind.mouse,
+          );
+          await tester.pumpAndSettle();
+
+          expect(find.text('Play Now'), findsOneWidget);
+
+          // Tap 'Play Now'
+          await tester.tap(find.text('Play Now'));
+          await tester.pumpAndSettle();
+
+          // Should trigger onTrackSelected, NOT onTogglePlay
+          expect(selectedTrack, equals(sampleTracks[0]));
+          expect(togglePlayCalled, isFalse);
+          expect(find.text('Play Now'), findsNothing);
+        },
+      );
+
+      testWidgets(
+        'TracksView row remains highlighted while context menu is open and clears when dismissed',
+        (tester) async {
+          await tester.pumpWidget(_buildTracksViewTest(tracks: sampleTracks));
+          await tester.pumpAndSettle();
+
+          final tokens = LyraThemeTokens.dark();
+
+          BoxDecoration getRowDecoration() {
+            final rowContainer = find
+                .ancestor(
+                  of: find.text('Track One'),
+                  matching: find.byType(Container),
+                )
+                .first;
+            return tester.widget<Container>(rowContainer).decoration
+                as BoxDecoration;
+          }
+
+          // Initially not highlighted (color is null)
+          expect(getRowDecoration().color, isNull);
+
+          // 1. Right click on first track row to open context menu using a persistent mouse gesture
+          final gesture = await tester.startGesture(
+            tester.getCenter(find.text('Track One')),
+            kind: PointerDeviceKind.mouse,
+            buttons: kSecondaryMouseButton,
+          );
+          await gesture.up();
+          addTearDown(gesture.removePointer);
+          await tester.pumpAndSettle();
+
+          expect(find.text('Play Now'), findsOneWidget);
+
+          // 2. Move mouse away outside the row to trigger MouseRegion onExit
+          await gesture.moveTo(const Offset(10, 10));
+          await tester.pumpAndSettle();
+
+          // While context menu is open, row STILL remains highlighted even after mouse exit
+          expect(
+            getRowDecoration().color,
+            equals(tokens.secondary.withValues(alpha: 0.5)),
+          );
+
+          // 3. Dismiss context menu via outside tap on 'Tracks Library'
+          await tester.tap(find.text('Tracks Library'));
+          await tester.pumpAndSettle();
+
+          expect(find.text('Play Now'), findsNothing);
+
+          // Highlight is now cleared because context menu is closed and mouse is away
+          expect(getRowDecoration().color, isNull);
+        },
+      );
+
+      testWidgets(
+        'TracksView left-clicking another row dismisses context menu and selects row',
+        (tester) async {
+          Track? selectedTrack;
+
+          await tester.pumpWidget(
+            _buildTracksViewTest(
+              tracks: sampleTracks,
+              onTrackSelected: (t) => selectedTrack = t,
+            ),
+          );
+          await tester.pumpAndSettle();
+
+          // 1. Right-click Row 1 ('Track One')
+          await tester.tap(
+            find.text('Track One'),
+            buttons: kSecondaryMouseButton,
+            kind: PointerDeviceKind.mouse,
+          );
+          await tester.pumpAndSettle();
+
+          expect(find.text('Play Now'), findsOneWidget);
+
+          // 2. Left-click Row 2 ('Track Two')
+          await tester.tap(find.text('Track Two'));
+          await tester.pumpAndSettle();
+
+          // Context menu should be dismissed immediately
+          expect(find.text('Play Now'), findsNothing);
+
+          // Row 2 action should have executed
+          expect(selectedTrack, equals(sampleTracks[1]));
+        },
+      );
+
+      testWidgets('TracksView scrolling the list dismisses the context menu', (
+        tester,
+      ) async {
+        final manyTracks = List.generate(
+          30,
+          (i) => Track(
+            id: 't_$i',
+            title: 'Scroll Track $i',
+            artistName: 'Artist $i',
+            albumTitle: 'Album $i',
+            durationMs: 180000,
+          ),
+        );
+
+        await tester.pumpWidget(_buildTracksViewTest(tracks: manyTracks));
+        await tester.pumpAndSettle();
+
+        // 1. Right-click first track
+        await tester.tap(
+          find.text('Scroll Track 0'),
+          buttons: kSecondaryMouseButton,
+          kind: PointerDeviceKind.mouse,
+        );
+        await tester.pumpAndSettle();
+
+        expect(find.text('Play Now'), findsOneWidget);
+
+        // 2. Scroll the list downwards
+        await tester.drag(find.byType(ListView), const Offset(0, -100));
+        await tester.pumpAndSettle();
+
+        // Context menu should be dismissed
+        expect(find.text('Play Now'), findsNothing);
+      });
+    });
   });
 }

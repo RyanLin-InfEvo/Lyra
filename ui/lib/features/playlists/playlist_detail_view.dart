@@ -18,6 +18,7 @@ import '../../design_system/widgets/lyra_button.dart';
 import '../../design_system/widgets/lyra_copy_button.dart';
 import '../../widgets/draggable_columns_overlay.dart';
 import '../../widgets/threshold_reorderable_drag_start_listener.dart';
+import '../common/context_menu_coordinator.dart';
 import '../models/playlist.dart';
 import '../models/track.dart';
 import '../player/controllers/playback_queue_controller.dart';
@@ -40,6 +41,8 @@ class PlaylistDetailView extends StatefulWidget {
   final void Function(int index, Track track)? onRemoveTrack;
   final void Function(int oldIndex, int newIndex)? onReorderTracks;
   final ValueChanged<Track>? onInspectAudio;
+  final ValueChanged<String>? onGoToAlbum;
+  final ValueChanged<String>? onGoToArtist;
   final Track? currentTrack;
   final bool isPlaying;
   final Set<TrackColumn>? visibleColumns;
@@ -68,6 +71,8 @@ class PlaylistDetailView extends StatefulWidget {
     this.onRemoveTrack,
     this.onReorderTracks,
     this.onInspectAudio,
+    this.onGoToAlbum,
+    this.onGoToArtist,
     this.currentTrack,
     this.isPlaying = false,
     this.visibleColumns,
@@ -606,43 +611,51 @@ class _PlaylistDetailViewState extends State<PlaylistDetailView> {
     }
 
     return Expanded(
-      child: ReorderableListView.builder(
-        padding: const EdgeInsets.symmetric(vertical: LyraSpacing.xs),
-        buildDefaultDragHandles: false,
-        itemCount: widget.tracks.length,
-        itemExtent: 56.0,
-        proxyDecorator: (child, index, animation) =>
-            _proxyDecorator(child, index, animation, tokens),
-        onReorder: (oldIndex, newIndex) {
-          widget.onReorderTracks?.call(oldIndex, newIndex);
+      child: NotificationListener<ScrollStartNotification>(
+        onNotification: (notification) {
+          LyraContextMenuCoordinator.hideActive();
+          return false;
         },
-        itemBuilder: (context, index) {
-          final track = widget.tracks[index];
-          final isCurrent = widget.currentTrack?.id == track.id;
-          final isPlaying = isCurrent && widget.isPlaying;
+        child: ReorderableListView.builder(
+          padding: const EdgeInsets.symmetric(vertical: LyraSpacing.xs),
+          buildDefaultDragHandles: false,
+          itemCount: widget.tracks.length,
+          itemExtent: 56.0,
+          proxyDecorator: (child, index, animation) =>
+              _proxyDecorator(child, index, animation, tokens),
+          onReorder: (oldIndex, newIndex) {
+            widget.onReorderTracks?.call(oldIndex, newIndex);
+          },
+          itemBuilder: (context, index) {
+            final track = widget.tracks[index];
+            final isCurrent = widget.currentTrack?.id == track.id;
+            final isPlaying = isCurrent && widget.isPlaying;
 
-          return _PlaylistTrackRow(
-            key: itemKeys[index],
-            index: index,
-            track: track,
-            isCurrent: isCurrent,
-            isPlaying: isPlaying,
-            columnOrder: _effectiveColumnOrder,
-            visibleColumns: _effectiveVisibleColumns,
-            tokens: tokens,
-            canReorder: widget.tracks.length > 1,
-            onTap: () => _handlePlayTrack(track),
-            onPlayNow: () => _handlePlayTrack(track),
-            onPlayNext: () => _handlePlayNext(track),
-            onAddToQueue: () => _handleAddToQueue(track),
-            onRemove: widget.onRemoveTrack != null
-                ? () => widget.onRemoveTrack!(index, track)
-                : null,
-            onInspectAudio: widget.onInspectAudio != null
-                ? () => widget.onInspectAudio!(track)
-                : null,
-          );
-        },
+            return _PlaylistTrackRow(
+              key: itemKeys[index],
+              index: index,
+              track: track,
+              isCurrent: isCurrent,
+              isPlaying: isPlaying,
+              columnOrder: _effectiveColumnOrder,
+              visibleColumns: _effectiveVisibleColumns,
+              tokens: tokens,
+              canReorder: widget.tracks.length > 1,
+              onTap: () => _handlePlayTrack(track),
+              onPlayNow: () => _handlePlayTrack(track),
+              onPlayNext: () => _handlePlayNext(track),
+              onAddToQueue: () => _handleAddToQueue(track),
+              onRemove: widget.onRemoveTrack != null
+                  ? () => widget.onRemoveTrack!(index, track)
+                  : null,
+              onInspectAudio: widget.onInspectAudio != null
+                  ? () => widget.onInspectAudio!(track)
+                  : null,
+              onGoToAlbum: widget.onGoToAlbum,
+              onGoToArtist: widget.onGoToArtist,
+            );
+          },
+        ),
       ),
     );
   }
@@ -663,6 +676,8 @@ class _PlaylistTrackRow extends StatefulWidget {
   final VoidCallback onAddToQueue;
   final VoidCallback? onRemove;
   final VoidCallback? onInspectAudio;
+  final ValueChanged<String>? onGoToAlbum;
+  final ValueChanged<String>? onGoToArtist;
 
   const _PlaylistTrackRow({
     super.key,
@@ -680,6 +695,8 @@ class _PlaylistTrackRow extends StatefulWidget {
     required this.onAddToQueue,
     this.onRemove,
     this.onInspectAudio,
+    this.onGoToAlbum,
+    this.onGoToArtist,
   });
 
   @override
@@ -688,6 +705,33 @@ class _PlaylistTrackRow extends StatefulWidget {
 
 class _PlaylistTrackRowState extends State<_PlaylistTrackRow> {
   bool _isHovered = false;
+  late final ShadContextMenuController _contextMenuController =
+      ShadContextMenuController();
+
+  @override
+  void initState() {
+    super.initState();
+    _contextMenuController.addListener(_handleContextMenuChanged);
+  }
+
+  void _handleContextMenuChanged() {
+    if (_contextMenuController.isOpen) {
+      LyraContextMenuCoordinator.setActive(_contextMenuController);
+    } else if (LyraContextMenuCoordinator.isActive(_contextMenuController)) {
+      LyraContextMenuCoordinator.hideActive();
+    }
+    if (mounted) {
+      setState(() {});
+    }
+  }
+
+  @override
+  void dispose() {
+    _contextMenuController.removeListener(_handleContextMenuChanged);
+    LyraContextMenuCoordinator.onDisposed(_contextMenuController);
+    _contextMenuController.dispose();
+    super.dispose();
+  }
 
   Widget _buildRowCell(TrackColumn col, LyraThemeTokens tokens) {
     final track = widget.track;
@@ -993,6 +1037,7 @@ class _PlaylistTrackRowState extends State<_PlaylistTrackRow> {
   @override
   Widget build(BuildContext context) {
     final tokens = widget.tokens;
+    final track = widget.track;
     final isCurrent = widget.isCurrent;
     final index = widget.index;
 
@@ -1000,8 +1045,10 @@ class _PlaylistTrackRowState extends State<_PlaylistTrackRow> {
       index: index,
       enabled: widget.canReorder,
       child: ShadContextMenuRegion(
+        controller: _contextMenuController,
         tapEnabled: false,
         constraints: const BoxConstraints(minWidth: 180),
+        popoverReverseDuration: const Duration(milliseconds: 50),
         items: [
           ShadContextMenuItem(
             leading: const Icon(LucideIcons.play, size: 16.0),
@@ -1009,7 +1056,7 @@ class _PlaylistTrackRowState extends State<_PlaylistTrackRow> {
             child: const Text('Play Now'),
           ),
           ShadContextMenuItem(
-            leading: const Icon(LucideIcons.listPlus, size: 16.0),
+            leading: const Icon(LucideIcons.listStart, size: 16.0),
             onPressed: widget.onPlayNext,
             child: const Text('Play Next'),
           ),
@@ -1018,6 +1065,18 @@ class _PlaylistTrackRowState extends State<_PlaylistTrackRow> {
             onPressed: widget.onAddToQueue,
             child: const Text('Add to Queue'),
           ),
+          if (widget.onGoToAlbum != null && track.album.trim().isNotEmpty)
+            ShadContextMenuItem(
+              leading: const Icon(LucideIcons.disc, size: 16.0),
+              onPressed: () => widget.onGoToAlbum!(track.album),
+              child: const Text('Go to Album'),
+            ),
+          if (widget.onGoToArtist != null && track.artist.trim().isNotEmpty)
+            ShadContextMenuItem(
+              leading: const Icon(LucideIcons.mic2, size: 16.0),
+              onPressed: () => widget.onGoToArtist!(track.artist),
+              child: const Text('Go to Artist'),
+            ),
           if (widget.onRemove != null)
             ShadContextMenuItem(
               leading: const Icon(LucideIcons.trash2, size: 16.0),
@@ -1037,7 +1096,10 @@ class _PlaylistTrackRowState extends State<_PlaylistTrackRow> {
           onExit: (_) => setState(() => _isHovered = false),
           child: GestureDetector(
             behavior: HitTestBehavior.opaque,
-            onTap: widget.onTap,
+            onTap: () {
+              LyraContextMenuCoordinator.hideActive();
+              widget.onTap();
+            },
             child: Container(
               padding: const EdgeInsets.symmetric(
                 horizontal: LyraSpacing.xl,
@@ -1046,7 +1108,7 @@ class _PlaylistTrackRowState extends State<_PlaylistTrackRow> {
               decoration: BoxDecoration(
                 color: isCurrent
                     ? tokens.secondary
-                    : (_isHovered
+                    : (_isHovered || _contextMenuController.isOpen
                           ? tokens.secondary.withValues(alpha: 0.5)
                           : const Color(0x00000000)),
                 border: Border(
