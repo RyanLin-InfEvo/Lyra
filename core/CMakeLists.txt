@@ -63,6 +63,7 @@ set(CPP
     src/services/ingestion_service.cpp
     src/services/cover_art_service.cpp
     src/services/waveform_service.cpp
+    src/services/audio_scorer.cpp
 )
 
 add_library(lyra_core SHARED ${CPP})
@@ -152,4 +153,8 @@ if(BUILD_TESTING)
     add_executable(waveform_service_test tests/waveform_service_test.cpp)
     target_link_libraries(waveform_service_test PRIVATE lyra_core nlohmann_json::nlohmann_json fmt::fmt)
     target_include_directories(waveform_service_test PRIVATE include src)
+
+    add_executable(audio_scorer_test tests/audio_scorer_test.cpp)
+    target_link_libraries(audio_scorer_test PRIVATE lyra_core nlohmann_json::nlohmann_json fmt::fmt)
+    target_include_directories(audio_scorer_test PRIVATE include src)
 endif()

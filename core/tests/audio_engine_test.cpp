@@ -508,6 +508,49 @@ int main(int argc, char *argv[]) {
         std::cout << "  ✓ Test 6 (Gapless Playback & Seamless Track Transition) passed.\n";
     }
 
+    // 10. Test 7: Constructor Sink Dependency Injection
+    {
+        AudioEngine engine(create_null_audio_sink(), destroy_null_audio_sink);
+        assert(engine.play(test_wav) == true);
+        assert(engine.get_state_enum() == AudioEngineState::PLAYING);
+        assert(engine.set_volume(0.8f) == true);
+        assert(std::abs(engine.get_volume() - 0.8f) < 1e-4);
+        assert(engine.stop() == true);
+        assert(engine.get_state_enum() == AudioEngineState::STOPPED);
+
+        std::cout << "  ✓ Test 7 (Constructor Sink Dependency Injection) passed.\n";
+    }
+
+    // 11. Test 8: create_null_engine Helper Factory
+    {
+        auto null_engine = AudioEngine::create_null_engine();
+        assert(null_engine != nullptr);
+        assert(null_engine->play(short_wav) == true);
+        assert(null_engine->get_state_enum() == AudioEngineState::PLAYING);
+        assert(null_engine->stop() == true);
+        assert(null_engine->get_state_enum() == AudioEngineState::STOPPED);
+
+        std::cout << "  ✓ Test 8 (create_null_engine Helper Factory) passed.\n";
+    }
+
+    // 12. Test 9: Thread-Safe set_sink Dynamic Switching While Playing
+    {
+        auto engine = AudioEngine::create_null_engine();
+        assert(engine->play(test_wav) == true);
+        assert(engine->get_state_enum() == AudioEngineState::PLAYING);
+
+        // Switch sink while playing - should stop pump thread cleanly and adopt new sink
+        engine->set_sink(create_null_audio_sink(), destroy_null_audio_sink);
+        assert(engine->get_state_enum() == AudioEngineState::STOPPED);
+
+        // Resume playback with the new sink
+        assert(engine->play(test_wav) == true);
+        assert(engine->get_state_enum() == AudioEngineState::PLAYING);
+        assert(engine->stop() == true);
+
+        std::cout << "  ✓ Test 9 (Thread-Safe set_sink Dynamic Switching) passed.\n";
+    }
+
     // Clean up temporary test files
     for (const auto &f : {test_wav, short_wav, chaos_wav, backpressure_wav, test_opus, gapless1, gapless2}) {
         if (std::filesystem::exists(f)) {

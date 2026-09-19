@@ -61,12 +61,15 @@ using SinkDeleter = void (*)(LyraAudioSink *);
 
 class AudioEngine {
   public:
-    AudioEngine();
+    explicit AudioEngine(LyraAudioSink *sink = nullptr, SinkDeleter deleter = nullptr);
     ~AudioEngine();
 
     // Prevent copying
     AudioEngine(const AudioEngine &) = delete;
     AudioEngine &operator=(const AudioEngine &) = delete;
+
+    // Helper factory to create AudioEngine with null sink (headless / test-friendly)
+    static std::unique_ptr<AudioEngine> create_null_engine();
 
     // Set custom C-ABI audio sink (takes ownership or uses custom deleter)
     void set_sink(LyraAudioSink *sink, SinkDeleter deleter = nullptr);

@@ -15,14 +15,28 @@
 
 namespace lyra {
 
-AudioEngine::AudioEngine() {
-    // Default to LocalAudioSink for hardware audio output; fallback to NullAudioSink on open if unavailable
-    m_sink = create_local_audio_sink();
-    m_sink_deleter = destroy_local_audio_sink;
+AudioEngine::AudioEngine(LyraAudioSink *sink, SinkDeleter deleter) {
+    if (sink) {
+        m_sink = sink;
+        m_sink_deleter = deleter;
+        m_custom_sink_set = true;
+        m_sink_is_fallback = false;
+    } else {
+        // Default to LocalAudioSink for hardware audio output; fallback to NullAudioSink on open if unavailable
+        m_sink = create_local_audio_sink();
+        m_sink_deleter = destroy_local_audio_sink;
+        m_custom_sink_set = false;
+        m_sink_is_fallback = false;
+    }
+}
+
+std::unique_ptr<AudioEngine> AudioEngine::create_null_engine() {
+    return std::make_unique<AudioEngine>(create_null_audio_sink(), destroy_null_audio_sink);
 }
 
 AudioEngine::~AudioEngine() {
     stop();
+    std::lock_guard<std::recursive_mutex> lock(m_mutex);
     if (m_sink && m_sink->close) {
         m_sink->close(m_sink);
     }
@@ -33,21 +47,24 @@ AudioEngine::~AudioEngine() {
 }
 
 void AudioEngine::set_sink(LyraAudioSink *sink, SinkDeleter deleter) {
+    // Stop playback and join the background pump thread outside the mutex lock
+    // to prevent deadlock and ensure no concurrent write_pcm access during sink teardown.
+    stop();
+
     std::lock_guard<std::recursive_mutex> lock(m_mutex);
-    if (m_state != AudioEngineState::STOPPED) {
-        // Stop before changing sink
-        if (m_sink && m_sink->stop) {
-            m_sink->stop(m_sink);
-        }
-        if (m_sink && m_sink->close) {
-            m_sink->close(m_sink);
-        }
+    // Close the existing audio device/backend if the C-ABI close callback is provided.
+    if (m_sink && m_sink->close) {
+        m_sink->close(m_sink);
     }
+    // Destroy and free the existing sink resource via its registered deleter,
+    // then reset the pointer to null to avoid dangling references.
     if (m_sink && m_sink_deleter) {
         m_sink_deleter(m_sink);
+        m_sink = nullptr;
     }
     m_sink = sink;
     m_sink_deleter = deleter;
+    // Mark as custom sink to prevent play() from replacing it with the default local sink.
     m_custom_sink_set = (sink != nullptr);
     m_sink_is_fallback = false;
 }

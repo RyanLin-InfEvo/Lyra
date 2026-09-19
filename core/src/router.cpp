@@ -19,6 +19,7 @@
 #include "models/relation_types.h"
 #include "models/track.h"
 #include "services/audio_engine.h"
+#include "services/audio_scorer.h"
 #include "services/cover_art_service.h"
 #include "services/database_context.h"
 #include "services/ingestion_service.h"
@@ -1314,55 +1315,7 @@ json Router::handleAudioCompareVersions(const json &p) {
         return ApiResponse::error({ErrorType::MissingParameter, "Missing 'pcm_hashes' or 'track_id' parameter"});
     }
 
-    // Local data structure representing an audio version candidate and its quality metrics.
-    struct VersionItem {
-        std::string pcm_hash;
-        std::string format;
-        int quality_score = 0;
-        bool is_lossless = false;
-        int64_t file_size = 0;
-        bool is_master = false;
-    };
-
-    std::vector<VersionItem> versions;
-    versions.reserve(candidate_audios.size());
-
-    // Evaluate quality metrics for each candidate audio file.
-    for (const auto &audio : candidate_audios) {
-        auto qinfo = utils::AudioHelper::evaluate_quality(audio);
-        VersionItem item;
-        item.pcm_hash = audio.pcm_hash;
-        item.format = qinfo.format;
-        item.quality_score = qinfo.quality_score;
-        item.is_lossless = qinfo.is_lossless;
-        item.file_size = qinfo.file_size;
-        item.is_master = false;
-        versions.push_back(std::move(item));
-    }
-
-    // Sort candidates to determine the optimal master version using a hierarchical priority:
-    // 1. Quality score (higher score preferred)
-    // 2. Lossless preference (lossless preferred over lossy)
-    // 3. File size (larger file size preferred for tie-breaking fidelity)
-    // 4. PCM hash (lexicographical order for deterministic tie-breaking)
-    std::sort(versions.begin(), versions.end(), [](const VersionItem &a, const VersionItem &b) {
-        if (a.quality_score != b.quality_score) {
-            return a.quality_score > b.quality_score;
-        }
-        if (a.is_lossless != b.is_lossless) {
-            return a.is_lossless && !b.is_lossless;
-        }
-        if (a.file_size != b.file_size) {
-            return a.file_size > b.file_size;
-        }
-        return a.pcm_hash < b.pcm_hash;
-    });
-
-    // Mark the highest-ranking candidate as the recommended master.
-    if (!versions.empty()) {
-        versions[0].is_master = true;
-    }
-
+    auto versions = AudioScorer::score_and_sort_candidate_versions(candidate_audios);
     std::string recommended_master = versions.empty() ? "" : versions[0].pcm_hash;
 
     json versions_array = json::array();

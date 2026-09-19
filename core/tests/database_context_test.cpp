@@ -376,6 +376,23 @@ bool test_with_transaction(const std::string &db_path) {
     }
 }
 
+bool test_schema_indexes(const std::string &db_path) {
+    try {
+        SqliteDatabaseContext ctx(db_path);
+        auto &db = ctx.get_db();
+
+        SQLite::Statement query(db, "SELECT COUNT(*) FROM sqlite_master WHERE type = 'index' AND name = 'idx_AudioAsset_file_hash' AND tbl_name = 'Audio_Asset';");
+        if (!query.executeStep() || query.getColumn(0).getInt() != 1) {
+            std::cerr << "test_schema_indexes FAILED: idx_AudioAsset_file_hash index missing\n";
+            return false;
+        }
+        return true;
+    } catch (const std::exception &e) {
+        std::cerr << "test_schema_indexes failed with unexpected exception: " << e.what() << "\n";
+        return false;
+    }
+}
+
 int main(int argc, char *argv[]) {
     if (argc < 2) {
         std::cerr << "Usage: " << argv[0] << " <db_path>\n";
@@ -386,39 +403,45 @@ int main(int argc, char *argv[]) {
 
     bool all_passed = true;
 
-    std::cout << "[1/6] Running test_basic_transaction..." << std::endl;
+    std::cout << "[1/7] Running test_basic_transaction..." << std::endl;
     if (!test_basic_transaction(db_path1)) {
         std::cerr << "test_basic_transaction FAILED\n";
         all_passed = false;
     }
 
-    std::cout << "[2/6] Running test_savepoint_rollback..." << std::endl;
+    std::cout << "[2/7] Running test_savepoint_rollback..." << std::endl;
     if (!test_savepoint_rollback(db_path1)) {
         std::cerr << "test_savepoint_rollback FAILED\n";
         all_passed = false;
     }
 
-    std::cout << "[3/6] Running test_nested_savepoint_rollback_and_commit..." << std::endl;
+    std::cout << "[3/7] Running test_nested_savepoint_rollback_and_commit..." << std::endl;
     if (!test_nested_savepoint_rollback_and_commit(db_path1)) {
         std::cerr << "test_nested_savepoint_rollback_and_commit FAILED\n";
         all_passed = false;
     }
 
-    std::cout << "[4/6] Running test_context_isolation..." << std::endl;
+    std::cout << "[4/7] Running test_context_isolation..." << std::endl;
     if (!test_context_isolation(db_path1, db_path2)) {
         std::cerr << "test_context_isolation FAILED\n";
         all_passed = false;
     }
 
-    std::cout << "[5/6] Running test_wal_checkpoint_visibility..." << std::endl;
+    std::cout << "[5/7] Running test_wal_checkpoint_visibility..." << std::endl;
     if (!test_wal_checkpoint_visibility(db_path1)) {
         std::cerr << "test_wal_checkpoint_visibility FAILED\n";
         all_passed = false;
     }
 
-    std::cout << "[6/6] Running test_with_transaction..." << std::endl;
+    std::cout << "[6/7] Running test_with_transaction..." << std::endl;
     if (!test_with_transaction(db_path1)) {
         std::cerr << "test_with_transaction FAILED\n";
+        all_passed = false;
+    }
+
+    std::cout << "[7/7] Running test_schema_indexes..." << std::endl;
+    if (!test_schema_indexes(db_path1)) {
+        std::cerr << "test_schema_indexes FAILED\n";
         all_passed = false;
     }
 
