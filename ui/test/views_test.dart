@@ -754,25 +754,255 @@ void main() {
         );
       },
     );
+
+    const multiPlaylists = [
+      Playlist(
+        id: 'pl-1',
+        title: 'Master Reference',
+        description: '24/192 recordings',
+        trackIds: ['t-1', 't-2', 't-3'],
+      ),
+      Playlist(
+        id: 'pl-2',
+        title: 'Acoustic Sessions',
+        description: 'DSD direct transfers',
+        trackIds: ['t-4', 't-5'],
+      ),
+      Playlist(
+        id: 'pl-3',
+        title: 'Jazz Classics',
+        description: 'Blue Note Remasters',
+        trackIds: ['t-6'],
+      ),
+    ];
+
+    testWidgets(
+      'Normal click on a playlist triggers onPlaylistSelected and single-selects without toolbar',
+      (tester) async {
+        Playlist? selectedPlaylist;
+        await tester.pumpWidget(
+          _buildViewTest(
+            PlaylistsView(
+              playlists: multiPlaylists,
+              onPlaylistSelected: (p) => selectedPlaylist = p,
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        expect(find.byKey(const Key('batch_action_toolbar')), findsNothing);
+
+        await tester.tap(find.text('Master Reference'));
+        await tester.pumpAndSettle();
+
+        expect(selectedPlaylist?.id, equals('pl-1'));
+        // Normal single click does not emerge toolbar
+        expect(find.byKey(const Key('batch_action_toolbar')), findsNothing);
+        // Visual indicator check badge is shown on selected card
+        expect(find.byIcon(LucideIcons.check), findsOneWidget);
+      },
+    );
+
+    testWidgets(
+      'Ctrl/Cmd+Click toggles multi-selection and emerges batch action toolbar',
+      (tester) async {
+        await tester.pumpWidget(
+          _buildViewTest(const PlaylistsView(playlists: multiPlaylists)),
+        );
+        await tester.pumpAndSettle();
+
+        // 1. Ctrl + Click Playlist 1 -> toolbar emerges with 1 selected
+        await tester.sendKeyDownEvent(LogicalKeyboardKey.controlLeft);
+        await tester.tap(find.text('Master Reference'));
+        await tester.sendKeyUpEvent(LogicalKeyboardKey.controlLeft);
+        await tester.pumpAndSettle();
+
+        expect(find.byKey(const Key('batch_action_toolbar')), findsOneWidget);
+        expect(find.text('1 selected'), findsOneWidget);
+        expect(find.byIcon(LucideIcons.check), findsOneWidget);
+
+        // 2. Ctrl + Click Playlist 2 -> 2 selected
+        await tester.sendKeyDownEvent(LogicalKeyboardKey.controlLeft);
+        await tester.tap(find.text('Acoustic Sessions'));
+        await tester.sendKeyUpEvent(LogicalKeyboardKey.controlLeft);
+        await tester.pumpAndSettle();
+
+        expect(find.text('2 selected'), findsOneWidget);
+        expect(find.byIcon(LucideIcons.check), findsNWidgets(2));
+
+        // 3. Escape key clears selection and dismisses toolbar
+        await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+        await tester.pumpAndSettle();
+
+        expect(find.byKey(const Key('batch_action_toolbar')), findsNothing);
+        expect(find.byIcon(LucideIcons.check), findsNothing);
+      },
+    );
+
+    testWidgets('Shift+Click performs range selection on playlists', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        _buildViewTest(const PlaylistsView(playlists: multiPlaylists)),
+      );
+      await tester.pumpAndSettle();
+
+      // Normal click Playlist 1 (anchor)
+      await tester.tap(find.text('Master Reference'));
+      await tester.pumpAndSettle();
+
+      // Shift + Click Playlist 3 -> range selects all 3
+      await tester.sendKeyDownEvent(LogicalKeyboardKey.shiftLeft);
+      await tester.tap(find.text('Jazz Classics'));
+      await tester.sendKeyUpEvent(LogicalKeyboardKey.shiftLeft);
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const Key('batch_action_toolbar')), findsOneWidget);
+      expect(find.text('3 selected'), findsOneWidget);
+      expect(find.byIcon(LucideIcons.check), findsNWidgets(3));
+    });
+
+    testWidgets('Ctrl/Cmd+A selects all playlists and emerges toolbar', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        _buildViewTest(const PlaylistsView(playlists: multiPlaylists)),
+      );
+      await tester.pumpAndSettle();
+
+      // Ctrl + A
+      await tester.sendKeyDownEvent(LogicalKeyboardKey.controlLeft);
+      await tester.sendKeyEvent(LogicalKeyboardKey.keyA);
+      await tester.sendKeyUpEvent(LogicalKeyboardKey.controlLeft);
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const Key('batch_action_toolbar')), findsOneWidget);
+      expect(find.text('3 selected'), findsOneWidget);
+      expect(find.byIcon(LucideIcons.check), findsNWidgets(3));
+    });
+
+    testWidgets('Clicking blank space clears playlist selection', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        _buildViewTest(const PlaylistsView(playlists: multiPlaylists)),
+      );
+      await tester.pumpAndSettle();
+
+      // Select Playlist 1 and Playlist 2 via Ctrl+Click
+      await tester.sendKeyDownEvent(LogicalKeyboardKey.controlLeft);
+      await tester.tap(find.text('Master Reference'));
+      await tester.tap(find.text('Acoustic Sessions'));
+      await tester.sendKeyUpEvent(LogicalKeyboardKey.controlLeft);
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const Key('batch_action_toolbar')), findsOneWidget);
+      expect(find.text('2 selected'), findsOneWidget);
+
+      // Tap on blank space below grid cards
+      final cardBottom = tester.getBottomLeft(find.text('Jazz Classics'));
+      await tester.tapAt(cardBottom + const Offset(50, 150));
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const Key('batch_action_toolbar')), findsNothing);
+      expect(find.byIcon(LucideIcons.check), findsNothing);
+    });
+
+    testWidgets(
+      'PlaylistsView BatchActionToolbar dispatches batch callbacks correctly including delete',
+      (tester) async {
+        List<Playlist>? batchPlayNext;
+        List<Playlist>? batchAddToQueue;
+        List<Playlist>? batchDelete;
+        List<Playlist>? batchAddTag;
+
+        await tester.pumpWidget(
+          _buildViewTest(
+            PlaylistsView(
+              playlists: multiPlaylists,
+              onBatchPlayNext: (pl) => batchPlayNext = pl,
+              onBatchAddToQueue: (pl) => batchAddToQueue = pl,
+              onBatchDelete: (pl) => batchDelete = pl,
+              onBatchAddTag: (pl) => batchAddTag = pl,
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        // 1. Ctrl + A selects all
+        await tester.sendKeyDownEvent(LogicalKeyboardKey.controlLeft);
+        await tester.sendKeyEvent(LogicalKeyboardKey.keyA);
+        await tester.sendKeyUpEvent(LogicalKeyboardKey.controlLeft);
+        await tester.pumpAndSettle();
+
+        expect(find.byKey(const Key('batch_action_toolbar')), findsOneWidget);
+        expect(find.text('3 selected'), findsOneWidget);
+
+        // 2. Test batch buttons
+        await tester.tap(find.byKey(const Key('batch_play_next_button')));
+        await tester.pumpAndSettle();
+        expect(batchPlayNext?.length, equals(3));
+
+        await tester.tap(find.byKey(const Key('batch_add_to_queue_button')));
+        await tester.pumpAndSettle();
+        expect(batchAddToQueue?.length, equals(3));
+
+        await tester.tap(find.byKey(const Key('batch_delete_button')));
+        await tester.pumpAndSettle();
+        expect(batchDelete?.length, equals(3));
+
+        await tester.tap(find.byKey(const Key('batch_add_tag_button')));
+        await tester.pumpAndSettle();
+        expect(batchAddTag?.length, equals(3));
+
+        // 3. Clear button clears selection
+        await tester.tap(find.byKey(const Key('batch_clear_selection_button')));
+        await tester.pumpAndSettle();
+        expect(find.byKey(const Key('batch_action_toolbar')), findsNothing);
+      },
+    );
   });
 
   group('AlbumsView Tests', () {
+    const sampleAlbums = [
+      Album(
+        id: 'alb-1',
+        title: 'Kind of Blue',
+        artist: 'Miles Davis',
+        year: 1959,
+        trackCount: 5,
+        format: 'FLAC 24/192',
+      ),
+      Album(
+        id: 'alb-2',
+        title: 'A Love Supreme',
+        artist: 'John Coltrane',
+        year: 1965,
+        trackCount: 4,
+        format: 'DSD 64',
+      ),
+      Album(
+        id: 'alb-3',
+        title: 'Time Out',
+        artist: 'Dave Brubeck',
+        year: 1959,
+        trackCount: 7,
+        format: 'FLAC 24/96',
+      ),
+    ];
+
+    testWidgets('Empty albums view renders empty state', (tester) async {
+      await tester.pumpWidget(_buildViewTest(const AlbumsView(albums: [])));
+      await tester.pumpAndSettle();
+
+      expect(find.text('No albums found'), findsOneWidget);
+    });
+
     testWidgets(
       'AlbumsView renders header without redundant total count badge',
       (tester) async {
-        const sampleAlbums = [
-          Album(
-            id: 'alb-1',
-            title: 'Kind of Blue',
-            artist: 'Miles Davis',
-            year: 1959,
-            trackCount: 5,
-            format: 'FLAC 24/192',
-          ),
-        ];
-
         await tester.pumpWidget(
-          _buildViewTest(const AlbumsView(albums: sampleAlbums)),
+          _buildViewTest(AlbumsView(albums: [sampleAlbums[0]])),
         );
         await tester.pumpAndSettle();
 
@@ -792,12 +1022,364 @@ void main() {
         expect(find.text('FLAC 24/192'), findsOneWidget);
       },
     );
+
+    testWidgets(
+      'Normal click on an album triggers onAlbumSelected and single-selects without toolbar',
+      (tester) async {
+        Album? selectedAlbum;
+        await tester.pumpWidget(
+          _buildViewTest(
+            AlbumsView(
+              albums: sampleAlbums,
+              onAlbumSelected: (a) => selectedAlbum = a,
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        expect(find.byKey(const Key('batch_action_toolbar')), findsNothing);
+
+        await tester.tap(find.text('Kind of Blue'));
+        await tester.pumpAndSettle();
+
+        expect(selectedAlbum?.id, equals('alb-1'));
+        // Normal single click does not emerge toolbar
+        expect(find.byKey(const Key('batch_action_toolbar')), findsNothing);
+        // Visual indicator check badge is shown on selected card
+        expect(find.byIcon(LucideIcons.check), findsOneWidget);
+      },
+    );
+
+    testWidgets(
+      'Ctrl/Cmd+Click toggles multi-selection and emerges batch action toolbar',
+      (tester) async {
+        await tester.pumpWidget(
+          _buildViewTest(const AlbumsView(albums: sampleAlbums)),
+        );
+        await tester.pumpAndSettle();
+
+        // 1. Ctrl + Click Album 1 -> toolbar emerges with 1 selected
+        await tester.sendKeyDownEvent(LogicalKeyboardKey.controlLeft);
+        await tester.tap(find.text('Kind of Blue'));
+        await tester.sendKeyUpEvent(LogicalKeyboardKey.controlLeft);
+        await tester.pumpAndSettle();
+
+        expect(find.byKey(const Key('batch_action_toolbar')), findsOneWidget);
+        expect(find.text('1 selected'), findsOneWidget);
+        expect(find.byIcon(LucideIcons.check), findsOneWidget);
+
+        // 2. Ctrl + Click Album 2 -> 2 selected
+        await tester.sendKeyDownEvent(LogicalKeyboardKey.controlLeft);
+        await tester.tap(find.text('A Love Supreme'));
+        await tester.sendKeyUpEvent(LogicalKeyboardKey.controlLeft);
+        await tester.pumpAndSettle();
+
+        expect(find.text('2 selected'), findsOneWidget);
+        expect(find.byIcon(LucideIcons.check), findsNWidgets(2));
+
+        // 3. Escape key clears selection and dismisses toolbar
+        await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+        await tester.pumpAndSettle();
+
+        expect(find.byKey(const Key('batch_action_toolbar')), findsNothing);
+        expect(find.byIcon(LucideIcons.check), findsNothing);
+      },
+    );
+
+    testWidgets('Shift+Click performs range selection across albums grid', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        _buildViewTest(const AlbumsView(albums: sampleAlbums)),
+      );
+      await tester.pumpAndSettle();
+
+      // 1. Normal click Album 1
+      await tester.tap(find.text('Kind of Blue'));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('batch_action_toolbar')), findsNothing);
+
+      // 2. Shift + Click Album 3 -> range selects albums 1, 2, 3
+      await tester.sendKeyDownEvent(LogicalKeyboardKey.shiftLeft);
+      await tester.tap(find.text('Time Out'));
+      await tester.sendKeyUpEvent(LogicalKeyboardKey.shiftLeft);
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const Key('batch_action_toolbar')), findsOneWidget);
+      expect(find.text('3 selected'), findsOneWidget);
+      expect(find.byIcon(LucideIcons.check), findsNWidgets(3));
+    });
+
+    testWidgets(
+      'Ctrl+A selects all albums and batch buttons trigger callbacks',
+      (tester) async {
+        List<Album>? batchPlayNext;
+        List<Album>? batchAddToQueue;
+        List<Album>? batchAddToPlaylist;
+        List<Album>? batchAddTag;
+
+        await tester.pumpWidget(
+          _buildViewTest(
+            AlbumsView(
+              albums: sampleAlbums,
+              onBatchPlayNext: (a) => batchPlayNext = a,
+              onBatchAddToQueue: (a) => batchAddToQueue = a,
+              onBatchAddToPlaylist: (a) => batchAddToPlaylist = a,
+              onBatchAddTag: (a) => batchAddTag = a,
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        // 1. Ctrl + A selects all albums
+        await tester.sendKeyDownEvent(LogicalKeyboardKey.controlLeft);
+        await tester.sendKeyEvent(LogicalKeyboardKey.keyA);
+        await tester.sendKeyUpEvent(LogicalKeyboardKey.controlLeft);
+        await tester.pumpAndSettle();
+
+        expect(find.byKey(const Key('batch_action_toolbar')), findsOneWidget);
+        expect(find.text('3 selected'), findsOneWidget);
+
+        // 2. Test batch buttons
+        await tester.tap(find.byKey(const Key('batch_play_next_button')));
+        await tester.pumpAndSettle();
+        expect(batchPlayNext?.length, equals(3));
+
+        await tester.tap(find.byKey(const Key('batch_add_to_queue_button')));
+        await tester.pumpAndSettle();
+        expect(batchAddToQueue?.length, equals(3));
+
+        await tester.tap(find.byKey(const Key('batch_add_to_playlist_button')));
+        await tester.pumpAndSettle();
+        expect(batchAddToPlaylist?.length, equals(3));
+
+        await tester.tap(find.byKey(const Key('batch_add_tag_button')));
+        await tester.pumpAndSettle();
+        expect(batchAddTag?.length, equals(3));
+
+        // 3. Clear button clears selection
+        await tester.tap(find.byKey(const Key('batch_clear_selection_button')));
+        await tester.pumpAndSettle();
+        expect(find.byKey(const Key('batch_action_toolbar')), findsNothing);
+      },
+    );
+
+    testWidgets('Clicking blank space clears album selection', (tester) async {
+      await tester.pumpWidget(
+        _buildViewTest(const AlbumsView(albums: sampleAlbums)),
+      );
+      await tester.pumpAndSettle();
+
+      // Select Album 1 and 2
+      await tester.sendKeyDownEvent(LogicalKeyboardKey.controlLeft);
+      await tester.tap(find.text('Kind of Blue'));
+      await tester.tap(find.text('A Love Supreme'));
+      await tester.sendKeyUpEvent(LogicalKeyboardKey.controlLeft);
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const Key('batch_action_toolbar')), findsOneWidget);
+
+      // Tap on blank space below grid cards
+      final cardBottom = tester.getBottomLeft(find.text('Time Out'));
+      await tester.tapAt(cardBottom + const Offset(50, 150));
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const Key('batch_action_toolbar')), findsNothing);
+      expect(find.byIcon(LucideIcons.check), findsNothing);
+    });
+  });
+
+  group('ArtistsView Tests', () {
+    const sampleArtists = [
+      Artist(id: 'art-1', name: 'Miles Davis', role: 'Trumpeter'),
+      Artist(id: 'art-2', name: 'John Coltrane', role: 'Saxophonist'),
+      Artist(id: 'art-3', name: 'Dave Brubeck', role: 'Pianist'),
+    ];
+
+    testWidgets('Empty artists view renders empty state', (tester) async {
+      await tester.pumpWidget(_buildViewTest(const ArtistsView(artists: [])));
+      await tester.pumpAndSettle();
+
+      expect(find.text('No artists found'), findsOneWidget);
+    });
+
+    testWidgets(
+      'Normal click on an artist triggers onArtistSelected without toolbar',
+      (tester) async {
+        Artist? selectedArtist;
+        await tester.pumpWidget(
+          _buildViewTest(
+            ArtistsView(
+              artists: sampleArtists,
+              onArtistSelected: (a) => selectedArtist = a,
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        expect(find.byKey(const Key('batch_action_toolbar')), findsNothing);
+
+        await tester.tap(find.text('Miles Davis'));
+        await tester.pumpAndSettle();
+
+        expect(selectedArtist?.id, equals('art-1'));
+        expect(find.byKey(const Key('batch_action_toolbar')), findsNothing);
+        expect(find.byIcon(LucideIcons.check), findsOneWidget);
+      },
+    );
+
+    testWidgets(
+      'Ctrl/Cmd+Click toggles multi-selection and emerges batch action toolbar',
+      (tester) async {
+        await tester.pumpWidget(
+          _buildViewTest(const ArtistsView(artists: sampleArtists)),
+        );
+        await tester.pumpAndSettle();
+
+        // 1. Ctrl + Click Artist 1
+        await tester.sendKeyDownEvent(LogicalKeyboardKey.controlLeft);
+        await tester.tap(find.text('Miles Davis'));
+        await tester.sendKeyUpEvent(LogicalKeyboardKey.controlLeft);
+        await tester.pumpAndSettle();
+
+        expect(find.byKey(const Key('batch_action_toolbar')), findsOneWidget);
+        expect(find.text('1 selected'), findsOneWidget);
+        expect(find.byIcon(LucideIcons.check), findsOneWidget);
+
+        // 2. Ctrl + Click Artist 2
+        await tester.sendKeyDownEvent(LogicalKeyboardKey.controlLeft);
+        await tester.tap(find.text('John Coltrane'));
+        await tester.sendKeyUpEvent(LogicalKeyboardKey.controlLeft);
+        await tester.pumpAndSettle();
+
+        expect(find.text('2 selected'), findsOneWidget);
+        expect(find.byIcon(LucideIcons.check), findsNWidgets(2));
+
+        // 3. Escape key clears selection
+        await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+        await tester.pumpAndSettle();
+
+        expect(find.byKey(const Key('batch_action_toolbar')), findsNothing);
+        expect(find.byIcon(LucideIcons.check), findsNothing);
+      },
+    );
+
+    testWidgets('Shift+Click performs range selection across artists grid', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        _buildViewTest(const ArtistsView(artists: sampleArtists)),
+      );
+      await tester.pumpAndSettle();
+
+      // 1. Normal click Artist 1
+      await tester.tap(find.text('Miles Davis'));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('batch_action_toolbar')), findsNothing);
+
+      // 2. Shift + Click Artist 3 -> selects artists 1, 2, 3
+      await tester.sendKeyDownEvent(LogicalKeyboardKey.shiftLeft);
+      await tester.tap(find.text('Dave Brubeck'));
+      await tester.sendKeyUpEvent(LogicalKeyboardKey.shiftLeft);
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const Key('batch_action_toolbar')), findsOneWidget);
+      expect(find.text('3 selected'), findsOneWidget);
+      expect(find.byIcon(LucideIcons.check), findsNWidgets(3));
+    });
+
+    testWidgets('Ctrl+A selects all artists and batch buttons fire callbacks', (
+      tester,
+    ) async {
+      List<Artist>? batchPlayNext;
+      List<Artist>? batchAddToQueue;
+      List<Artist>? batchAddToPlaylist;
+      List<Artist>? batchAddTag;
+
+      await tester.pumpWidget(
+        _buildViewTest(
+          ArtistsView(
+            artists: sampleArtists,
+            onBatchPlayNext: (a) => batchPlayNext = a,
+            onBatchAddToQueue: (a) => batchAddToQueue = a,
+            onBatchAddToPlaylist: (a) => batchAddToPlaylist = a,
+            onBatchAddTag: (a) => batchAddTag = a,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      // 1. Ctrl + A selects all artists
+      await tester.sendKeyDownEvent(LogicalKeyboardKey.controlLeft);
+      await tester.sendKeyEvent(LogicalKeyboardKey.keyA);
+      await tester.sendKeyUpEvent(LogicalKeyboardKey.controlLeft);
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const Key('batch_action_toolbar')), findsOneWidget);
+      expect(find.text('3 selected'), findsOneWidget);
+
+      // 2. Test batch buttons
+      await tester.tap(find.byKey(const Key('batch_play_next_button')));
+      await tester.pumpAndSettle();
+      expect(batchPlayNext?.length, equals(3));
+
+      await tester.tap(find.byKey(const Key('batch_add_to_queue_button')));
+      await tester.pumpAndSettle();
+      expect(batchAddToQueue?.length, equals(3));
+
+      await tester.tap(find.byKey(const Key('batch_add_to_playlist_button')));
+      await tester.pumpAndSettle();
+      expect(batchAddToPlaylist?.length, equals(3));
+
+      await tester.tap(find.byKey(const Key('batch_add_tag_button')));
+      await tester.pumpAndSettle();
+      expect(batchAddTag?.length, equals(3));
+
+      // 3. Clear button clears selection
+      await tester.tap(find.byKey(const Key('batch_clear_selection_button')));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('batch_action_toolbar')), findsNothing);
+    });
+
+    testWidgets('Clicking blank space clears artist selection', (tester) async {
+      tester.view.physicalSize = const Size(800, 600);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
+      await tester.pumpWidget(
+        _buildViewTest(const ArtistsView(artists: sampleArtists)),
+      );
+      await tester.pumpAndSettle();
+
+      // Select Artist 1 and 2
+      await tester.sendKeyDownEvent(LogicalKeyboardKey.controlLeft);
+      await tester.tap(find.text('Miles Davis'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('John Coltrane'));
+      await tester.sendKeyUpEvent(LogicalKeyboardKey.controlLeft);
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const Key('batch_action_toolbar')), findsOneWidget);
+
+      // Tap on blank space below grid cards
+      await tester.tapAt(const Offset(100, 480));
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const Key('batch_action_toolbar')), findsNothing);
+      expect(find.byIcon(LucideIcons.check), findsNothing);
+    });
   });
 
   group('SettingsView Tests', () {
     testWidgets(
       'SettingsView renders toggle switches, handles toggling, and eliminates redundant header badges',
       (tester) async {
+        tester.view.physicalSize = const Size(1280, 900);
+        tester.view.devicePixelRatio = 1.0;
+        addTearDown(tester.view.resetPhysicalSize);
+        addTearDown(tester.view.resetDevicePixelRatio);
+
         final prefs = InMemoryPreferencesService(audioExclusiveMode: true);
         await tester.pumpWidget(
           _buildViewTest(SettingsView(preferencesService: prefs)),

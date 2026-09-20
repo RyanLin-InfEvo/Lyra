@@ -11,6 +11,7 @@ import 'package:flutter/material.dart'
         ReorderableDragStartListener,
         ReorderableListView,
         Tooltip;
+import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 import 'package:shadcn_ui/shadcn_ui.dart';
 
@@ -22,6 +23,7 @@ import '../../design_system/widgets/lyra_badge.dart';
 import '../../design_system/widgets/lyra_button.dart';
 import '../../design_system/widgets/lyra_copy_button.dart';
 import '../../widgets/draggable_columns_overlay.dart';
+import '../common/batch_action_toolbar.dart';
 import '../common/context_menu_coordinator.dart';
 import '../models/track.dart';
 
@@ -185,6 +187,10 @@ class TracksView extends StatefulWidget {
   final ValueChanged<Track>? onPlayNext;
   final ValueChanged<Track>? onAddToQueue;
   final ValueChanged<Track>? onAddToPlaylist;
+  final ValueChanged<List<Track>>? onBatchAddToPlaylist;
+  final ValueChanged<List<Track>>? onBatchAddTag;
+  final ValueChanged<List<Track>>? onBatchAddToQueue;
+  final ValueChanged<List<Track>>? onBatchPlayNext;
   final ValueChanged<Track>? onInspectTrack;
   final ValueChanged<Track>? onInspectAudio;
   final ValueChanged<String>? onGoToAlbum;
@@ -208,6 +214,10 @@ class TracksView extends StatefulWidget {
     this.onPlayNext,
     this.onAddToQueue,
     this.onAddToPlaylist,
+    this.onBatchAddToPlaylist,
+    this.onBatchAddTag,
+    this.onBatchAddToQueue,
+    this.onBatchPlayNext,
     this.onInspectTrack,
     this.onInspectAudio,
     this.onGoToAlbum,
@@ -234,6 +244,10 @@ class _TracksViewState extends State<TracksView> {
   TrackColumn? _sortColumn;
   bool _sortAscending = true;
 
+  final Set<String> _selectedTrackIds = {};
+  String? _selectionAnchorId;
+  bool _isModifierSelectionActive = false;
+
   void _handleSort(TrackColumn col) {
     if (col == TrackColumn.index) return;
     setState(() {
@@ -254,6 +268,7 @@ class _TracksViewState extends State<TracksView> {
   @override
   void initState() {
     super.initState();
+    HardwareKeyboard.instance.addHandler(_handleKeyEvent);
     _columnsOverlayController = OverlayPortalController();
     _columnsPositionNotifier = ValueNotifier<Offset>(Offset.zero);
     _internalColumnOrder = _normalizeColumnOrder(widget.columnOrder);
@@ -263,6 +278,16 @@ class _TracksViewState extends State<TracksView> {
   @override
   void didUpdateWidget(covariant TracksView oldWidget) {
     super.didUpdateWidget(oldWidget);
+    _selectedTrackIds.removeWhere(
+      (id) => !widget.tracks.any((t) => t.id == id),
+    );
+    if (_selectionAnchorId != null &&
+        !widget.tracks.any((t) => t.id == _selectionAnchorId)) {
+      _selectionAnchorId = null;
+    }
+    if (_selectedTrackIds.isEmpty) {
+      _isModifierSelectionActive = false;
+    }
     if (widget.columnOrder != null &&
         widget.columnOrder != oldWidget.columnOrder) {
       _internalColumnOrder = _normalizeColumnOrder(widget.columnOrder);
@@ -275,8 +300,243 @@ class _TracksViewState extends State<TracksView> {
 
   @override
   void dispose() {
+    HardwareKeyboard.instance.removeHandler(_handleKeyEvent);
     _columnsPositionNotifier.dispose();
     super.dispose();
+  }
+
+  bool get _hasSelection => _selectedTrackIds.isNotEmpty;
+
+  void _clearSelection() {
+    _selectedTrackIds.clear();
+    _selectionAnchorId = null;
+    _isModifierSelectionActive = false;
+  }
+
+  bool _handleKeyEvent(KeyEvent event) {
+    if (event is! KeyDownEvent) {
+      return false;
+    }
+
+    final isEditingText =
+        FocusManager.instance.primaryFocus?.context
+            ?.findAncestorWidgetOfExactType<EditableText>() !=
+        null;
+    if (isEditingText) {
+      return false;
+    }
+
+    if (event.logicalKey == LogicalKeyboardKey.escape) {
+      if (_hasSelection) {
+        setState(() {
+          _clearSelection();
+        });
+        return true;
+      }
+      return false;
+    }
+
+    final isControl =
+        HardwareKeyboard.instance.isControlPressed ||
+        HardwareKeyboard.instance.isLogicalKeyPressed(
+          LogicalKeyboardKey.control,
+        ) ||
+        HardwareKeyboard.instance.isLogicalKeyPressed(
+          LogicalKeyboardKey.controlLeft,
+        ) ||
+        HardwareKeyboard.instance.isLogicalKeyPressed(
+          LogicalKeyboardKey.controlRight,
+        );
+
+    final isMeta =
+        HardwareKeyboard.instance.isMetaPressed ||
+        HardwareKeyboard.instance.isLogicalKeyPressed(
+          LogicalKeyboardKey.meta,
+        ) ||
+        HardwareKeyboard.instance.isLogicalKeyPressed(
+          LogicalKeyboardKey.metaLeft,
+        ) ||
+        HardwareKeyboard.instance.isLogicalKeyPressed(
+          LogicalKeyboardKey.metaRight,
+        );
+
+    final isControlOrMeta = isControl || isMeta;
+
+    if (isControlOrMeta && event.logicalKey == LogicalKeyboardKey.keyA) {
+      final displayTracks = _getDisplayTracks();
+      if (displayTracks.isNotEmpty) {
+        setState(() {
+          _selectedTrackIds.clear();
+          _selectedTrackIds.addAll(displayTracks.map((t) => t.id));
+          _selectionAnchorId ??= displayTracks.first.id;
+          _isModifierSelectionActive = true;
+        });
+        return true;
+      }
+    }
+
+    return false;
+  }
+
+  List<Track> _getDisplayTracks() {
+    final displayTracks = List<Track>.of(widget.tracks);
+    if (_sortColumn != null) {
+      displayTracks.sort((a, b) {
+        int cmp = switch (_sortColumn!.name) {
+          'title' => a.displayTitle.toLowerCase().compareTo(
+            b.displayTitle.toLowerCase(),
+          ),
+          'album' => (a.album).toLowerCase().compareTo((b.album).toLowerCase()),
+          'duration' => (a.durationMs ?? 0).compareTo(b.durationMs ?? 0),
+          'year' => (a.year ?? 0).compareTo(b.year ?? 0),
+          'trackNumber' => (a.trackNumber ?? 0).compareTo(b.trackNumber ?? 0),
+          'work' => (a.workTitle ?? '').toLowerCase().compareTo(
+            (b.workTitle ?? '').toLowerCase(),
+          ),
+          'genre' => (a.genre ?? '').toLowerCase().compareTo(
+            (b.genre ?? '').toLowerCase(),
+          ),
+          'resolution' => a.formattedQuality.toLowerCase().compareTo(
+            b.formattedQuality.toLowerCase(),
+          ),
+          'iswc' => (a.iswc ?? '').toLowerCase().compareTo(
+            (b.iswc ?? '').toLowerCase(),
+          ),
+          'isrc' => (a.isrc ?? '').toLowerCase().compareTo(
+            (b.isrc ?? '').toLowerCase(),
+          ),
+          'musicbrainzId' => (a.musicbrainzId ?? '').toLowerCase().compareTo(
+            (b.musicbrainzId ?? '').toLowerCase(),
+          ),
+          _ => 0,
+        };
+        return _sortAscending ? cmp : -cmp;
+      });
+    }
+    return displayTracks;
+  }
+
+  void _handleTrackTap(Track track, List<Track> displayTracks) {
+    final isShift =
+        HardwareKeyboard.instance.isShiftPressed ||
+        HardwareKeyboard.instance.isLogicalKeyPressed(
+          LogicalKeyboardKey.shift,
+        ) ||
+        HardwareKeyboard.instance.isLogicalKeyPressed(
+          LogicalKeyboardKey.shiftLeft,
+        ) ||
+        HardwareKeyboard.instance.isLogicalKeyPressed(
+          LogicalKeyboardKey.shiftRight,
+        );
+
+    final isControl =
+        HardwareKeyboard.instance.isControlPressed ||
+        HardwareKeyboard.instance.isLogicalKeyPressed(
+          LogicalKeyboardKey.control,
+        ) ||
+        HardwareKeyboard.instance.isLogicalKeyPressed(
+          LogicalKeyboardKey.controlLeft,
+        ) ||
+        HardwareKeyboard.instance.isLogicalKeyPressed(
+          LogicalKeyboardKey.controlRight,
+        );
+
+    final isMeta =
+        HardwareKeyboard.instance.isMetaPressed ||
+        HardwareKeyboard.instance.isLogicalKeyPressed(
+          LogicalKeyboardKey.meta,
+        ) ||
+        HardwareKeyboard.instance.isLogicalKeyPressed(
+          LogicalKeyboardKey.metaLeft,
+        ) ||
+        HardwareKeyboard.instance.isLogicalKeyPressed(
+          LogicalKeyboardKey.metaRight,
+        );
+
+    final isControlOrMeta = isControl || isMeta;
+
+    if (isShift) {
+      final clickedIndex = displayTracks.indexWhere((t) => t.id == track.id);
+      if (clickedIndex != -1) {
+        int anchorIndex = -1;
+        if (_selectionAnchorId != null) {
+          anchorIndex = displayTracks.indexWhere(
+            (t) => t.id == _selectionAnchorId,
+          );
+        }
+        if (anchorIndex == -1) {
+          anchorIndex = 0;
+          _selectionAnchorId = displayTracks.isNotEmpty
+              ? displayTracks[0].id
+              : track.id;
+        }
+        final start = math.min(anchorIndex, clickedIndex);
+        final end = math.max(anchorIndex, clickedIndex);
+        setState(() {
+          _selectedTrackIds.clear();
+          for (int i = start; i <= end; i++) {
+            _selectedTrackIds.add(displayTracks[i].id);
+          }
+          _isModifierSelectionActive = true;
+        });
+      }
+      return;
+    }
+
+    if (isControlOrMeta) {
+      setState(() {
+        if (_selectedTrackIds.contains(track.id)) {
+          _selectedTrackIds.remove(track.id);
+        } else {
+          _selectedTrackIds.add(track.id);
+        }
+        _selectionAnchorId = track.id;
+        _isModifierSelectionActive = true;
+      });
+      return;
+    }
+
+    // Normal click: selects single track, clears others.
+    setState(() {
+      _selectedTrackIds.clear();
+      _selectedTrackIds.add(track.id);
+      _selectionAnchorId = track.id;
+      _isModifierSelectionActive = false;
+    });
+
+    final isCurrent = widget.currentTrack?.id == track.id;
+    if (isCurrent) {
+      widget.onTogglePlay();
+    } else {
+      widget.onTrackSelected(track);
+    }
+  }
+
+  Widget _buildBatchActionToolbar(
+    List<Track> selectedTracks,
+    LyraThemeTokens tokens,
+  ) {
+    return BatchActionToolbar(
+      selectedCount: selectedTracks.length,
+      onClearSelection: () {
+        setState(() {
+          _clearSelection();
+        });
+      },
+      onPlayNext: widget.onBatchPlayNext != null
+          ? () => widget.onBatchPlayNext!(selectedTracks)
+          : null,
+      onAddToQueue: widget.onBatchAddToQueue != null
+          ? () => widget.onBatchAddToQueue!(selectedTracks)
+          : null,
+      onAddToPlaylist: widget.onBatchAddToPlaylist != null
+          ? () => widget.onBatchAddToPlaylist!(selectedTracks)
+          : null,
+      onAddTag: widget.onBatchAddTag != null
+          ? () => widget.onBatchAddTag!(selectedTracks)
+          : null,
+      tokens: tokens,
+    );
   }
 
   static List<TrackColumn> _normalizeColumnOrder(List<TrackColumn>? order) {
@@ -516,222 +776,233 @@ class _TracksViewState extends State<TracksView> {
       );
     }
 
-    final displayTracks = List<Track>.of(widget.tracks);
-    if (_sortColumn != null) {
-      displayTracks.sort((a, b) {
-        int cmp = switch (_sortColumn!.name) {
-          'title' => a.displayTitle.toLowerCase().compareTo(
-            b.displayTitle.toLowerCase(),
-          ),
-          'album' => (a.album).toLowerCase().compareTo((b.album).toLowerCase()),
-          'duration' => (a.durationMs ?? 0).compareTo(b.durationMs ?? 0),
-          'year' => (a.year ?? 0).compareTo(b.year ?? 0),
-          'trackNumber' => (a.trackNumber ?? 0).compareTo(b.trackNumber ?? 0),
-          'work' => (a.workTitle ?? '').toLowerCase().compareTo(
-            (b.workTitle ?? '').toLowerCase(),
-          ),
-          'genre' => (a.genre ?? '').toLowerCase().compareTo(
-            (b.genre ?? '').toLowerCase(),
-          ),
-          'resolution' => a.formattedQuality.toLowerCase().compareTo(
-            b.formattedQuality.toLowerCase(),
-          ),
-          'iswc' => (a.iswc ?? '').toLowerCase().compareTo(
-            (b.iswc ?? '').toLowerCase(),
-          ),
-          'isrc' => (a.isrc ?? '').toLowerCase().compareTo(
-            (b.isrc ?? '').toLowerCase(),
-          ),
-          'musicbrainzId' => (a.musicbrainzId ?? '').toLowerCase().compareTo(
-            (b.musicbrainzId ?? '').toLowerCase(),
-          ),
-          _ => 0,
-        };
-        return _sortAscending ? cmp : -cmp;
-      });
-    }
+    final displayTracks = _getDisplayTracks();
+    final selectedTracks = widget.tracks
+        .where((t) => _selectedTrackIds.contains(t.id))
+        .toList();
+    final bool showBatchToolbar =
+        selectedTracks.isNotEmpty &&
+        (_isModifierSelectionActive || selectedTracks.length > 1);
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
+    return Stack(
       children: [
-        // View Header
-        Padding(
-          padding: const EdgeInsets.symmetric(
-            horizontal: LyraSpacing.xl,
-            vertical: LyraSpacing.lg,
-          ),
-          child: Row(
-            children: [
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text('Tracks Library', style: LyraTypography.h2(tokens)),
-                  const SizedBox(height: LyraSpacing.xs),
-                  Text(
-                    '${widget.tracks.length} tracks',
-                    style: LyraTypography.muted(tokens),
-                  ),
-                ],
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // View Header
+            Padding(
+              padding: const EdgeInsets.symmetric(
+                horizontal: LyraSpacing.xl,
+                vertical: LyraSpacing.lg,
               ),
-              if (widget.filterLabel != null) ...[
-                const SizedBox(width: LyraSpacing.lg),
-                Container(
-                  padding: EdgeInsets.only(
-                    left: 8.0,
-                    top: widget.onClearFilter != null ? 2.0 : 4.0,
-                    bottom: widget.onClearFilter != null ? 2.0 : 4.0,
-                    right: widget.onClearFilter != null ? 3.0 : 8.0,
-                  ),
-                  decoration: BoxDecoration(
-                    color: tokens.secondary.withValues(alpha: 0.6),
-                    borderRadius: BorderRadius.circular(6.0),
-                    border: Border.all(color: tokens.border, width: 1.0),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
+              child: Row(
+                children: [
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
+                      Text('Tracks Library', style: LyraTypography.h2(tokens)),
+                      const SizedBox(height: LyraSpacing.xs),
                       Text(
-                        widget.filterLabel!,
-                        style: LyraTypography.small(tokens).copyWith(
-                          fontSize: 12.0,
-                          fontWeight: FontWeight.w500,
-                          color: tokens.text,
-                        ),
+                        '${widget.tracks.length} tracks',
+                        style: LyraTypography.muted(tokens),
                       ),
-                      if (widget.onClearFilter != null) ...[
-                        const SizedBox(width: 4.0),
-                        _FilterCloseButton(
-                          onTap: widget.onClearFilter,
-                          tokens: tokens,
-                        ),
-                      ],
                     ],
                   ),
+                  if (widget.filterLabel != null) ...[
+                    const SizedBox(width: LyraSpacing.lg),
+                    Container(
+                      padding: EdgeInsets.only(
+                        left: 8.0,
+                        top: widget.onClearFilter != null ? 2.0 : 4.0,
+                        bottom: widget.onClearFilter != null ? 2.0 : 4.0,
+                        right: widget.onClearFilter != null ? 3.0 : 8.0,
+                      ),
+                      decoration: BoxDecoration(
+                        color: tokens.secondary.withValues(alpha: 0.6),
+                        borderRadius: BorderRadius.circular(6.0),
+                        border: Border.all(color: tokens.border, width: 1.0),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            widget.filterLabel!,
+                            style: LyraTypography.small(tokens).copyWith(
+                              fontSize: 12.0,
+                              fontWeight: FontWeight.w500,
+                              color: tokens.text,
+                            ),
+                          ),
+                          if (widget.onClearFilter != null) ...[
+                            const SizedBox(width: 4.0),
+                            _FilterCloseButton(
+                              onTap: widget.onClearFilter,
+                              tokens: tokens,
+                            ),
+                          ],
+                        ],
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+
+            // Table Header with Draggable Floating Columns Window
+            DraggableColumnsOverlay(
+              key: const Key('tracks_table_header_context_menu'),
+              controller: _columnsOverlayController,
+              positionNotifier: _columnsPositionNotifier,
+              estimatedCardHeight: 60.0 + _effectiveColumnOrder.length * 36.0,
+              onReset: _resetColumns,
+              cardKey: const Key('tracks_columns_window'),
+              headerKey: const Key('tracks_columns_window_header'),
+              resetKey: const Key('tracks_columns_reset_button'),
+              closeKey: const Key('tracks_columns_close_button'),
+              tokens: tokens,
+              content: ReorderableListView.builder(
+                shrinkWrap: true,
+                physics: const ClampingScrollPhysics(),
+                buildDefaultDragHandles: false,
+                proxyDecorator: (child, index, animation) =>
+                    _proxyDecorator(child, index, animation, tokens),
+                itemCount: _effectiveColumnOrder.length,
+                onReorder: _onReorder,
+                itemBuilder: (context, index) {
+                  final col = _effectiveColumnOrder[index];
+                  final isVisible = _effectiveVisibleColumns.contains(col);
+                  final canToggle =
+                      !col.isMandatory &&
+                      (!isVisible || _effectiveVisibleColumns.length > 1);
+                  return _TrackColumnMenuItem(
+                    key: Key('track_col_menu_${col.name}'),
+                    index: index,
+                    col: col,
+                    isVisible: isVisible,
+                    canToggle: canToggle,
+                    tokens: tokens,
+                    onToggle: () => _toggleColumn(col),
+                  );
+                },
+              ),
+              child: Container(
+                key: const Key('tracks_table_header'),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: LyraSpacing.xl,
+                  vertical: LyraSpacing.sm,
                 ),
-              ],
-            ],
-          ),
-        ),
-
-        // Table Header with Draggable Floating Columns Window
-        DraggableColumnsOverlay(
-          key: const Key('tracks_table_header_context_menu'),
-          controller: _columnsOverlayController,
-          positionNotifier: _columnsPositionNotifier,
-          estimatedCardHeight: 60.0 + _effectiveColumnOrder.length * 36.0,
-          onReset: _resetColumns,
-          cardKey: const Key('tracks_columns_window'),
-          headerKey: const Key('tracks_columns_window_header'),
-          resetKey: const Key('tracks_columns_reset_button'),
-          closeKey: const Key('tracks_columns_close_button'),
-          tokens: tokens,
-          content: ReorderableListView.builder(
-            shrinkWrap: true,
-            physics: const ClampingScrollPhysics(),
-            buildDefaultDragHandles: false,
-            proxyDecorator: (child, index, animation) =>
-                _proxyDecorator(child, index, animation, tokens),
-            itemCount: _effectiveColumnOrder.length,
-            onReorder: _onReorder,
-            itemBuilder: (context, index) {
-              final col = _effectiveColumnOrder[index];
-              final isVisible = _effectiveVisibleColumns.contains(col);
-              final canToggle =
-                  !col.isMandatory &&
-                  (!isVisible || _effectiveVisibleColumns.length > 1);
-              return _TrackColumnMenuItem(
-                key: Key('track_col_menu_${col.name}'),
-                index: index,
-                col: col,
-                isVisible: isVisible,
-                canToggle: canToggle,
-                tokens: tokens,
-                onToggle: () => _toggleColumn(col),
-              );
-            },
-          ),
-          child: Container(
-            key: const Key('tracks_table_header'),
-            padding: const EdgeInsets.symmetric(
-              horizontal: LyraSpacing.xl,
-              vertical: LyraSpacing.sm,
-            ),
-            decoration: BoxDecoration(
-              color: tokens.background,
-              border: Border(
-                bottom: BorderSide(color: tokens.border, width: 1.0),
+                decoration: BoxDecoration(
+                  color: tokens.background,
+                  border: Border(
+                    bottom: BorderSide(color: tokens.border, width: 1.0),
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    for (final col in _effectiveColumnOrder)
+                      if (_effectiveVisibleColumns.contains(col))
+                        _buildHeaderCell(col, tokens),
+                  ],
+                ),
               ),
             ),
-            child: Row(
-              children: [
-                for (final col in _effectiveColumnOrder)
-                  if (_effectiveVisibleColumns.contains(col))
-                    _buildHeaderCell(col, tokens),
-              ],
-            ),
-          ),
-        ),
 
-        // Table Rows
-        Expanded(
-          child: NotificationListener<ScrollStartNotification>(
-            onNotification: (notification) {
-              LyraContextMenuCoordinator.hideActive();
-              return false;
-            },
-            child: ListView.builder(
-              padding: const EdgeInsets.symmetric(vertical: LyraSpacing.xs),
-              itemCount: displayTracks.length,
-              itemExtent: math.max(
-                56.0,
-                56.0 * MediaQuery.textScalerOf(context).scale(1.0),
-              ),
-              itemBuilder: (context, index) {
-                final track = displayTracks[index];
-                final isCurrent = widget.currentTrack?.id == track.id;
-                final versionCount =
-                    widget.audioVersionCounts?[track.id] ??
-                    widget.audioVersionCounts?[track.pcmHash] ??
-                    1;
-
-                final onInspectAudio = widget.onInspectAudio != null
-                    ? () => widget.onInspectAudio!(track)
-                    : (widget.onInspectTrack != null
-                          ? () => widget.onInspectTrack!(track)
-                          : null);
-
-                return _TrackRow(
-                  key: ValueKey(track.id),
-                  index: index + 1,
-                  track: track,
-                  isCurrent: isCurrent,
-                  isPlaying: isCurrent && widget.isPlaying,
-                  versionCount: versionCount,
-                  columnOrder: _effectiveColumnOrder,
-                  visibleColumns: _effectiveVisibleColumns,
-                  onTap: () {
-                    if (isCurrent) {
-                      widget.onTogglePlay();
-                    } else {
-                      widget.onTrackSelected(track);
-                    }
+            // Table Rows
+            Expanded(
+              child: GestureDetector(
+                behavior: HitTestBehavior.translucent,
+                onTap: () {
+                  if (_hasSelection) {
+                    setState(() {
+                      _clearSelection();
+                    });
+                  }
+                },
+                child: NotificationListener<ScrollStartNotification>(
+                  onNotification: (notification) {
+                    LyraContextMenuCoordinator.hideActive();
+                    return false;
                   },
-                  onPlayNow: () => widget.onTrackSelected(track),
-                  onPlayNext: widget.onPlayNext != null
-                      ? () => widget.onPlayNext!(track)
-                      : null,
-                  onAddToQueue: widget.onAddToQueue != null
-                      ? () => widget.onAddToQueue!(track)
-                      : null,
-                  onAddToPlaylist: widget.onAddToPlaylist != null
-                      ? () => widget.onAddToPlaylist!(track)
-                      : null,
-                  onInspectAudio: onInspectAudio,
-                  onGoToAlbum: widget.onGoToAlbum,
-                  onGoToArtist: widget.onGoToArtist,
-                  tokens: tokens,
-                );
-              },
+                  child: ListView.builder(
+                    padding: const EdgeInsets.symmetric(
+                      vertical: LyraSpacing.xs,
+                    ),
+                    itemCount: displayTracks.length,
+                    itemExtent: math.max(
+                      56.0,
+                      56.0 * MediaQuery.textScalerOf(context).scale(1.0),
+                    ),
+                    itemBuilder: (context, index) {
+                      final track = displayTracks[index];
+                      final isCurrent = widget.currentTrack?.id == track.id;
+                      final isSelected = _selectedTrackIds.contains(track.id);
+                      final versionCount =
+                          widget.audioVersionCounts?[track.id] ??
+                          widget.audioVersionCounts?[track.pcmHash] ??
+                          1;
+
+                      final onInspectAudio = widget.onInspectAudio != null
+                          ? () => widget.onInspectAudio!(track)
+                          : (widget.onInspectTrack != null
+                                ? () => widget.onInspectTrack!(track)
+                                : null);
+
+                      return _TrackRow(
+                        key: ValueKey(track.id),
+                        index: index + 1,
+                        track: track,
+                        isCurrent: isCurrent,
+                        isPlaying: isCurrent && widget.isPlaying,
+                        isSelected: isSelected,
+                        versionCount: versionCount,
+                        columnOrder: _effectiveColumnOrder,
+                        visibleColumns: _effectiveVisibleColumns,
+                        onTap: () => _handleTrackTap(track, displayTracks),
+                        onPlayNow: () => widget.onTrackSelected(track),
+                        onPlayNext: widget.onPlayNext != null
+                            ? () => widget.onPlayNext!(track)
+                            : null,
+                        onAddToQueue: widget.onAddToQueue != null
+                            ? () => widget.onAddToQueue!(track)
+                            : null,
+                        onAddToPlaylist: widget.onAddToPlaylist != null
+                            ? () => widget.onAddToPlaylist!(track)
+                            : null,
+                        onInspectAudio: onInspectAudio,
+                        onGoToAlbum: widget.onGoToAlbum,
+                        onGoToArtist: widget.onGoToArtist,
+                        tokens: tokens,
+                      );
+                    },
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+
+        // Floating Batch Action Toolbar
+        Positioned(
+          left: 0,
+          right: 0,
+          bottom: 24.0,
+          child: Align(
+            alignment: Alignment.bottomCenter,
+            child: IgnorePointer(
+              ignoring: !showBatchToolbar,
+              child: AnimatedSlide(
+                offset: showBatchToolbar ? Offset.zero : const Offset(0.0, 1.5),
+                duration: const Duration(milliseconds: 200),
+                curve: Curves.easeOutCubic,
+                child: AnimatedOpacity(
+                  opacity: showBatchToolbar ? 1.0 : 0.0,
+                  duration: const Duration(milliseconds: 150),
+                  curve: Curves.easeOut,
+                  child: showBatchToolbar
+                      ? _buildBatchActionToolbar(selectedTracks, tokens)
+                      : const SizedBox.shrink(),
+                ),
+              ),
             ),
           ),
         ),
@@ -877,6 +1148,7 @@ class _TrackRow extends StatefulWidget {
   final Track track;
   final bool isCurrent;
   final bool isPlaying;
+  final bool isSelected;
   final int versionCount;
   final VoidCallback onTap;
   final VoidCallback? onPlayNow;
@@ -896,6 +1168,7 @@ class _TrackRow extends StatefulWidget {
     required this.track,
     required this.isCurrent,
     required this.isPlaying,
+    this.isSelected = false,
     this.versionCount = 1,
     required this.onTap,
     this.onPlayNow,
@@ -1251,8 +1524,21 @@ class _TrackRowState extends State<_TrackRow> {
   Widget build(BuildContext context) {
     final tokens = widget.tokens;
     final track = widget.track;
-    final isHighlighted =
-        widget.isCurrent || _isHovered || _contextMenuController.isOpen;
+    final isSelected = widget.isSelected;
+    final isHoverOrMenu = _isHovered || _contextMenuController.isOpen;
+
+    Color? rowBackgroundColor;
+    if (isSelected) {
+      rowBackgroundColor = tokens.isDark
+          ? (_isHovered ? const Color(0xFF52525B) : const Color(0xFF3F3F46))
+          : (_isHovered ? const Color(0xFFE4E4E7) : const Color(0xFFF4F4F5));
+    } else if (widget.isCurrent) {
+      rowBackgroundColor = tokens.isDark
+          ? const Color(0xFF27272A)
+          : const Color(0xFFE4E4E7);
+    } else if (isHoverOrMenu) {
+      rowBackgroundColor = tokens.secondary.withValues(alpha: 0.5);
+    }
 
     return RepaintBoundary(
       child: ShadContextMenuRegion(
@@ -1319,14 +1605,12 @@ class _TrackRowState extends State<_TrackRow> {
                 vertical: LyraSpacing.sm,
               ),
               decoration: BoxDecoration(
-                color: widget.isCurrent
-                    ? tokens.secondary
-                    : isHighlighted
-                    ? tokens.secondary.withValues(alpha: 0.5)
-                    : null,
+                color: rowBackgroundColor,
                 border: Border(
                   bottom: BorderSide(
-                    color: tokens.border.withValues(alpha: 0.4),
+                    color: isSelected
+                        ? tokens.primary.withValues(alpha: 0.3)
+                        : tokens.border.withValues(alpha: 0.4),
                     width: 1.0,
                   ),
                 ),

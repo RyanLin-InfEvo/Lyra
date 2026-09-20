@@ -436,6 +436,40 @@ class PlaybackQueueController extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Inserts all [tracks] immediately after [currentIndex] in order.
+  void playAllNext(List<Track> tracks) {
+    if (tracks.isEmpty) return;
+
+    if (_queue.isEmpty || _currentIndex < 0) {
+      _queue.addAll(tracks);
+      _queueItemIds.addAll(
+        List.generate(tracks.length, (_) => _generateQueueItemId()),
+      );
+      _currentIndex = 0;
+      if (_shuffleMode) {
+        _shuffledOrder = List.generate(tracks.length, (i) => i);
+        _shuffledCurrentIndex = 0;
+      }
+    } else {
+      final insertIndex = _currentIndex + 1;
+      _queue.insertAll(insertIndex, tracks);
+      _queueItemIds.insertAll(
+        insertIndex,
+        List.generate(tracks.length, (_) => _generateQueueItemId()),
+      );
+      if (_shuffleMode) {
+        for (var i = 0; i < _shuffledOrder.length; i++) {
+          if (_shuffledOrder[i] >= insertIndex) {
+            _shuffledOrder[i] += tracks.length;
+          }
+        }
+        final newIndices = List.generate(tracks.length, (i) => insertIndex + i);
+        _shuffledOrder.insertAll(_shuffledCurrentIndex + 1, newIndices);
+      }
+    }
+    notifyListeners();
+  }
+
   /// Removes the track at [index] from the queue.
   void removeFromQueue(int index) {
     if (index < 0 || index >= _queue.length) return;

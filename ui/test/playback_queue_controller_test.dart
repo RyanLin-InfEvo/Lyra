@@ -441,6 +441,64 @@ void main() {
       expect(controller.currentTrack, equals(track2));
     });
 
+    test(
+      'playAllNext inserts multiple tracks immediately after currentIndex in order',
+      () {
+        final controller = PlaybackQueueController(autoStartTimer: false);
+        addTearDown(controller.dispose);
+
+        controller.play(track1, contextQueue: [track1, track3]);
+        expect(controller.currentIndex, equals(0));
+
+        controller.playAllNext([track2, track1]);
+        expect(controller.queue, equals([track1, track2, track1, track3]));
+        expect(controller.currentIndex, equals(0));
+
+        // Advancing plays the inserted tracks next in order
+        controller.next();
+        expect(controller.currentIndex, equals(1));
+        expect(controller.currentTrack, equals(track2));
+
+        controller.next();
+        expect(controller.currentIndex, equals(2));
+        expect(controller.currentTrack, equals(track1));
+      },
+    );
+
+    test('playAllNext handles empty queue and empty list', () {
+      final controller = PlaybackQueueController(autoStartTimer: false);
+      addTearDown(controller.dispose);
+
+      // Empty list does nothing
+      controller.playAllNext([]);
+      expect(controller.queue, isEmpty);
+      expect(controller.currentIndex, equals(-1));
+
+      // Populates empty queue
+      controller.playAllNext([track1, track2]);
+      expect(controller.queue, equals([track1, track2]));
+      expect(controller.currentIndex, equals(0));
+      expect(controller.queueItemIds.length, equals(2));
+    });
+
+    test('playAllNext in shuffle mode orders new tracks immediately next', () {
+      final controller = PlaybackQueueController(
+        autoStartTimer: false,
+        random: Random(42),
+      );
+      addTearDown(controller.dispose);
+
+      controller.play(track1, contextQueue: [track1, track3]);
+      controller.setShuffle(true);
+
+      controller.playAllNext([track2]);
+      expect(controller.queue, equals([track1, track2, track3]));
+
+      // In shuffle mode, track2 should play next
+      controller.next();
+      expect(controller.currentTrack, equals(track2));
+    });
+
     test('removeFromQueue adjusts currentIndex correctly', () {
       final controller = PlaybackQueueController(autoStartTimer: false);
       addTearDown(controller.dispose);

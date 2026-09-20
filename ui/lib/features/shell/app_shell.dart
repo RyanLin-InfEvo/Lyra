@@ -9,6 +9,7 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 import '../../design_system/contracts/lyra_contracts.dart';
 import '../../design_system/factory/lyra_design_system_scope.dart';
 import '../../design_system/tokens/lyra_tokens.dart';
+import '../../design_system/widgets/lyra_badge.dart';
 import '../../design_system/widgets/lyra_button.dart';
 import '../../design_system/widgets/lyra_dialog.dart';
 import '../../design_system/widgets/lyra_input.dart';
@@ -100,6 +101,7 @@ class AppShellState extends State<AppShell> {
   List<Playlist> _sidebarPlaylists = [];
   List<Playlist> _playlists = [];
   List<Tag> _tags = [];
+  final Map<String, Set<String>> _taggedTrackIdsByTag = {};
   List<CasObject> _casObjects = [];
   String? _selectedPlaylistId;
   String? _selectedTagId;
@@ -122,12 +124,16 @@ class AppShellState extends State<AppShell> {
 
   static Map<String, int> _computeTagTrackCounts(
     List<Tag> tags,
-    List<Track> tracks,
-  ) {
+    List<Track> tracks, [
+    Map<String, Set<String>>? taggedTrackIds,
+  ]) {
     final Map<String, int> counts = {};
     for (final tag in tags) {
       final tagLower = tag.name.toLowerCase();
       counts[tag.id] = tracks.where((track) {
+        if (taggedTrackIds?[tag.id]?.contains(track.id) ?? false) {
+          return true;
+        }
         if (tagLower == 'hi-res') {
           return (track.bitDepth != null && track.bitDepth! >= 24) ||
               (track.sampleRate != null && track.sampleRate! > 48000);
@@ -363,7 +369,11 @@ class AppShellState extends State<AppShell> {
       }
     }
 
-    final tagTrackCounts = _computeTagTrackCounts(tags, tracks);
+    final tagTrackCounts = _computeTagTrackCounts(
+      tags,
+      tracks,
+      _taggedTrackIdsByTag,
+    );
 
     if (!mounted) return;
 
@@ -626,9 +636,8 @@ class AppShellState extends State<AppShell> {
     );
   }
 
-  void _showAddToPlaylistDialog([Track? track]) {
-    final effectiveTrack = track ?? _currentTrack;
-    if (effectiveTrack == null) return;
+  void _showBatchAddToPlaylistDialog(List<Track> tracks) {
+    if (tracks.isEmpty) return;
     final scope = LyraDesignSystemScope.of(context);
     showDialog<void>(
       context: context,
@@ -638,7 +647,7 @@ class AppShellState extends State<AppShell> {
         tokens: scope.tokens,
         themeModeNotifier: scope.themeModeNotifier,
         child: _AddToPlaylistDialog(
-          track: effectiveTrack,
+          tracks: tracks,
           playlists: _playlists,
           musicService: widget.musicService,
           onPlaylistUpdated: (updatedPlaylist) {
@@ -659,6 +668,48 @@ class AppShellState extends State<AppShell> {
     );
   }
 
+  void _showAddToPlaylistDialog([Track? track]) {
+    final effectiveTrack = track ?? _currentTrack;
+    if (effectiveTrack == null) return;
+    _showBatchAddToPlaylistDialog([effectiveTrack]);
+  }
+
+  void _showBatchTagDialog(List<Track> tracks) {
+    if (tracks.isEmpty) return;
+    final scope = LyraDesignSystemScope.of(context);
+    showDialog<void>(
+      context: context,
+      barrierDismissible: true,
+      builder: (ctx) => LyraDesignSystemScope(
+        factory: scope.factory,
+        tokens: scope.tokens,
+        themeModeNotifier: scope.themeModeNotifier,
+        child: _BatchTagDialog(
+          tracks: tracks,
+          tags: _tags,
+          musicService: widget.musicService,
+          onTagApplied: (tag) async {
+            setState(() {
+              if (!_tags.any((t) => t.id == tag.id)) {
+                _tags = [..._tags, tag];
+              }
+              final set = _taggedTrackIdsByTag.putIfAbsent(
+                tag.id,
+                () => <String>{},
+              );
+              set.addAll(tracks.map((t) => t.id));
+              _tagTrackCounts = _computeTagTrackCounts(
+                _tags,
+                _tracks,
+                _taggedTrackIdsByTag,
+              );
+            });
+          },
+        ),
+      ),
+    );
+  }
+
   void _onVolumeChanged(double volume) {
     _volumeNotifier.value = volume;
   }
@@ -671,6 +722,9 @@ class AppShellState extends State<AppShell> {
       _activeTrackFilter = TrackFilter(
         label: 'Tag: ${tag.name}',
         predicate: (track) {
+          if (_taggedTrackIdsByTag[tag.id]?.contains(track.id) ?? false) {
+            return true;
+          }
           final tagLower = tag.name.toLowerCase();
           if (tagLower == 'hi-res') {
             return (track.bitDepth != null && track.bitDepth! >= 24) ||
@@ -702,6 +756,37 @@ class AppShellState extends State<AppShell> {
     setState(() {
       _selectedPlaylistId = newPl.id;
       _currentTab = AppTab.playlists;
+    });
+  }
+
+  List<Track> _resolveTracksFromPlaylists(List<Playlist> playlists) {
+    final trackSource = _catalogTracks.isNotEmpty ? _catalogTracks : _tracks;
+    final trackMap = {for (final t in trackSource) t.id: t};
+    final tracks = <Track>[];
+    for (final playlist in playlists) {
+      for (final trackId in playlist.trackIds) {
+        final track = trackMap[trackId];
+        if (track != null) {
+          tracks.add(track);
+        }
+      }
+    }
+    return tracks;
+  }
+
+  void _handleBatchDeletePlaylists(List<Playlist> playlists) {
+    final idsToDelete = playlists.map((p) => p.id).toSet();
+    setState(() {
+      _playlists = _playlists
+          .where((p) => !idsToDelete.contains(p.id))
+          .toList();
+      _sidebarPlaylists = _sidebarPlaylists
+          .where((p) => !idsToDelete.contains(p.id))
+          .toList();
+      if (_selectedPlaylistId != null &&
+          idsToDelete.contains(_selectedPlaylistId)) {
+        _selectedPlaylistId = null;
+      }
     });
   }
 
@@ -964,6 +1049,12 @@ class AppShellState extends State<AppShell> {
             onPlayNext: (track) => _playbackController.playNext(track),
             onAddToQueue: (track) => _playbackController.addToQueue(track),
             onAddToPlaylist: _showAddToPlaylistDialog,
+            onBatchAddToPlaylist: _showBatchAddToPlaylistDialog,
+            onBatchAddTag: _showBatchTagDialog,
+            onBatchAddToQueue: (tracks) =>
+                _playbackController.addAllToQueue(tracks),
+            onBatchPlayNext: (tracks) =>
+                _playbackController.playAllNext(tracks),
             onInspectTrack: _openInspectorForTrack,
             onInspectAudio: _openInspectorForAudio,
             onGoToAlbum: _navigateToAlbum,
@@ -1011,6 +1102,54 @@ class AppShellState extends State<AppShell> {
           child: AlbumsView(
             albums: _albums,
             onAlbumSelected: (album) => _navigateToAlbum(album.title),
+            onBatchPlayNext: (albums) {
+              final trackSource = _catalogTracks.isNotEmpty
+                  ? _catalogTracks
+                  : _tracks;
+              final albumTitles = albums.map((a) => a.title).toSet();
+              final tracks = trackSource
+                  .where((t) => albumTitles.contains(t.album))
+                  .toList();
+              if (tracks.isNotEmpty) {
+                _playbackController.playAllNext(tracks);
+              }
+            },
+            onBatchAddToQueue: (albums) {
+              final trackSource = _catalogTracks.isNotEmpty
+                  ? _catalogTracks
+                  : _tracks;
+              final albumTitles = albums.map((a) => a.title).toSet();
+              final tracks = trackSource
+                  .where((t) => albumTitles.contains(t.album))
+                  .toList();
+              if (tracks.isNotEmpty) {
+                _playbackController.addAllToQueue(tracks);
+              }
+            },
+            onBatchAddToPlaylist: (albums) {
+              final trackSource = _catalogTracks.isNotEmpty
+                  ? _catalogTracks
+                  : _tracks;
+              final albumTitles = albums.map((a) => a.title).toSet();
+              final tracks = trackSource
+                  .where((t) => albumTitles.contains(t.album))
+                  .toList();
+              if (tracks.isNotEmpty) {
+                _showBatchAddToPlaylistDialog(tracks);
+              }
+            },
+            onBatchAddTag: (albums) {
+              final trackSource = _catalogTracks.isNotEmpty
+                  ? _catalogTracks
+                  : _tracks;
+              final albumTitles = albums.map((a) => a.title).toSet();
+              final tracks = trackSource
+                  .where((t) => albumTitles.contains(t.album))
+                  .toList();
+              if (tracks.isNotEmpty) {
+                _showBatchTagDialog(tracks);
+              }
+            },
           ),
         );
       case AppTab.artists:
@@ -1018,6 +1157,54 @@ class AppShellState extends State<AppShell> {
           child: ArtistsView(
             artists: _artists,
             onArtistSelected: (artist) => _navigateToArtist(artist.name),
+            onBatchPlayNext: (artists) {
+              final trackSource = _catalogTracks.isNotEmpty
+                  ? _catalogTracks
+                  : _tracks;
+              final artistNames = artists.map((a) => a.name).toSet();
+              final tracks = trackSource
+                  .where((t) => artistNames.contains(t.artist))
+                  .toList();
+              if (tracks.isNotEmpty) {
+                _playbackController.playAllNext(tracks);
+              }
+            },
+            onBatchAddToQueue: (artists) {
+              final trackSource = _catalogTracks.isNotEmpty
+                  ? _catalogTracks
+                  : _tracks;
+              final artistNames = artists.map((a) => a.name).toSet();
+              final tracks = trackSource
+                  .where((t) => artistNames.contains(t.artist))
+                  .toList();
+              if (tracks.isNotEmpty) {
+                _playbackController.addAllToQueue(tracks);
+              }
+            },
+            onBatchAddToPlaylist: (artists) {
+              final trackSource = _catalogTracks.isNotEmpty
+                  ? _catalogTracks
+                  : _tracks;
+              final artistNames = artists.map((a) => a.name).toSet();
+              final tracks = trackSource
+                  .where((t) => artistNames.contains(t.artist))
+                  .toList();
+              if (tracks.isNotEmpty) {
+                _showBatchAddToPlaylistDialog(tracks);
+              }
+            },
+            onBatchAddTag: (artists) {
+              final trackSource = _catalogTracks.isNotEmpty
+                  ? _catalogTracks
+                  : _tracks;
+              final artistNames = artists.map((a) => a.name).toSet();
+              final tracks = trackSource
+                  .where((t) => artistNames.contains(t.artist))
+                  .toList();
+              if (tracks.isNotEmpty) {
+                _showBatchTagDialog(tracks);
+              }
+            },
           ),
         );
       case AppTab.playlists:
@@ -1120,6 +1307,25 @@ class AppShellState extends State<AppShell> {
               setState(() {
                 _selectedPlaylistId = playlist.id;
               });
+            },
+            onBatchPlayNext: (playlists) {
+              final tracks = _resolveTracksFromPlaylists(playlists);
+              if (tracks.isNotEmpty) {
+                _playbackController.playAllNext(tracks);
+              }
+            },
+            onBatchAddToQueue: (playlists) {
+              final tracks = _resolveTracksFromPlaylists(playlists);
+              if (tracks.isNotEmpty) {
+                _playbackController.addAllToQueue(tracks);
+              }
+            },
+            onBatchDelete: _handleBatchDeletePlaylists,
+            onBatchAddTag: (playlists) {
+              final tracks = _resolveTracksFromPlaylists(playlists);
+              if (tracks.isNotEmpty) {
+                _showBatchTagDialog(tracks);
+              }
             },
           ),
         );
@@ -1440,19 +1646,20 @@ class AppShellState extends State<AppShell> {
   }
 }
 
-/// Modal dialog for adding a track to an existing playlist or creating a new one.
+/// Modal dialog for adding tracks to an existing playlist or creating a new one.
 class _AddToPlaylistDialog extends StatefulWidget {
-  final Track track;
+  final List<Track> tracks;
   final List<Playlist> playlists;
   final MusicService musicService;
   final ValueChanged<Playlist> onPlaylistUpdated;
 
-  const _AddToPlaylistDialog({
-    required this.track,
+  _AddToPlaylistDialog({
+    List<Track>? tracks,
+    Track? track,
     required this.playlists,
     required this.musicService,
     required this.onPlaylistUpdated,
-  });
+  }) : tracks = tracks ?? (track != null ? [track] : const []);
 
   @override
   State<_AddToPlaylistDialog> createState() => _AddToPlaylistDialogState();
@@ -1481,7 +1688,7 @@ class _AddToPlaylistDialogState extends State<_AddToPlaylistDialog> {
         : 'New Playlist ${widget.playlists.length + 1}';
     final newPl = await widget.musicService.createPlaylist(
       title: title,
-      trackIds: [widget.track.id],
+      trackIds: widget.tracks.map((t) => t.id).toList(),
     );
     widget.onPlaylistUpdated(newPl);
     if (mounted) {
@@ -1493,18 +1700,19 @@ class _AddToPlaylistDialogState extends State<_AddToPlaylistDialog> {
   Widget build(BuildContext context) {
     final tokens = LyraDesignSystemScope.of(context).tokens;
 
+    final descriptionText = _isCreatingPlaylist
+        ? 'Enter a name for the new playlist'
+        : (widget.tracks.length == 1
+              ? 'Add "${widget.tracks.first.displayTitle}" to a playlist'
+              : 'Add ${widget.tracks.length} tracks to a playlist');
+
     return Center(
       child: LyraDialog(
         title: Text(
           _isCreatingPlaylist ? 'New Playlist' : 'Add to Playlist',
           style: LyraTypography.h4(tokens),
         ),
-        description: Text(
-          _isCreatingPlaylist
-              ? 'Enter a name for the new playlist'
-              : 'Add "${widget.track.displayTitle}" to a playlist',
-          style: LyraTypography.muted(tokens),
-        ),
+        description: Text(descriptionText, style: LyraTypography.muted(tokens)),
         child: ConstrainedBox(
           constraints: BoxConstraints(
             maxWidth: 440.0,
@@ -1575,19 +1783,25 @@ class _AddToPlaylistDialogState extends State<_AddToPlaylistDialog> {
                               playlist: playlist,
                               tokens: tokens,
                               onTap: () {
-                                final trackId = widget.track.id;
+                                final trackIdsToAdd = widget.tracks
+                                    .map((t) => t.id)
+                                    .toList();
                                 final updatedTrackIds = List<String>.from(
                                   playlist.trackIds,
                                 );
-                                if (!updatedTrackIds.contains(trackId)) {
-                                  updatedTrackIds.add(trackId);
+                                for (final tid in trackIdsToAdd) {
+                                  if (!updatedTrackIds.contains(tid)) {
+                                    updatedTrackIds.add(tid);
+                                  }
                                 }
                                 final updatedPlaylist = playlist.copyWith(
                                   trackIds: updatedTrackIds,
                                 );
                                 if (widget.musicService is MockMusicService) {
-                                  (widget.musicService as MockMusicService)
-                                      .addTrackToPlaylist(playlist.id, trackId);
+                                  for (final tid in trackIdsToAdd) {
+                                    (widget.musicService as MockMusicService)
+                                        .addTrackToPlaylist(playlist.id, tid);
+                                  }
                                 }
                                 widget.onPlaylistUpdated(updatedPlaylist);
                                 Navigator.of(context).pop();
@@ -1632,6 +1846,216 @@ class _AddToPlaylistDialogState extends State<_AddToPlaylistDialog> {
                     ),
                   ],
                 ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Modal dialog for applying an existing or new tag to a batch of tracks.
+class _BatchTagDialog extends StatefulWidget {
+  final List<Track> tracks;
+  final List<Tag> tags;
+  final MusicService musicService;
+  final ValueChanged<Tag> onTagApplied;
+
+  const _BatchTagDialog({
+    required this.tracks,
+    required this.tags,
+    required this.musicService,
+    required this.onTagApplied,
+  });
+
+  @override
+  State<_BatchTagDialog> createState() => _BatchTagDialogState();
+}
+
+class _BatchTagDialogState extends State<_BatchTagDialog> {
+  late final TextEditingController _newTagNameController;
+
+  @override
+  void initState() {
+    super.initState();
+    _newTagNameController = TextEditingController();
+  }
+
+  @override
+  void dispose() {
+    _newTagNameController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _handleCreateAndApplyTag(String rawName) async {
+    final trimmed = rawName.trim();
+    if (trimmed.isEmpty) return;
+    final createdTag = await widget.musicService.createTag(
+      name: trimmed,
+      category: 'general',
+    );
+    widget.onTagApplied(createdTag);
+    if (mounted) {
+      Navigator.of(context).pop();
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = LyraDesignSystemScope.of(context).tokens;
+
+    return Center(
+      child: LyraDialog(
+        title: Text('Add Tags', style: LyraTypography.h4(tokens)),
+        description: Text(
+          'Apply a tag to ${widget.tracks.length} selected tracks',
+          style: LyraTypography.muted(tokens),
+        ),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 440.0, maxHeight: 520.0),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              const SizedBox(height: LyraSpacing.sm),
+              // New tag input
+              Row(
+                children: [
+                  Expanded(
+                    child: LyraInput(
+                      controller: _newTagNameController,
+                      placeholder: 'Create new tag name...',
+                      onSubmitted: (name) => _handleCreateAndApplyTag(name),
+                    ),
+                  ),
+                  const SizedBox(width: LyraSpacing.sm),
+                  LyraButton.primary(
+                    size: LyraButtonSize.sm,
+                    leading: const Icon(LucideIcons.plus, size: 14.0),
+                    onPressed: () =>
+                        _handleCreateAndApplyTag(_newTagNameController.text),
+                    child: const Text('Create'),
+                  ),
+                ],
+              ),
+              const SizedBox(height: LyraSpacing.md),
+              Text(
+                'Existing Tags',
+                style: LyraTypography.small(tokens).copyWith(
+                  fontWeight: FontWeight.w600,
+                  color: tokens.textMuted,
+                ),
+              ),
+              const SizedBox(height: LyraSpacing.xs),
+              Flexible(
+                child: widget.tags.isEmpty
+                    ? Padding(
+                        padding: const EdgeInsets.symmetric(
+                          vertical: LyraSpacing.lg,
+                        ),
+                        child: Center(
+                          child: Text(
+                            'No existing tags. Create one above.',
+                            style: LyraTypography.muted(tokens),
+                          ),
+                        ),
+                      )
+                    : ListView.builder(
+                        shrinkWrap: true,
+                        itemCount: widget.tags.length,
+                        itemBuilder: (context, index) {
+                          final tag = widget.tags[index];
+                          return Padding(
+                            padding: const EdgeInsets.symmetric(
+                              vertical: LyraSpacing.xs,
+                            ),
+                            child: _TagDialogItem(
+                              tag: tag,
+                              tokens: tokens,
+                              onTap: () {
+                                widget.onTagApplied(tag);
+                                Navigator.of(context).pop();
+                              },
+                            ),
+                          );
+                        },
+                      ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _TagDialogItem extends StatefulWidget {
+  final Tag tag;
+  final LyraThemeTokens tokens;
+  final VoidCallback onTap;
+
+  const _TagDialogItem({
+    required this.tag,
+    required this.tokens,
+    required this.onTap,
+  });
+
+  @override
+  State<_TagDialogItem> createState() => _TagDialogItemState();
+}
+
+class _TagDialogItemState extends State<_TagDialogItem> {
+  bool _isHovered = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = widget.tokens;
+    return MouseRegion(
+      cursor: SystemMouseCursors.click,
+      onEnter: (_) => setState(() => _isHovered = true),
+      onExit: (_) => setState(() => _isHovered = false),
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: widget.onTap,
+        child: Container(
+          padding: const EdgeInsets.symmetric(
+            horizontal: LyraSpacing.md,
+            vertical: LyraSpacing.sm,
+          ),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(6.0),
+            color: _isHovered
+                ? tokens.secondary.withValues(alpha: 0.6)
+                : tokens.secondary.withValues(alpha: 0.2),
+            border: Border.all(
+              color: _isHovered ? tokens.primary : tokens.border,
+              width: 1.0,
+            ),
+          ),
+          child: Row(
+            children: [
+              Icon(LucideIcons.tag, size: 14.0, color: tokens.primary),
+              const SizedBox(width: 8.0),
+              Expanded(
+                child: Text(
+                  widget.tag.displayName,
+                  style: LyraTypography.small(
+                    tokens,
+                  ).copyWith(fontWeight: FontWeight.w500, color: tokens.text),
+                ),
+              ),
+              LyraBadge.outline(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 6.0,
+                  vertical: 2.0,
+                ),
+                child: Text(
+                  widget.tag.displayCategory,
+                  style: LyraTypography.small(
+                    tokens,
+                  ).copyWith(fontSize: 10.0, color: tokens.textMuted),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );

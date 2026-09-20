@@ -22,6 +22,10 @@ Widget _buildTracksViewTest({
   ValueChanged<Track>? onPlayNext,
   ValueChanged<Track>? onAddToQueue,
   ValueChanged<Track>? onAddToPlaylist,
+  ValueChanged<List<Track>>? onBatchAddToPlaylist,
+  ValueChanged<List<Track>>? onBatchAddTag,
+  ValueChanged<List<Track>>? onBatchAddToQueue,
+  ValueChanged<List<Track>>? onBatchPlayNext,
   ValueChanged<Track>? onInspectTrack,
   ValueChanged<Track>? onInspectAudio,
   ValueChanged<String>? onGoToAlbum,
@@ -73,6 +77,10 @@ Widget _buildTracksViewTest({
                 onPlayNext: onPlayNext,
                 onAddToQueue: onAddToQueue,
                 onAddToPlaylist: onAddToPlaylist,
+                onBatchAddToPlaylist: onBatchAddToPlaylist,
+                onBatchAddTag: onBatchAddTag,
+                onBatchAddToQueue: onBatchAddToQueue,
+                onBatchPlayNext: onBatchPlayNext,
                 onInspectTrack: onInspectTrack,
                 onInspectAudio: onInspectAudio,
                 onGoToAlbum: onGoToAlbum,
@@ -1871,5 +1879,662 @@ void main() {
         expect(find.text('Play Now'), findsNothing);
       });
     });
+  });
+
+  group('TracksView Multi-Selection & Floating Batch Action Toolbar', () {
+    const multiTracks = [
+      Track(
+        id: 'mt_1',
+        title: 'Batch Track 1',
+        artistName: 'Artist 1',
+        albumTitle: 'Album 1',
+        durationMs: 180000,
+      ),
+      Track(
+        id: 'mt_2',
+        title: 'Batch Track 2',
+        artistName: 'Artist 2',
+        albumTitle: 'Album 2',
+        durationMs: 200000,
+      ),
+      Track(
+        id: 'mt_3',
+        title: 'Batch Track 3',
+        artistName: 'Artist 3',
+        albumTitle: 'Album 3',
+        durationMs: 220000,
+      ),
+      Track(
+        id: 'mt_4',
+        title: 'Batch Track 4',
+        artistName: 'Artist 4',
+        albumTitle: 'Album 4',
+        durationMs: 240000,
+      ),
+    ];
+
+    BoxDecoration getRowDecoration(WidgetTester tester, String title) {
+      final rowContainer = find
+          .ancestor(of: find.text(title), matching: find.byType(Container))
+          .first;
+      return tester.widget<Container>(rowContainer).decoration as BoxDecoration;
+    }
+
+    testWidgets('Normal click single selection and playback behavior', (
+      tester,
+    ) async {
+      Track? selectedTrack;
+      int togglePlayCount = 0;
+
+      await tester.pumpWidget(
+        _buildTracksViewTest(
+          tracks: multiTracks,
+          currentTrack: multiTracks[0],
+          onTrackSelected: (t) => selectedTrack = t,
+          onTogglePlay: () => togglePlayCount++,
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      // 1. Initial state: current track (mt_1) has secondary background, no batch toolbar
+      expect(find.byKey(const Key('batch_action_toolbar')), findsNothing);
+
+      // 2. Click on a non-current track (mt_2)
+      await tester.tap(find.text('Batch Track 2'));
+      await tester.pumpAndSettle();
+
+      expect(selectedTrack, equals(multiTracks[1]));
+      expect(togglePlayCount, equals(0));
+      // Selected row has lighter gray highlight
+      expect(
+        getRowDecoration(tester, 'Batch Track 2').color,
+        equals(const Color(0xFF3F3F46)),
+      );
+      // Only 1 track selected, so batch toolbar remains hidden
+      expect(find.byKey(const Key('batch_action_toolbar')), findsNothing);
+
+      // 3. Click on the current playing track (mt_1)
+      selectedTrack = null;
+      await tester.tap(find.text('Batch Track 1'));
+      await tester.pumpAndSettle();
+
+      // Should trigger togglePlay, not onTrackSelected
+      expect(togglePlayCount, equals(1));
+      expect(selectedTrack, isNull);
+    });
+
+    testWidgets(
+      'Shift+Click range selection selects all tracks between anchor and target without playback trigger',
+      (tester) async {
+        int selectedCount = 0;
+
+        await tester.pumpWidget(
+          _buildTracksViewTest(
+            tracks: multiTracks,
+            onTrackSelected: (_) => selectedCount++,
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        // 1. Click Track 1 (normal click establishes anchor)
+        await tester.tap(find.text('Batch Track 1'));
+        await tester.pumpAndSettle();
+        expect(selectedCount, equals(1));
+
+        // 2. Shift + Click Track 3
+        await tester.sendKeyDownEvent(LogicalKeyboardKey.shiftLeft);
+        await tester.tap(find.text('Batch Track 3'));
+        await tester.sendKeyUpEvent(LogicalKeyboardKey.shiftLeft);
+        await tester.pumpAndSettle();
+
+        // Modifier click MUST NOT trigger playback/onTrackSelected
+        expect(selectedCount, equals(1));
+
+        // Rows 1, 2, 3 should all be selected with lighter gray highlight
+        const expectedSelectedColor = Color(0xFF3F3F46);
+        expect(
+          getRowDecoration(tester, 'Batch Track 1').color,
+          equals(expectedSelectedColor),
+        );
+        expect(
+          getRowDecoration(tester, 'Batch Track 2').color,
+          equals(expectedSelectedColor),
+        );
+        expect(
+          getRowDecoration(tester, 'Batch Track 3').color,
+          equals(expectedSelectedColor),
+        );
+        expect(getRowDecoration(tester, 'Batch Track 4').color, isNull);
+
+        // Batch toolbar is visible showing 3 selected
+        expect(find.byKey(const Key('batch_action_toolbar')), findsOneWidget);
+        expect(find.text('3 selected'), findsOneWidget);
+      },
+    );
+
+    testWidgets(
+      'Ctrl/Cmd+Click toggles individual track selection without playback trigger',
+      (tester) async {
+        int selectedCount = 0;
+
+        await tester.pumpWidget(
+          _buildTracksViewTest(
+            tracks: multiTracks,
+            onTrackSelected: (_) => selectedCount++,
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        const selectedColor = Color(0xFF3F3F46);
+
+        // 1. Normal click Track 1
+        await tester.tap(find.text('Batch Track 1'));
+        await tester.pumpAndSettle();
+        expect(selectedCount, equals(1));
+        expect(find.byKey(const Key('batch_action_toolbar')), findsNothing);
+
+        // 2. Ctrl + Click Track 3 -> both Track 1 and Track 3 selected
+        await tester.sendKeyDownEvent(LogicalKeyboardKey.controlLeft);
+        await tester.tap(find.text('Batch Track 3'));
+        await tester.sendKeyUpEvent(LogicalKeyboardKey.controlLeft);
+        await tester.pumpAndSettle();
+
+        expect(
+          selectedCount,
+          equals(1),
+        ); // modifier click does not trigger onTrackSelected
+        expect(
+          getRowDecoration(tester, 'Batch Track 1').color,
+          equals(selectedColor),
+        );
+        expect(getRowDecoration(tester, 'Batch Track 2').color, isNull);
+        expect(
+          getRowDecoration(tester, 'Batch Track 3').color,
+          equals(selectedColor),
+        );
+        expect(find.byKey(const Key('batch_action_toolbar')), findsOneWidget);
+        expect(find.text('2 selected'), findsOneWidget);
+
+        // 3. Ctrl + Click Track 1 again -> Track 1 toggled off, only Track 3 selected
+        await tester.sendKeyDownEvent(LogicalKeyboardKey.controlLeft);
+        await tester.tap(find.text('Batch Track 1'));
+        await tester.sendKeyUpEvent(LogicalKeyboardKey.controlLeft);
+        await tester.pumpAndSettle();
+
+        expect(getRowDecoration(tester, 'Batch Track 1').color, isNull);
+        expect(
+          getRowDecoration(tester, 'Batch Track 3').color,
+          equals(selectedColor),
+        );
+        // Modifier selection is active, so toolbar remains visible showing 1 selected
+        expect(find.byKey(const Key('batch_action_toolbar')), findsOneWidget);
+        expect(find.text('1 selected'), findsOneWidget);
+
+        // 4. Cmd (Meta) + Click Track 4 -> Track 3 and Track 4 selected
+        await tester.sendKeyDownEvent(LogicalKeyboardKey.metaLeft);
+        await tester.tap(find.text('Batch Track 4'));
+        await tester.sendKeyUpEvent(LogicalKeyboardKey.metaLeft);
+        await tester.pumpAndSettle();
+
+        expect(
+          getRowDecoration(tester, 'Batch Track 3').color,
+          equals(selectedColor),
+        );
+        expect(
+          getRowDecoration(tester, 'Batch Track 4').color,
+          equals(selectedColor),
+        );
+        expect(find.byKey(const Key('batch_action_toolbar')), findsOneWidget);
+        expect(find.text('2 selected'), findsOneWidget);
+      },
+    );
+
+    testWidgets('Ctrl+A and Cmd+A select all visible tracks', (tester) async {
+      await tester.pumpWidget(_buildTracksViewTest(tracks: multiTracks));
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const Key('batch_action_toolbar')), findsNothing);
+
+      // 1. Press Ctrl + A
+      await tester.sendKeyDownEvent(LogicalKeyboardKey.controlLeft);
+      await tester.sendKeyEvent(LogicalKeyboardKey.keyA);
+      await tester.sendKeyUpEvent(LogicalKeyboardKey.controlLeft);
+      await tester.pumpAndSettle();
+
+      // All 4 tracks selected
+      expect(find.byKey(const Key('batch_action_toolbar')), findsOneWidget);
+      expect(find.text('4 selected'), findsOneWidget);
+
+      // 2. Escape to deselect
+      await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('batch_action_toolbar')), findsNothing);
+
+      // 3. Press Cmd + A
+      await tester.sendKeyDownEvent(LogicalKeyboardKey.metaLeft);
+      await tester.sendKeyEvent(LogicalKeyboardKey.keyA);
+      await tester.sendKeyUpEvent(LogicalKeyboardKey.metaLeft);
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const Key('batch_action_toolbar')), findsOneWidget);
+      expect(find.text('4 selected'), findsOneWidget);
+    });
+
+    testWidgets(
+      'Escape key deselects all tracks and hides batch action toolbar',
+      (tester) async {
+        await tester.pumpWidget(_buildTracksViewTest(tracks: multiTracks));
+        await tester.pumpAndSettle();
+
+        // Select all tracks
+        await tester.sendKeyDownEvent(LogicalKeyboardKey.controlLeft);
+        await tester.sendKeyEvent(LogicalKeyboardKey.keyA);
+        await tester.sendKeyUpEvent(LogicalKeyboardKey.controlLeft);
+        await tester.pumpAndSettle();
+
+        expect(find.byKey(const Key('batch_action_toolbar')), findsOneWidget);
+
+        // Press Escape
+        await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+        await tester.pumpAndSettle();
+
+        expect(find.byKey(const Key('batch_action_toolbar')), findsNothing);
+      },
+    );
+
+    testWidgets(
+      'Batch action toolbar visibility on multi-selection (> 1) and Clear button',
+      (tester) async {
+        await tester.pumpWidget(_buildTracksViewTest(tracks: multiTracks));
+        await tester.pumpAndSettle();
+
+        // 0 selected: toolbar hidden
+        expect(find.byKey(const Key('batch_action_toolbar')), findsNothing);
+
+        // 1 selected: toolbar hidden
+        await tester.tap(find.text('Batch Track 1'));
+        await tester.pumpAndSettle();
+        expect(find.byKey(const Key('batch_action_toolbar')), findsNothing);
+
+        // 2 selected: toolbar emerges
+        await tester.sendKeyDownEvent(LogicalKeyboardKey.controlLeft);
+        await tester.tap(find.text('Batch Track 2'));
+        await tester.sendKeyUpEvent(LogicalKeyboardKey.controlLeft);
+        await tester.pumpAndSettle();
+
+        expect(find.byKey(const Key('batch_action_toolbar')), findsOneWidget);
+        expect(find.byKey(const Key('batch_selected_count')), findsOneWidget);
+        expect(find.text('2 selected'), findsOneWidget);
+
+        // Verify 'X' clear button is at the start of the toolbar (far left of counter)
+        final clearButtonDx = tester
+            .getTopLeft(find.byKey(const Key('batch_clear_selection_button')))
+            .dx;
+        final counterDx = tester
+            .getTopLeft(find.byKey(const Key('batch_selected_count')))
+            .dx;
+        expect(clearButtonDx, lessThan(counterDx));
+
+        // Click Clear selection button (X icon)
+        await tester.tap(find.byKey(const Key('batch_clear_selection_button')));
+        await tester.pumpAndSettle();
+
+        // Toolbar dismissed and selection cleared
+        expect(find.byKey(const Key('batch_action_toolbar')), findsNothing);
+      },
+    );
+
+    testWidgets('Batch buttons fire callbacks with selected tracks', (
+      tester,
+    ) async {
+      List<Track>? batchPlayNextTracks;
+      List<Track>? batchQueueTracks;
+      List<Track>? batchPlaylistTracks;
+      List<Track>? batchTagTracks;
+
+      await tester.pumpWidget(
+        _buildTracksViewTest(
+          tracks: multiTracks,
+          onBatchPlayNext: (tracks) => batchPlayNextTracks = tracks,
+          onBatchAddToQueue: (tracks) => batchQueueTracks = tracks,
+          onBatchAddToPlaylist: (tracks) => batchPlaylistTracks = tracks,
+          onBatchAddTag: (tracks) => batchTagTracks = tracks,
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      // Select Track 1 and Track 2
+      await tester.tap(find.text('Batch Track 1'));
+      await tester.pumpAndSettle();
+      await tester.sendKeyDownEvent(LogicalKeyboardKey.controlLeft);
+      await tester.tap(find.text('Batch Track 2'));
+      await tester.sendKeyUpEvent(LogicalKeyboardKey.controlLeft);
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const Key('batch_action_toolbar')), findsOneWidget);
+
+      // 1. Batch Play Next
+      await tester.tap(find.byKey(const Key('batch_play_next_button')));
+      await tester.pumpAndSettle();
+
+      expect(batchPlayNextTracks, isNotNull);
+      expect(batchPlayNextTracks!.length, equals(2));
+      expect(batchPlayNextTracks![0].id, equals('mt_1'));
+      expect(batchPlayNextTracks![1].id, equals('mt_2'));
+
+      // 2. Batch Add to Queue
+      await tester.tap(find.byKey(const Key('batch_add_to_queue_button')));
+      await tester.pumpAndSettle();
+
+      expect(batchQueueTracks, isNotNull);
+      expect(batchQueueTracks!.length, equals(2));
+      expect(batchQueueTracks![0].id, equals('mt_1'));
+      expect(batchQueueTracks![1].id, equals('mt_2'));
+
+      // 3. Batch Add to Playlist
+      await tester.tap(find.byKey(const Key('batch_add_to_playlist_button')));
+      await tester.pumpAndSettle();
+
+      expect(batchPlaylistTracks, isNotNull);
+      expect(batchPlaylistTracks!.length, equals(2));
+      expect(batchPlaylistTracks![0].id, equals('mt_1'));
+      expect(batchPlaylistTracks![1].id, equals('mt_2'));
+
+      // 4. Batch Add Tags
+      await tester.tap(find.byKey(const Key('batch_add_tag_button')));
+      await tester.pumpAndSettle();
+
+      expect(batchTagTracks, isNotNull);
+      expect(batchTagTracks!.length, equals(2));
+      expect(batchTagTracks![0].id, equals('mt_1'));
+      expect(batchTagTracks![1].id, equals('mt_2'));
+    });
+
+    testWidgets(
+      'Batch action toolbar has icon-only buttons with tooltips and no text labels',
+      (tester) async {
+        await tester.pumpWidget(_buildTracksViewTest(tracks: multiTracks));
+        await tester.pumpAndSettle();
+
+        // Select 2 tracks to show toolbar
+        await tester.tap(find.text('Batch Track 1'));
+        await tester.pumpAndSettle();
+        await tester.sendKeyDownEvent(LogicalKeyboardKey.controlLeft);
+        await tester.tap(find.text('Batch Track 2'));
+        await tester.sendKeyUpEvent(LogicalKeyboardKey.controlLeft);
+        await tester.pumpAndSettle();
+
+        expect(find.byKey(const Key('batch_action_toolbar')), findsOneWidget);
+
+        // Tooltips exist
+        expect(find.byTooltip('Deselect (Esc)'), findsOneWidget);
+        expect(find.byTooltip('Play Next'), findsOneWidget);
+        expect(find.byTooltip('Add to Queue'), findsOneWidget);
+        expect(find.byTooltip('Add to Playlist'), findsOneWidget);
+        expect(find.byTooltip('Add Tags'), findsOneWidget);
+
+        // Verify no text labels inside batch action buttons (icon-only buttons)
+        final toolbar = find.byKey(const Key('batch_action_toolbar'));
+        expect(
+          find.descendant(of: toolbar, matching: find.text('Play Next')),
+          findsNothing,
+        );
+        expect(
+          find.descendant(of: toolbar, matching: find.text('Add to Queue')),
+          findsNothing,
+        );
+        expect(
+          find.descendant(of: toolbar, matching: find.text('Add to Playlist')),
+          findsNothing,
+        );
+        expect(
+          find.descendant(of: toolbar, matching: find.text('Add Tags')),
+          findsNothing,
+        );
+      },
+    );
+
+    testWidgets(
+      'Modifier click on a single track triggers batch action toolbar',
+      (tester) async {
+        await tester.pumpWidget(_buildTracksViewTest(tracks: multiTracks));
+        await tester.pumpAndSettle();
+
+        // 0 selected: toolbar hidden
+        expect(find.byKey(const Key('batch_action_toolbar')), findsNothing);
+
+        // Ctrl + Click single track (Batch Track 1)
+        await tester.sendKeyDownEvent(LogicalKeyboardKey.controlLeft);
+        await tester.tap(find.text('Batch Track 1'));
+        await tester.sendKeyUpEvent(LogicalKeyboardKey.controlLeft);
+        await tester.pumpAndSettle();
+
+        // Toolbar emerges with '1 selected'
+        expect(find.byKey(const Key('batch_action_toolbar')), findsOneWidget);
+        expect(find.text('1 selected'), findsOneWidget);
+
+        // Clear selection via 'X' button
+        await tester.tap(find.byKey(const Key('batch_clear_selection_button')));
+        await tester.pumpAndSettle();
+        expect(find.byKey(const Key('batch_action_toolbar')), findsNothing);
+
+        // Normal click on single track does NOT show toolbar
+        await tester.tap(find.text('Batch Track 2'));
+        await tester.pumpAndSettle();
+        expect(find.byKey(const Key('batch_action_toolbar')), findsNothing);
+      },
+    );
+
+    testWidgets(
+      'Currently playing track uses darker gray, selected uses lighter gray, and isSelected overrides isCurrent (Dark and Light mode)',
+      (tester) async {
+        final themeNotifier = ValueNotifier<ThemeMode>(ThemeMode.dark);
+        addTearDown(themeNotifier.dispose);
+
+        await tester.pumpWidget(
+          _buildTracksViewTest(
+            tracks: multiTracks,
+            currentTrack: multiTracks[0], // mt_1 is currently playing
+            themeNotifier: themeNotifier,
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        // 1. Dark Mode Initial state:
+        // Current track (mt_1) is NOT selected -> darker gray highlight Color(0xFF27272A)
+        expect(
+          getRowDecoration(tester, 'Batch Track 1').color,
+          equals(const Color(0xFF27272A)),
+        );
+        // Track 2 is unselected and not current -> null
+        expect(getRowDecoration(tester, 'Batch Track 2').color, isNull);
+
+        // 2. Select track 2 via normal click -> track 2 has lighter gray highlight Color(0xFF3F3F46)
+        // Current track 1 still has darker gray highlight Color(0xFF27272A)
+        await tester.tap(find.text('Batch Track 2'));
+        await tester.pumpAndSettle();
+        expect(
+          getRowDecoration(tester, 'Batch Track 2').color,
+          equals(const Color(0xFF3F3F46)),
+        );
+        expect(
+          getRowDecoration(tester, 'Batch Track 1').color,
+          equals(const Color(0xFF27272A)),
+        );
+
+        // 3. Select current track (mt_1) via Ctrl+Click -> mt_1 is BOTH currently playing and selected.
+        // Strict priority rule: isSelected overrides isCurrent -> mt_1 has lighter gray Color(0xFF3F3F46)!
+        await tester.sendKeyDownEvent(LogicalKeyboardKey.controlLeft);
+        await tester.tap(find.text('Batch Track 1'));
+        await tester.sendKeyUpEvent(LogicalKeyboardKey.controlLeft);
+        await tester.pumpAndSettle();
+        expect(
+          getRowDecoration(tester, 'Batch Track 1').color,
+          equals(const Color(0xFF3F3F46)),
+        );
+        expect(
+          getRowDecoration(tester, 'Batch Track 2').color,
+          equals(const Color(0xFF3F3F46)),
+        );
+
+        // 4. Switch to Light Mode
+        themeNotifier.value = ThemeMode.light;
+        await tester.pumpAndSettle();
+
+        // Both are selected in Light Mode -> lighter gray Color(0xFFF4F4F5)
+        expect(
+          getRowDecoration(tester, 'Batch Track 1').color,
+          equals(const Color(0xFFF4F4F5)),
+        );
+        expect(
+          getRowDecoration(tester, 'Batch Track 2').color,
+          equals(const Color(0xFFF4F4F5)),
+        );
+
+        // Deselect current track 1 via Ctrl+Click -> mt_1 is only currently playing -> darker gray Color(0xFFE4E4E7)
+        await tester.sendKeyDownEvent(LogicalKeyboardKey.controlLeft);
+        await tester.tap(find.text('Batch Track 1'));
+        await tester.sendKeyUpEvent(LogicalKeyboardKey.controlLeft);
+        await tester.pumpAndSettle();
+
+        expect(
+          getRowDecoration(tester, 'Batch Track 1').color,
+          equals(const Color(0xFFE4E4E7)),
+        );
+        expect(
+          getRowDecoration(tester, 'Batch Track 2').color,
+          equals(const Color(0xFFF4F4F5)),
+        );
+      },
+    );
+
+    testWidgets(
+      'Clicking blank space below table rows deselects all tracks and hides batch action toolbar',
+      (tester) async {
+        await tester.pumpWidget(_buildTracksViewTest(tracks: multiTracks));
+        await tester.pumpAndSettle();
+
+        // 1. Select Track 1 and Track 2 via Ctrl+Click
+        await tester.tap(find.text('Batch Track 1'));
+        await tester.pumpAndSettle();
+        await tester.sendKeyDownEvent(LogicalKeyboardKey.controlLeft);
+        await tester.tap(find.text('Batch Track 2'));
+        await tester.sendKeyUpEvent(LogicalKeyboardKey.controlLeft);
+        await tester.pumpAndSettle();
+
+        expect(find.byKey(const Key('batch_action_toolbar')), findsOneWidget);
+        expect(find.text('2 selected'), findsOneWidget);
+        expect(
+          getRowDecoration(tester, 'Batch Track 1').color,
+          equals(const Color(0xFF3F3F46)),
+        );
+        expect(
+          getRowDecoration(tester, 'Batch Track 2').color,
+          equals(const Color(0xFF3F3F46)),
+        );
+
+        // 2. Click in the blank area below table rows
+        final lastRowBottom = tester.getBottomLeft(find.text('Batch Track 4'));
+        await tester.tapAt(lastRowBottom + const Offset(50, 100));
+        await tester.pumpAndSettle();
+
+        // Selection cleared, toolbar hidden
+        expect(find.byKey(const Key('batch_action_toolbar')), findsNothing);
+        expect(getRowDecoration(tester, 'Batch Track 1').color, isNull);
+        expect(getRowDecoration(tester, 'Batch Track 2').color, isNull);
+      },
+    );
+
+    testWidgets(
+      'BatchActionToolbar elements are enlarged with comfortable hit targets and 18.0 action icons',
+      (tester) async {
+        await tester.pumpWidget(
+          _buildTracksViewTest(
+            tracks: multiTracks,
+            onBatchPlayNext: (_) {},
+            onBatchAddToQueue: (_) {},
+            onBatchAddToPlaylist: (_) {},
+            onBatchAddTag: (_) {},
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        // Select Track 1 and Track 2 to show toolbar
+        await tester.tap(find.text('Batch Track 1'));
+        await tester.pumpAndSettle();
+        await tester.sendKeyDownEvent(LogicalKeyboardKey.controlLeft);
+        await tester.tap(find.text('Batch Track 2'));
+        await tester.sendKeyUpEvent(LogicalKeyboardKey.controlLeft);
+        await tester.pumpAndSettle();
+
+        expect(find.byKey(const Key('batch_action_toolbar')), findsOneWidget);
+
+        // 1. Container padding: 18.0 horizontal, 10.0 vertical
+        final toolbarContainer = tester.widget<Container>(
+          find.byKey(const Key('batch_action_toolbar')),
+        );
+        expect(
+          toolbarContainer.padding,
+          equals(const EdgeInsets.symmetric(horizontal: 18.0, vertical: 10.0)),
+        );
+
+        // 2. Leading cancel button hit target 32.0 x 32.0 with 16.0 icon
+        final cancelBtnContainer = tester.widget<Container>(
+          find.descendant(
+            of: find.byKey(const Key('batch_clear_selection_button')),
+            matching: find.byType(Container),
+          ),
+        );
+        expect(cancelBtnContainer.constraints?.maxWidth, equals(32.0));
+        expect(cancelBtnContainer.constraints?.maxHeight, equals(32.0));
+        final cancelIcon = tester.widget<Icon>(
+          find.descendant(
+            of: find.byKey(const Key('batch_clear_selection_button')),
+            matching: find.byType(Icon),
+          ),
+        );
+        expect(cancelIcon.size, equals(16.0));
+
+        // 3. Action button icon size: 18.0
+        final playNextIcon = tester.widget<Icon>(
+          find.descendant(
+            of: find.byKey(const Key('batch_play_next_button')),
+            matching: find.byType(Icon),
+          ),
+        );
+        expect(playNextIcon.size, equals(18.0));
+
+        final queueIcon = tester.widget<Icon>(
+          find.descendant(
+            of: find.byKey(const Key('batch_add_to_queue_button')),
+            matching: find.byType(Icon),
+          ),
+        );
+        expect(queueIcon.size, equals(18.0));
+
+        final playlistIcon = tester.widget<Icon>(
+          find.descendant(
+            of: find.byKey(const Key('batch_add_to_playlist_button')),
+            matching: find.byType(Icon),
+          ),
+        );
+        expect(playlistIcon.size, equals(18.0));
+
+        final tagIcon = tester.widget<Icon>(
+          find.descendant(
+            of: find.byKey(const Key('batch_add_tag_button')),
+            matching: find.byType(Icon),
+          ),
+        );
+        expect(tagIcon.size, equals(18.0));
+
+        // 4. Counter text fontSize: 14.0, fontWeight: w600
+        final counterText = tester.widget<Text>(
+          find.byKey(const Key('batch_selected_count')),
+        );
+        expect(counterText.style?.fontSize, equals(14.0));
+        expect(counterText.style?.fontWeight, equals(FontWeight.w600));
+      },
+    );
   });
 }
