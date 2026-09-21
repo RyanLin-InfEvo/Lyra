@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: 2026 Tzu-Ting Lin
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shadcn_ui/shadcn_ui.dart';
@@ -25,9 +27,12 @@ void main() {
 
       expect(service.themeMode, ThemeMode.dark);
       expect(service.isSidebarCollapsed, isFalse);
+      expect(service.sidebarWidth, 210.0);
+      expect(service.inspectorWidth, 420.0);
       expect(service.volume, 0.85);
       expect(service.getTrackColumnOrder(), isNull);
       expect(service.getTrackVisibleColumns(), isNull);
+      expect(service.trackColumnWidths, isEmpty);
       expect(service.getWorkColumnOrder(), isNull);
       expect(service.getWorkVisibleColumns(), isNull);
       expect(service.getPlaylistColumnOrder(), isNull);
@@ -42,9 +47,15 @@ void main() {
       SharedPreferences.setMockInitialValues({
         SharedPreferencesService.keyThemeMode: 'light',
         SharedPreferencesService.keySidebarCollapsed: true,
+        SharedPreferencesService.keySidebarWidth: 260.0,
+        SharedPreferencesService.keyInspectorWidth: 500.0,
         SharedPreferencesService.keyVolume: 0.42,
         SharedPreferencesService.keyTrackColumnOrder: ['title', 'index'],
         SharedPreferencesService.keyTrackVisibleColumns: ['title', 'duration'],
+        SharedPreferencesService.keyTrackColumnWidths: jsonEncode({
+          'title': 300.0,
+          'duration': 90.0,
+        }),
         SharedPreferencesService.keyWorkColumnOrder: ['title', 'composer'],
         SharedPreferencesService.keyWorkVisibleColumns: ['title'],
         SharedPreferencesService.keyPlaylistColumnOrder: ['album', 'title'],
@@ -60,9 +71,12 @@ void main() {
 
       expect(service.themeMode, ThemeMode.light);
       expect(service.isSidebarCollapsed, isTrue);
+      expect(service.sidebarWidth, 260.0);
+      expect(service.inspectorWidth, 500.0);
       expect(service.volume, 0.42);
       expect(service.getTrackColumnOrder(), ['title', 'index']);
       expect(service.getTrackVisibleColumns(), {'title', 'duration'});
+      expect(service.trackColumnWidths, {'title': 300.0, 'duration': 90.0});
       expect(service.getWorkColumnOrder(), ['title', 'composer']);
       expect(service.getWorkVisibleColumns(), {'title'});
       expect(service.getPlaylistColumnOrder(), ['album', 'title']);
@@ -94,6 +108,12 @@ void main() {
       await service.setSidebarCollapsed(true);
       expect(service.isSidebarCollapsed, isTrue);
 
+      await service.setSidebarWidth(280.0);
+      expect(service.sidebarWidth, 280.0);
+
+      await service.setInspectorWidth(450.0);
+      expect(service.inspectorWidth, 450.0);
+
       await service.setVolume(0.65);
       expect(service.volume, 0.65);
 
@@ -102,6 +122,9 @@ void main() {
 
       await service.setTrackVisibleColumns({'work', 'year'});
       expect(service.getTrackVisibleColumns(), {'work', 'year'});
+
+      await service.setTrackColumnWidths({'album': 220.0});
+      expect(service.trackColumnWidths, {'album': 220.0});
 
       await service.setWorkColumnOrder(['movement', 'date']);
       expect(service.getWorkColumnOrder(), ['movement', 'date']);
@@ -135,9 +158,12 @@ void main() {
 
       expect(service.themeMode, ThemeMode.dark);
       expect(service.isSidebarCollapsed, isFalse);
+      expect(service.sidebarWidth, 210.0);
+      expect(service.inspectorWidth, 420.0);
       expect(service.volume, 0.85);
       expect(service.getTrackColumnOrder(), isNull);
       expect(service.getTrackVisibleColumns(), isNull);
+      expect(service.trackColumnWidths, isEmpty);
       expect(service.getWorkColumnOrder(), isNull);
       expect(service.getWorkVisibleColumns(), isNull);
       expect(service.getPlaylistColumnOrder(), isNull);
@@ -152,9 +178,12 @@ void main() {
       final service = InMemoryPreferencesService(
         themeMode: ThemeMode.light,
         isSidebarCollapsed: true,
+        sidebarWidth: 260.0,
+        inspectorWidth: 500.0,
         volume: 0.5,
         trackColumnOrder: ['a', 'b'],
         trackVisibleColumns: {'a'},
+        trackColumnWidths: {'title': 300.0},
         workColumnOrder: ['c'],
         workVisibleColumns: {'c'},
         playlistColumnOrder: ['d'],
@@ -167,9 +196,12 @@ void main() {
 
       expect(service.themeMode, ThemeMode.light);
       expect(service.isSidebarCollapsed, isTrue);
+      expect(service.sidebarWidth, 260.0);
+      expect(service.inspectorWidth, 500.0);
       expect(service.volume, 0.5);
       expect(service.getTrackColumnOrder(), ['a', 'b']);
       expect(service.getTrackVisibleColumns(), {'a'});
+      expect(service.trackColumnWidths, {'title': 300.0});
       expect(service.getWorkColumnOrder(), ['c']);
       expect(service.getWorkVisibleColumns(), {'c'});
       expect(service.getPlaylistColumnOrder(), ['d']);
@@ -185,6 +217,12 @@ void main() {
       await service.setSidebarCollapsed(false);
       expect(service.isSidebarCollapsed, isFalse);
 
+      await service.setSidebarWidth(320.0);
+      expect(service.sidebarWidth, 320.0);
+
+      await service.setInspectorWidth(600.0);
+      expect(service.inspectorWidth, 600.0);
+
       await service.setVolume(0.9);
       expect(service.volume, 0.9);
 
@@ -193,6 +231,9 @@ void main() {
 
       await service.setTrackVisibleColumns({'y'});
       expect(service.getTrackVisibleColumns(), {'y'});
+
+      await service.setTrackColumnWidths({'album': 250.0});
+      expect(service.trackColumnWidths, {'album': 250.0});
 
       await service.setWorkColumnOrder(['z']);
       expect(service.getWorkColumnOrder(), ['z']);
@@ -219,22 +260,30 @@ void main() {
       expect(service.casAutoVerify, isTrue);
     });
 
-    test('defensive copying of lists and sets', () async {
+    test('defensive copying of lists, sets, and maps', () async {
       final list = ['col1', 'col2'];
       final set = {'col1'};
+      final map = {'col1': 120.0};
       final service = InMemoryPreferencesService(
         trackColumnOrder: list,
         trackVisibleColumns: set,
+        trackColumnWidths: map,
       );
 
       list.add('col3');
       set.add('col2');
+      map['col2'] = 200.0;
       expect(service.getTrackColumnOrder(), ['col1', 'col2']);
       expect(service.getTrackVisibleColumns(), {'col1'});
+      expect(service.trackColumnWidths, {'col1': 120.0});
 
       final retrievedList = service.getTrackColumnOrder()!;
       retrievedList.add('col4');
       expect(service.getTrackColumnOrder(), ['col1', 'col2']);
+
+      final retrievedMap = service.trackColumnWidths;
+      retrievedMap['col3'] = 300.0;
+      expect(service.trackColumnWidths, {'col1': 120.0});
     });
   });
 

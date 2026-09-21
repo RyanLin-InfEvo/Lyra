@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import 'dart:async';
+import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
@@ -77,6 +78,8 @@ class AppShellState extends State<AppShell> {
   late final AudioDeviceController _audioDeviceController;
   AppTab _currentTab = AppTab.tracks;
   late bool _isSidebarCollapsed;
+  late final ValueNotifier<double> _sidebarWidthNotifier;
+  late final ValueNotifier<double> _inspectorWidthNotifier;
   final ValueNotifier<bool> _isNowPlayingExpandedNotifier = ValueNotifier<bool>(
     false,
   );
@@ -159,6 +162,12 @@ class AppShellState extends State<AppShell> {
     HardwareKeyboard.instance.addHandler(_handleGlobalKeyEvent);
     _isSidebarCollapsed =
         widget.preferencesService?.isSidebarCollapsed ?? false;
+    _sidebarWidthNotifier = ValueNotifier<double>(
+      (widget.preferencesService?.sidebarWidth ?? 210.0).clamp(160.0, 420.0),
+    );
+    _inspectorWidthNotifier = ValueNotifier<double>(
+      (widget.preferencesService?.inspectorWidth ?? 420.0).clamp(300.0, 1000.0),
+    );
     _volumeNotifier = ValueNotifier<double>(
       widget.preferencesService?.volume ?? 0.85,
     );
@@ -335,6 +344,8 @@ class AppShellState extends State<AppShell> {
       _playbackController.dispose();
     }
     _searchController.dispose();
+    _sidebarWidthNotifier.dispose();
+    _inspectorWidthNotifier.dispose();
     _isNowPlayingExpandedNotifier.removeListener(_onNowPlayingExpandedChanged);
     _isNowPlayingExpandedNotifier.dispose();
     super.dispose();
@@ -1013,6 +1024,7 @@ class AppShellState extends State<AppShell> {
             : _tracks;
         return RepaintBoundary(
           child: TracksView(
+            preferencesService: widget.preferencesService,
             tracks: effectiveTracks,
             currentTrack: _currentTrack,
             isPlaying: _isPlaying,
@@ -1444,68 +1456,91 @@ class AppShellState extends State<AppShell> {
             return Row(
               children: [
                 // Sidebar (Left)
-                RepaintBoundary(
-                  child: LyraSidebar(
-                    currentTab: _currentTab,
-                    isCollapsed: effectiveSidebarCollapsed,
-                    playlists: _sidebarPlaylists,
-                    selectedPlaylistId: _selectedPlaylistId,
-                    onPlaylistSelected: (pl) {
-                      _isNowPlayingExpanded = false;
-                      setState(() {
-                        _selectedPlaylistId = pl.id;
-                        _selectedTagId = null;
-                        _currentTab = AppTab.playlists;
-                      });
-                    },
-                    onPlaylistsHeaderSelected: () {
-                      _isNowPlayingExpanded = false;
-                      setState(() {
-                        _selectedPlaylistId = null;
-                        _selectedTagId = null;
-                        _currentTab = AppTab.playlists;
-                      });
-                    },
-                    tags: _tags,
-                    selectedTagId: _selectedTagId,
-                    onTagSelected: (tag) {
-                      _isNowPlayingExpanded = false;
-                      _filterByTag(tag);
-                    },
-                    onTagsHeaderSelected: () {
-                      _isNowPlayingExpanded = false;
-                      setState(() {
-                        _selectedTagId = null;
-                        _selectedPlaylistId = null;
-                        _currentTab = AppTab.tags;
-                      });
-                    },
-                    onTabSelected: (tab) {
-                      _isNowPlayingExpanded = false;
-                      setState(() {
-                        if (tab == AppTab.tracks) {
-                          _activeTrackFilter = null;
-                          _selectedTagId = null;
-                        } else if (tab == AppTab.playlists) {
-                          _selectedPlaylistId = null;
-                          _selectedTagId = null;
-                        } else if (tab != AppTab.tags) {
-                          _selectedPlaylistId = null;
-                          _selectedTagId = null;
-                        }
-                        _currentTab = tab;
-                      });
-                    },
-                    onSettingsPressed: () {
-                      _isNowPlayingExpanded = false;
-                      setState(() {
-                        _selectedPlaylistId = null;
-                        _selectedTagId = null;
-                        _currentTab = AppTab.settings;
-                      });
-                    },
-                    onToggleCollapse: _toggleSidebar,
-                  ),
+                ValueListenableBuilder<double>(
+                  valueListenable: _sidebarWidthNotifier,
+                  builder: (context, sidebarWidth, _) {
+                    return RepaintBoundary(
+                      child: LyraSidebar(
+                        expandedWidth: sidebarWidth,
+                        showRightBorder: true,
+                        currentTab: _currentTab,
+                        isCollapsed: effectiveSidebarCollapsed,
+                        playlists: _sidebarPlaylists,
+                        selectedPlaylistId: _selectedPlaylistId,
+                        onPlaylistSelected: (pl) {
+                          _isNowPlayingExpanded = false;
+                          setState(() {
+                            _selectedPlaylistId = pl.id;
+                            _selectedTagId = null;
+                            _currentTab = AppTab.playlists;
+                          });
+                        },
+                        onPlaylistsHeaderSelected: () {
+                          _isNowPlayingExpanded = false;
+                          setState(() {
+                            _selectedPlaylistId = null;
+                            _selectedTagId = null;
+                            _currentTab = AppTab.playlists;
+                          });
+                        },
+                        tags: _tags,
+                        selectedTagId: _selectedTagId,
+                        onTagSelected: (tag) {
+                          _isNowPlayingExpanded = false;
+                          _filterByTag(tag);
+                        },
+                        onTagsHeaderSelected: () {
+                          _isNowPlayingExpanded = false;
+                          setState(() {
+                            _selectedTagId = null;
+                            _selectedPlaylistId = null;
+                            _currentTab = AppTab.tags;
+                          });
+                        },
+                        onTabSelected: (tab) {
+                          _isNowPlayingExpanded = false;
+                          setState(() {
+                            if (tab == AppTab.tracks) {
+                              _activeTrackFilter = null;
+                              _selectedTagId = null;
+                            } else if (tab == AppTab.playlists) {
+                              _selectedPlaylistId = null;
+                              _selectedTagId = null;
+                            } else if (tab != AppTab.tags) {
+                              _selectedPlaylistId = null;
+                              _selectedTagId = null;
+                            }
+                            _currentTab = tab;
+                          });
+                        },
+                        onSettingsPressed: () {
+                          _isNowPlayingExpanded = false;
+                          setState(() {
+                            _selectedPlaylistId = null;
+                            _selectedTagId = null;
+                            _currentTab = AppTab.settings;
+                          });
+                        },
+                        onToggleCollapse: _toggleSidebar,
+                        onResizeDelta: (delta) {
+                          _sidebarWidthNotifier.value =
+                              (_sidebarWidthNotifier.value + delta).clamp(
+                                160.0,
+                                420.0,
+                              );
+                        },
+                        onResizeEnd: () {
+                          widget.preferencesService?.setSidebarWidth(
+                            _sidebarWidthNotifier.value,
+                          );
+                        },
+                        onResetWidth: () {
+                          _sidebarWidthNotifier.value = 210.0;
+                          widget.preferencesService?.setSidebarWidth(210.0);
+                        },
+                      ),
+                    );
+                  },
                 ),
 
                 // Right Pane (Header + Main Area + Player Bar)
@@ -1528,20 +1563,52 @@ class AppShellState extends State<AppShell> {
                                   ),
                                 ),
                                 if (_isInspectorOpen)
-                                  RepaintBoundary(
-                                    child: AudioInspectorDrawer(
-                                      track:
-                                          _inspectedTrack ??
-                                          (_inspectedAsset != null
-                                              ? null
-                                              : _currentTrack),
-                                      asset: _inspectedAsset,
-                                      musicService: widget.musicService,
-                                      onClose: _closeInspector,
-                                      onActiveAudioChanged: (newPcmHash) {
-                                        _loadCatalog();
-                                      },
-                                    ),
+                                  ValueListenableBuilder<double>(
+                                    valueListenable: _inspectorWidthNotifier,
+                                    builder: (context, inspectorWidth, _) {
+                                      final maxInspectorWidth = math.max(
+                                        320.0,
+                                        MediaQuery.sizeOf(context).width * 0.5,
+                                      );
+                                      return RepaintBoundary(
+                                        child: AudioInspectorDrawer(
+                                          width: inspectorWidth,
+                                          showLeftBorder: true,
+                                          track:
+                                              _inspectedTrack ??
+                                              (_inspectedAsset != null
+                                                  ? null
+                                                  : _currentTrack),
+                                          asset: _inspectedAsset,
+                                          musicService: widget.musicService,
+                                          onClose: _closeInspector,
+                                          onActiveAudioChanged: (newPcmHash) {
+                                            _loadCatalog();
+                                          },
+                                          onResizeDelta: (delta) {
+                                            _inspectorWidthNotifier.value =
+                                                (_inspectorWidthNotifier.value -
+                                                        delta)
+                                                    .clamp(
+                                                      300.0,
+                                                      maxInspectorWidth,
+                                                    );
+                                          },
+                                          onResizeEnd: () {
+                                            widget.preferencesService
+                                                ?.setInspectorWidth(
+                                                  _inspectorWidthNotifier.value,
+                                                );
+                                          },
+                                          onResetWidth: () {
+                                            _inspectorWidthNotifier.value =
+                                                420.0;
+                                            widget.preferencesService
+                                                ?.setInspectorWidth(420.0);
+                                          },
+                                        ),
+                                      );
+                                    },
                                   ),
                               ],
                             ),

@@ -40,6 +40,13 @@ class LyraSidebar extends StatefulWidget {
   final VoidCallback? onSettingsPressed;
   final bool defaultPlaylistsExpanded;
   final bool defaultTagsExpanded;
+  final double expandedWidth;
+  final bool? showRightBorder;
+  final ValueChanged<double>? onResizeDelta;
+  final VoidCallback? onResizeStart;
+  final VoidCallback? onResizeEnd;
+  final VoidCallback? onResetWidth;
+  final bool isResizing;
 
   const LyraSidebar({
     super.key,
@@ -58,6 +65,13 @@ class LyraSidebar extends StatefulWidget {
     this.onSettingsPressed,
     this.defaultPlaylistsExpanded = true,
     this.defaultTagsExpanded = true,
+    this.expandedWidth = 210.0,
+    this.showRightBorder,
+    this.onResizeDelta,
+    this.onResizeStart,
+    this.onResizeEnd,
+    this.onResetWidth,
+    this.isResizing = false,
   });
 
   @override
@@ -67,6 +81,7 @@ class LyraSidebar extends StatefulWidget {
 class _LyraSidebarState extends State<LyraSidebar> {
   late bool _isPlaylistsExpanded;
   late bool _isTagsExpanded;
+  bool _isDragging = false;
 
   @override
   void initState() {
@@ -79,10 +94,12 @@ class _LyraSidebarState extends State<LyraSidebar> {
   Widget build(BuildContext context) {
     final tokens = LyraDesignSystemScope.of(context).tokens;
 
-    final targetWidth = widget.isCollapsed ? 64.0 : 210.0;
+    final targetWidth = widget.isCollapsed ? 64.0 : widget.expandedWidth;
+    final hasBorder = widget.showRightBorder ?? true;
+    final isResizing = _isDragging || widget.isResizing;
 
     return AnimatedContainer(
-      duration: const Duration(milliseconds: 200),
+      duration: isResizing ? Duration.zero : const Duration(milliseconds: 200),
       curve: Curves.easeInOutCubic,
       width: targetWidth,
       child: Container(
@@ -90,231 +107,266 @@ class _LyraSidebarState extends State<LyraSidebar> {
         clipBehavior: Clip.hardEdge,
         decoration: BoxDecoration(
           color: tokens.card,
-          border: Border(right: BorderSide(color: tokens.border, width: 1.0)),
+          border: hasBorder
+              ? Border(right: BorderSide(color: tokens.border, width: 1.0))
+              : null,
         ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+        child: Stack(
           children: [
-            // Header / Logo
-            Container(
-              height: 64.0,
-              padding: const EdgeInsets.only(left: 15.5),
-              alignment: Alignment.centerLeft,
-              decoration: BoxDecoration(
-                border: Border(
-                  bottom: BorderSide(color: tokens.border, width: 1.0),
-                ),
-              ),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.start,
-                children: [
-                  Container(
-                    width: 32.0,
-                    height: 32.0,
-                    decoration: BoxDecoration(
-                      color: tokens.primary,
-                      borderRadius: LyraRadius.mdRadius,
-                    ),
-                    child: Center(
-                      child: Icon(
-                        LucideIcons.music,
-                        size: 18.0,
-                        color: tokens.primaryForeground,
-                      ),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Header / Logo
+                Container(
+                  height: 64.0,
+                  padding: const EdgeInsets.only(left: 15.5),
+                  alignment: Alignment.centerLeft,
+                  decoration: BoxDecoration(
+                    border: Border(
+                      bottom: BorderSide(color: tokens.border, width: 1.0),
                     ),
                   ),
-                  if (!widget.isCollapsed) ...[
-                    const SizedBox(width: LyraSpacing.sm),
-                    Expanded(
-                      child: Text(
-                        'Lyra Audio',
-                        maxLines: 1,
-                        softWrap: false,
-                        overflow: TextOverflow.ellipsis,
-                        style: LyraTypography.h4(tokens),
-                      ),
-                    ),
-                  ],
-                ],
-              ),
-            ),
-
-            // Navigation Sections
-            Expanded(
-              child: ListView(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: LyraSpacing.sm,
-                  vertical: LyraSpacing.xs,
-                ),
-                children: [
-                  // 1. LIBRARY SECTION
-                  if (!widget.isCollapsed)
-                    Padding(
-                      padding: const EdgeInsets.only(
-                        left: LyraSpacing.sm,
-                        top: LyraSpacing.xs,
-                        bottom: 2.0,
-                      ),
-                      child: Text(
-                        'LIBRARY',
-                        maxLines: 1,
-                        softWrap: false,
-                        overflow: TextOverflow.clip,
-                        style: LyraTypography.small(tokens).copyWith(
-                          color: tokens.textMuted,
-                          fontWeight: FontWeight.bold,
-                          letterSpacing: 1.0,
-                          fontSize: 10.0,
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.start,
+                    children: [
+                      Container(
+                        width: 32.0,
+                        height: 32.0,
+                        decoration: BoxDecoration(
+                          color: tokens.primary,
+                          borderRadius: LyraRadius.mdRadius,
+                        ),
+                        child: Center(
+                          child: Icon(
+                            LucideIcons.music,
+                            size: 18.0,
+                            color: tokens.primaryForeground,
+                          ),
                         ),
                       ),
-                    ),
-                  _buildNavItem(
-                    context: context,
-                    tokens: tokens,
-                    tab: AppTab.tracks,
-                    icon: LucideIcons.listMusic,
-                    label: 'Tracks',
+                      if (!widget.isCollapsed) ...[
+                        const SizedBox(width: LyraSpacing.sm),
+                        Expanded(
+                          child: Text(
+                            'Lyra Audio',
+                            maxLines: 1,
+                            softWrap: false,
+                            overflow: TextOverflow.ellipsis,
+                            style: LyraTypography.h4(tokens),
+                          ),
+                        ),
+                      ],
+                    ],
                   ),
-                  _buildNavItem(
-                    context: context,
-                    tokens: tokens,
-                    tab: AppTab.works,
-                    icon: LucideIcons.layers,
-                    label: 'Works',
-                  ),
-                  _buildNavItem(
-                    context: context,
-                    tokens: tokens,
-                    tab: AppTab.albums,
-                    icon: LucideIcons.disc,
-                    label: 'Albums',
-                  ),
-                  _buildNavItem(
-                    context: context,
-                    tokens: tokens,
-                    tab: AppTab.artists,
-                    icon: LucideIcons.mic,
-                    label: 'Artists',
-                  ),
+                ),
 
-                  // PLAYLISTS (First-class nav button with expandable sub-items)
-                  if (!widget.isCollapsed) ...[
-                    _buildExpandableNavItem(
-                      context: context,
-                      tokens: tokens,
-                      tab: AppTab.playlists,
-                      icon: LucideIcons.listPlus,
-                      label: 'Playlists',
-                      isExpanded: _isPlaylistsExpanded,
-                      hasSubItems: widget.playlists.isNotEmpty,
-                      onToggle: () {
-                        setState(() {
-                          _isPlaylistsExpanded = !_isPlaylistsExpanded;
-                        });
-                      },
-                      chevronKey: const Key('playlists_header_chevron'),
-                      onHeaderClick: widget.onPlaylistsHeaderSelected,
+                // Navigation Sections
+                Expanded(
+                  child: ListView(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: LyraSpacing.sm,
+                      vertical: LyraSpacing.xs,
                     ),
-                    if (_isPlaylistsExpanded) ...[
-                      for (final playlist in widget.playlists)
-                        _buildPlaylistItem(
+                    children: [
+                      // 1. LIBRARY SECTION
+                      if (!widget.isCollapsed)
+                        Padding(
+                          padding: const EdgeInsets.only(
+                            left: LyraSpacing.sm,
+                            top: LyraSpacing.xs,
+                            bottom: 2.0,
+                          ),
+                          child: Text(
+                            'LIBRARY',
+                            maxLines: 1,
+                            softWrap: false,
+                            overflow: TextOverflow.clip,
+                            style: LyraTypography.small(tokens).copyWith(
+                              color: tokens.textMuted,
+                              fontWeight: FontWeight.bold,
+                              letterSpacing: 1.0,
+                              fontSize: 10.0,
+                            ),
+                          ),
+                        ),
+                      _buildNavItem(
+                        context: context,
+                        tokens: tokens,
+                        tab: AppTab.tracks,
+                        icon: LucideIcons.listMusic,
+                        label: 'Tracks',
+                      ),
+                      _buildNavItem(
+                        context: context,
+                        tokens: tokens,
+                        tab: AppTab.works,
+                        icon: LucideIcons.layers,
+                        label: 'Works',
+                      ),
+                      _buildNavItem(
+                        context: context,
+                        tokens: tokens,
+                        tab: AppTab.albums,
+                        icon: LucideIcons.disc,
+                        label: 'Albums',
+                      ),
+                      _buildNavItem(
+                        context: context,
+                        tokens: tokens,
+                        tab: AppTab.artists,
+                        icon: LucideIcons.mic,
+                        label: 'Artists',
+                      ),
+
+                      // PLAYLISTS (First-class nav button with expandable sub-items)
+                      if (!widget.isCollapsed) ...[
+                        _buildExpandableNavItem(
                           context: context,
                           tokens: tokens,
-                          playlist: playlist,
+                          tab: AppTab.playlists,
+                          icon: LucideIcons.listPlus,
+                          label: 'Playlists',
+                          isExpanded: _isPlaylistsExpanded,
+                          hasSubItems: widget.playlists.isNotEmpty,
+                          onToggle: () {
+                            setState(() {
+                              _isPlaylistsExpanded = !_isPlaylistsExpanded;
+                            });
+                          },
+                          chevronKey: const Key('playlists_header_chevron'),
+                          onHeaderClick: widget.onPlaylistsHeaderSelected,
                         ),
-                    ],
-                  ] else ...[
-                    _buildNavItem(
-                      context: context,
-                      tokens: tokens,
-                      tab: AppTab.playlists,
-                      icon: LucideIcons.listPlus,
-                      label: 'Playlists',
-                    ),
-                  ],
-
-                  // TAGS (First-class nav button with expandable sub-items)
-                  if (!widget.isCollapsed) ...[
-                    _buildExpandableNavItem(
-                      context: context,
-                      tokens: tokens,
-                      tab: AppTab.tags,
-                      icon: LucideIcons.tag,
-                      label: 'Tags',
-                      isExpanded: _isTagsExpanded,
-                      hasSubItems: widget.tags.isNotEmpty,
-                      onToggle: () {
-                        setState(() {
-                          _isTagsExpanded = !_isTagsExpanded;
-                        });
-                      },
-                      chevronKey: const Key('tags_header_chevron'),
-                      onHeaderClick: widget.onTagsHeaderSelected,
-                    ),
-                    if (_isTagsExpanded) ...[
-                      for (final tag in widget.tags)
-                        _buildTagItem(
+                        if (_isPlaylistsExpanded) ...[
+                          for (final playlist in widget.playlists)
+                            _buildPlaylistItem(
+                              context: context,
+                              tokens: tokens,
+                              playlist: playlist,
+                            ),
+                        ],
+                      ] else ...[
+                        _buildNavItem(
                           context: context,
                           tokens: tokens,
-                          tag: tag,
+                          tab: AppTab.playlists,
+                          icon: LucideIcons.listPlus,
+                          label: 'Playlists',
                         ),
+                      ],
+
+                      // TAGS (First-class nav button with expandable sub-items)
+                      if (!widget.isCollapsed) ...[
+                        _buildExpandableNavItem(
+                          context: context,
+                          tokens: tokens,
+                          tab: AppTab.tags,
+                          icon: LucideIcons.tag,
+                          label: 'Tags',
+                          isExpanded: _isTagsExpanded,
+                          hasSubItems: widget.tags.isNotEmpty,
+                          onToggle: () {
+                            setState(() {
+                              _isTagsExpanded = !_isTagsExpanded;
+                            });
+                          },
+                          chevronKey: const Key('tags_header_chevron'),
+                          onHeaderClick: widget.onTagsHeaderSelected,
+                        ),
+                        if (_isTagsExpanded) ...[
+                          for (final tag in widget.tags)
+                            _buildTagItem(
+                              context: context,
+                              tokens: tokens,
+                              tag: tag,
+                            ),
+                        ],
+                      ] else ...[
+                        _buildNavItem(
+                          context: context,
+                          tokens: tokens,
+                          tab: AppTab.tags,
+                          icon: LucideIcons.tag,
+                          label: 'Tags',
+                        ),
+                      ],
+
+                      const SizedBox(height: LyraSpacing.sm),
+
+                      // 2. SYSTEM SECTION
+                      if (!widget.isCollapsed)
+                        Padding(
+                          padding: const EdgeInsets.only(
+                            left: LyraSpacing.sm,
+                            top: LyraSpacing.xs,
+                            bottom: 2.0,
+                          ),
+                          child: Text(
+                            'SYSTEM',
+                            maxLines: 1,
+                            softWrap: false,
+                            overflow: TextOverflow.clip,
+                            style: LyraTypography.small(tokens).copyWith(
+                              color: tokens.textMuted,
+                              fontWeight: FontWeight.bold,
+                              letterSpacing: 1.0,
+                              fontSize: 10.0,
+                            ),
+                          ),
+                        ),
+                      _buildNavItem(
+                        context: context,
+                        tokens: tokens,
+                        tab: AppTab.casStorage,
+                        icon: LucideIcons.hardDrive,
+                        label: 'CAS Storage',
+                      ),
+                      _buildNavItem(
+                        context: context,
+                        tokens: tokens,
+                        tab: AppTab.settings,
+                        icon: LucideIcons.settings,
+                        label: 'Settings',
+                        onPressed: widget.onSettingsPressed != null
+                            ? () {
+                                widget.onSettingsPressed!();
+                                widget.onTabSelected(AppTab.settings);
+                              }
+                            : null,
+                      ),
                     ],
-                  ] else ...[
-                    _buildNavItem(
-                      context: context,
-                      tokens: tokens,
-                      tab: AppTab.tags,
-                      icon: LucideIcons.tag,
-                      label: 'Tags',
-                    ),
-                  ],
-
-                  const SizedBox(height: LyraSpacing.sm),
-
-                  // 2. SYSTEM SECTION
-                  if (!widget.isCollapsed)
-                    Padding(
-                      padding: const EdgeInsets.only(
-                        left: LyraSpacing.sm,
-                        top: LyraSpacing.xs,
-                        bottom: 2.0,
-                      ),
-                      child: Text(
-                        'SYSTEM',
-                        maxLines: 1,
-                        softWrap: false,
-                        overflow: TextOverflow.clip,
-                        style: LyraTypography.small(tokens).copyWith(
-                          color: tokens.textMuted,
-                          fontWeight: FontWeight.bold,
-                          letterSpacing: 1.0,
-                          fontSize: 10.0,
-                        ),
-                      ),
-                    ),
-                  _buildNavItem(
-                    context: context,
-                    tokens: tokens,
-                    tab: AppTab.casStorage,
-                    icon: LucideIcons.hardDrive,
-                    label: 'CAS Storage',
                   ),
-                  _buildNavItem(
-                    context: context,
-                    tokens: tokens,
-                    tab: AppTab.settings,
-                    icon: LucideIcons.settings,
-                    label: 'Settings',
-                    onPressed: widget.onSettingsPressed != null
-                        ? () {
-                            widget.onSettingsPressed!();
-                            widget.onTabSelected(AppTab.settings);
-                          }
-                        : null,
-                  ),
-                ],
-              ),
+                ),
+              ],
             ),
+            if (!widget.isCollapsed && widget.onResizeDelta != null)
+              Positioned(
+                right: 0,
+                top: 0,
+                bottom: 0,
+                width: 6.0,
+                child: MouseRegion(
+                  cursor: SystemMouseCursors.resizeLeftRight,
+                  child: GestureDetector(
+                    key: const Key('sidebar_resize_handle'),
+                    behavior: HitTestBehavior.translucent,
+                    onHorizontalDragStart: (_) {
+                      setState(() => _isDragging = true);
+                      widget.onResizeStart?.call();
+                    },
+                    onHorizontalDragUpdate: (details) =>
+                        widget.onResizeDelta?.call(details.delta.dx),
+                    onHorizontalDragEnd: (_) {
+                      setState(() => _isDragging = false);
+                      widget.onResizeEnd?.call();
+                    },
+                    onHorizontalDragCancel: () {
+                      setState(() => _isDragging = false);
+                      widget.onResizeEnd?.call();
+                    },
+                    onDoubleTap: widget.onResetWidth,
+                  ),
+                ),
+              ),
           ],
         ),
       ),

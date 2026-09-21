@@ -28,6 +28,11 @@ class AudioInspectorDrawer extends StatelessWidget {
   final VoidCallback onClose;
   final void Function(String newPcmHash)? onActiveAudioChanged;
   final double? width;
+  final bool showLeftBorder;
+  final ValueChanged<double>? onResizeDelta;
+  final VoidCallback? onResizeStart;
+  final VoidCallback? onResizeEnd;
+  final VoidCallback? onResetWidth;
 
   const AudioInspectorDrawer({
     super.key,
@@ -39,6 +44,11 @@ class AudioInspectorDrawer extends StatelessWidget {
     required this.onClose,
     this.onActiveAudioChanged,
     this.width,
+    this.showLeftBorder = true,
+    this.onResizeDelta,
+    this.onResizeStart,
+    this.onResizeEnd,
+    this.onResetWidth,
   });
 
   @override
@@ -53,21 +63,47 @@ class AudioInspectorDrawer extends StatelessWidget {
       width: drawerWidth,
       decoration: BoxDecoration(
         color: tokens.card,
-        border: Border(left: BorderSide(color: tokens.border, width: 1.0)),
+        border: showLeftBorder
+            ? Border(left: BorderSide(color: tokens.border, width: 1.0))
+            : null,
       ),
-      child: Column(
+      child: Stack(
         children: [
-          _buildDrawerHeader(tokens),
-          Expanded(
-            child: AudioInspectorContent(
-              track: track,
-              asset: asset,
-              initialAudio: initialAudio,
-              initialSourceData: initialSourceData,
-              musicService: musicService,
-              onActiveAudioChanged: onActiveAudioChanged,
-            ),
+          Column(
+            children: [
+              _buildDrawerHeader(tokens),
+              Expanded(
+                child: AudioInspectorContent(
+                  track: track,
+                  asset: asset,
+                  initialAudio: initialAudio,
+                  initialSourceData: initialSourceData,
+                  musicService: musicService,
+                  onActiveAudioChanged: onActiveAudioChanged,
+                ),
+              ),
+            ],
           ),
+          if (onResizeDelta != null)
+            Positioned(
+              left: 0,
+              top: 0,
+              bottom: 0,
+              width: 6.0,
+              child: MouseRegion(
+                cursor: SystemMouseCursors.resizeLeftRight,
+                child: GestureDetector(
+                  key: const Key('inspector_resize_handle'),
+                  behavior: HitTestBehavior.translucent,
+                  onHorizontalDragStart: (_) => onResizeStart?.call(),
+                  onHorizontalDragUpdate: (details) =>
+                      onResizeDelta?.call(details.delta.dx),
+                  onHorizontalDragEnd: (_) => onResizeEnd?.call(),
+                  onHorizontalDragCancel: () => onResizeEnd?.call(),
+                  onDoubleTap: onResetWidth,
+                ),
+              ),
+            ),
         ],
       ),
     );

@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: 2026 Tzu-Ting Lin
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -10,9 +12,15 @@ abstract class PreferencesService {
   ThemeMode get themeMode;
   Future<void> setThemeMode(ThemeMode mode);
 
-  // Sidebar collapsed
+  // Sidebar collapsed & width
   bool get isSidebarCollapsed;
   Future<void> setSidebarCollapsed(bool collapsed);
+  double get sidebarWidth;
+  Future<void> setSidebarWidth(double width);
+
+  // Inspector width
+  double get inspectorWidth;
+  Future<void> setInspectorWidth(double width);
 
   // Player volume
   double get volume;
@@ -24,6 +32,9 @@ abstract class PreferencesService {
 
   Set<String>? getTrackVisibleColumns();
   Future<void> setTrackVisibleColumns(Set<String> columns);
+
+  Map<String, double> get trackColumnWidths;
+  Future<void> setTrackColumnWidths(Map<String, double> widths);
 
   List<String>? getWorkColumnOrder();
   Future<void> setWorkColumnOrder(List<String> columns);
@@ -55,9 +66,12 @@ abstract class PreferencesService {
 class SharedPreferencesService implements PreferencesService {
   static const String keyThemeMode = 'lyra_theme_mode';
   static const String keySidebarCollapsed = 'lyra_sidebar_collapsed';
+  static const String keySidebarWidth = 'lyra_sidebar_width';
+  static const String keyInspectorWidth = 'lyra_inspector_width';
   static const String keyVolume = 'lyra_volume';
   static const String keyTrackColumnOrder = 'lyra_track_column_order';
   static const String keyTrackVisibleColumns = 'lyra_track_visible_columns';
+  static const String keyTrackColumnWidths = 'lyra_track_column_widths';
   static const String keyWorkColumnOrder = 'lyra_work_column_order';
   static const String keyWorkVisibleColumns = 'lyra_work_visible_columns';
   static const String keyPlaylistColumnOrder = 'lyra_playlist_column_order';
@@ -111,6 +125,64 @@ class SharedPreferencesService implements PreferencesService {
   Future<void> setSidebarCollapsed(bool collapsed) async {
     try {
       await _prefs.setBool(keySidebarCollapsed, collapsed);
+    } catch (_) {}
+  }
+
+  @override
+  double get sidebarWidth {
+    try {
+      final val = _prefs.get(keySidebarWidth);
+      if (val is num) {
+        final d = val.toDouble();
+        if (d.isNaN || d.isInfinite) return 210.0;
+        return d.clamp(160.0, 420.0);
+      }
+      if (val is String) {
+        final parsed = double.tryParse(val);
+        if (parsed != null && !parsed.isNaN && !parsed.isInfinite) {
+          return parsed.clamp(160.0, 420.0);
+        }
+        return 210.0;
+      }
+      return 210.0;
+    } catch (_) {
+      return 210.0;
+    }
+  }
+
+  @override
+  Future<void> setSidebarWidth(double width) async {
+    try {
+      await _prefs.setDouble(keySidebarWidth, width);
+    } catch (_) {}
+  }
+
+  @override
+  double get inspectorWidth {
+    try {
+      final val = _prefs.get(keyInspectorWidth);
+      if (val is num) {
+        final d = val.toDouble();
+        if (d.isNaN || d.isInfinite) return 420.0;
+        return d.clamp(300.0, 1000.0);
+      }
+      if (val is String) {
+        final parsed = double.tryParse(val);
+        if (parsed != null && !parsed.isNaN && !parsed.isInfinite) {
+          return parsed.clamp(300.0, 1000.0);
+        }
+        return 420.0;
+      }
+      return 420.0;
+    } catch (_) {
+      return 420.0;
+    }
+  }
+
+  @override
+  Future<void> setInspectorWidth(double width) async {
+    try {
+      await _prefs.setDouble(keyInspectorWidth, width);
     } catch (_) {}
   }
 
@@ -177,6 +249,37 @@ class SharedPreferencesService implements PreferencesService {
   Future<void> setTrackVisibleColumns(Set<String> columns) async {
     try {
       await _prefs.setStringList(keyTrackVisibleColumns, columns.toList());
+    } catch (_) {}
+  }
+
+  @override
+  Map<String, double> get trackColumnWidths {
+    try {
+      final val = _prefs.getString(keyTrackColumnWidths);
+      if (val == null) return {};
+      final decoded = jsonDecode(val);
+      if (decoded is Map) {
+        final Map<String, double> result = {};
+        for (final entry in decoded.entries) {
+          if (entry.key is String && entry.value is num) {
+            final d = (entry.value as num).toDouble();
+            if (!d.isNaN && !d.isInfinite && d > 0) {
+              result[entry.key as String] = d;
+            }
+          }
+        }
+        return result;
+      }
+      return {};
+    } catch (_) {
+      return {};
+    }
+  }
+
+  @override
+  Future<void> setTrackColumnWidths(Map<String, double> widths) async {
+    try {
+      await _prefs.setString(keyTrackColumnWidths, jsonEncode(widths));
     } catch (_) {}
   }
 
@@ -304,9 +407,12 @@ class SharedPreferencesService implements PreferencesService {
 class InMemoryPreferencesService implements PreferencesService {
   ThemeMode _themeMode;
   bool _isSidebarCollapsed;
+  double _sidebarWidth;
+  double _inspectorWidth;
   double _volume;
   List<String>? _trackColumnOrder;
   Set<String>? _trackVisibleColumns;
+  Map<String, double> _trackColumnWidths;
   List<String>? _workColumnOrder;
   Set<String>? _workVisibleColumns;
   List<String>? _playlistColumnOrder;
@@ -319,9 +425,12 @@ class InMemoryPreferencesService implements PreferencesService {
   InMemoryPreferencesService({
     ThemeMode themeMode = ThemeMode.dark,
     bool isSidebarCollapsed = false,
+    double sidebarWidth = 210.0,
+    double inspectorWidth = 420.0,
     double volume = 0.85,
     List<String>? trackColumnOrder,
     Set<String>? trackVisibleColumns,
+    Map<String, double>? trackColumnWidths,
     List<String>? workColumnOrder,
     Set<String>? workVisibleColumns,
     List<String>? playlistColumnOrder,
@@ -332,6 +441,8 @@ class InMemoryPreferencesService implements PreferencesService {
     bool casAutoVerify = true,
   }) : _themeMode = themeMode,
        _isSidebarCollapsed = isSidebarCollapsed,
+       _sidebarWidth = sidebarWidth,
+       _inspectorWidth = inspectorWidth,
        _volume = volume,
        _trackColumnOrder = trackColumnOrder != null
            ? List<String>.from(trackColumnOrder)
@@ -339,6 +450,9 @@ class InMemoryPreferencesService implements PreferencesService {
        _trackVisibleColumns = trackVisibleColumns != null
            ? Set<String>.from(trackVisibleColumns)
            : null,
+       _trackColumnWidths = trackColumnWidths != null
+           ? Map<String, double>.from(trackColumnWidths)
+           : {},
        _workColumnOrder = workColumnOrder != null
            ? List<String>.from(workColumnOrder)
            : null,
@@ -373,6 +487,22 @@ class InMemoryPreferencesService implements PreferencesService {
   }
 
   @override
+  double get sidebarWidth => _sidebarWidth;
+
+  @override
+  Future<void> setSidebarWidth(double width) async {
+    _sidebarWidth = width;
+  }
+
+  @override
+  double get inspectorWidth => _inspectorWidth;
+
+  @override
+  Future<void> setInspectorWidth(double width) async {
+    _inspectorWidth = width;
+  }
+
+  @override
   double get volume => _volume;
 
   @override
@@ -397,6 +527,15 @@ class InMemoryPreferencesService implements PreferencesService {
   @override
   Future<void> setTrackVisibleColumns(Set<String> columns) async {
     _trackVisibleColumns = Set<String>.from(columns);
+  }
+
+  @override
+  Map<String, double> get trackColumnWidths =>
+      Map<String, double>.from(_trackColumnWidths);
+
+  @override
+  Future<void> setTrackColumnWidths(Map<String, double> widths) async {
+    _trackColumnWidths = Map<String, double>.from(widths);
   }
 
   @override

@@ -26,6 +26,7 @@ import '../../widgets/draggable_columns_overlay.dart';
 import '../common/batch_action_toolbar.dart';
 import '../common/context_menu_coordinator.dart';
 import '../models/track.dart';
+import '../settings/services/preferences_service.dart';
 
 /// Columns available in the Tracks table.
 class TrackColumn {
@@ -203,6 +204,9 @@ class TracksView extends StatefulWidget {
   final List<TrackColumn>? columnOrder;
   final ValueChanged<List<TrackColumn>>? onColumnOrderChanged;
   final VoidCallback? onImport;
+  final PreferencesService? preferencesService;
+  final Map<String, double>? columnWidths;
+  final ValueChanged<Map<String, double>>? onColumnWidthsChanged;
 
   const TracksView({
     super.key,
@@ -230,6 +234,9 @@ class TracksView extends StatefulWidget {
     this.columnOrder,
     this.onColumnOrderChanged,
     this.onImport,
+    this.preferencesService,
+    this.columnWidths,
+    this.onColumnWidthsChanged,
   });
 
   @override
@@ -239,6 +246,7 @@ class TracksView extends StatefulWidget {
 class _TracksViewState extends State<TracksView> {
   late List<TrackColumn> _internalColumnOrder;
   late Set<TrackColumn> _internalVisibleColumns;
+  late Map<String, double> _columnWidths;
   late final OverlayPortalController _columnsOverlayController;
   late final ValueNotifier<Offset> _columnsPositionNotifier;
   TrackColumn? _sortColumn;
@@ -273,6 +281,9 @@ class _TracksViewState extends State<TracksView> {
     _columnsPositionNotifier = ValueNotifier<Offset>(Offset.zero);
     _internalColumnOrder = _normalizeColumnOrder(widget.columnOrder);
     _internalVisibleColumns = _normalizeVisibleColumns(widget.visibleColumns);
+    _columnWidths = Map<String, double>.from(
+      widget.columnWidths ?? widget.preferencesService?.trackColumnWidths ?? {},
+    );
   }
 
   @override
@@ -295,6 +306,10 @@ class _TracksViewState extends State<TracksView> {
     if (widget.visibleColumns != null &&
         widget.visibleColumns != oldWidget.visibleColumns) {
       _internalVisibleColumns = _normalizeVisibleColumns(widget.visibleColumns);
+    }
+    if (widget.columnWidths != null &&
+        widget.columnWidths != oldWidget.columnWidths) {
+      _columnWidths = Map<String, double>.from(widget.columnWidths!);
     }
   }
 
@@ -604,6 +619,25 @@ class _TracksViewState extends State<TracksView> {
     });
   }
 
+  void _updateColumnWidth(String colName, double newWidth) {
+    setState(() {
+      _columnWidths[colName] = newWidth;
+    });
+    widget.onColumnWidthsChanged?.call(_columnWidths);
+  }
+
+  void _onColumnResizeEnd() {
+    widget.preferencesService?.setTrackColumnWidths(_columnWidths);
+  }
+
+  void _resetColumnWidth(String colName) {
+    setState(() {
+      _columnWidths.remove(colName);
+    });
+    widget.preferencesService?.setTrackColumnWidths(_columnWidths);
+    widget.onColumnWidthsChanged?.call(_columnWidths);
+  }
+
   void _resetColumns() {
     final defaultOrder = List<TrackColumn>.from(TrackColumn.values);
     final defaultVisible = Set<TrackColumn>.from(
@@ -614,7 +648,10 @@ class _TracksViewState extends State<TracksView> {
     setState(() {
       _internalColumnOrder = defaultOrder;
       _internalVisibleColumns = defaultVisible;
+      _columnWidths.clear();
     });
+    widget.preferencesService?.setTrackColumnWidths(_columnWidths);
+    widget.onColumnWidthsChanged?.call(_columnWidths);
   }
 
   Widget _buildHeaderCell(TrackColumn col, LyraThemeTokens tokens) {
@@ -692,11 +729,21 @@ class _TracksViewState extends State<TracksView> {
       ),
     );
 
-    if (col.width != null) {
-      return SizedBox(width: col.width, child: interactiveChild);
-    } else {
-      return Expanded(flex: col.flex ?? 1, child: interactiveChild);
-    }
+    final customWidth = _columnWidths[col.name];
+    final effectiveWidth = customWidth ?? col.width;
+    final effectiveFlex = customWidth == null ? col.flex : null;
+
+    return _ResizableTrackHeaderCell(
+      key: ValueKey('header_cell_${col.name}'),
+      col: col,
+      width: effectiveWidth,
+      flex: effectiveFlex,
+      tokens: tokens,
+      onWidthChanged: (w) => _updateColumnWidth(col.name, w),
+      onResizeEnd: _onColumnResizeEnd,
+      onResetWidth: () => _resetColumnWidth(col.name),
+      child: interactiveChild,
+    );
   }
 
   Widget _proxyDecorator(
@@ -951,6 +998,7 @@ class _TracksViewState extends State<TracksView> {
                         key: ValueKey(track.id),
                         index: index + 1,
                         track: track,
+                        columnWidths: _columnWidths,
                         isCurrent: isCurrent,
                         isPlaying: isCurrent && widget.isPlaying,
                         isSelected: isSelected,
@@ -1142,6 +1190,114 @@ class _TrackColumnMenuItemState extends State<_TrackColumnMenuItem> {
   }
 }
 
+class _ResizableTrackHeaderCell extends StatefulWidget {
+  final TrackColumn col;
+  final Widget child;
+  final double? width;
+  final int? flex;
+  final ValueChanged<double> onWidthChanged;
+  final VoidCallback onResetWidth;
+  final VoidCallback? onResizeEnd;
+  final LyraThemeTokens tokens;
+
+  const _ResizableTrackHeaderCell({
+    super.key,
+    required this.col,
+    required this.child,
+    this.width,
+    this.flex,
+    required this.onWidthChanged,
+    required this.onResetWidth,
+    this.onResizeEnd,
+    required this.tokens,
+  });
+
+  @override
+  State<_ResizableTrackHeaderCell> createState() =>
+      _ResizableTrackHeaderCellState();
+}
+
+class _ResizableTrackHeaderCellState extends State<_ResizableTrackHeaderCell> {
+  bool _isHovered = false;
+  bool _isDragging = false;
+  double _dragStartWidth = 0.0;
+  double _accumulatedDelta = 0.0;
+
+  double get _minWidth {
+    if (widget.col == TrackColumn.index) return 40.0;
+    if (widget.col == TrackColumn.duration ||
+        widget.col == TrackColumn.year ||
+        widget.col == TrackColumn.trackNumber) {
+      return 50.0;
+    }
+    return 70.0;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = widget.tokens;
+    final isHandleActive = _isHovered || _isDragging;
+
+    final cellBody = Stack(
+      clipBehavior: Clip.none,
+      children: [
+        SizedBox(width: double.infinity, child: widget.child),
+        Positioned(
+          right: 0.0,
+          top: 0,
+          bottom: 0,
+          width: 8.0,
+          child: MouseRegion(
+            cursor: SystemMouseCursors.resizeColumn,
+            onEnter: (_) => setState(() => _isHovered = true),
+            onExit: (_) => setState(() => _isHovered = false),
+            child: GestureDetector(
+              key: Key('column_resize_handle_${widget.col.name}'),
+              behavior: HitTestBehavior.opaque,
+              onHorizontalDragStart: (_) {
+                _dragStartWidth = context.size?.width ?? widget.width ?? 100.0;
+                _accumulatedDelta = 0.0;
+                setState(() => _isDragging = true);
+              },
+              onHorizontalDragUpdate: (details) {
+                _accumulatedDelta += details.delta.dx;
+                final newWidth = math.max(
+                  _minWidth,
+                  _dragStartWidth + _accumulatedDelta,
+                );
+                widget.onWidthChanged(newWidth);
+              },
+              onHorizontalDragEnd: (_) {
+                setState(() => _isDragging = false);
+                widget.onResizeEnd?.call();
+              },
+              onHorizontalDragCancel: () {
+                setState(() => _isDragging = false);
+                widget.onResizeEnd?.call();
+              },
+              onDoubleTap: widget.onResetWidth,
+              child: Align(
+                alignment: Alignment.centerRight,
+                child: Container(
+                  width: isHandleActive ? 2.0 : 1.0,
+                  height: double.infinity,
+                  color: isHandleActive ? tokens.primary : Colors.transparent,
+                ),
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+
+    if (widget.width != null) {
+      return SizedBox(width: widget.width, child: cellBody);
+    } else {
+      return Expanded(flex: widget.flex ?? 1, child: cellBody);
+    }
+  }
+}
+
 /// Single row item in the Tracks table.
 class _TrackRow extends StatefulWidget {
   final int index;
@@ -1161,6 +1317,7 @@ class _TrackRow extends StatefulWidget {
   final LyraThemeTokens tokens;
   final List<TrackColumn> columnOrder;
   final Set<TrackColumn> visibleColumns;
+  final Map<String, double>? columnWidths;
 
   const _TrackRow({
     super.key,
@@ -1181,6 +1338,7 @@ class _TrackRow extends StatefulWidget {
     required this.tokens,
     required this.columnOrder,
     required this.visibleColumns,
+    this.columnWidths,
   });
 
   @override
@@ -1217,12 +1375,24 @@ class _TrackRowState extends State<_TrackRow> {
     super.dispose();
   }
 
+  Widget _wrapRowCell({required TrackColumn col, required Widget content}) {
+    final customWidth = widget.columnWidths?[col.name];
+    final effectiveWidth = customWidth ?? col.width;
+    final effectiveFlex = customWidth == null ? col.flex : null;
+
+    if (effectiveWidth != null) {
+      return SizedBox(width: effectiveWidth, child: content);
+    } else {
+      return Expanded(flex: effectiveFlex ?? 1, child: content);
+    }
+  }
+
   Widget _buildRowCell(TrackColumn col, LyraThemeTokens tokens) {
     switch (col.name) {
       case 'index':
-        return SizedBox(
-          width: col.width ?? 40.0,
-          child: Align(
+        return _wrapRowCell(
+          col: col,
+          content: Align(
             alignment: Alignment.centerLeft,
             child: _isHovered || widget.isPlaying
                 ? Icon(
@@ -1245,9 +1415,9 @@ class _TrackRowState extends State<_TrackRow> {
           ),
         );
       case 'trackNumber':
-        return SizedBox(
-          width: col.width ?? 66.0,
-          child: Align(
+        return _wrapRowCell(
+          col: col,
+          content: Align(
             alignment: Alignment.centerRight,
             child: Padding(
               padding: const EdgeInsets.only(right: 16.0),
@@ -1264,9 +1434,9 @@ class _TrackRowState extends State<_TrackRow> {
           ),
         );
       case 'title':
-        return Expanded(
-          flex: col.flex ?? 5,
-          child: Padding(
+        return _wrapRowCell(
+          col: col,
+          content: Padding(
             padding: const EdgeInsets.only(right: 16.0),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -1294,9 +1464,9 @@ class _TrackRowState extends State<_TrackRow> {
           ),
         );
       case 'work':
-        return Expanded(
-          flex: col.flex ?? 4,
-          child: Padding(
+        return _wrapRowCell(
+          col: col,
+          content: Padding(
             padding: const EdgeInsets.only(right: 16.0),
             child: Text(
               widget.track.workTitle ?? '-',
@@ -1308,9 +1478,9 @@ class _TrackRowState extends State<_TrackRow> {
           ),
         );
       case 'album':
-        return Expanded(
-          flex: col.flex ?? 4,
-          child: Padding(
+        return _wrapRowCell(
+          col: col,
+          content: Padding(
             padding: const EdgeInsets.only(right: 16.0),
             child: Text(
               widget.track.album,
@@ -1322,9 +1492,9 @@ class _TrackRowState extends State<_TrackRow> {
           ),
         );
       case 'resolution':
-        return Expanded(
-          flex: col.flex ?? 3,
-          child: Padding(
+        return _wrapRowCell(
+          col: col,
+          content: Padding(
             padding: const EdgeInsets.only(right: 16.0),
             child: Align(
               alignment: Alignment.centerLeft,
@@ -1356,9 +1526,9 @@ class _TrackRowState extends State<_TrackRow> {
           ),
         );
       case 'duration':
-        return SizedBox(
-          width: col.width ?? 76.0,
-          child: Align(
+        return _wrapRowCell(
+          col: col,
+          content: Align(
             alignment: Alignment.centerRight,
             child: Padding(
               padding: const EdgeInsets.only(right: 16.0),
@@ -1373,9 +1543,9 @@ class _TrackRowState extends State<_TrackRow> {
           ),
         );
       case 'year':
-        return SizedBox(
-          width: col.width ?? 74.0,
-          child: Align(
+        return _wrapRowCell(
+          col: col,
+          content: Align(
             alignment: Alignment.centerRight,
             child: Padding(
               padding: const EdgeInsets.only(right: 16.0),
@@ -1392,9 +1562,9 @@ class _TrackRowState extends State<_TrackRow> {
         );
       case 'iswc':
         final val = widget.track.iswc;
-        return SizedBox(
-          width: col.width ?? 140.0,
-          child: Padding(
+        return _wrapRowCell(
+          col: col,
+          content: Padding(
             padding: const EdgeInsets.only(right: 16.0),
             child: (val != null && val.isNotEmpty)
                 ? Align(
@@ -1427,9 +1597,9 @@ class _TrackRowState extends State<_TrackRow> {
         );
       case 'isrc':
         final val = widget.track.isrc;
-        return SizedBox(
-          width: col.width ?? 130.0,
-          child: Padding(
+        return _wrapRowCell(
+          col: col,
+          content: Padding(
             padding: const EdgeInsets.only(right: 16.0),
             child: (val != null && val.isNotEmpty)
                 ? Align(
@@ -1462,9 +1632,9 @@ class _TrackRowState extends State<_TrackRow> {
         );
       case 'musicbrainzId':
         final val = widget.track.musicbrainzId;
-        return SizedBox(
-          width: col.width ?? 260.0,
-          child: Padding(
+        return _wrapRowCell(
+          col: col,
+          content: Padding(
             padding: const EdgeInsets.only(right: 16.0),
             child: (val != null && val.isNotEmpty)
                 ? Align(
@@ -1499,9 +1669,9 @@ class _TrackRowState extends State<_TrackRow> {
           ),
         );
       case 'genre':
-        return Expanded(
-          flex: col.flex ?? 2,
-          child: Padding(
+        return _wrapRowCell(
+          col: col,
+          content: Padding(
             padding: const EdgeInsets.only(right: 16.0),
             child: Text(
               widget.track.genre ?? '-',
