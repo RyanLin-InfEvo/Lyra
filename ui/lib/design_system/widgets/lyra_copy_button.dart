@@ -3,13 +3,13 @@
 
 import 'dart:async';
 
-import 'package:flutter/material.dart' show Tooltip;
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../factory/lyra_design_system_scope.dart';
 import '../tokens/lyra_tokens.dart';
+import 'lyra_tooltip.dart';
 
 /// Interactive copy-to-clipboard button with micro-interactions:
 /// - Smooth animated transition from copy icon to success checkmark
@@ -326,7 +326,7 @@ class _LyraCopyButtonState extends State<LyraCopyButton> {
     );
 
     if (activeTooltip != null && activeTooltip.isNotEmpty) {
-      result = Tooltip(
+      result = LyraTooltip(
         message: activeTooltip,
         waitDuration: const Duration(milliseconds: 400),
         child: result,

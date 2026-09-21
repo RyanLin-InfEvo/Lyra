@@ -99,4 +99,46 @@ abstract class LyraDesignSystemFactory {
     FocusNode? focusNode,
     bool autofocus = false,
   });
+
+  /// Creates a checkbox toggle.
+  Widget createCheckbox({
+    Key? key,
+    required bool value,
+    ValueChanged<bool>? onChanged,
+    bool enabled = true,
+    FocusNode? focusNode,
+    Widget? label,
+    Widget? sublabel,
+    EdgeInsetsGeometry? padding,
+  });
+
+  /// Creates a tooltip wrapper displaying informational text on hover/focus.
+  Widget createTooltip({
+    Key? key,
+    required Widget child,
+    required String message,
+    FocusNode? focusNode,
+    Duration? waitDuration,
+    Duration? showDuration,
+  });
+
+  /// Creates a placeholder skeleton loading element.
+  Widget createSkeleton({
+    Key? key,
+    double? width,
+    double? height,
+    BorderRadiusGeometry? borderRadius,
+  });
+
+  /// Creates a virtualized data table with a sticky/fixed header and lazy row builder.
+  Widget createVirtualTable({
+    Key? key,
+    required Widget header,
+    required int itemCount,
+    required IndexedWidgetBuilder itemBuilder,
+    double? itemExtent,
+    EdgeInsetsGeometry? padding,
+    ScrollPhysics? physics,
+    ScrollController? scrollController,
+  });
 }

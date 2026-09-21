@@ -3,7 +3,6 @@
 
 import 'dart:math';
 import 'package:flutter/foundation.dart';
-import 'package:flutter/material.dart' show Tooltip;
 import 'package:flutter/widgets.dart' hide RepeatMode;
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
@@ -12,6 +11,7 @@ import '../../design_system/factory/lyra_design_system_scope.dart';
 import '../../design_system/tokens/lyra_tokens.dart';
 import '../../design_system/widgets/lyra_badge.dart';
 import '../../design_system/widgets/lyra_button.dart';
+import '../../design_system/widgets/lyra_tooltip.dart';
 import '../audio/controllers/audio_device_controller.dart';
 import '../audio/widgets/audio_device_button.dart';
 import '../models/track.dart';
@@ -348,7 +348,7 @@ class LyraPlayerBar extends StatelessWidget {
 
                             // Add to Playlist Action Button
                             const SizedBox(width: LyraSpacing.xxl),
-                            Tooltip(
+                            LyraTooltip(
                               message: 'Add to Playlist',
                               child: LyraButton.ghost(
                                 size: LyraButtonSize.sm,
@@ -404,7 +404,7 @@ class LyraPlayerBar extends StatelessWidget {
                         ),
                       ),
                       const SizedBox(width: LyraSpacing.xs),
-                      Tooltip(
+                      LyraTooltip(
                         message: isNowPlayingExpanded
                             ? 'Collapse Now Playing'
                             : 'Expand Now Playing',
@@ -916,7 +916,7 @@ class _VolumeControlState extends State<_VolumeControl> {
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        Tooltip(
+        LyraTooltip(
           message: tooltip,
           child: MouseRegion(
             cursor: SystemMouseCursors.click,

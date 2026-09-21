@@ -1,13 +1,13 @@
 // SPDX-FileCopyrightText: 2026 Tzu-Ting Lin
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import 'package:flutter/material.dart' show Tooltip;
 import 'package:flutter/widgets.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../../design_system/contracts/lyra_contracts.dart';
 import '../../design_system/tokens/lyra_tokens.dart';
 import '../../design_system/widgets/lyra_button.dart';
+import '../../design_system/widgets/lyra_tooltip.dart';
 
 /// Floating batch action toolbar displaying selected item count and batch operations.
 class BatchActionToolbar extends StatelessWidget {
@@ -57,7 +57,7 @@ class BatchActionToolbar extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-          Tooltip(
+          LyraTooltip(
             message: 'Deselect (Esc)',
             child: MouseRegion(
               cursor: SystemMouseCursors.click,
@@ -95,7 +95,7 @@ class BatchActionToolbar extends StatelessWidget {
           const SizedBox(width: 12.0),
           Container(height: 22.0, width: 1.0, color: tokens.border),
           const SizedBox(width: 12.0),
-          Tooltip(
+          LyraTooltip(
             message: 'Play Next',
             child: KeyedSubtree(
               key: const Key('batch_play_next_button'),
@@ -110,7 +110,7 @@ class BatchActionToolbar extends StatelessWidget {
             ),
           ),
           const SizedBox(width: 10.0),
-          Tooltip(
+          LyraTooltip(
             message: 'Add to Queue',
             child: KeyedSubtree(
               key: const Key('batch_add_to_queue_button'),
@@ -126,7 +126,7 @@ class BatchActionToolbar extends StatelessWidget {
           ),
           if (showAddToPlaylist) ...[
             const SizedBox(width: 10.0),
-            Tooltip(
+            LyraTooltip(
               message: 'Add to Playlist',
               child: KeyedSubtree(
                 key: const Key('batch_add_to_playlist_button'),
@@ -143,7 +143,7 @@ class BatchActionToolbar extends StatelessWidget {
           ],
           if (onDelete != null) ...[
             const SizedBox(width: 10.0),
-            Tooltip(
+            LyraTooltip(
               message: 'Delete',
               child: KeyedSubtree(
                 key: const Key('batch_delete_button'),
@@ -159,7 +159,7 @@ class BatchActionToolbar extends StatelessWidget {
             ),
           ],
           const SizedBox(width: 10.0),
-          Tooltip(
+          LyraTooltip(
             message: 'Add Tags',
             child: KeyedSubtree(
               key: const Key('batch_add_tag_button'),

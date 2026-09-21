@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2026 Tzu-Ting Lin
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import 'package:flutter/material.dart' show Tooltip;
 import 'package:flutter/widgets.dart';
 import 'package:shadcn_ui/shadcn_ui.dart';
 
@@ -9,6 +8,7 @@ import '../../../design_system/contracts/lyra_contracts.dart';
 import '../../../design_system/factory/lyra_design_system_scope.dart';
 import '../../../design_system/tokens/lyra_tokens.dart';
 import '../../../design_system/widgets/lyra_button.dart';
+import '../../../design_system/widgets/lyra_tooltip.dart';
 import '../controllers/audio_device_controller.dart';
 import '../models/audio_device.dart';
 
@@ -97,7 +97,7 @@ class _AudioDeviceButtonState extends State<AudioDeviceButton> {
       popover: (popoverContext) {
         return _buildPopoverContent(context, tokens);
       },
-      child: Tooltip(
+      child: LyraTooltip(
         message: 'Audio Output: ${currentDevice?.name ?? 'System Audio'}',
         child: LyraButton.ghost(
           size: LyraButtonSize.sm,

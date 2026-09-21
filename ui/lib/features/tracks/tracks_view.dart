@@ -9,19 +9,19 @@ import 'package:flutter/material.dart'
         Colors,
         Material,
         ReorderableDragStartListener,
-        ReorderableListView,
-        Tooltip;
+        ReorderableListView;
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
-import 'package:shadcn_ui/shadcn_ui.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../../design_system/contracts/lyra_contracts.dart';
-
 import '../../design_system/factory/lyra_design_system_scope.dart';
 import '../../design_system/tokens/lyra_tokens.dart';
 import '../../design_system/widgets/lyra_badge.dart';
 import '../../design_system/widgets/lyra_button.dart';
+import '../../design_system/widgets/lyra_checkbox.dart';
 import '../../design_system/widgets/lyra_copy_button.dart';
+import '../../design_system/widgets/lyra_tooltip.dart';
 import '../../widgets/draggable_columns_overlay.dart';
 import '../common/batch_action_toolbar.dart';
 import '../common/context_menu_coordinator.dart';
@@ -1152,7 +1152,7 @@ class _TrackColumnMenuItemState extends State<_TrackColumnMenuItem> {
                 child: Row(
                   children: [
                     IgnorePointer(
-                      child: ShadCheckbox(
+                      child: LyraCheckbox(
                         key: Key('track_col_checkbox_${col.name}'),
                         value: _isChecked,
                         enabled: widget.canToggle,
@@ -1821,7 +1821,7 @@ class _FilterCloseButtonState extends State<_FilterCloseButton> {
       enabled: widget.onTap != null,
       label: 'Clear filter',
       onTap: widget.onTap,
-      child: Tooltip(
+      child: LyraTooltip(
         message: 'Clear filter',
         child: MouseRegion(
           cursor: SystemMouseCursors.click,

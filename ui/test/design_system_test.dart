@@ -11,9 +11,13 @@ import 'package:ui/design_system/tokens/lyra_tokens.dart';
 import 'package:ui/design_system/widgets/lyra_badge.dart';
 import 'package:ui/design_system/widgets/lyra_button.dart';
 import 'package:ui/design_system/widgets/lyra_card.dart';
+import 'package:ui/design_system/widgets/lyra_checkbox.dart';
 import 'package:ui/design_system/widgets/lyra_dialog.dart';
 import 'package:ui/design_system/widgets/lyra_input.dart';
+import 'package:ui/design_system/widgets/lyra_skeleton.dart';
 import 'package:ui/design_system/widgets/lyra_switch.dart';
+import 'package:ui/design_system/widgets/lyra_table.dart';
+import 'package:ui/design_system/widgets/lyra_tooltip.dart';
 
 Widget _buildTestApp({
   required Widget child,
@@ -327,6 +331,170 @@ void main() {
       final shadSwitch = tester.widget<ShadSwitch>(find.byType(ShadSwitch));
       expect(shadSwitch.focusNode, equals(focusNode));
       expect(focusNode.hasFocus, isTrue);
+    });
+
+    testWidgets(
+      'LyraCheckbox verifies initial value, toggling, and disabled state',
+      (tester) async {
+        bool checkedValue = false;
+        bool disabledToggled = false;
+
+        await tester.pumpWidget(
+          _buildTestApp(
+            child: StatefulBuilder(
+              builder: (context, setState) {
+                return Column(
+                  children: [
+                    LyraCheckbox(
+                      key: const Key('active_checkbox'),
+                      value: checkedValue,
+                      onChanged: (val) => setState(() => checkedValue = val),
+                      label: const Text('Active Option'),
+                    ),
+                    LyraCheckbox(
+                      key: const Key('disabled_checkbox'),
+                      value: true,
+                      enabled: false,
+                      onChanged: (_) => disabledToggled = true,
+                      label: const Text('Disabled Option'),
+                    ),
+                  ],
+                );
+              },
+            ),
+          ),
+        );
+
+        final activeBox = find.byKey(const Key('active_checkbox'));
+        final disabledBox = find.byKey(const Key('disabled_checkbox'));
+
+        expect(activeBox, findsOneWidget);
+        expect(disabledBox, findsOneWidget);
+        expect(find.text('Active Option'), findsOneWidget);
+        expect(find.text('Disabled Option'), findsOneWidget);
+
+        final activeShad = tester.widget<ShadCheckbox>(activeBox);
+        expect(activeShad.value, isFalse);
+        expect(activeShad.enabled, isTrue);
+
+        final disabledShad = tester.widget<ShadCheckbox>(disabledBox);
+        expect(disabledShad.value, isTrue);
+        expect(disabledShad.enabled, isFalse);
+
+        // Tap active checkbox to toggle true
+        await tester.tap(activeBox);
+        await tester.pumpAndSettle();
+        expect(checkedValue, isTrue);
+
+        // Tap again to toggle false
+        await tester.tap(activeBox);
+        await tester.pumpAndSettle();
+        expect(checkedValue, isFalse);
+
+        // Tap disabled checkbox
+        await tester.tap(disabledBox, warnIfMissed: false);
+        await tester.pumpAndSettle();
+        expect(disabledToggled, isFalse);
+      },
+    );
+
+    testWidgets(
+      'LyraTooltip renders wrapped child with informational tooltip',
+      (tester) async {
+        await tester.pumpWidget(
+          _buildTestApp(
+            child: const LyraTooltip(
+              message: 'Information Tooltip',
+              child: Text('Hover Target'),
+            ),
+          ),
+        );
+
+        expect(find.text('Hover Target'), findsOneWidget);
+        expect(find.byTooltip('Information Tooltip'), findsOneWidget);
+        expect(find.byType(LyraTooltip), findsOneWidget);
+      },
+    );
+
+    testWidgets('LyraSkeleton renders placeholder with specified dimensions', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        _buildTestApp(
+          child: const Column(
+            children: [
+              LyraSkeleton(width: 120.0, height: 16.0),
+              LyraSkeleton(width: 48.0, height: 48.0),
+            ],
+          ),
+        ),
+      );
+
+      expect(find.byType(LyraSkeleton), findsNWidgets(2));
+      final skeletons = tester
+          .widgetList<LyraSkeleton>(find.byType(LyraSkeleton))
+          .toList();
+      expect(skeletons[0].width, equals(120.0));
+      expect(skeletons[0].height, equals(16.0));
+      expect(skeletons[1].width, equals(48.0));
+      expect(skeletons[1].height, equals(48.0));
+    });
+
+    testWidgets('LyraTable renders static header and rows', (tester) async {
+      int? tappedRow;
+
+      await tester.pumpWidget(
+        _buildTestApp(
+          child: LyraTable(
+            headers: const [Text('Header 1'), Text('Header 2')],
+            rows: const [
+              [Text('Row 1 Cell 1'), Text('Row 1 Cell 2')],
+              [Text('Row 2 Cell 1'), Text('Row 2 Cell 2')],
+            ],
+            onRowTap: (index) => tappedRow = index,
+          ),
+        ),
+      );
+
+      expect(find.text('Header 1'), findsOneWidget);
+      expect(find.text('Header 2'), findsOneWidget);
+      expect(find.text('Row 1 Cell 1'), findsOneWidget);
+      expect(find.text('Row 2 Cell 2'), findsOneWidget);
+
+      await tester.tap(find.text('Row 1 Cell 1'));
+      await tester.pumpAndSettle();
+      expect(tappedRow, equals(1));
+    });
+
+    testWidgets('LyraTable.builder renders virtualized list with header', (
+      tester,
+    ) async {
+      final items = List.generate(50, (i) => 'Track item #$i');
+
+      await tester.pumpWidget(
+        _buildTestApp(
+          child: SizedBox(
+            height: 400.0,
+            child: LyraTable.builder(
+              header: const SizedBox(
+                key: Key('table_header_container'),
+                height: 40.0,
+                child: Text('Table Header Sticky'),
+              ),
+              itemCount: items.length,
+              itemExtent: 48.0,
+              itemBuilder: (context, index) {
+                return Text(items[index]);
+              },
+            ),
+          ),
+        ),
+      );
+
+      expect(find.byKey(const Key('table_header_container')), findsOneWidget);
+      expect(find.text('Table Header Sticky'), findsOneWidget);
+      expect(find.text('Track item #0'), findsOneWidget);
+      expect(find.byType(ListView), findsOneWidget);
     });
   });
 

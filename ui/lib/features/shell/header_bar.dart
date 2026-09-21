@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2026 Tzu-Ting Lin
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import 'package:flutter/material.dart' show Tooltip;
 import 'package:flutter/widgets.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
@@ -10,6 +9,7 @@ import '../../design_system/factory/lyra_design_system_scope.dart';
 import '../../design_system/tokens/lyra_tokens.dart';
 import '../../design_system/widgets/lyra_button.dart';
 import '../../design_system/widgets/lyra_input.dart';
+import '../../design_system/widgets/lyra_tooltip.dart';
 
 /// Top header bar containing search bar, theme switcher, and quick import action.
 class LyraHeaderBar extends StatelessWidget {
@@ -47,7 +47,7 @@ class LyraHeaderBar extends StatelessWidget {
       child: Row(
         children: [
           // Sidebar Toggle Button
-          Tooltip(
+          LyraTooltip(
             message: isSidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar',
             child: LyraButton.ghost(
               size: LyraButtonSize.sm,

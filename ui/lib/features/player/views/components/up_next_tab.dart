@@ -3,7 +3,7 @@
 
 import 'package:flutter/material.dart' show Material, ReorderableListView;
 import 'package:flutter/widgets.dart';
-import 'package:shadcn_ui/shadcn_ui.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../../../../design_system/contracts/lyra_contracts.dart';
 import '../../../../design_system/factory/lyra_design_system_scope.dart';

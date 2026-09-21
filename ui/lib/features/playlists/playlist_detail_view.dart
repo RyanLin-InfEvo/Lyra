@@ -8,13 +8,14 @@ import 'package:flutter/material.dart'
         ReorderableDragStartListener,
         ReorderableListView;
 import 'package:flutter/widgets.dart';
-import 'package:shadcn_ui/shadcn_ui.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../../design_system/contracts/lyra_contracts.dart';
 import '../../design_system/factory/lyra_design_system_scope.dart';
 import '../../design_system/tokens/lyra_tokens.dart';
 import '../../design_system/widgets/lyra_badge.dart';
 import '../../design_system/widgets/lyra_button.dart';
+import '../../design_system/widgets/lyra_checkbox.dart';
 import '../../design_system/widgets/lyra_copy_button.dart';
 import '../../widgets/draggable_columns_overlay.dart';
 import '../../widgets/threshold_reorderable_drag_start_listener.dart';
@@ -1230,7 +1231,7 @@ class _PlaylistColumnMenuItemState extends State<_PlaylistColumnMenuItem> {
                 child: Row(
                   children: [
                     IgnorePointer(
-                      child: ShadCheckbox(
+                      child: LyraCheckbox(
                         key: Key('playlist_track_col_checkbox_${col.name}'),
                         value: _isChecked,
                         enabled: widget.canToggle,

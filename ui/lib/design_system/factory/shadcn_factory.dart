@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Tzu-Ting Lin
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import 'package:flutter/material.dart' show Tooltip;
 import 'package:flutter/widgets.dart';
 import 'package:shadcn_ui/shadcn_ui.dart';
 
@@ -388,6 +389,155 @@ class ShadcnFactory extends LyraDesignSystemFactory {
       onChanged: onChanged,
       enabled: enabled,
       focusNode: focusNode,
+    );
+  }
+
+  @override
+  Widget createCheckbox({
+    Key? key,
+    required bool value,
+    ValueChanged<bool>? onChanged,
+    bool enabled = true,
+    FocusNode? focusNode,
+    Widget? label,
+    Widget? sublabel,
+    EdgeInsetsGeometry? padding,
+  }) {
+    return ShadCheckbox(
+      key: key,
+      value: value,
+      onChanged: onChanged,
+      enabled: enabled,
+      focusNode: focusNode,
+      label: label,
+      sublabel: sublabel,
+      padding: padding,
+    );
+  }
+
+  @override
+  Widget createTooltip({
+    Key? key,
+    required Widget child,
+    required String message,
+    FocusNode? focusNode,
+    Duration? waitDuration,
+    Duration? showDuration,
+  }) {
+    return Tooltip(
+      key: key,
+      message: message,
+      waitDuration: waitDuration,
+      showDuration: showDuration,
+      child: child,
+    );
+  }
+
+  @override
+  Widget createSkeleton({
+    Key? key,
+    double? width,
+    double? height,
+    BorderRadiusGeometry? borderRadius,
+  }) {
+    return _ShadSkeleton(
+      skeletonKey: key,
+      width: width,
+      height: height,
+      borderRadius: borderRadius,
+    );
+  }
+
+  @override
+  Widget createVirtualTable({
+    Key? key,
+    required Widget header,
+    required int itemCount,
+    required IndexedWidgetBuilder itemBuilder,
+    double? itemExtent,
+    EdgeInsetsGeometry? padding,
+    ScrollPhysics? physics,
+    ScrollController? scrollController,
+  }) {
+    return Column(
+      key: key,
+      children: [
+        header,
+        Expanded(
+          child: ListView.builder(
+            controller: scrollController,
+            physics: physics,
+            padding:
+                padding ?? const EdgeInsets.symmetric(vertical: LyraSpacing.xs),
+            itemCount: itemCount,
+            itemExtent: itemExtent,
+            itemBuilder: itemBuilder,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _ShadSkeleton extends StatefulWidget {
+  final Key? skeletonKey;
+  final double? width;
+  final double? height;
+  final BorderRadiusGeometry? borderRadius;
+
+  const _ShadSkeleton({
+    this.skeletonKey,
+    this.width,
+    this.height,
+    this.borderRadius,
+  });
+
+  @override
+  State<_ShadSkeleton> createState() => _ShadSkeletonState();
+}
+
+class _ShadSkeletonState extends State<_ShadSkeleton>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller;
+  late final Animation<double> _animation;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1000),
+    )..repeat(reverse: true);
+    _animation = Tween<double>(
+      begin: 0.35,
+      end: 0.85,
+    ).animate(CurvedAnimation(parent: _controller, curve: Curves.easeInOut));
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens =
+        LyraDesignSystemScope.maybeOf(context)?.tokens ??
+        LyraThemeTokens.dark();
+    return AnimatedBuilder(
+      animation: _animation,
+      builder: (context, child) {
+        return Container(
+          key: widget.skeletonKey,
+          width: widget.width,
+          height: widget.height,
+          decoration: BoxDecoration(
+            color: tokens.muted.withValues(alpha: _animation.value),
+            borderRadius: widget.borderRadius ?? BorderRadius.circular(4.0),
+          ),
+        );
+      },
     );
   }
 }

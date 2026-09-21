@@ -9,11 +9,13 @@ import 'package:flutter/material.dart'
         ReorderableDragStartListener,
         ReorderableListView;
 import 'package:flutter/widgets.dart';
-import 'package:shadcn_ui/shadcn_ui.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../../design_system/factory/lyra_design_system_scope.dart';
 import '../../design_system/tokens/lyra_tokens.dart';
 import '../../design_system/widgets/lyra_badge.dart';
+import '../../design_system/widgets/lyra_checkbox.dart';
+import '../../design_system/widgets/lyra_table.dart';
 import '../../widgets/draggable_columns_overlay.dart';
 import '../models/work.dart';
 
@@ -391,69 +393,66 @@ class _WorksViewState extends State<WorksView> {
           ),
         ),
 
-        // Table Header with Draggable Floating Columns Window
-        DraggableColumnsOverlay(
-          key: const Key('works_table_header_context_menu'),
-          controller: _columnsOverlayController,
-          positionNotifier: _columnsPositionNotifier,
-          estimatedCardHeight: 60.0 + _effectiveColumnOrder.length * 36.0,
-          onReset: _resetColumns,
-          cardKey: const Key('works_columns_window'),
-          headerKey: const Key('works_columns_window_header'),
-          resetKey: const Key('works_columns_reset_button'),
-          closeKey: const Key('works_columns_close_button'),
-          tokens: tokens,
-          content: ReorderableListView.builder(
-            shrinkWrap: true,
-            physics: const ClampingScrollPhysics(),
-            buildDefaultDragHandles: false,
-            proxyDecorator: (child, index, animation) =>
-                _proxyDecorator(child, index, animation, tokens),
-            itemCount: _effectiveColumnOrder.length,
-            onReorder: _onReorder,
-            itemBuilder: (context, index) {
-              final col = _effectiveColumnOrder[index];
-              final isVisible = _effectiveVisibleColumns.contains(col);
-              final canToggle =
-                  !col.isMandatory &&
-                  (!isVisible || _effectiveVisibleColumns.length > 1);
-              return _WorkColumnMenuItem(
-                key: Key('work_col_menu_${col.name}'),
-                index: index,
-                col: col,
-                isVisible: isVisible,
-                canToggle: canToggle,
-                tokens: tokens,
-                onToggle: () => _toggleColumn(col),
-              );
-            },
-          ),
-          child: Container(
-            key: const Key('works_table_header'),
-            padding: const EdgeInsets.symmetric(
-              horizontal: LyraSpacing.xl,
-              vertical: LyraSpacing.sm,
-            ),
-            decoration: BoxDecoration(
-              color: tokens.background,
-              border: Border(
-                bottom: BorderSide(color: tokens.border, width: 1.0),
+        // Table Header and Virtual Rows rendered via LyraTable.builder
+        Expanded(
+          child: LyraTable.builder(
+            header: DraggableColumnsOverlay(
+              key: const Key('works_table_header_context_menu'),
+              controller: _columnsOverlayController,
+              positionNotifier: _columnsPositionNotifier,
+              estimatedCardHeight: 60.0 + _effectiveColumnOrder.length * 36.0,
+              onReset: _resetColumns,
+              cardKey: const Key('works_columns_window'),
+              headerKey: const Key('works_columns_window_header'),
+              resetKey: const Key('works_columns_reset_button'),
+              closeKey: const Key('works_columns_close_button'),
+              tokens: tokens,
+              content: ReorderableListView.builder(
+                shrinkWrap: true,
+                physics: const ClampingScrollPhysics(),
+                buildDefaultDragHandles: false,
+                proxyDecorator: (child, index, animation) =>
+                    _proxyDecorator(child, index, animation, tokens),
+                itemCount: _effectiveColumnOrder.length,
+                onReorder: _onReorder,
+                itemBuilder: (context, index) {
+                  final col = _effectiveColumnOrder[index];
+                  final isVisible = _effectiveVisibleColumns.contains(col);
+                  final canToggle =
+                      !col.isMandatory &&
+                      (!isVisible || _effectiveVisibleColumns.length > 1);
+                  return _WorkColumnMenuItem(
+                    key: Key('work_col_menu_${col.name}'),
+                    index: index,
+                    col: col,
+                    isVisible: isVisible,
+                    canToggle: canToggle,
+                    tokens: tokens,
+                    onToggle: () => _toggleColumn(col),
+                  );
+                },
+              ),
+              child: Container(
+                key: const Key('works_table_header'),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: LyraSpacing.xl,
+                  vertical: LyraSpacing.sm,
+                ),
+                decoration: BoxDecoration(
+                  color: tokens.background,
+                  border: Border(
+                    bottom: BorderSide(color: tokens.border, width: 1.0),
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    for (final col in _effectiveColumnOrder)
+                      if (_effectiveVisibleColumns.contains(col))
+                        _buildHeaderCell(col, tokens),
+                  ],
+                ),
               ),
             ),
-            child: Row(
-              children: [
-                for (final col in _effectiveColumnOrder)
-                  if (_effectiveVisibleColumns.contains(col))
-                    _buildHeaderCell(col, tokens),
-              ],
-            ),
-          ),
-        ),
-
-        // Table Rows
-        Expanded(
-          child: ListView.builder(
-            padding: const EdgeInsets.symmetric(vertical: LyraSpacing.xs),
             itemCount: widget.works.length,
             itemExtent: 60.0,
             itemBuilder: (context, index) {
@@ -567,7 +566,7 @@ class _WorkColumnMenuItemState extends State<_WorkColumnMenuItem> {
                 child: Row(
                   children: [
                     IgnorePointer(
-                      child: ShadCheckbox(
+                      child: LyraCheckbox(
                         key: Key('work_col_checkbox_${col.name}'),
                         value: _isChecked,
                         enabled: widget.canToggle,

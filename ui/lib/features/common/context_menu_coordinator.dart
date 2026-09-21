@@ -4,6 +4,13 @@
 import 'package:flutter/foundation.dart';
 import 'package:shadcn_ui/shadcn_ui.dart';
 
+export 'package:shadcn_ui/shadcn_ui.dart'
+    show ShadContextMenuController, ShadContextMenuRegion, ShadContextMenuItem;
+
+typedef LyraContextMenuController = ShadContextMenuController;
+typedef LyraContextMenuRegion = ShadContextMenuRegion;
+typedef LyraContextMenuItem = ShadContextMenuItem;
+
 /// Unified coordinator to manage active context menu state across all list views
 /// and tables in Lyra desktop client.
 class LyraContextMenuCoordinator {
