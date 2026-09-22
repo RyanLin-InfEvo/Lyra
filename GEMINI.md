@@ -59,6 +59,7 @@ SPDX-License-Identifier: AGPL-3.0-or-later
     *   **Comprehensive Working Tree Scope:** When proposing a commit message, the agent MUST base it on the **totality of all uncommitted modifications** currently in the working tree (`git status` / `git diff`), rather than only describing the delta from the most recent conversational turn.
     *   Always propose a draft message and wait for approval before execution.
 *   **Repository Hygiene:** Proactively maintain `.gitignore`, remove build artifacts, and ensure no large binary or sensitive files are tracked.
+*   **The Commit Timing:** Only provide commit message when user ask to commit, and the commit message must be base on the totality of all uncommitted modifications currently in the working tree (`git status` / `git diff`).
 
 ## 6. Environment & Tooling Execution
 *   **Nix Environment Prerequisite:** Lyra relies on Nix for deterministic compilation and testing environments. All builds, tests, formatting, and analysis must run inside the Nix shell environment.
