@@ -630,6 +630,39 @@ void main() {
       },
     );
 
+    test('updateTrack updates track in queue and notifies listeners', () {
+      final controller = PlaybackQueueController(autoStartTimer: false);
+      addTearDown(controller.dispose);
+
+      controller.play(track1, contextQueue: [track1, track2, track3]);
+      expect(controller.currentTrack?.title, equals('First Track'));
+
+      int notifyCount = 0;
+      controller.addListener(() {
+        notifyCount++;
+      });
+
+      const updatedTrack1 = Track(
+        id: 't-1',
+        title: 'Updated First Track',
+        artistName: 'Updated Artist 1',
+        albumTitle: 'Updated Album 1',
+        durationMs: 190000,
+      );
+
+      controller.updateTrack(updatedTrack1);
+
+      expect(notifyCount, equals(1));
+      expect(controller.currentTrack?.title, equals('Updated First Track'));
+      expect(controller.queue[0].title, equals('Updated First Track'));
+      expect(controller.queue[0].artistName, equals('Updated Artist 1'));
+
+      // Updating a track not in the queue does not notify
+      const nonExistentTrack = Track(id: 't-999', title: 'Nonexistent');
+      controller.updateTrack(nonExistentTrack);
+      expect(notifyCount, equals(1));
+    });
+
     test('clearQueue resets all playback state and queue', () {
       final controller = PlaybackQueueController(autoStartTimer: false);
       addTearDown(controller.dispose);

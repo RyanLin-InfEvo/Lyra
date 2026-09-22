@@ -1,7 +1,9 @@
 // SPDX-FileCopyrightText: 2026 Tzu-Ting Lin
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import 'package:flutter/material.dart' show SelectionArea;
+import 'package:flutter/material.dart'
+    show Colors, Material, SelectionArea, showDialog;
+import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
@@ -11,6 +13,8 @@ import '../../design_system/tokens/lyra_tokens.dart';
 import '../../design_system/widgets/lyra_badge.dart';
 import '../../design_system/widgets/lyra_button.dart';
 import '../../design_system/widgets/lyra_copy_button.dart';
+import '../../design_system/widgets/lyra_dialog.dart';
+import '../../design_system/widgets/lyra_input.dart';
 import '../models/asset.dart';
 import '../models/audio.dart';
 import '../models/source_data.dart';
@@ -27,6 +31,7 @@ class AudioInspectorDrawer extends StatelessWidget {
   final MusicService? musicService;
   final VoidCallback onClose;
   final void Function(String newPcmHash)? onActiveAudioChanged;
+  final void Function(Track updatedTrack)? onTrackUpdated;
   final double? width;
   final bool showLeftBorder;
   final ValueChanged<double>? onResizeDelta;
@@ -43,6 +48,7 @@ class AudioInspectorDrawer extends StatelessWidget {
     this.musicService,
     required this.onClose,
     this.onActiveAudioChanged,
+    this.onTrackUpdated,
     this.width,
     this.showLeftBorder = true,
     this.onResizeDelta,
@@ -80,6 +86,7 @@ class AudioInspectorDrawer extends StatelessWidget {
                   initialSourceData: initialSourceData,
                   musicService: musicService,
                   onActiveAudioChanged: onActiveAudioChanged,
+                  onTrackUpdated: onTrackUpdated,
                 ),
               ),
             ],
@@ -161,6 +168,7 @@ class AudioInspectorContent extends StatefulWidget {
   final SourceData? initialSourceData;
   final MusicService? musicService;
   final void Function(String newPcmHash)? onActiveAudioChanged;
+  final void Function(Track updatedTrack)? onTrackUpdated;
   final EdgeInsetsGeometry padding;
 
   const AudioInspectorContent({
@@ -171,6 +179,7 @@ class AudioInspectorContent extends StatefulWidget {
     this.initialSourceData,
     this.musicService,
     this.onActiveAudioChanged,
+    this.onTrackUpdated,
     this.padding = const EdgeInsets.all(LyraSpacing.lg),
   });
 
@@ -186,6 +195,38 @@ class _AudioInspectorContentState extends State<AudioInspectorContent> {
   Asset? _resolvedAsset;
   bool _isLoading = false;
   bool _isSwitchingActive = false;
+
+  // Metadata Edit Mode State
+  bool _isEditing = false;
+  bool _isSaving = false;
+
+  late final TextEditingController _titleController;
+  late final TextEditingController _artistController;
+  late final TextEditingController _albumController;
+  late final TextEditingController _yearController;
+  late final TextEditingController _trackNumberController;
+  late final TextEditingController _genreController;
+  late final TextEditingController _iswcController;
+  late final TextEditingController _isrcController;
+
+  late final FocusNode _artistFocusNode;
+  late final FocusNode _albumFocusNode;
+
+  List<String> _availableArtists = [];
+  List<String> _availableAlbums = [];
+  Map<String, String> _validationErrors = {};
+  int _fetchDetailsCallId = 0;
+
+  static final _iswcRegex = RegExp(
+    r'^T[-.]?(?:\d{9}|\d{3}[-.]\d{3}[-.]\d{3})[-.]?\d$',
+    caseSensitive: false,
+  );
+
+  static final _isrcRegex = RegExp(
+    r'^[A-Z]{2}-?[A-Z0-9]{3}-?\d{2}-?\d{5}$',
+    caseSensitive: false,
+  );
+
   @override
   void initState() {
     super.initState();
@@ -193,29 +234,326 @@ class _AudioInspectorContentState extends State<AudioInspectorContent> {
     _selectedAudio = widget.initialAudio;
     _sourceData = widget.initialSourceData;
     _resolvedAsset = widget.asset;
+
+    _titleController = TextEditingController();
+    _artistController = TextEditingController();
+    _albumController = TextEditingController();
+    _yearController = TextEditingController();
+    _trackNumberController = TextEditingController();
+    _genreController = TextEditingController();
+    _iswcController = TextEditingController();
+    _isrcController = TextEditingController();
+
+    _artistFocusNode = FocusNode();
+    _albumFocusNode = FocusNode();
+
+    _syncControllersFromTrack(_track);
     _fetchDetails();
+    _fetchAutocompleteSuggestions();
+  }
+
+  void _syncControllersFromTrack(Track? track) {
+    _titleController.text = track?.title ?? '';
+    _artistController.text = track?.artistName ?? '';
+    _albumController.text = track?.albumTitle ?? '';
+    _yearController.text = track?.recordingYear?.toString() ?? '';
+    _trackNumberController.text = track?.trackNumber?.toString() ?? '';
+    _genreController.text = track?.genre ?? '';
+    _iswcController.text = track?.iswc ?? '';
+    _isrcController.text = track?.isrc ?? '';
   }
 
   @override
   void didUpdateWidget(covariant AudioInspectorContent oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.track?.id != widget.track?.id ||
+    final trackChanged = oldWidget.track?.id != widget.track?.id;
+    final trackDataChanged = oldWidget.track != widget.track;
+    final serviceChanged = oldWidget.musicService != widget.musicService;
+
+    if (serviceChanged) {
+      _fetchAutocompleteSuggestions();
+    }
+
+    if (trackChanged ||
         oldWidget.track?.pcmHash != widget.track?.pcmHash ||
         oldWidget.asset?.fileHash != widget.asset?.fileHash ||
         oldWidget.initialAudio != widget.initialAudio ||
         oldWidget.initialSourceData != widget.initialSourceData) {
+      if (trackChanged) {
+        if (_artistFocusNode.hasFocus) _artistFocusNode.unfocus();
+        if (_albumFocusNode.hasFocus) _albumFocusNode.unfocus();
+        _isEditing = false;
+        _isSaving = false;
+        _validationErrors.clear();
+      }
       _track = widget.track;
       _selectedAudio = widget.initialAudio;
       _sourceData = widget.initialSourceData;
       _resolvedAsset = widget.asset;
+      if (!_isEditing && !trackChanged) {
+        _syncControllersFromTrack(_track);
+      }
       _fetchDetails();
+    } else if (trackDataChanged && !_isEditing) {
+      _track = widget.track;
+      _syncControllersFromTrack(_track);
     }
+  }
+
+  @override
+  void dispose() {
+    _titleController.dispose();
+    _artistController.dispose();
+    _albumController.dispose();
+    _yearController.dispose();
+    _trackNumberController.dispose();
+    _genreController.dispose();
+    _iswcController.dispose();
+    _isrcController.dispose();
+
+    _artistFocusNode.dispose();
+    _albumFocusNode.dispose();
+    super.dispose();
+  }
+
+  Future<void> _fetchAutocompleteSuggestions() async {
+    final service = widget.musicService;
+    if (service == null) return;
+    try {
+      final artists = await service.getArtists();
+      final albums = await service.getAlbums();
+      if (!mounted) return;
+      setState(() {
+        _availableArtists =
+            artists
+                .map((a) => a.displayName)
+                .where((s) => s.trim().isNotEmpty)
+                .toSet()
+                .toList()
+              ..sort();
+        _availableAlbums =
+            albums
+                .map((a) => a.title)
+                .where((s) => s.trim().isNotEmpty)
+                .toSet()
+                .toList()
+              ..sort();
+      });
+    } catch (_) {}
+  }
+
+  void _startEditing() {
+    _syncControllersFromTrack(_track);
+    _fetchAutocompleteSuggestions();
+    setState(() {
+      _validationErrors.clear();
+      _isEditing = true;
+    });
+  }
+
+  void _cancelEditing() {
+    if (_artistFocusNode.hasFocus) _artistFocusNode.unfocus();
+    if (_albumFocusNode.hasFocus) _albumFocusNode.unfocus();
+    setState(() {
+      _validationErrors.clear();
+      _isEditing = false;
+      _isSaving = false;
+    });
+  }
+
+  void _clearFieldError(String fieldKey) {
+    if (_validationErrors.containsKey(fieldKey)) {
+      setState(() {
+        _validationErrors.remove(fieldKey);
+      });
+    }
+  }
+
+  bool _validateFields() {
+    final errors = <String, String>{};
+
+    final iswc = _iswcController.text.trim();
+    if (iswc.isNotEmpty && !_iswcRegex.hasMatch(iswc)) {
+      errors['iswc'] = 'Invalid ISWC format (e.g. T-123.456.789-0)';
+    }
+
+    final isrc = _isrcController.text.trim();
+    if (isrc.isNotEmpty && !_isrcRegex.hasMatch(isrc)) {
+      errors['isrc'] = 'Invalid ISRC format (e.g. US-SM1-59-00001)';
+    }
+
+    final year = _yearController.text.trim();
+    if (year.isNotEmpty) {
+      final parsed = int.tryParse(year);
+      if (parsed == null || parsed < 1000 || parsed > 2100) {
+        errors['year'] = 'Year must be between 1000 and 2100';
+      }
+    }
+
+    final trackNum = _trackNumberController.text.trim();
+    if (trackNum.isNotEmpty) {
+      final parsed = int.tryParse(trackNum);
+      if (parsed == null || parsed < 1) {
+        errors['trackNumber'] = 'Track number must be 1 or greater';
+      }
+    }
+
+    setState(() {
+      _validationErrors = errors;
+    });
+
+    return errors.isEmpty;
+  }
+
+  List<_FieldDiff> _computeFieldDiffs() {
+    if (_track == null) return [];
+
+    final List<_FieldDiff> diffs = [
+      _FieldDiff(
+        label: 'Title',
+        oldValue: _track!.title,
+        newValue: _titleController.text.trim(),
+      ),
+      _FieldDiff(
+        label: 'Artist',
+        oldValue: _track!.artistName,
+        newValue: _artistController.text.trim(),
+      ),
+      _FieldDiff(
+        label: 'Album',
+        oldValue: _track!.albumTitle,
+        newValue: _albumController.text.trim(),
+      ),
+      _FieldDiff(
+        label: 'Year',
+        oldValue: _track!.recordingYear?.toString(),
+        newValue: _yearController.text.trim(),
+      ),
+      _FieldDiff(
+        label: 'Track No.',
+        oldValue: _track!.trackNumber?.toString(),
+        newValue: _trackNumberController.text.trim(),
+      ),
+      _FieldDiff(
+        label: 'Genre',
+        oldValue: _track!.genre,
+        newValue: _genreController.text.trim(),
+      ),
+      _FieldDiff(
+        label: 'ISWC',
+        oldValue: _track!.iswc,
+        newValue: _iswcController.text.trim(),
+      ),
+      _FieldDiff(
+        label: 'ISRC',
+        oldValue: _track!.isrc,
+        newValue: _isrcController.text.trim(),
+      ),
+    ];
+
+    return diffs.where((d) => d.isChanged).toList();
+  }
+
+  Future<void> _saveEditing() async {
+    if (_track == null) return;
+
+    if (!_validateFields()) {
+      return;
+    }
+
+    final diffs = _computeFieldDiffs();
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      barrierDismissible: true,
+      barrierLabel: 'Dismiss',
+      builder: (dialogCtx) => LyraDesignSystemScope(
+        factory: LyraDesignSystemScope.of(context).factory,
+        tokens: LyraDesignSystemScope.of(context).tokens,
+        themeModeNotifier: LyraDesignSystemScope.of(context).themeModeNotifier,
+        child: _MetadataDiffDialog(
+          diffs: diffs,
+          onConfirm: () => Navigator.of(dialogCtx).pop(true),
+          onCancel: () => Navigator.of(dialogCtx).pop(false),
+        ),
+      ),
+    );
+
+    if (confirmed != true || !mounted) return;
+
+    final yearText = _yearController.text.trim();
+    final trackNumberText = _trackNumberController.text.trim();
+    final parsedYear = yearText.isNotEmpty ? int.tryParse(yearText) : null;
+    final parsedTrackNumber = trackNumberText.isNotEmpty
+        ? int.tryParse(trackNumberText)
+        : null;
+
+    final updatedTrack = Track(
+      id: _track!.id,
+      pcmHash: _track!.pcmHash,
+      workId: _track!.workId,
+      workTitle: _track!.workTitle,
+      title: _titleController.text.trim(),
+      recordingYear: parsedYear,
+      recordingMonth: _track!.recordingMonth,
+      recordingDay: _track!.recordingDay,
+      recordingLocation: _track!.recordingLocation,
+      durationMs: _track!.durationMs,
+      isrc: _isrcController.text.trim().isNotEmpty
+          ? _isrcController.text.trim()
+          : null,
+      iswc: _iswcController.text.trim().isNotEmpty
+          ? _iswcController.text.trim()
+          : null,
+      musicbrainzId: _track!.musicbrainzId,
+      spotifyId: _track!.spotifyId,
+      ytmId: _track!.ytmId,
+      artistName: _artistController.text.trim(),
+      albumTitle: _albumController.text.trim(),
+      format: _track!.format,
+      sampleRate: _track!.sampleRate,
+      bitDepth: _track!.bitDepth,
+      verified: _track!.verified,
+      genre: _genreController.text.trim().isNotEmpty
+          ? _genreController.text.trim()
+          : null,
+      trackNumber: parsedTrackNumber,
+      discNumber: _track!.discNumber,
+    );
+
+    setState(() {
+      _isSaving = true;
+    });
+
+    Track savedTrack = updatedTrack;
+    if (widget.musicService != null) {
+      try {
+        savedTrack = await widget.musicService!.updateTrack(updatedTrack);
+      } catch (_) {
+        savedTrack = updatedTrack;
+      }
+    }
+
+    if (!mounted) return;
+
+    widget.onTrackUpdated?.call(savedTrack);
+
+    if (_artistFocusNode.hasFocus) _artistFocusNode.unfocus();
+    if (_albumFocusNode.hasFocus) _albumFocusNode.unfocus();
+
+    setState(() {
+      _track = savedTrack;
+      _validationErrors.clear();
+      _isEditing = false;
+      _isSaving = false;
+    });
   }
 
   String get _currentActivePcmHash =>
       _track?.pcmHash ?? widget.initialAudio?.pcmHash ?? '';
 
   Future<void> _fetchDetails() async {
+    final callId = ++_fetchDetailsCallId;
     final service = widget.musicService;
     final activePcmHash = _currentActivePcmHash;
     final explicitFileHash = widget.asset?.fileHash;
@@ -286,7 +624,7 @@ class _AudioInspectorContentState extends State<AudioInspectorContent> {
         fetchedAsset = resolvedAudio.assets.first;
       }
 
-      if (!mounted) return;
+      if (!mounted || callId != _fetchDetailsCallId) return;
 
       setState(() {
         _audioVersions = versions.isNotEmpty
@@ -298,7 +636,7 @@ class _AudioInspectorContentState extends State<AudioInspectorContent> {
         _isLoading = false;
       });
     } catch (_) {
-      if (!mounted) return;
+      if (!mounted || callId != _fetchDetailsCallId) return;
       setState(() {
         _isLoading = false;
       });
@@ -503,8 +841,11 @@ class _AudioInspectorContentState extends State<AudioInspectorContent> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Entity Overview (Track / Asset Summary)
-          if (hasEntitySummary) ...[
+          // Entity Overview (Track / Asset Summary) or Edit Form
+          if (_isEditing && _track != null) ...[
+            _buildEditMetadataForm(tokens),
+            _buildSectionDivider(tokens),
+          ] else if (hasEntitySummary) ...[
             _buildEntitySummarySection(tokens),
             _buildSectionDivider(tokens),
           ],
@@ -571,6 +912,312 @@ class _AudioInspectorContentState extends State<AudioInspectorContent> {
     );
   }
 
+  Widget _buildEditMetadataForm(LyraThemeTokens tokens) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _buildSectionHeader(
+          icon: LucideIcons.tag,
+          title: 'Edit Metadata',
+          tokens: tokens,
+        ),
+        const SizedBox(height: LyraSpacing.xs),
+        Text(
+          'TITLE',
+          style: LyraTypography.small(tokens).copyWith(
+            fontWeight: FontWeight.bold,
+            color: tokens.textMuted,
+            fontSize: 11.0,
+          ),
+        ),
+        const SizedBox(height: 4.0),
+        LyraInput(
+          key: const Key('inspector_edit_title_input'),
+          controller: _titleController,
+          placeholder: 'Track Title',
+        ),
+        const SizedBox(height: LyraSpacing.sm),
+        Text(
+          'ARTIST',
+          style: LyraTypography.small(tokens).copyWith(
+            fontWeight: FontWeight.bold,
+            color: tokens.textMuted,
+            fontSize: 11.0,
+          ),
+        ),
+        const SizedBox(height: 4.0),
+        _MetadataAutocompleteField(
+          inputKey: const Key('inspector_edit_artist_input'),
+          controller: _artistController,
+          focusNode: _artistFocusNode,
+          placeholder: 'Artist',
+          suggestions: _availableArtists,
+          itemIcon: LucideIcons.user,
+          tokens: tokens,
+        ),
+        const SizedBox(height: LyraSpacing.sm),
+        Text(
+          'ALBUM',
+          style: LyraTypography.small(tokens).copyWith(
+            fontWeight: FontWeight.bold,
+            color: tokens.textMuted,
+            fontSize: 11.0,
+          ),
+        ),
+        const SizedBox(height: 4.0),
+        _MetadataAutocompleteField(
+          inputKey: const Key('inspector_edit_album_input'),
+          controller: _albumController,
+          focusNode: _albumFocusNode,
+          placeholder: 'Album',
+          suggestions: _availableAlbums,
+          itemIcon: LucideIcons.disc,
+          tokens: tokens,
+        ),
+        const SizedBox(height: LyraSpacing.sm),
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'YEAR',
+                    style: LyraTypography.small(tokens).copyWith(
+                      fontWeight: FontWeight.bold,
+                      color: tokens.textMuted,
+                      fontSize: 11.0,
+                    ),
+                  ),
+                  const SizedBox(height: 4.0),
+                  Container(
+                    decoration: _validationErrors.containsKey('year')
+                        ? BoxDecoration(
+                            borderRadius: LyraRadius.smRadius,
+                            border: Border.all(
+                              color: tokens.destructive,
+                              width: 1.5,
+                            ),
+                          )
+                        : null,
+                    child: LyraInput(
+                      key: const Key('inspector_edit_year_input'),
+                      controller: _yearController,
+                      placeholder: 'Year',
+                      onChanged: (_) => _clearFieldError('year'),
+                    ),
+                  ),
+                  if (_validationErrors.containsKey('year')) ...[
+                    const SizedBox(height: 4.0),
+                    Text(
+                      _validationErrors['year']!,
+                      key: const Key('inspector_edit_year_error'),
+                      style: LyraTypography.small(tokens).copyWith(
+                        color: tokens.destructive,
+                        fontSize: 11.0,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+            const SizedBox(width: LyraSpacing.sm),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'TRACK NO.',
+                    style: LyraTypography.small(tokens).copyWith(
+                      fontWeight: FontWeight.bold,
+                      color: tokens.textMuted,
+                      fontSize: 11.0,
+                    ),
+                  ),
+                  const SizedBox(height: 4.0),
+                  Container(
+                    decoration: _validationErrors.containsKey('trackNumber')
+                        ? BoxDecoration(
+                            borderRadius: LyraRadius.smRadius,
+                            border: Border.all(
+                              color: tokens.destructive,
+                              width: 1.5,
+                            ),
+                          )
+                        : null,
+                    child: LyraInput(
+                      key: const Key('inspector_edit_track_number_input'),
+                      controller: _trackNumberController,
+                      placeholder: 'Track #',
+                      onChanged: (_) => _clearFieldError('trackNumber'),
+                    ),
+                  ),
+                  if (_validationErrors.containsKey('trackNumber')) ...[
+                    const SizedBox(height: 4.0),
+                    Text(
+                      _validationErrors['trackNumber']!,
+                      key: const Key('inspector_edit_track_number_error'),
+                      style: LyraTypography.small(tokens).copyWith(
+                        color: tokens.destructive,
+                        fontSize: 11.0,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: LyraSpacing.sm),
+        Text(
+          'GENRE',
+          style: LyraTypography.small(tokens).copyWith(
+            fontWeight: FontWeight.bold,
+            color: tokens.textMuted,
+            fontSize: 11.0,
+          ),
+        ),
+        const SizedBox(height: 4.0),
+        LyraInput(
+          key: const Key('inspector_edit_genre_input'),
+          controller: _genreController,
+          placeholder: 'Genre',
+        ),
+        const SizedBox(height: LyraSpacing.sm),
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'ISWC',
+                    style: LyraTypography.small(tokens).copyWith(
+                      fontWeight: FontWeight.bold,
+                      color: tokens.textMuted,
+                      fontSize: 11.0,
+                    ),
+                  ),
+                  const SizedBox(height: 4.0),
+                  Container(
+                    decoration: _validationErrors.containsKey('iswc')
+                        ? BoxDecoration(
+                            borderRadius: LyraRadius.smRadius,
+                            border: Border.all(
+                              color: tokens.destructive,
+                              width: 1.5,
+                            ),
+                          )
+                        : null,
+                    child: LyraInput(
+                      key: const Key('inspector_edit_iswc_input'),
+                      controller: _iswcController,
+                      placeholder: 'ISWC',
+                      onChanged: (_) => _clearFieldError('iswc'),
+                    ),
+                  ),
+                  if (_validationErrors.containsKey('iswc')) ...[
+                    const SizedBox(height: 4.0),
+                    Text(
+                      _validationErrors['iswc']!,
+                      key: const Key('inspector_edit_iswc_error'),
+                      style: LyraTypography.small(tokens).copyWith(
+                        color: tokens.destructive,
+                        fontSize: 11.0,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+            const SizedBox(width: LyraSpacing.sm),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'ISRC',
+                    style: LyraTypography.small(tokens).copyWith(
+                      fontWeight: FontWeight.bold,
+                      color: tokens.textMuted,
+                      fontSize: 11.0,
+                    ),
+                  ),
+                  const SizedBox(height: 4.0),
+                  Container(
+                    decoration: _validationErrors.containsKey('isrc')
+                        ? BoxDecoration(
+                            borderRadius: LyraRadius.smRadius,
+                            border: Border.all(
+                              color: tokens.destructive,
+                              width: 1.5,
+                            ),
+                          )
+                        : null,
+                    child: LyraInput(
+                      key: const Key('inspector_edit_isrc_input'),
+                      controller: _isrcController,
+                      placeholder: 'ISRC',
+                      onChanged: (_) => _clearFieldError('isrc'),
+                    ),
+                  ),
+                  if (_validationErrors.containsKey('isrc')) ...[
+                    const SizedBox(height: 4.0),
+                    Text(
+                      _validationErrors['isrc']!,
+                      key: const Key('inspector_edit_isrc_error'),
+                      style: LyraTypography.small(tokens).copyWith(
+                        color: tokens.destructive,
+                        fontSize: 11.0,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: LyraSpacing.md),
+        Row(
+          children: [
+            Expanded(
+              child: LyraButton.outline(
+                key: const Key('inspector_cancel_button'),
+                size: LyraButtonSize.sm,
+                onPressed: _isSaving ? null : _cancelEditing,
+                child: const Text('Cancel'),
+              ),
+            ),
+            const SizedBox(width: LyraSpacing.sm),
+            Expanded(
+              child: LyraButton.primary(
+                key: const Key('inspector_save_button'),
+                size: LyraButtonSize.sm,
+                onPressed: _isSaving ? null : _saveEditing,
+                leading: _isSaving
+                    ? const SizedBox(
+                        width: 14.0,
+                        height: 14.0,
+                        child: Center(
+                          child: Icon(LucideIcons.loader2, size: 14.0),
+                        ),
+                      )
+                    : const Icon(LucideIcons.check, size: 14.0),
+                child: Text(_isSaving ? 'Saving...' : 'Save'),
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
   Widget _buildEntitySummarySection(LyraThemeTokens tokens) {
     final track = _track;
     final asset = _resolvedAsset ?? widget.asset;
@@ -617,6 +1264,14 @@ class _AudioInspectorContentState extends State<AudioInspectorContent> {
                     ),
                   ],
                 ),
+              ),
+              const SizedBox(width: LyraSpacing.xs),
+              LyraButton.outline(
+                key: const Key('inspector_edit_button'),
+                size: LyraButtonSize.sm,
+                onPressed: _startEditing,
+                leading: const Icon(LucideIcons.pencil, size: 13.0),
+                child: const Text('Edit'),
               ),
             ],
           ),
@@ -1274,6 +1929,711 @@ class _AudioInspectorContentState extends State<AudioInspectorContent> {
           ),
         ),
       ],
+    );
+  }
+}
+
+class _FieldDiff {
+  final String label;
+  final String? oldValue;
+  final String? newValue;
+
+  const _FieldDiff({
+    required this.label,
+    required this.oldValue,
+    required this.newValue,
+  });
+
+  bool get isChanged {
+    final oldNorm = (oldValue?.trim().isEmpty ?? true)
+        ? null
+        : oldValue!.trim();
+    final newNorm = (newValue?.trim().isEmpty ?? true)
+        ? null
+        : newValue!.trim();
+    return oldNorm != newNorm;
+  }
+}
+
+class _MetadataDiffDialog extends StatelessWidget {
+  final List<_FieldDiff> diffs;
+  final VoidCallback onConfirm;
+  final VoidCallback onCancel;
+
+  const _MetadataDiffDialog({
+    required this.diffs,
+    required this.onConfirm,
+    required this.onCancel,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = LyraDesignSystemScope.of(context).tokens;
+
+    return Center(
+      key: const Key('metadata_diff_dialog'),
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 540.0),
+        child: LyraDialog(
+          onClose: onCancel,
+          title: Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(LyraSpacing.xs),
+                decoration: BoxDecoration(
+                  color: tokens.secondary,
+                  borderRadius: LyraRadius.smRadius,
+                ),
+                child: Icon(
+                  LucideIcons.gitCompare,
+                  size: 18.0,
+                  color: tokens.primary,
+                ),
+              ),
+              const SizedBox(width: LyraSpacing.sm),
+              Text(
+                'Confirm Metadata Changes',
+                style: LyraTypography.h3(tokens),
+              ),
+            ],
+          ),
+          description: Text(
+            diffs.isEmpty
+                ? 'No fields have been modified.'
+                : 'Review the ${diffs.length} modified ${diffs.length == 1 ? "field" : "fields"} before applying changes to the database.',
+            style: LyraTypography.muted(tokens),
+          ),
+          actions: [
+            LyraButton.outline(
+              key: const Key('diff_dialog_cancel_button'),
+              size: LyraButtonSize.sm,
+              onPressed: onCancel,
+              child: const Text('Cancel'),
+            ),
+            LyraButton.primary(
+              key: const Key('diff_dialog_confirm_button'),
+              size: LyraButtonSize.sm,
+              onPressed: onConfirm,
+              leading: const Icon(LucideIcons.check, size: 14.0),
+              child: const Text('Confirm & Save'),
+            ),
+          ],
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              if (diffs.isEmpty)
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: LyraSpacing.lg),
+                  child: Center(
+                    child: Text(
+                      'No changes detected.',
+                      style: LyraTypography.muted(tokens),
+                    ),
+                  ),
+                )
+              else ...[
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: LyraSpacing.sm,
+                    vertical: LyraSpacing.xs,
+                  ),
+                  decoration: BoxDecoration(
+                    color: tokens.secondary.withValues(alpha: 0.5),
+                    borderRadius: LyraRadius.smRadius,
+                  ),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          'ORIGINAL (BEFORE)',
+                          style: LyraTypography.small(tokens).copyWith(
+                            fontWeight: FontWeight.bold,
+                            color: tokens.textMuted,
+                            fontSize: 11.0,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: LyraSpacing.md),
+                      Expanded(
+                        child: Text(
+                          'MODIFIED (AFTER)',
+                          style: LyraTypography.small(tokens).copyWith(
+                            fontWeight: FontWeight.bold,
+                            color: tokens.textMuted,
+                            fontSize: 11.0,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: LyraSpacing.sm),
+                ConstrainedBox(
+                  constraints: const BoxConstraints(maxHeight: 280.0),
+                  child: SingleChildScrollView(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: diffs.map((diff) {
+                        return Padding(
+                          padding: const EdgeInsets.only(
+                            bottom: LyraSpacing.sm,
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                diff.label.toUpperCase(),
+                                style: LyraTypography.small(tokens).copyWith(
+                                  fontWeight: FontWeight.bold,
+                                  color: tokens.textMuted,
+                                  fontSize: 10.0,
+                                ),
+                              ),
+                              const SizedBox(height: 3.0),
+                              Row(
+                                children: [
+                                  Expanded(
+                                    child: _buildBeforeCell(diff, tokens),
+                                  ),
+                                  const SizedBox(width: LyraSpacing.md),
+                                  Expanded(
+                                    child: _buildAfterCell(diff, tokens),
+                                  ),
+                                ],
+                              ),
+                            ],
+                          ),
+                        );
+                      }).toList(),
+                    ),
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildBeforeCell(_FieldDiff diff, LyraThemeTokens tokens) {
+    final oldText = diff.oldValue?.trim();
+    final isEmpty = oldText == null || oldText.isEmpty;
+
+    return Container(
+      padding: const EdgeInsets.symmetric(
+        horizontal: LyraSpacing.sm,
+        vertical: LyraSpacing.xs + 2.0,
+      ),
+      decoration: BoxDecoration(
+        color: tokens.destructive.withValues(alpha: 0.08),
+        borderRadius: LyraRadius.smRadius,
+        border: Border.all(
+          color: tokens.destructive.withValues(alpha: 0.25),
+          width: 1.0,
+        ),
+      ),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 4.0, vertical: 1.0),
+            decoration: BoxDecoration(
+              color: tokens.destructive.withValues(alpha: 0.15),
+              borderRadius: BorderRadius.circular(3.0),
+            ),
+            child: Text(
+              '-',
+              style: TextStyle(
+                color: tokens.destructive,
+                fontWeight: FontWeight.bold,
+                fontSize: 12.0,
+              ),
+            ),
+          ),
+          const SizedBox(width: LyraSpacing.xs),
+          Expanded(
+            child: Text(
+              isEmpty ? 'None' : oldText,
+              style: LyraTypography.small(tokens).copyWith(
+                color: isEmpty ? tokens.textMuted : tokens.destructive,
+                fontStyle: isEmpty ? FontStyle.italic : FontStyle.normal,
+                decoration: isEmpty ? null : TextDecoration.lineThrough,
+                decorationColor: tokens.destructive.withValues(alpha: 0.6),
+              ),
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildAfterCell(_FieldDiff diff, LyraThemeTokens tokens) {
+    final newText = diff.newValue?.trim();
+    final isCleared = newText == null || newText.isEmpty;
+    const emeraldColor = Color(0xFF10B981);
+
+    return Container(
+      padding: const EdgeInsets.symmetric(
+        horizontal: LyraSpacing.sm,
+        vertical: LyraSpacing.xs + 2.0,
+      ),
+      decoration: BoxDecoration(
+        color: isCleared
+            ? tokens.destructive.withValues(alpha: 0.08)
+            : emeraldColor.withValues(alpha: 0.08),
+        borderRadius: LyraRadius.smRadius,
+        border: Border.all(
+          color: isCleared
+              ? tokens.destructive.withValues(alpha: 0.25)
+              : emeraldColor.withValues(alpha: 0.35),
+          width: 1.0,
+        ),
+      ),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 4.0, vertical: 1.0),
+            decoration: BoxDecoration(
+              color: isCleared
+                  ? tokens.destructive.withValues(alpha: 0.15)
+                  : emeraldColor.withValues(alpha: 0.15),
+              borderRadius: BorderRadius.circular(3.0),
+            ),
+            child: Text(
+              isCleared ? '×' : '+',
+              style: TextStyle(
+                color: isCleared ? tokens.destructive : emeraldColor,
+                fontWeight: FontWeight.bold,
+                fontSize: 12.0,
+              ),
+            ),
+          ),
+          const SizedBox(width: LyraSpacing.xs),
+          Expanded(
+            child: Text(
+              isCleared ? 'Cleared' : newText,
+              style: LyraTypography.small(tokens).copyWith(
+                color: isCleared ? tokens.destructive : emeraldColor,
+                fontStyle: isCleared ? FontStyle.italic : FontStyle.normal,
+                fontWeight: isCleared ? FontWeight.normal : FontWeight.w600,
+              ),
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _AutocompleteOption {
+  final String label;
+  final String value;
+  final bool isCreate;
+
+  const _AutocompleteOption({
+    required this.label,
+    required this.value,
+    this.isCreate = false,
+  });
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is _AutocompleteOption &&
+          runtimeType == other.runtimeType &&
+          value == other.value &&
+          isCreate == other.isCreate;
+
+  @override
+  int get hashCode => Object.hash(value, isCreate);
+
+  @override
+  String toString() => isCreate ? 'Create "$value"' : value;
+}
+
+class _MetadataAutocompleteField extends StatefulWidget {
+  final Key? inputKey;
+  final TextEditingController controller;
+  final FocusNode focusNode;
+  final String placeholder;
+  final List<String> suggestions;
+  final IconData itemIcon;
+  final LyraThemeTokens tokens;
+
+  const _MetadataAutocompleteField({
+    this.inputKey,
+    required this.controller,
+    required this.focusNode,
+    required this.placeholder,
+    required this.suggestions,
+    required this.itemIcon,
+    required this.tokens,
+  });
+
+  @override
+  State<_MetadataAutocompleteField> createState() =>
+      _MetadataAutocompleteFieldState();
+}
+
+class _MetadataAutocompleteFieldState
+    extends State<_MetadataAutocompleteField> {
+  final OverlayPortalController _overlayController = OverlayPortalController();
+  final LayerLink _layerLink = LayerLink();
+  final Object _tapRegionGroupId = Object();
+  double _fieldWidth = 0.0;
+  List<_AutocompleteOption> _options = [];
+  int _highlightedIndex = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    widget.controller.addListener(_handleTextChanged);
+    widget.focusNode.addListener(_handleFocusChanged);
+  }
+
+  @override
+  void didUpdateWidget(covariant _MetadataAutocompleteField oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.controller != widget.controller) {
+      oldWidget.controller.removeListener(_handleTextChanged);
+      widget.controller.addListener(_handleTextChanged);
+    }
+    if (oldWidget.focusNode != widget.focusNode) {
+      oldWidget.focusNode.removeListener(_handleFocusChanged);
+      widget.focusNode.addListener(_handleFocusChanged);
+    }
+    if (oldWidget.suggestions != widget.suggestions) {
+      _computeOptions();
+    }
+  }
+
+  @override
+  void dispose() {
+    widget.controller.removeListener(_handleTextChanged);
+    widget.focusNode.removeListener(_handleFocusChanged);
+    // Note: Do not call _overlayController.hide() here.
+    // OverlayPortal automatically unmounts its overlay child when unmounted.
+    super.dispose();
+  }
+
+  void _handleTextChanged() {
+    if (!mounted) return;
+    _computeOptions();
+  }
+
+  void _handleFocusChanged() {
+    if (!mounted) return;
+    if (widget.focusNode.hasFocus) {
+      _computeOptions();
+    } else {
+      _closeOptions();
+    }
+  }
+
+  void _closeOptions() {
+    if (!mounted) return;
+    if (_overlayController.isShowing) {
+      _overlayController.hide();
+    }
+    if (_options.isNotEmpty) {
+      setState(() {
+        _options = [];
+        _highlightedIndex = 0;
+      });
+    }
+  }
+
+  void _computeOptions() {
+    if (!mounted) return;
+    final query = widget.controller.text.trim();
+    if (query.isEmpty || !widget.focusNode.hasFocus) {
+      _closeOptions();
+      return;
+    }
+
+    final qLower = query.toLowerCase();
+    final matched = widget.suggestions
+        .where((s) => s.toLowerCase().contains(qLower))
+        .map((s) => _AutocompleteOption(label: s, value: s, isCreate: false))
+        .toList();
+
+    final hasExactMatch = widget.suggestions.any(
+      (s) => s.toLowerCase() == qLower,
+    );
+
+    List<_AutocompleteOption> computed = matched;
+    if (!hasExactMatch) {
+      computed = [
+        ...matched,
+        _AutocompleteOption(
+          label: 'Create "$query"',
+          value: query,
+          isCreate: true,
+        ),
+      ];
+    }
+
+    setState(() {
+      _options = computed;
+      _highlightedIndex = 0;
+    });
+
+    if (computed.isNotEmpty && widget.focusNode.hasFocus) {
+      if (!_overlayController.isShowing) {
+        _overlayController.show();
+      }
+    } else {
+      if (_overlayController.isShowing) {
+        _overlayController.hide();
+      }
+    }
+  }
+
+  void _onSelectOption(_AutocompleteOption option) {
+    widget.controller.text = option.value;
+    widget.controller.selection = TextSelection.collapsed(
+      offset: option.value.length,
+    );
+    _closeOptions();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = widget.tokens;
+
+    return CompositedTransformTarget(
+      link: _layerLink,
+      child: OverlayPortal(
+        controller: _overlayController,
+        overlayChildBuilder: (context) {
+          return CompositedTransformFollower(
+            link: _layerLink,
+            showWhenUnlinked: false,
+            targetAnchor: Alignment.bottomLeft,
+            followerAnchor: Alignment.topLeft,
+            offset: const Offset(0, 4.0),
+            child: Align(
+              alignment: Alignment.topLeft,
+              child: TapRegion(
+                groupId: _tapRegionGroupId,
+                child: Material(
+                  color: Colors.transparent,
+                  child: Container(
+                    width: _fieldWidth > 0 ? _fieldWidth : 320.0,
+                    decoration: BoxDecoration(
+                      color: tokens.card,
+                      borderRadius: LyraRadius.mdRadius,
+                      border: Border.all(color: tokens.border, width: 1.0),
+                      boxShadow: [
+                        BoxShadow(
+                          color: tokens.text.withValues(alpha: 0.12),
+                          blurRadius: 16,
+                          offset: const Offset(0, 6),
+                        ),
+                      ],
+                    ),
+                    child: ClipRRect(
+                      borderRadius: LyraRadius.mdRadius,
+                      child: ConstrainedBox(
+                        constraints: const BoxConstraints(maxHeight: 200.0),
+                        child: ListView.builder(
+                          padding: const EdgeInsets.symmetric(vertical: 4.0),
+                          shrinkWrap: true,
+                          itemCount: _options.length,
+                          itemBuilder: (context, index) {
+                            final option = _options[index];
+                            final isHighlighted = index == _highlightedIndex;
+                            return _AutocompleteItemTile(
+                              key: Key(
+                                'autocomplete_option_${option.isCreate ? "create_" : ""}${option.value}',
+                              ),
+                              option: option,
+                              isHighlighted: isHighlighted,
+                              tokens: tokens,
+                              icon: option.isCreate
+                                  ? LucideIcons.plus
+                                  : widget.itemIcon,
+                              onTap: () => _onSelectOption(option),
+                            );
+                          },
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          );
+        },
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            _fieldWidth = constraints.maxWidth;
+            return TapRegion(
+              groupId: _tapRegionGroupId,
+              onTapOutside: (_) => _closeOptions(),
+              child: Focus(
+                onKeyEvent: (node, event) {
+                  if (event is KeyDownEvent) {
+                    if (event.logicalKey == LogicalKeyboardKey.arrowDown) {
+                      if (_options.isNotEmpty) {
+                        setState(() {
+                          _highlightedIndex =
+                              (_highlightedIndex + 1) % _options.length;
+                        });
+                        return KeyEventResult.handled;
+                      }
+                    } else if (event.logicalKey == LogicalKeyboardKey.arrowUp) {
+                      if (_options.isNotEmpty) {
+                        setState(() {
+                          _highlightedIndex =
+                              (_highlightedIndex - 1 + _options.length) %
+                              _options.length;
+                        });
+                        return KeyEventResult.handled;
+                      }
+                    } else if (event.logicalKey == LogicalKeyboardKey.escape) {
+                      if (_overlayController.isShowing) {
+                        _closeOptions();
+                        return KeyEventResult.handled;
+                      }
+                    }
+                  }
+                  return KeyEventResult.ignored;
+                },
+                child: LyraInput(
+                  key: widget.inputKey,
+                  controller: widget.controller,
+                  focusNode: widget.focusNode,
+                  placeholder: widget.placeholder,
+                  onSubmitted: (_) {
+                    if (_options.isNotEmpty) {
+                      _onSelectOption(
+                        _options[_highlightedIndex.clamp(
+                          0,
+                          _options.length - 1,
+                        )],
+                      );
+                    }
+                  },
+                ),
+              ),
+            );
+          },
+        ),
+      ),
+    );
+  }
+}
+
+class _AutocompleteItemTile extends StatefulWidget {
+  final _AutocompleteOption option;
+  final bool isHighlighted;
+  final LyraThemeTokens tokens;
+  final IconData icon;
+  final VoidCallback onTap;
+
+  const _AutocompleteItemTile({
+    super.key,
+    required this.option,
+    required this.isHighlighted,
+    required this.tokens,
+    required this.icon,
+    required this.onTap,
+  });
+
+  @override
+  State<_AutocompleteItemTile> createState() => _AutocompleteItemTileState();
+}
+
+class _AutocompleteItemTileState extends State<_AutocompleteItemTile> {
+  bool _isHovered = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = widget.tokens;
+    final option = widget.option;
+    final isSelected = widget.isHighlighted || _isHovered;
+
+    return MouseRegion(
+      cursor: SystemMouseCursors.click,
+      onEnter: (_) => setState(() => _isHovered = true),
+      onExit: (_) => setState(() => _isHovered = false),
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: widget.onTap,
+        child: Container(
+          padding: const EdgeInsets.symmetric(
+            horizontal: LyraSpacing.md,
+            vertical: LyraSpacing.xs + 2.0,
+          ),
+          color: isSelected
+              ? tokens.accent.withValues(alpha: 0.15)
+              : Colors.transparent,
+          child: Row(
+            children: [
+              Icon(
+                widget.icon,
+                size: 14.0,
+                color: option.isCreate ? tokens.primary : tokens.textMuted,
+              ),
+              const SizedBox(width: LyraSpacing.sm),
+              Expanded(
+                child: option.isCreate
+                    ? Text.rich(
+                        TextSpan(
+                          text: 'Create ',
+                          style: LyraTypography.small(
+                            tokens,
+                          ).copyWith(color: tokens.textMuted),
+                          children: [
+                            TextSpan(
+                              text: '"${option.value}"',
+                              style: LyraTypography.small(tokens).copyWith(
+                                fontWeight: FontWeight.bold,
+                                color: tokens.primary,
+                              ),
+                            ),
+                          ],
+                        ),
+                        overflow: TextOverflow.ellipsis,
+                      )
+                    : Text(
+                        option.label,
+                        style: LyraTypography.small(tokens).copyWith(
+                          fontWeight: isSelected
+                              ? FontWeight.w600
+                              : FontWeight.normal,
+                          color: tokens.text,
+                        ),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+              ),
+              if (option.isCreate)
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 6.0,
+                    vertical: 2.0,
+                  ),
+                  decoration: BoxDecoration(
+                    color: tokens.secondary,
+                    borderRadius: LyraRadius.smRadius,
+                  ),
+                  child: Text(
+                    'New',
+                    style: LyraTypography.small(tokens).copyWith(
+                      fontSize: 10.0,
+                      fontWeight: FontWeight.bold,
+                      color: tokens.primary,
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }

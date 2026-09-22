@@ -1178,4 +1178,15 @@ class MockMusicService implements MusicService {
     }
     return null;
   }
+
+  @override
+  Future<Track> updateTrack(Track track) async {
+    final index = _tracks.indexWhere((t) => t.id == track.id);
+    if (index != -1) {
+      _tracks[index] = track;
+    } else {
+      _tracks.add(track);
+    }
+    return track;
+  }
 }

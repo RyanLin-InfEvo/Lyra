@@ -9,6 +9,7 @@ import 'package:shadcn_ui/shadcn_ui.dart';
 import 'package:ui/design_system/factory/lyra_design_system_scope.dart';
 import 'package:ui/design_system/factory/shadcn_factory.dart';
 import 'package:ui/design_system/tokens/lyra_tokens.dart';
+import 'package:ui/design_system/widgets/lyra_button.dart';
 import 'package:ui/design_system/widgets/lyra_input.dart';
 import 'package:ui/features/albums/albums_view.dart';
 import 'package:ui/features/artists/artists_view.dart';
@@ -2224,6 +2225,109 @@ void main() {
         expect(find.text('Remove from Queue'), findsOneWidget);
         // The active controller belongs to the UpNextTab context menu
         expect(LyraContextMenuCoordinator.activeController, isNotNull);
+      },
+    );
+
+    testWidgets(
+      'AppShell: AudioInspectorDrawer edits track, updating table and player bar in real time',
+      (tester) async {
+        tester.view.physicalSize = const Size(1400, 900);
+        tester.view.devicePixelRatio = 1.0;
+        addTearDown(tester.view.resetPhysicalSize);
+
+        await tester.pumpWidget(_buildAppShellTest());
+        await tester.pumpAndSettle();
+
+        // Start playback of first track (trk-001: Hotel California)
+        await tester.tap(
+          find.text('Hotel California (Live on MTV 1994)').first,
+        );
+        await tester.pumpAndSettle();
+
+        // Open inspector with Meta+I
+        await tester.sendKeyDownEvent(LogicalKeyboardKey.meta);
+        await tester.sendKeyEvent(LogicalKeyboardKey.keyI);
+        await tester.sendKeyUpEvent(LogicalKeyboardKey.meta);
+        await tester.pumpAndSettle();
+
+        expect(find.byType(AudioInspectorDrawer), findsOneWidget);
+
+        // Click Edit button in AudioInspectorDrawer
+        await tester.tap(find.widgetWithText(LyraButton, 'Edit'));
+        await tester.pumpAndSettle();
+
+        // Edit Title
+        await tester.enterText(
+          find.byKey(const Key('inspector_edit_title_input')).first,
+          'Hotel California (Renamed in Test)',
+        );
+        await tester.pumpAndSettle();
+
+        // Click Save
+        await tester.tap(find.widgetWithText(LyraButton, 'Save'));
+        await tester.pumpAndSettle();
+
+        // Confirm & Save in diff dialog
+        final confirmBtn = find.widgetWithText(LyraButton, 'Confirm & Save');
+        if (confirmBtn.evaluate().isNotEmpty) {
+          await tester.tap(confirmBtn.first);
+          await tester.pumpAndSettle();
+        }
+
+        // Verify updated title appears in TracksView table, PlayerBar, and AudioInspectorDrawer
+        expect(find.text('Hotel California (Renamed in Test)'), findsWidgets);
+      },
+    );
+
+    testWidgets(
+      'AppShell: clicking Track A -> enter Inspector Edit -> click Track B switches tracks cleanly without freezing',
+      (tester) async {
+        tester.view.physicalSize = const Size(1400, 900);
+        tester.view.devicePixelRatio = 1.0;
+        addTearDown(tester.view.resetPhysicalSize);
+
+        final service = MockMusicService();
+        await tester.pumpWidget(_buildAppShellTest(service: service));
+        await tester.pumpAndSettle();
+
+        // Start playback of first track (trk-001: Hotel California)
+        await tester.tap(
+          find.text('Hotel California (Live on MTV 1994)').first,
+        );
+        await tester.pumpAndSettle();
+
+        // Open inspector with Meta+I
+        await tester.sendKeyDownEvent(LogicalKeyboardKey.meta);
+        await tester.sendKeyEvent(LogicalKeyboardKey.keyI);
+        await tester.sendKeyUpEvent(LogicalKeyboardKey.meta);
+        await tester.pumpAndSettle();
+
+        expect(find.byType(AudioInspectorDrawer), findsOneWidget);
+
+        // Click Edit button in AudioInspectorDrawer
+        await tester.tap(find.widgetWithText(LyraButton, 'Edit'));
+        await tester.pumpAndSettle();
+
+        expect(find.text('Edit Metadata'), findsOneWidget);
+
+        // Now click second track ('So What') in TracksView table
+        final soWhatTrack = find.descendant(
+          of: find.byType(TracksView),
+          matching: find.text('So What'),
+        );
+        expect(soWhatTrack, findsOneWidget);
+        await tester.tap(soWhatTrack);
+        await tester.pumpAndSettle();
+
+        // Inspector should update to 'So What' and not hang
+        expect(
+          find.descendant(
+            of: find.byType(AudioInspectorDrawer),
+            matching: find.text('So What'),
+          ),
+          findsWidgets,
+        );
+        expect(find.text('Edit Metadata'), findsNothing);
       },
     );
   });

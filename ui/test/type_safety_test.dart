@@ -154,6 +154,9 @@ class EmptyMusicService implements MusicService {
     int oldIndex,
     int newIndex,
   ) async {}
+
+  @override
+  Future<Track> updateTrack(Track track) async => track;
 }
 
 void main() {

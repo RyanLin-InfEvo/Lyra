@@ -87,4 +87,7 @@ abstract class MusicService {
     int oldIndex,
     int newIndex,
   );
+
+  /// Update metadata for an existing track recording in the catalog.
+  Future<Track> updateTrack(Track track);
 }

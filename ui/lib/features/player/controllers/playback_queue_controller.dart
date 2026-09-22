@@ -570,6 +570,20 @@ class PlaybackQueueController extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Updates a track's metadata in the playback queue if present.
+  void updateTrack(Track updatedTrack) {
+    bool changed = false;
+    for (int i = 0; i < _queue.length; i++) {
+      if (_queue[i].id == updatedTrack.id) {
+        _queue[i] = updatedTrack;
+        changed = true;
+      }
+    }
+    if (changed) {
+      notifyListeners();
+    }
+  }
+
   /// Clears the queue and resets all playback state.
   void clearQueue() {
     _queue.clear();

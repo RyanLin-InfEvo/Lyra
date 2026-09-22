@@ -679,6 +679,27 @@ class AppShellState extends State<AppShell> {
     );
   }
 
+  void _handleTrackUpdated(Track updatedTrack) {
+    setState(() {
+      if (_inspectedTrack?.id == updatedTrack.id) {
+        _inspectedTrack = updatedTrack;
+      }
+      _tracks = [
+        for (final t in _tracks)
+          if (t.id == updatedTrack.id) updatedTrack else t,
+      ];
+      _catalogTracks = [
+        for (final t in _catalogTracks)
+          if (t.id == updatedTrack.id) updatedTrack else t,
+      ];
+    });
+
+    _playbackController.updateTrack(updatedTrack);
+    _loadCatalog(
+      query: _searchController.text.isNotEmpty ? _searchController.text : null,
+    );
+  }
+
   void _showAddToPlaylistDialog([Track? track]) {
     final effectiveTrack = track ?? _currentTrack;
     if (effectiveTrack == null) return;
@@ -1585,6 +1606,7 @@ class AppShellState extends State<AppShell> {
                                           onActiveAudioChanged: (newPcmHash) {
                                             _loadCatalog();
                                           },
+                                          onTrackUpdated: _handleTrackUpdated,
                                           onResizeDelta: (delta) {
                                             _inspectorWidthNotifier.value =
                                                 (_inspectorWidthNotifier.value -
