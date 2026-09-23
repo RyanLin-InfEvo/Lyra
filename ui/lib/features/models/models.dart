@@ -12,3 +12,4 @@ export 'source_data.dart';
 export 'tag.dart';
 export 'track.dart';
 export 'work.dart';
+export '../../core/models/waveform_data.dart';

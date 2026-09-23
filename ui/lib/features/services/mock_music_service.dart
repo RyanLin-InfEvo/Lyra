@@ -12,6 +12,7 @@ import '../models/source_data.dart';
 import '../models/tag.dart';
 import '../models/track.dart';
 import '../models/work.dart';
+import '../../core/models/waveform_data.dart';
 import 'music_service.dart';
 
 /// Mock implementation providing a rich audiophile catalog and CAS storage simulation.
@@ -1188,5 +1189,37 @@ class MockMusicService implements MusicService {
       _tracks.add(track);
     }
     return track;
+  }
+
+  final Map<String, WaveformData> _waveformCache = {};
+
+  @override
+  Future<WaveformData> getWaveform(
+    String trackIdOrPcmHash, {
+    int points = 120,
+  }) async {
+    final cacheKey = '$trackIdOrPcmHash-$points';
+    if (_waveformCache.containsKey(cacheKey)) {
+      return _waveformCache[cacheKey]!;
+    }
+
+    String resolvedPcmHash = trackIdOrPcmHash;
+    for (final track in _tracks) {
+      if (track.id == trackIdOrPcmHash || track.pcmHash == trackIdOrPcmHash) {
+        resolvedPcmHash = track.pcmHash;
+        break;
+      }
+    }
+
+    final waveform = WaveformData(
+      pcmHash: resolvedPcmHash,
+      points: WaveformData.generateMockPoints(
+        count: points,
+        seedString: resolvedPcmHash,
+      ),
+    );
+
+    _waveformCache[cacheKey] = waveform;
+    return waveform;
   }
 }

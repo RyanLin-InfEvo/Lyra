@@ -10,6 +10,7 @@ import '../models/source_data.dart';
 import '../models/tag.dart';
 import '../models/track.dart';
 import '../models/work.dart';
+import '../../core/models/waveform_data.dart';
 
 /// Abstract service interface for music catalog, CAS storage, and playback metadata.
 abstract class MusicService {
@@ -90,4 +91,7 @@ abstract class MusicService {
 
   /// Update metadata for an existing track recording in the catalog.
   Future<Track> updateTrack(Track track);
+
+  /// Fetch precomputed or dynamic waveform visualization points for a track or PCM stream.
+  Future<WaveformData> getWaveform(String trackIdOrPcmHash, {int points = 120});
 }

@@ -775,6 +775,24 @@ class MockLyraBridge implements LyraBridge {
       'data': {'pcm_hash': params['pcm_hash'] ?? 'mock_pcm_hash', ...params},
     };
 
+    _mockHandlers['audio.get_waveform'] = (params) async {
+      final pcmHash =
+          params['pcm_hash']?.toString() ??
+          params['track_id']?.toString() ??
+          'mock_pcm_hash';
+      final int pts = (params['points'] as num?)?.toInt() ?? 120;
+      return {
+        'code': 200,
+        'status': 'success',
+        'data': {
+          'pcm_hash': pcmHash,
+          'points': pts,
+          'peaks': List.generate(pts, (_) => [-0.5, 0.5]),
+          'rms': List.generate(pts, (_) => 0.35),
+        },
+      };
+    };
+
     // --- Tag Mock Handlers ---
     Future<Map<String, dynamic>> tagListHandler(
       Map<String, dynamic> params,

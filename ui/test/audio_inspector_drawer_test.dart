@@ -15,6 +15,7 @@ import 'package:ui/features/inspector/audio_inspector_drawer.dart';
 import 'package:ui/features/models/asset.dart';
 import 'package:ui/features/models/audio.dart';
 import 'package:ui/features/models/track.dart';
+import 'package:ui/features/player/controllers/playback_queue_controller.dart';
 import 'package:ui/features/services/mock_music_service.dart';
 import 'package:ui/features/services/music_service.dart';
 
@@ -23,6 +24,7 @@ Widget _buildAudioInspectorTestWidget({
   Asset? asset,
   Audio? initialAudio,
   MusicService? musicService,
+  PlaybackQueueController? playbackController,
   VoidCallback? onClose,
   void Function(String newPcmHash)? onActiveAudioChanged,
   void Function(Track updatedTrack)? onTrackUpdated,
@@ -67,6 +69,7 @@ Widget _buildAudioInspectorTestWidget({
                         asset: asset,
                         initialAudio: initialAudio,
                         musicService: musicService,
+                        playbackController: playbackController,
                         onClose: onClose ?? () {},
                         onActiveAudioChanged: onActiveAudioChanged,
                         onTrackUpdated: onTrackUpdated,

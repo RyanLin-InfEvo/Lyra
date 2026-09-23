@@ -28,6 +28,7 @@ import 'package:ui/features/models/source_data.dart';
 import 'package:ui/features/models/tag.dart';
 import 'package:ui/features/models/track.dart';
 import 'package:ui/features/models/work.dart';
+import 'package:ui/core/models/waveform_data.dart';
 import 'package:ui/features/services/mock_music_service.dart';
 import 'package:ui/features/services/music_service.dart';
 import 'package:ui/features/shell/app_shell.dart';
@@ -157,6 +158,12 @@ class EmptyMusicService implements MusicService {
 
   @override
   Future<Track> updateTrack(Track track) async => track;
+
+  @override
+  Future<WaveformData> getWaveform(
+    String trackIdOrPcmHash, {
+    int points = 120,
+  }) async => WaveformData.fallback(pcmHash: trackIdOrPcmHash, points: points);
 }
 
 void main() {

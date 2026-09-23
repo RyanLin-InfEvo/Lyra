@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
+import '../../../core/models/waveform_data.dart';
 import '../../../design_system/contracts/lyra_contracts.dart';
 import '../../../design_system/factory/lyra_design_system_scope.dart';
 import '../../../design_system/tokens/lyra_tokens.dart';
@@ -17,6 +18,7 @@ import '../models/lyrics.dart';
 import 'components/lyrics_tab.dart';
 import 'components/media_viewport.dart';
 import 'components/up_next_tab.dart';
+import 'components/waveform_scrubber.dart';
 
 /// YouTube Music-style full Now Playing view with split-view layout:
 /// - Left: Media viewport (Song artwork vs Video theater surface).
@@ -70,6 +72,10 @@ class _NowPlayingViewState extends State<NowPlayingView> {
   late int _selectedTabIndex;
   bool _isFavorite = false;
 
+  WaveformData? _waveform;
+  String? _lastLoadedTrackKey;
+  int _waveformCallId = 0;
+
   @override
   void initState() {
     super.initState();
@@ -78,6 +84,7 @@ class _NowPlayingViewState extends State<NowPlayingView> {
         widget.selectedTabNotifier?.value ?? widget.initialTabIndex;
     widget.playbackController.addListener(_onPlaybackChanged);
     widget.selectedTabNotifier?.addListener(_onTabNotifierChanged);
+    _loadWaveformIfNeeded();
     if (widget.isExpanded) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) {
@@ -89,8 +96,51 @@ class _NowPlayingViewState extends State<NowPlayingView> {
 
   void _onPlaybackChanged() {
     if (mounted) {
+      _loadWaveformIfNeeded();
       setState(() {});
     }
+  }
+
+  void _loadWaveformIfNeeded() {
+    final track = widget.track ?? widget.playbackController.currentTrack;
+    if (track == null) {
+      if (_waveform != null) {
+        setState(() {
+          _waveform = null;
+          _lastLoadedTrackKey = null;
+        });
+      }
+      return;
+    }
+
+    final key = track.pcmHash.isNotEmpty ? track.pcmHash : track.id;
+    if (key.isEmpty) return;
+    if (key == _lastLoadedTrackKey && _waveform != null) return;
+
+    _lastLoadedTrackKey = key;
+    final service = widget.musicService;
+    if (service == null) {
+      setState(() {
+        _waveform = null;
+      });
+      return;
+    }
+
+    final callId = ++_waveformCallId;
+    service
+        .getWaveform(key, points: 140)
+        .then((wf) {
+          if (!mounted || callId != _waveformCallId) return;
+          setState(() {
+            _waveform = wf;
+          });
+        })
+        .catchError((_) {
+          if (!mounted || callId != _waveformCallId) return;
+          setState(() {
+            _waveform = null;
+          });
+        });
   }
 
   void _onTabNotifierChanged() {
@@ -120,6 +170,11 @@ class _NowPlayingViewState extends State<NowPlayingView> {
     if (oldWidget.playbackController != widget.playbackController) {
       oldWidget.playbackController.removeListener(_onPlaybackChanged);
       widget.playbackController.addListener(_onPlaybackChanged);
+    }
+    if (oldWidget.track != widget.track ||
+        oldWidget.playbackController != widget.playbackController ||
+        oldWidget.musicService != widget.musicService) {
+      _loadWaveformIfNeeded();
     }
     if (oldWidget.selectedTabNotifier != widget.selectedTabNotifier) {
       oldWidget.selectedTabNotifier?.removeListener(_onTabNotifierChanged);
@@ -180,20 +235,11 @@ class _NowPlayingViewState extends State<NowPlayingView> {
                       if (isStacked) {
                         // Narrow screen vertical stacked fallback
                         return Column(
+                          key: const ValueKey('now_playing_split_column'),
                           children: [
                             Expanded(
                               flex: 2,
-                              child: MediaViewport(
-                                track: widget.track,
-                                playbackController: widget.playbackController,
-                                isFavorite: _isFavorite,
-                                onToggleFavorite: () {
-                                  setState(() => _isFavorite = !_isFavorite);
-                                },
-                                videoAspectRatio: widget.videoAspectRatio,
-                                customVideoPlayer: widget.customVideoPlayer,
-                                videoTag: widget.videoTag,
-                              ),
+                              child: _buildLeftMediaPane(tokens),
                             ),
                             Container(height: 1.0, color: tokens.border),
                             Expanded(
@@ -208,21 +254,8 @@ class _NowPlayingViewState extends State<NowPlayingView> {
                       return Row(
                         crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
-                          // Left Pane: Media Viewport
-                          Expanded(
-                            flex: 2,
-                            child: MediaViewport(
-                              track: widget.track,
-                              playbackController: widget.playbackController,
-                              isFavorite: _isFavorite,
-                              onToggleFavorite: () {
-                                setState(() => _isFavorite = !_isFavorite);
-                              },
-                              videoAspectRatio: widget.videoAspectRatio,
-                              customVideoPlayer: widget.customVideoPlayer,
-                              videoTag: widget.videoTag,
-                            ),
-                          ),
+                          // Left Pane: Media Viewport & Waveform Scrubber
+                          Expanded(flex: 2, child: _buildLeftMediaPane(tokens)),
 
                           // Vertical Divider
                           Container(width: 1.0, color: tokens.border),
@@ -262,6 +295,54 @@ class _NowPlayingViewState extends State<NowPlayingView> {
             ),
           ),
         ),
+      ),
+    );
+  }
+
+  Widget _buildLeftMediaPane(LyraThemeTokens tokens) {
+    return Column(
+      children: [
+        Expanded(
+          child: MediaViewport(
+            track: widget.track,
+            playbackController: widget.playbackController,
+            isFavorite: _isFavorite,
+            onToggleFavorite: () {
+              setState(() => _isFavorite = !_isFavorite);
+            },
+            videoAspectRatio: widget.videoAspectRatio,
+            customVideoPlayer: widget.customVideoPlayer,
+            videoTag: widget.videoTag,
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(
+            LyraSpacing.lg,
+            0,
+            LyraSpacing.lg,
+            LyraSpacing.md,
+          ),
+          child: _buildWaveformScrubber(tokens),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildWaveformScrubber(LyraThemeTokens tokens) {
+    return Container(
+      padding: const EdgeInsets.symmetric(
+        horizontal: LyraSpacing.md,
+        vertical: LyraSpacing.sm,
+      ),
+      decoration: BoxDecoration(
+        color: tokens.card,
+        borderRadius: LyraRadius.lgRadius,
+        border: Border.all(color: tokens.border, width: 1.0),
+      ),
+      child: WaveformScrubber(
+        waveform: _waveform,
+        playbackController: widget.playbackController,
+        height: 56.0,
       ),
     );
   }
@@ -377,6 +458,7 @@ class _NowPlayingViewState extends State<NowPlayingView> {
                     child: AudioInspectorContent(
                       track: widget.track,
                       musicService: widget.musicService,
+                      playbackController: widget.playbackController,
                     ),
                   ),
           ),

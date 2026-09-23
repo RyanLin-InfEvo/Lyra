@@ -1595,6 +1595,8 @@ class AppShellState extends State<AppShell> {
                                         child: AudioInspectorDrawer(
                                           width: inspectorWidth,
                                           showLeftBorder: true,
+                                          playbackController:
+                                              _playbackController,
                                           track:
                                               _inspectedTrack ??
                                               (_inspectedAsset != null

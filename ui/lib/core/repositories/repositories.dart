@@ -5,6 +5,7 @@ export 'album_repository.dart';
 export 'artist_repository.dart';
 export 'asset_repository.dart';
 export 'audio_repository.dart';
+export 'i_audio_repository.dart';
 export 'base_repository.dart';
 export 'playlist_repository.dart';
 export 'source_data_repository.dart';

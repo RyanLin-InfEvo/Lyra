@@ -374,10 +374,29 @@ void main() {
         expect(find.byIcon(LucideIcons.x), findsNothing);
         expect(find.byIcon(LucideIcons.gripVertical), findsNothing);
 
-        // Verify clean duration display in the trailing area for each track
-        expect(find.text(track1.formattedDuration), findsOneWidget);
-        expect(find.text(track2.formattedDuration), findsOneWidget);
-        expect(find.text(track3.formattedDuration), findsOneWidget);
+        // Verify clean duration display in the trailing area for each track in UpNextTab
+        final upNextFinder = find.byType(UpNextTab);
+        expect(
+          find.descendant(
+            of: upNextFinder,
+            matching: find.text(track1.formattedDuration),
+          ),
+          findsOneWidget,
+        );
+        expect(
+          find.descendant(
+            of: upNextFinder,
+            matching: find.text(track2.formattedDuration),
+          ),
+          findsOneWidget,
+        );
+        expect(
+          find.descendant(
+            of: upNextFinder,
+            matching: find.text(track3.formattedDuration),
+          ),
+          findsOneWidget,
+        );
       },
     );
 
@@ -1411,9 +1430,9 @@ void main() {
         tester.view.physicalSize = const Size(600, 800);
         await tester.pumpAndSettle();
 
-        final splitColFinder = find
-            .ancestor(of: mediaViewportFinder, matching: find.byType(Column))
-            .first;
+        final splitColFinder = find.byKey(
+          const ValueKey('now_playing_split_column'),
+        );
         final Column splitCol = tester.widget<Column>(splitColFinder);
         expect(splitCol.children.length, equals(3));
         final topExpanded = splitCol.children[0] as Expanded;
