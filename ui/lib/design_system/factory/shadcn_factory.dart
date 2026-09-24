@@ -383,8 +383,8 @@ class ShadcnFactory extends LyraDesignSystemFactory {
         );
       }
     }
-    return ShadSwitch(
-      key: key,
+    return _SmoothShadSwitch(
+      switchKey: key,
       value: value,
       onChanged: onChanged,
       enabled: enabled,
@@ -581,12 +581,63 @@ class _AutofocusSwitchWrapperState extends State<_AutofocusSwitchWrapper> {
 
   @override
   Widget build(BuildContext context) {
-    return ShadSwitch(
-      key: widget.switchKey,
+    return _SmoothShadSwitch(
+      switchKey: widget.switchKey,
       value: widget.value,
       onChanged: widget.onChanged,
       enabled: widget.enabled,
       focusNode: _focusNode,
+    );
+  }
+}
+
+class _SmoothShadSwitch extends StatelessWidget {
+  final Key? switchKey;
+  final bool value;
+  final ValueChanged<bool>? onChanged;
+  final bool enabled;
+  final FocusNode? focusNode;
+
+  const _SmoothShadSwitch({
+    this.switchKey,
+    required this.value,
+    this.onChanged,
+    this.enabled = true,
+    this.focusNode,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = ShadTheme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+    final checkedColor = theme.colorScheme.primary;
+    final uncheckedColor = theme.colorScheme.input;
+    final thumbColor = isDark
+        ? theme.colorScheme.background
+        : const Color(0xFFFFFFFF);
+
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 180),
+      curve: Curves.easeInOutCubic,
+      decoration: BoxDecoration(
+        color: !enabled
+            ? (value
+                  ? checkedColor.withValues(alpha: 0.5)
+                  : uncheckedColor.withValues(alpha: 0.5))
+            : (value ? checkedColor : uncheckedColor),
+        borderRadius: BorderRadius.circular(12.0),
+      ),
+      child: ShadSwitch(
+        key: switchKey,
+        value: value,
+        onChanged: onChanged,
+        enabled: enabled,
+        focusNode: focusNode,
+        duration: const Duration(milliseconds: 180),
+        checkedTrackColor: const Color(0x00000000),
+        uncheckedTrackColor: const Color(0x00000000),
+        thumbColor: thumbColor,
+      ),
     );
   }
 }

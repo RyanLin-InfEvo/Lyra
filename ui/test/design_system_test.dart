@@ -66,7 +66,7 @@ void main() {
       expect(tokens.isDark, isTrue);
       expect(tokens.background, equals(LyraColors.zinc950));
       expect(tokens.card, equals(LyraColors.zinc900));
-      expect(tokens.border, equals(LyraColors.zinc700));
+      expect(tokens.border, equals(LyraColors.zinc800));
       expect(tokens.text, equals(LyraColors.zinc50));
       expect(tokens.textMuted, equals(LyraColors.zinc400));
       expect(tokens.ring, equals(LyraColors.blue500));

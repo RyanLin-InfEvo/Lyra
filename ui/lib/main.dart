@@ -51,18 +51,174 @@ class LyraApp extends StatefulWidget {
   State<LyraApp> createState() => _LyraAppState();
 }
 
+/// Derives a [ShadColorScheme] based on the active [accentColor] and [brightness].
+ShadColorScheme deriveShadColorScheme(
+  String accentColor,
+  Brightness brightness,
+) {
+  final isDark = brightness == Brightness.dark;
+  final lower = accentColor.toLowerCase().trim();
+
+  if (isDark) {
+    const base = ShadZincColorScheme.dark(
+      background: Color(0xFF09090B),
+      foreground: Color(0xFFFAFAFA),
+      card: Color(0xFF18181B),
+      cardForeground: Color(0xFFFAFAFA),
+      popover: Color(0xFF18181B),
+      popoverForeground: Color(0xFFFAFAFA),
+      border: Color(0xFF27272A),
+      input: Color(0xFF27272A),
+    );
+
+    switch (lower) {
+      case 'zinc':
+        return base.copyWith(
+          primary: const Color(0xFFFAFAFA),
+          primaryForeground: const Color(0xFF18181B),
+          ring: const Color(0xFF71717A),
+        );
+      case 'blue':
+        return base.copyWith(
+          primary: const Color(0xFF3B82F6),
+          primaryForeground: const Color(0xFFFFFFFF),
+          ring: const Color(0xFF60A5FA),
+          accent: const Color(0xFF3B82F6).withValues(alpha: 0.2),
+        );
+      case 'emerald':
+        return base.copyWith(
+          primary: const Color(0xFF10B981),
+          primaryForeground: const Color(0xFFFFFFFF),
+          ring: const Color(0xFF34D399),
+          accent: const Color(0xFF10B981).withValues(alpha: 0.2),
+        );
+      case 'violet':
+        return base.copyWith(
+          primary: const Color(0xFF8B5CF6),
+          primaryForeground: const Color(0xFFFFFFFF),
+          ring: const Color(0xFFA78BFA),
+          accent: const Color(0xFF8B5CF6).withValues(alpha: 0.2),
+        );
+      case 'rose':
+        return base.copyWith(
+          primary: const Color(0xFFF43F5E),
+          primaryForeground: const Color(0xFFFFFFFF),
+          ring: const Color(0xFFFB7185),
+          accent: const Color(0xFFF43F5E).withValues(alpha: 0.2),
+        );
+      case 'amber':
+        return base.copyWith(
+          primary: const Color(0xFFF59E0B),
+          primaryForeground: const Color(0xFF09090B),
+          ring: const Color(0xFFFBBF24),
+          accent: const Color(0xFFF59E0B).withValues(alpha: 0.2),
+        );
+      case 'slate':
+        return base.copyWith(
+          primary: const Color(0xFF94A3B8),
+          primaryForeground: const Color(0xFF0F172A),
+          ring: const Color(0xFFCBD5E1),
+          accent: const Color(0xFF94A3B8).withValues(alpha: 0.2),
+        );
+    }
+
+    final customColor = parseHexColor(accentColor);
+    if (customColor != null) {
+      final isLight = customColor.computeLuminance() > 0.5;
+      final fg = isLight ? const Color(0xFF09090B) : const Color(0xFFFFFFFF);
+      return base.copyWith(
+        primary: customColor,
+        primaryForeground: fg,
+        ring: customColor,
+        accent: customColor.withValues(alpha: 0.2),
+        accentForeground: const Color(0xFFFAFAFA),
+      );
+    }
+
+    return base.copyWith(
+      primary: const Color(0xFFFAFAFA),
+      primaryForeground: const Color(0xFF18181B),
+      ring: const Color(0xFF71717A),
+    );
+  }
+
+  switch (lower) {
+    case 'zinc':
+      return const ShadZincColorScheme.light();
+    case 'slate':
+      return const ShadSlateColorScheme.light();
+    case 'blue':
+      return const ShadBlueColorScheme.light();
+    case 'emerald':
+      final base = const ShadGreenColorScheme.light();
+      return base.copyWith(
+        primary: LyraColors.emerald500,
+        ring: LyraColors.emerald500,
+        accent: LyraColors.emerald500.withValues(alpha: 0.12),
+      );
+    case 'violet':
+      return const ShadVioletColorScheme.light();
+    case 'rose':
+      return const ShadRoseColorScheme.light();
+    case 'amber':
+      final base = const ShadYellowColorScheme.light();
+      return base.copyWith(
+        primary: LyraColors.amber500,
+        ring: LyraColors.amber500,
+        accent: LyraColors.amber500.withValues(alpha: 0.12),
+      );
+  }
+
+  final customColor = parseHexColor(accentColor);
+  if (customColor != null) {
+    final base = const ShadZincColorScheme.light();
+    final isDarkColor = customColor.computeLuminance() < 0.5;
+    final fg = isDarkColor ? Colors.white : Colors.black;
+    return base.copyWith(
+      primary: customColor,
+      primaryForeground: fg,
+      ring: customColor,
+      accent: customColor.withValues(alpha: 0.12),
+      accentForeground: Colors.black,
+    );
+  }
+
+  return const ShadZincColorScheme.light();
+}
+
 class _LyraAppState extends State<LyraApp> {
   late final ValueNotifier<ThemeMode> _themeModeNotifier;
+  String _currentAccentColor = 'zinc';
   final MockMusicService _musicService = MockMusicService();
   final ShadcnFactory _shadcnFactory = const ShadcnFactory();
 
   @override
   void initState() {
     super.initState();
+    _currentAccentColor = widget.preferencesService?.accentColor ?? 'zinc';
     _themeModeNotifier = ValueNotifier<ThemeMode>(
       widget.preferencesService?.themeMode ?? ThemeMode.dark,
     );
     _themeModeNotifier.addListener(_onThemeModeChanged);
+    widget.preferencesService?.addListener(_onPreferencesChanged);
+  }
+
+  void _onPreferencesChanged() {
+    if (mounted) {
+      bool needRebuild = false;
+      if (widget.preferencesService != null) {
+        if (_themeModeNotifier.value != widget.preferencesService!.themeMode) {
+          _themeModeNotifier.value = widget.preferencesService!.themeMode;
+        }
+        if (_currentAccentColor != widget.preferencesService!.accentColor) {
+          _currentAccentColor = widget.preferencesService!.accentColor;
+          needRebuild = true;
+        }
+      }
+      if (needRebuild) {
+        setState(() {});
+      }
+    }
   }
 
   void _onThemeModeChanged() {
@@ -72,14 +228,20 @@ class _LyraAppState extends State<LyraApp> {
   @override
   void didUpdateWidget(covariant LyraApp oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.preferencesService != widget.preferencesService &&
-        widget.preferencesService != null) {
-      _themeModeNotifier.value = widget.preferencesService!.themeMode;
+    if (oldWidget.preferencesService != widget.preferencesService) {
+      oldWidget.preferencesService?.removeListener(_onPreferencesChanged);
+      widget.preferencesService?.addListener(_onPreferencesChanged);
+      if (widget.preferencesService != null) {
+        _themeModeNotifier.value = widget.preferencesService!.themeMode;
+        _currentAccentColor = widget.preferencesService!.accentColor;
+      }
+      setState(() {});
     }
   }
 
   @override
   void dispose() {
+    widget.preferencesService?.removeListener(_onPreferencesChanged);
     _themeModeNotifier.removeListener(_onThemeModeChanged);
     _themeModeNotifier.dispose();
     super.dispose();
@@ -94,14 +256,18 @@ class _LyraAppState extends State<LyraApp> {
         valueListenable: _themeModeNotifier,
         builder: (context, themeMode, _) {
           final isDark = themeMode == ThemeMode.dark;
-          final tokens = isDark
-              ? LyraThemeTokens.dark()
-              : LyraThemeTokens.light();
+          final accentColor = widget.preferencesService?.accentColor ?? 'zinc';
+          final tokens = deriveLyraThemeTokens(accentColor, isDark);
+          final colorScheme = deriveShadColorScheme(
+            accentColor,
+            isDark ? Brightness.dark : Brightness.light,
+          );
           final shadTheme = ShadThemeData(
             brightness: isDark ? Brightness.dark : Brightness.light,
-            colorScheme: isDark
-                ? const ShadZincColorScheme.dark()
-                : const ShadZincColorScheme.light(),
+            colorScheme: colorScheme,
+            switchTheme: const ShadSwitchTheme(
+              duration: Duration(milliseconds: 180),
+            ),
             popoverTheme: const ShadPopoverTheme(
               reverseDuration: Duration(milliseconds: 50),
             ),

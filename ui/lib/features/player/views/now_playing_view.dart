@@ -13,6 +13,7 @@ import '../../../design_system/widgets/lyra_button.dart';
 import '../../inspector/audio_inspector_drawer.dart';
 import '../../models/track.dart';
 import '../../services/music_service.dart';
+import '../../settings/services/preferences_service.dart';
 import '../controllers/playback_queue_controller.dart';
 import '../models/lyrics.dart';
 import 'components/lyrics_tab.dart';
@@ -34,6 +35,7 @@ class NowPlayingView extends StatefulWidget {
   final LyricsData? lyrics;
   final bool isExpanded;
   final MusicService? musicService;
+  final PreferencesService? preferencesService;
   final ValueNotifier<int>? selectedTabNotifier;
   final int initialTabIndex;
   final ValueChanged<int>? onTabSelected;
@@ -54,6 +56,7 @@ class NowPlayingView extends StatefulWidget {
     this.lyrics,
     this.isExpanded = true,
     this.musicService,
+    this.preferencesService,
     this.selectedTabNotifier,
     this.initialTabIndex = 0,
     this.onTabSelected,
@@ -84,6 +87,7 @@ class _NowPlayingViewState extends State<NowPlayingView> {
         widget.selectedTabNotifier?.value ?? widget.initialTabIndex;
     widget.playbackController.addListener(_onPlaybackChanged);
     widget.selectedTabNotifier?.addListener(_onTabNotifierChanged);
+    widget.preferencesService?.addListener(_onPreferencesChanged);
     _loadWaveformIfNeeded();
     if (widget.isExpanded) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -91,6 +95,13 @@ class _NowPlayingViewState extends State<NowPlayingView> {
           _focusNode.requestFocus();
         }
       });
+    }
+  }
+
+  void _onPreferencesChanged() {
+    if (mounted) {
+      _loadWaveformIfNeeded();
+      setState(() {});
     }
   }
 
@@ -102,6 +113,18 @@ class _NowPlayingViewState extends State<NowPlayingView> {
   }
 
   void _loadWaveformIfNeeded() {
+    final showWaveform =
+        widget.preferencesService?.showNowPlayingWaveform ?? true;
+    if (!showWaveform) {
+      if (_waveform != null) {
+        setState(() {
+          _waveform = null;
+          _lastLoadedTrackKey = null;
+        });
+      }
+      return;
+    }
+
     final track = widget.track ?? widget.playbackController.currentTrack;
     if (track == null) {
       if (_waveform != null) {
@@ -126,9 +149,10 @@ class _NowPlayingViewState extends State<NowPlayingView> {
       return;
     }
 
+    final points = widget.preferencesService?.nowPlayingWaveformPoints ?? 140;
     final callId = ++_waveformCallId;
     service
-        .getWaveform(key, points: 140)
+        .getWaveform(key, points: points)
         .then((wf) {
           if (!mounted || callId != _waveformCallId) return;
           setState(() {
@@ -171,6 +195,11 @@ class _NowPlayingViewState extends State<NowPlayingView> {
       oldWidget.playbackController.removeListener(_onPlaybackChanged);
       widget.playbackController.addListener(_onPlaybackChanged);
     }
+    if (oldWidget.preferencesService != widget.preferencesService) {
+      oldWidget.preferencesService?.removeListener(_onPreferencesChanged);
+      widget.preferencesService?.addListener(_onPreferencesChanged);
+      _loadWaveformIfNeeded();
+    }
     if (oldWidget.track != widget.track ||
         oldWidget.playbackController != widget.playbackController ||
         oldWidget.musicService != widget.musicService) {
@@ -196,6 +225,7 @@ class _NowPlayingViewState extends State<NowPlayingView> {
 
   @override
   void dispose() {
+    widget.preferencesService?.removeListener(_onPreferencesChanged);
     widget.selectedTabNotifier?.removeListener(_onTabNotifierChanged);
     widget.playbackController.removeListener(_onPlaybackChanged);
     _focusNode.dispose();
@@ -300,6 +330,9 @@ class _NowPlayingViewState extends State<NowPlayingView> {
   }
 
   Widget _buildLeftMediaPane(LyraThemeTokens tokens) {
+    final showWaveform =
+        widget.preferencesService?.showNowPlayingWaveform ?? true;
+
     return Column(
       children: [
         Expanded(
@@ -315,15 +348,16 @@ class _NowPlayingViewState extends State<NowPlayingView> {
             videoTag: widget.videoTag,
           ),
         ),
-        Padding(
-          padding: const EdgeInsets.fromLTRB(
-            LyraSpacing.lg,
-            0,
-            LyraSpacing.lg,
-            LyraSpacing.md,
+        if (showWaveform)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(
+              LyraSpacing.lg,
+              0,
+              LyraSpacing.lg,
+              LyraSpacing.md,
+            ),
+            child: _buildWaveformScrubber(tokens),
           ),
-          child: _buildWaveformScrubber(tokens),
-        ),
       ],
     );
   }
@@ -343,6 +377,10 @@ class _NowPlayingViewState extends State<NowPlayingView> {
         waveform: _waveform,
         playbackController: widget.playbackController,
         height: 56.0,
+        enablePulseAnimation:
+            widget.preferencesService?.nowPlayingWaveformPulseAnimation ?? true,
+        enableHoverTimeGuide:
+            widget.preferencesService?.nowPlayingWaveformHoverTimeGuide ?? true,
       ),
     );
   }
@@ -459,6 +497,7 @@ class _NowPlayingViewState extends State<NowPlayingView> {
                       track: widget.track,
                       musicService: widget.musicService,
                       playbackController: widget.playbackController,
+                      preferencesService: widget.preferencesService,
                     ),
                   ),
           ),

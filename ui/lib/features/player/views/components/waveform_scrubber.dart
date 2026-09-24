@@ -48,6 +48,12 @@ class WaveformScrubber extends StatefulWidget {
   /// Defaults to false during widget tests to avoid pumpAndSettle timeouts.
   final bool? enableAnimation;
 
+  /// Whether to show the glowing pulse behind the playhead when playing.
+  final bool enablePulseAnimation;
+
+  /// Whether to show the hover guide line and floating timestamp tooltip.
+  final bool enableHoverTimeGuide;
+
   const WaveformScrubber({
     super.key,
     this.waveform,
@@ -59,6 +65,8 @@ class WaveformScrubber extends StatefulWidget {
     this.showTimeLabels = true,
     this.isInteractive = true,
     this.enableAnimation,
+    this.enablePulseAnimation = true,
+    this.enableHoverTimeGuide = true,
   });
 
   @override
@@ -420,6 +428,10 @@ class _WaveformScrubberState extends State<WaveformScrubber>
                                       tokens: tokens,
                                       isPlaying: _isPlaying,
                                       animValue: _animController.value,
+                                      enablePulseAnimation:
+                                          widget.enablePulseAnimation,
+                                      enableHoverTimeGuide:
+                                          widget.enableHoverTimeGuide,
                                     ),
                                     size: Size(maxWidth, waveformHeight),
                                   );
@@ -432,6 +444,7 @@ class _WaveformScrubberState extends State<WaveformScrubber>
 
                       // Floating Hover Timestamp Tooltip
                       if (widget.isInteractive &&
+                          widget.enableHoverTimeGuide &&
                           totalDuration.inMilliseconds > 0)
                         ValueListenableBuilder<double?>(
                           valueListenable: _hoverXNotifier,
@@ -541,6 +554,8 @@ class _WaveformPainter extends CustomPainter {
   final LyraThemeTokens tokens;
   final bool isPlaying;
   final double animValue;
+  final bool enablePulseAnimation;
+  final bool enableHoverTimeGuide;
 
   _WaveformPainter({
     required this.waveform,
@@ -549,6 +564,8 @@ class _WaveformPainter extends CustomPainter {
     required this.tokens,
     required this.isPlaying,
     required this.animValue,
+    this.enablePulseAnimation = true,
+    this.enableHoverTimeGuide = true,
   });
 
   @override
@@ -600,7 +617,7 @@ class _WaveformPainter extends CustomPainter {
         );
 
         if (barCenterX <= playheadX) {
-          if (isPlaying) {
+          if (isPlaying && enablePulseAnimation) {
             // Subtle dynamic shimmer traveling across played bars
             final wavePhase = math.sin(
               (i / count) * 8.0 * math.pi - animValue * 2.0 * math.pi,
@@ -649,7 +666,7 @@ class _WaveformPainter extends CustomPainter {
     }
 
     // 2. Hover Guide Line
-    if (hoverX != null) {
+    if (enableHoverTimeGuide && hoverX != null) {
       final hX = hoverX!.clamp(0.0, size.width);
       final hoverLinePaint = Paint()
         ..color = tokens.primary.withValues(alpha: 0.35)
@@ -660,7 +677,7 @@ class _WaveformPainter extends CustomPainter {
     // 3. Playhead Indicator (Line + Glowing Cap Marker + Dynamic Pulse)
     if (progress >= 0.0 && progress <= 1.0) {
       // Subtle pulse glow behind playhead line when playing
-      if (isPlaying) {
+      if (isPlaying && enablePulseAnimation) {
         final pulse = math.sin(animValue * 2.0 * math.pi) * 0.5 + 0.5;
         final glowAlpha = (0.25 + 0.20 * pulse).clamp(0.15, 0.50);
         final glowPaint = Paint()
@@ -703,7 +720,11 @@ class _WaveformPainter extends CustomPainter {
         hoverX != oldDelegate.hoverX ||
         tokens != oldDelegate.tokens ||
         isPlaying != oldDelegate.isPlaying ||
-        (isPlaying && animValue != oldDelegate.animValue) ||
+        enablePulseAnimation != oldDelegate.enablePulseAnimation ||
+        enableHoverTimeGuide != oldDelegate.enableHoverTimeGuide ||
+        (isPlaying &&
+            enablePulseAnimation &&
+            animValue != oldDelegate.animValue) ||
         (waveform == null && animValue != oldDelegate.animValue);
   }
 }

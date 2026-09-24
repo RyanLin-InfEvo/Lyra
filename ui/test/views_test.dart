@@ -1373,75 +1373,132 @@ void main() {
 
   group('SettingsView Tests', () {
     testWidgets(
-      'SettingsView renders toggle switches, handles toggling, and eliminates redundant header badges',
+      'SettingsView renders Master-Detail layout with Appearance and Waveform Visualization without Layout & Workbench or emojis',
       (tester) async {
         tester.view.physicalSize = const Size(1280, 900);
         tester.view.devicePixelRatio = 1.0;
         addTearDown(tester.view.resetPhysicalSize);
         addTearDown(tester.view.resetDevicePixelRatio);
 
-        final prefs = InMemoryPreferencesService(audioExclusiveMode: true);
+        final prefs = InMemoryPreferencesService(
+          showNowPlayingWaveform: true,
+          showInspectorWaveform: true,
+          nowPlayingWaveformPoints: 140,
+          inspectorWaveformPoints: 100,
+          nowPlayingWaveformPulseAnimation: true,
+          inspectorWaveformPulseAnimation: true,
+          nowPlayingWaveformHoverTimeGuide: true,
+          inspectorWaveformHoverTimeGuide: true,
+          accentColor: 'zinc',
+        );
+
         await tester.pumpWidget(
           _buildViewTest(SettingsView(preferencesService: prefs)),
         );
         await tester.pumpAndSettle();
 
-        // 1. Verify header and titles
+        // 1. Verify header and left sub-navigation
         expect(find.text('Settings'), findsOneWidget);
-        expect(find.text('Audio Output'), findsOneWidget);
-        expect(find.text('CAS Storage'), findsOneWidget);
+        expect(find.text('Appearance'), findsWidgets);
+        expect(find.text('Waveform Visualization'), findsOneWidget);
 
-        // 2. Verify redundant badges eliminated:
-        // Audio Output header badge ('Exclusive Mode') must NOT exist
-        expect(
-          find.descendant(
-            of: find.byType(LyraBadge),
-            matching: find.text('Exclusive Mode'),
-          ),
-          findsNothing,
-        );
+        // Verify Layout & Workbench is completely removed
+        expect(find.text('Layout & Workbench'), findsNothing);
+        expect(find.text('Reset Sidebar'), findsNothing);
+        expect(find.text('Reset Columns'), findsNothing);
 
-        // 3. Verify presence of LyraSwitch instances (Exclusive Mode, DoP, SHA-256)
+        // Verify dummy backend sections are eliminated
+        expect(find.text('Audio Output'), findsNothing);
+        expect(find.text('CAS Storage'), findsNothing);
+        expect(find.text('Exclusive Mode'), findsNothing);
+        expect(find.text('DSD over PCM (DoP)'), findsNothing);
+
+        // 2. Theme Mode selection in Appearance
+        expect(find.text('Zinc Dark'), findsOneWidget);
+        expect(find.text('Zinc Light'), findsOneWidget);
+        expect(find.text('System'), findsOneWidget);
+
+        await tester.tap(find.text('Zinc Light'));
+        await tester.pumpAndSettle();
+        expect(prefs.themeMode, ThemeMode.light);
+
+        await tester.tap(find.text('System'));
+        await tester.pumpAndSettle();
+        expect(prefs.themeMode, ThemeMode.system);
+
+        // 3. Accent Color swatches
+        expect(find.text('Zinc'), findsOneWidget);
+        expect(find.text('Slate'), findsOneWidget);
+        expect(find.text('Blue'), findsOneWidget);
+        expect(find.text('Emerald'), findsOneWidget);
+        expect(find.text('Violet'), findsOneWidget);
+        expect(find.text('Rose'), findsOneWidget);
+        expect(find.text('Amber'), findsOneWidget);
+        expect(find.text('Custom...'), findsOneWidget);
+
+        await tester.tap(find.text('Blue'));
+        await tester.pumpAndSettle();
+        expect(prefs.accentColor, 'blue');
+
+        // Custom Color Picker button
+        await tester.tap(find.text('Custom...'));
+        await tester.pumpAndSettle();
+        expect(find.text('Custom Color'), findsOneWidget);
+        expect(find.text('Apply'), findsOneWidget);
+        await tester.tap(find.text('Apply'));
+        await tester.pumpAndSettle();
+
+        // 4. Switch sub-navigation to Waveform Visualization
+        await tester.tap(find.text('Waveform Visualization'));
+        await tester.pumpAndSettle();
+
+        expect(find.text('Visualization Target'), findsOneWidget);
+        expect(find.text('Now Playing Bar'), findsOneWidget);
+        expect(find.text('Show Waveform'), findsOneWidget);
+        expect(find.text('Pulse Shimmer Animation'), findsOneWidget);
+        expect(find.text('Hover Timecode Guide'), findsOneWidget);
+
+        // 3 switches in Waveform section for the selected target
         final switches = find.byType(LyraSwitch);
         expect(switches, findsNWidgets(3));
 
-        final exclusiveSwitch = switches.at(0);
-        final dopSwitch = switches.at(1);
-        final shaSwitch = switches.at(2);
-
-        expect(tester.widget<LyraSwitch>(exclusiveSwitch).value, isTrue);
-        expect(tester.widget<LyraSwitch>(dopSwitch).value, isFalse);
-        expect(tester.widget<LyraSwitch>(shaSwitch).value, isTrue);
-
-        // 4. Toggle Exclusive Mode switch
-        await tester.tap(exclusiveSwitch);
+        // Toggle Show Waveform (for Now Playing)
+        await tester.tap(switches.at(0));
         await tester.pumpAndSettle();
-        expect(tester.widget<LyraSwitch>(exclusiveSwitch).value, isFalse);
-        expect(prefs.audioExclusiveMode, isFalse);
+        expect(prefs.showNowPlayingWaveform, isFalse);
 
-        // Toggle back
-        await tester.tap(exclusiveSwitch);
+        // Toggle Pulse Shimmer Animation
+        await tester.tap(switches.at(1));
         await tester.pumpAndSettle();
-        expect(tester.widget<LyraSwitch>(exclusiveSwitch).value, isTrue);
-        expect(prefs.audioExclusiveMode, isTrue);
+        expect(prefs.nowPlayingWaveformPulseAnimation, isFalse);
 
-        // 5. Toggle DSD over PCM (DoP) switch
-        await tester.tap(dopSwitch);
+        // Toggle Hover Timecode Guide
+        await tester.tap(switches.at(2));
         await tester.pumpAndSettle();
-        expect(tester.widget<LyraSwitch>(dopSwitch).value, isTrue);
-        expect(prefs.audioDopEnabled, isTrue);
+        expect(prefs.nowPlayingWaveformHoverTimeGuide, isFalse);
 
-        // 6. Toggle Verify SHA-256 switch
-        await tester.tap(shaSwitch);
-        await tester.pumpAndSettle();
-        expect(tester.widget<LyraSwitch>(shaSwitch).value, isFalse);
-        expect(prefs.casAutoVerify, isFalse);
+        // Sampling Density input & slider
+        expect(find.byType(ShadSlider), findsOneWidget);
+        expect(find.byType(ShadInput), findsOneWidget);
+        expect(find.text('pts'), findsOneWidget);
 
-        // 7. Verify legitimate badge still remains (e.g. 'Block-level CAS')
-        expect(find.text('Block-level CAS'), findsOneWidget);
+        // 5. Accessibility - MergeSemantics exists on setting rows
+        expect(find.byType(MergeSemantics), findsWidgets);
 
-        // 8. Verify setting rows have MergeSemantics for accessibility
-        expect(find.byType(MergeSemantics), findsNWidgets(5));
+        // 6. Strict No-Emoji policy verification: no emojis in text widgets
+        final textWidgets = tester.widgetList<Text>(find.byType(Text));
+        final emojiRegex = RegExp(
+          r'[\u{1F300}-\u{1F9FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}]',
+          unicode: true,
+        );
+        for (final tw in textWidgets) {
+          final data = tw.data ?? tw.textSpan?.toPlainText() ?? '';
+          expect(
+            emojiRegex.hasMatch(data),
+            isFalse,
+            reason: 'Found emoji in text: "$data"',
+          );
+        }
       },
     );
   });

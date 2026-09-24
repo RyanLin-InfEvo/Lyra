@@ -183,7 +183,7 @@ void main() {
     await tester.tap(find.text('Settings'));
     await tester.pumpAndSettle();
     expect(find.byType(SettingsView), findsOneWidget);
-    expect(find.text('Audio Output'), findsOneWidget);
+    expect(find.text('Waveform Visualization'), findsOneWidget);
     expect(find.text('Zinc Dark'), findsOneWidget);
 
     // 8. Switch back to Tracks

@@ -172,6 +172,7 @@ class AppShellState extends State<AppShell> {
       widget.preferencesService?.volume ?? 0.85,
     );
     _volumeNotifier.addListener(_onVolumeNotifierChanged);
+    widget.preferencesService?.addListener(_onPreferencesChanged);
     _initColumns();
     _isNowPlayingVisible = _isNowPlayingExpandedNotifier.value;
     _isNowPlayingExpandedNotifier.addListener(_onNowPlayingExpandedChanged);
@@ -183,6 +184,22 @@ class AppShellState extends State<AppShell> {
         PlaybackQueueController(timerInterval: const Duration(seconds: 1));
     _playbackController.addListener(_onPlaybackChanged);
     _loadCatalog();
+  }
+
+  void _onPreferencesChanged() {
+    if (!mounted) return;
+    final prefs = widget.preferencesService;
+    if (prefs == null) return;
+    if (_sidebarWidthNotifier.value != prefs.sidebarWidth) {
+      _sidebarWidthNotifier.value = prefs.sidebarWidth;
+    }
+    if (_isSidebarCollapsed != prefs.isSidebarCollapsed) {
+      setState(() {
+        _isSidebarCollapsed = prefs.isSidebarCollapsed;
+      });
+    }
+    _initColumns();
+    setState(() {});
   }
 
   void _onVolumeNotifierChanged() {
@@ -329,6 +346,7 @@ class AppShellState extends State<AppShell> {
 
   @override
   void dispose() {
+    widget.preferencesService?.removeListener(_onPreferencesChanged);
     if (_volumeDebounceTimer?.isActive ?? false) {
       _volumeDebounceTimer?.cancel();
       widget.preferencesService?.setVolume(_volumeNotifier.value);
@@ -1604,6 +1622,8 @@ class AppShellState extends State<AppShell> {
                                                   : _currentTrack),
                                           asset: _inspectedAsset,
                                           musicService: widget.musicService,
+                                          preferencesService:
+                                              widget.preferencesService,
                                           onClose: _closeInspector,
                                           onActiveAudioChanged: (newPcmHash) {
                                             _loadCatalog();
@@ -1694,6 +1714,8 @@ class AppShellState extends State<AppShell> {
                                                     isNowPlayingExpanded,
                                                 musicService:
                                                     widget.musicService,
+                                                preferencesService:
+                                                    widget.preferencesService,
                                                 selectedTabNotifier:
                                                     _nowPlayingTabNotifier,
                                                 onAddToPlaylist:

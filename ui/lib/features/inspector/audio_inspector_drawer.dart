@@ -23,6 +23,7 @@ import '../models/track.dart';
 import '../player/controllers/playback_queue_controller.dart';
 import '../player/views/components/waveform_scrubber.dart';
 import '../services/music_service.dart';
+import '../settings/services/preferences_service.dart';
 
 /// Audio entity-centric property inspector drawer displaying deep acoustic specifications,
 /// Single-Level Star Topology audio versions, CAS storage properties, and digital provenance.
@@ -33,6 +34,7 @@ class AudioInspectorDrawer extends StatelessWidget {
   final SourceData? initialSourceData;
   final MusicService? musicService;
   final PlaybackQueueController? playbackController;
+  final PreferencesService? preferencesService;
   final VoidCallback onClose;
   final void Function(String newPcmHash)? onActiveAudioChanged;
   final void Function(Track updatedTrack)? onTrackUpdated;
@@ -51,6 +53,7 @@ class AudioInspectorDrawer extends StatelessWidget {
     this.initialSourceData,
     this.musicService,
     this.playbackController,
+    this.preferencesService,
     required this.onClose,
     this.onActiveAudioChanged,
     this.onTrackUpdated,
@@ -91,6 +94,7 @@ class AudioInspectorDrawer extends StatelessWidget {
                   initialSourceData: initialSourceData,
                   musicService: musicService,
                   playbackController: playbackController,
+                  preferencesService: preferencesService,
                   onActiveAudioChanged: onActiveAudioChanged,
                   onTrackUpdated: onTrackUpdated,
                 ),
@@ -174,6 +178,7 @@ class AudioInspectorContent extends StatefulWidget {
   final SourceData? initialSourceData;
   final MusicService? musicService;
   final PlaybackQueueController? playbackController;
+  final PreferencesService? preferencesService;
   final void Function(String newPcmHash)? onActiveAudioChanged;
   final void Function(Track updatedTrack)? onTrackUpdated;
   final EdgeInsetsGeometry padding;
@@ -186,6 +191,7 @@ class AudioInspectorContent extends StatefulWidget {
     this.initialSourceData,
     this.musicService,
     this.playbackController,
+    this.preferencesService,
     this.onActiveAudioChanged,
     this.onTrackUpdated,
     this.padding = const EdgeInsets.all(LyraSpacing.lg),
@@ -246,6 +252,7 @@ class _AudioInspectorContentState extends State<AudioInspectorContent> {
     _resolvedAsset = widget.asset;
 
     widget.playbackController?.addListener(_onPlaybackStateChanged);
+    widget.preferencesService?.addListener(_onPreferencesChanged);
 
     _titleController = TextEditingController();
     _artistController = TextEditingController();
@@ -271,6 +278,13 @@ class _AudioInspectorContentState extends State<AudioInspectorContent> {
     }
   }
 
+  void _onPreferencesChanged() {
+    if (mounted) {
+      _loadWaveform();
+      setState(() {});
+    }
+  }
+
   void _syncControllersFromTrack(Track? track) {
     _titleController.text = track?.title ?? '';
     _artistController.text = track?.artistName ?? '';
@@ -288,6 +302,11 @@ class _AudioInspectorContentState extends State<AudioInspectorContent> {
     if (oldWidget.playbackController != widget.playbackController) {
       oldWidget.playbackController?.removeListener(_onPlaybackStateChanged);
       widget.playbackController?.addListener(_onPlaybackStateChanged);
+    }
+    if (oldWidget.preferencesService != widget.preferencesService) {
+      oldWidget.preferencesService?.removeListener(_onPreferencesChanged);
+      widget.preferencesService?.addListener(_onPreferencesChanged);
+      _loadWaveform();
     }
 
     final trackChanged = oldWidget.track?.id != widget.track?.id;
@@ -328,6 +347,7 @@ class _AudioInspectorContentState extends State<AudioInspectorContent> {
 
   @override
   void dispose() {
+    widget.preferencesService?.removeListener(_onPreferencesChanged);
     widget.playbackController?.removeListener(_onPlaybackStateChanged);
     _titleController.dispose();
     _artistController.dispose();
@@ -344,6 +364,17 @@ class _AudioInspectorContentState extends State<AudioInspectorContent> {
   }
 
   Future<void> _loadWaveform() async {
+    final showWaveform =
+        widget.preferencesService?.showInspectorWaveform ?? true;
+    if (!showWaveform) {
+      if (mounted && _waveform != null) {
+        setState(() {
+          _waveform = null;
+        });
+      }
+      return;
+    }
+
     final service = widget.musicService;
     final track = _track;
     final audio = _selectedAudio;
@@ -365,9 +396,10 @@ class _AudioInspectorContentState extends State<AudioInspectorContent> {
       return;
     }
 
+    final points = widget.preferencesService?.inspectorWaveformPoints ?? 100;
     final callId = ++_waveformCallId;
     try {
-      final wf = await service.getWaveform(key, points: 100);
+      final wf = await service.getWaveform(key, points: points);
       if (!mounted || callId != _waveformCallId) return;
       setState(() {
         _waveform = wf;
@@ -1716,27 +1748,35 @@ class _AudioInspectorContentState extends State<AudioInspectorContent> {
             tokens: tokens,
           ),
         ],
-        const SizedBox(height: LyraSpacing.md),
-        Container(
-          padding: const EdgeInsets.all(LyraSpacing.sm),
-          decoration: BoxDecoration(
-            color: tokens.secondary.withValues(alpha: 0.4),
-            borderRadius: LyraRadius.mdRadius,
-            border: Border.all(color: tokens.border, width: 1.0),
+        if (widget.preferencesService?.showInspectorWaveform ?? true) ...[
+          const SizedBox(height: LyraSpacing.md),
+          Container(
+            padding: const EdgeInsets.all(LyraSpacing.sm),
+            decoration: BoxDecoration(
+              color: tokens.secondary.withValues(alpha: 0.4),
+              borderRadius: LyraRadius.mdRadius,
+              border: Border.all(color: tokens.border, width: 1.0),
+            ),
+            child: WaveformScrubber(
+              waveform: _waveform,
+              playbackController: isPlayingThis
+                  ? widget.playbackController
+                  : null,
+              position: isPlayingThis ? null : Duration.zero,
+              duration: isPlayingThis
+                  ? null
+                  : (track?.duration ?? (audio?.duration ?? Duration.zero)),
+              height: 56.0,
+              isInteractive: isPlayingThis,
+              enablePulseAnimation:
+                  widget.preferencesService?.inspectorWaveformPulseAnimation ??
+                  true,
+              enableHoverTimeGuide:
+                  widget.preferencesService?.inspectorWaveformHoverTimeGuide ??
+                  true,
+            ),
           ),
-          child: WaveformScrubber(
-            waveform: _waveform,
-            playbackController: isPlayingThis
-                ? widget.playbackController
-                : null,
-            position: isPlayingThis ? null : Duration.zero,
-            duration: isPlayingThis
-                ? null
-                : (track?.duration ?? (audio?.duration ?? Duration.zero)),
-            height: 56.0,
-            isInteractive: isPlayingThis,
-          ),
-        ),
+        ],
       ],
     );
   }

@@ -105,7 +105,7 @@ class LyraThemeTokens {
       foreground: LyraColors.zinc50, // #fafafa
       card: LyraColors.zinc900, // #18181b
       cardForeground: LyraColors.zinc50,
-      border: LyraColors.zinc700, // #3f3f46
+      border: LyraColors.zinc800, // #27272a
       text: LyraColors.zinc50, // #fafafa
       textMuted: LyraColors.zinc400, // #a1a1aa
       primary: LyraColors.zinc50,
@@ -152,6 +152,60 @@ class LyraThemeTokens {
       successForeground: Color(0xFFFFFFFF),
       warning: LyraColors.amber600,
       warningForeground: LyraColors.zinc950,
+    );
+  }
+
+  /// Returns a copy of this [LyraThemeTokens] with the given fields replaced.
+  LyraThemeTokens copyWith({
+    bool? isDark,
+    Color? background,
+    Color? foreground,
+    Color? card,
+    Color? cardForeground,
+    Color? border,
+    Color? text,
+    Color? textMuted,
+    Color? primary,
+    Color? primaryForeground,
+    Color? secondary,
+    Color? secondaryForeground,
+    Color? muted,
+    Color? mutedForeground,
+    Color? accent,
+    Color? accentForeground,
+    Color? destructive,
+    Color? destructiveForeground,
+    Color? ring,
+    Color? success,
+    Color? successForeground,
+    Color? warning,
+    Color? warningForeground,
+  }) {
+    return LyraThemeTokens(
+      isDark: isDark ?? this.isDark,
+      background: background ?? this.background,
+      foreground: foreground ?? this.foreground,
+      card: card ?? this.card,
+      cardForeground: cardForeground ?? this.cardForeground,
+      border: border ?? this.border,
+      text: text ?? this.text,
+      textMuted: textMuted ?? this.textMuted,
+      primary: primary ?? this.primary,
+      primaryForeground: primaryForeground ?? this.primaryForeground,
+      secondary: secondary ?? this.secondary,
+      secondaryForeground: secondaryForeground ?? this.secondaryForeground,
+      muted: muted ?? this.muted,
+      mutedForeground: mutedForeground ?? this.mutedForeground,
+      accent: accent ?? this.accent,
+      accentForeground: accentForeground ?? this.accentForeground,
+      destructive: destructive ?? this.destructive,
+      destructiveForeground:
+          destructiveForeground ?? this.destructiveForeground,
+      ring: ring ?? this.ring,
+      success: success ?? this.success,
+      successForeground: successForeground ?? this.successForeground,
+      warning: warning ?? this.warning,
+      warningForeground: warningForeground ?? this.warningForeground,
     );
   }
 
@@ -210,6 +264,168 @@ class LyraThemeTokens {
     warning,
     warningForeground,
   ]);
+}
+
+/// Parses a hex color string (e.g. '#3B82F6', '3B82F6', '0xFF3B82F6').
+Color? parseHexColor(String hex) {
+  var clean = hex.replaceAll('#', '').trim();
+  if (clean.startsWith('0x') || clean.startsWith('0X')) {
+    clean = clean.substring(2);
+  }
+  if (clean.length == 6) {
+    clean = 'FF$clean';
+  }
+  if (clean.length == 8) {
+    final val = int.tryParse(clean, radix: 16);
+    if (val != null) return Color(val);
+  }
+  return null;
+}
+
+/// Derives [LyraThemeTokens] reflecting the specified [accentColor] (preset name or hex code).
+LyraThemeTokens deriveLyraThemeTokens(String accentColor, bool isDark) {
+  final base = isDark ? LyraThemeTokens.dark() : LyraThemeTokens.light();
+  final lower = accentColor.toLowerCase().trim();
+
+  if (isDark) {
+    switch (lower) {
+      case 'zinc':
+        return base.copyWith(
+          primary: const Color(0xFFFAFAFA),
+          primaryForeground: const Color(0xFF18181B),
+          ring: const Color(0xFF71717A),
+          accent: const Color(0xFF27272A),
+        );
+      case 'slate':
+        return base.copyWith(
+          primary: const Color(0xFF94A3B8),
+          primaryForeground: const Color(0xFF0F172A),
+          ring: const Color(0xFFCBD5E1),
+          accent: const Color(0xFF94A3B8).withValues(alpha: 0.2),
+        );
+      case 'blue':
+        return base.copyWith(
+          primary: const Color(0xFF3B82F6),
+          primaryForeground: const Color(0xFFFFFFFF),
+          ring: const Color(0xFF60A5FA),
+          accent: const Color(0xFF3B82F6).withValues(alpha: 0.2),
+        );
+      case 'emerald':
+        return base.copyWith(
+          primary: const Color(0xFF10B981),
+          primaryForeground: const Color(0xFFFFFFFF),
+          ring: const Color(0xFF34D399),
+          accent: const Color(0xFF10B981).withValues(alpha: 0.2),
+        );
+      case 'violet':
+        return base.copyWith(
+          primary: const Color(0xFF8B5CF6),
+          primaryForeground: const Color(0xFFFFFFFF),
+          ring: const Color(0xFFA78BFA),
+          accent: const Color(0xFF8B5CF6).withValues(alpha: 0.2),
+        );
+      case 'rose':
+        return base.copyWith(
+          primary: const Color(0xFFF43F5E),
+          primaryForeground: const Color(0xFFFFFFFF),
+          ring: const Color(0xFFFB7185),
+          accent: const Color(0xFFF43F5E).withValues(alpha: 0.2),
+        );
+      case 'amber':
+        return base.copyWith(
+          primary: const Color(0xFFF59E0B),
+          primaryForeground: const Color(0xFF09090B),
+          ring: const Color(0xFFFBBF24),
+          accent: const Color(0xFFF59E0B).withValues(alpha: 0.2),
+        );
+    }
+
+    final customColor = parseHexColor(accentColor);
+    if (customColor != null) {
+      final luminance = customColor.computeLuminance();
+      final fg = luminance > 0.5
+          ? const Color(0xFF09090B)
+          : const Color(0xFFFFFFFF);
+      return base.copyWith(
+        primary: customColor,
+        primaryForeground: fg,
+        ring: customColor,
+        accent: customColor.withValues(alpha: 0.2),
+      );
+    }
+
+    return base;
+  }
+
+  // Light Mode
+  switch (lower) {
+    case 'zinc':
+      return base;
+    case 'slate':
+      const c = Color(0xFF64748B);
+      return base.copyWith(
+        primary: c,
+        primaryForeground: const Color(0xFFFFFFFF),
+        ring: c,
+        accent: c.withValues(alpha: 0.12),
+      );
+    case 'blue':
+      const c = LyraColors.blue500;
+      return base.copyWith(
+        primary: c,
+        primaryForeground: const Color(0xFFFFFFFF),
+        ring: c,
+        accent: c.withValues(alpha: 0.12),
+      );
+    case 'emerald':
+      const c = LyraColors.emerald500;
+      return base.copyWith(
+        primary: c,
+        primaryForeground: const Color(0xFFFFFFFF),
+        ring: c,
+        accent: c.withValues(alpha: 0.12),
+      );
+    case 'violet':
+      const c = Color(0xFF8B5CF6);
+      return base.copyWith(
+        primary: c,
+        primaryForeground: const Color(0xFFFFFFFF),
+        ring: c,
+        accent: c.withValues(alpha: 0.12),
+      );
+    case 'rose':
+      const c = Color(0xFFF43F5E);
+      return base.copyWith(
+        primary: c,
+        primaryForeground: const Color(0xFFFFFFFF),
+        ring: c,
+        accent: c.withValues(alpha: 0.12),
+      );
+    case 'amber':
+      const c = LyraColors.amber500;
+      return base.copyWith(
+        primary: c,
+        primaryForeground: const Color(0xFF000000),
+        ring: c,
+        accent: c.withValues(alpha: 0.12),
+      );
+  }
+
+  final customColor = parseHexColor(accentColor);
+  if (customColor != null) {
+    final luminance = customColor.computeLuminance();
+    final fg = luminance > 0.5
+        ? const Color(0xFF000000)
+        : const Color(0xFFFFFFFF);
+    return base.copyWith(
+      primary: customColor,
+      primaryForeground: fg,
+      ring: customColor,
+      accent: customColor.withValues(alpha: 0.12),
+    );
+  }
+
+  return base;
 }
 
 /// Spacing tokens based on standard 4px/8px grid system.

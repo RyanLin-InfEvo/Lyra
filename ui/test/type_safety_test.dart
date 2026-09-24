@@ -737,7 +737,7 @@ void main() {
         await tester.tap(find.text('Settings').first);
         await tester.pumpAndSettle();
         expect(find.text('Settings'), findsWidgets);
-        expect(find.text('Appearance'), findsOneWidget);
+        expect(find.text('Appearance'), findsWidgets);
 
         // Toggle Theme
         await tester.tap(find.text('Zinc Light'));

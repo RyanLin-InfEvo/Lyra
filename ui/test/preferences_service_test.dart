@@ -26,6 +26,7 @@ void main() {
       final service = SharedPreferencesService(prefs);
 
       expect(service.themeMode, ThemeMode.dark);
+      expect(service.accentColor, 'zinc');
       expect(service.isSidebarCollapsed, isFalse);
       expect(service.sidebarWidth, 210.0);
       expect(service.inspectorWidth, 420.0);
@@ -37,6 +38,16 @@ void main() {
       expect(service.getWorkVisibleColumns(), isNull);
       expect(service.getPlaylistColumnOrder(), isNull);
       expect(service.getPlaylistVisibleColumns(), isNull);
+      expect(service.showNowPlayingWaveform, isTrue);
+      expect(service.showInspectorWaveform, isTrue);
+      expect(service.nowPlayingWaveformPoints, 140);
+      expect(service.inspectorWaveformPoints, 100);
+      expect(service.nowPlayingWaveformPulseAnimation, isTrue);
+      expect(service.inspectorWaveformPulseAnimation, isTrue);
+      expect(service.nowPlayingWaveformHoverTimeGuide, isTrue);
+      expect(service.inspectorWaveformHoverTimeGuide, isTrue);
+      expect(service.waveformPulseAnimation, isTrue);
+      expect(service.waveformHoverTimeGuide, isTrue);
       expect(service.audioExclusiveMode, isFalse);
       expect(service.audioBufferSize, 256);
       expect(service.audioDopEnabled, isFalse);
@@ -46,6 +57,7 @@ void main() {
     test('initializes with mock initial values correctly', () async {
       SharedPreferences.setMockInitialValues({
         SharedPreferencesService.keyThemeMode: 'light',
+        SharedPreferencesService.keyAccentColor: 'emerald',
         SharedPreferencesService.keySidebarCollapsed: true,
         SharedPreferencesService.keySidebarWidth: 260.0,
         SharedPreferencesService.keyInspectorWidth: 500.0,
@@ -60,6 +72,12 @@ void main() {
         SharedPreferencesService.keyWorkVisibleColumns: ['title'],
         SharedPreferencesService.keyPlaylistColumnOrder: ['album', 'title'],
         SharedPreferencesService.keyPlaylistVisibleColumns: ['album'],
+        SharedPreferencesService.keyShowNowPlayingWaveform: false,
+        SharedPreferencesService.keyShowInspectorWaveform: false,
+        SharedPreferencesService.keyNowPlayingWaveformPoints: 280,
+        SharedPreferencesService.keyInspectorWaveformPoints: 150,
+        SharedPreferencesService.keyWaveformPulseAnimation: false,
+        SharedPreferencesService.keyWaveformHoverTimeGuide: false,
         SharedPreferencesService.keyAudioExclusiveMode: true,
         SharedPreferencesService.keyAudioBufferSize: 512,
         SharedPreferencesService.keyAudioDopEnabled: true,
@@ -70,6 +88,7 @@ void main() {
       final service = SharedPreferencesService(prefs);
 
       expect(service.themeMode, ThemeMode.light);
+      expect(service.accentColor, 'emerald');
       expect(service.isSidebarCollapsed, isTrue);
       expect(service.sidebarWidth, 260.0);
       expect(service.inspectorWidth, 500.0);
@@ -81,6 +100,16 @@ void main() {
       expect(service.getWorkVisibleColumns(), {'title'});
       expect(service.getPlaylistColumnOrder(), ['album', 'title']);
       expect(service.getPlaylistVisibleColumns(), {'album'});
+      expect(service.showNowPlayingWaveform, isFalse);
+      expect(service.showInspectorWaveform, isFalse);
+      expect(service.nowPlayingWaveformPoints, 280);
+      expect(service.inspectorWaveformPoints, 150);
+      expect(service.nowPlayingWaveformPulseAnimation, isFalse);
+      expect(service.inspectorWaveformPulseAnimation, isFalse);
+      expect(service.nowPlayingWaveformHoverTimeGuide, isFalse);
+      expect(service.inspectorWaveformHoverTimeGuide, isFalse);
+      expect(service.waveformPulseAnimation, isFalse);
+      expect(service.waveformHoverTimeGuide, isFalse);
       expect(service.audioExclusiveMode, isTrue);
       expect(service.audioBufferSize, 512);
       expect(service.audioDopEnabled, isTrue);
@@ -105,11 +134,17 @@ void main() {
       await service.setThemeMode(ThemeMode.light);
       expect(service.themeMode, ThemeMode.light);
 
+      await service.setAccentColor('amber');
+      expect(service.accentColor, 'amber');
+
       await service.setSidebarCollapsed(true);
       expect(service.isSidebarCollapsed, isTrue);
 
       await service.setSidebarWidth(280.0);
       expect(service.sidebarWidth, 280.0);
+
+      await service.resetSidebarWidth();
+      expect(service.sidebarWidth, 210.0);
 
       await service.setInspectorWidth(450.0);
       expect(service.inspectorWidth, 450.0);
@@ -138,6 +173,33 @@ void main() {
       await service.setPlaylistVisibleColumns({'isrc'});
       expect(service.getPlaylistVisibleColumns(), {'isrc'});
 
+      await service.resetTableColumns();
+      expect(service.getTrackColumnOrder(), isNull);
+      expect(service.getTrackVisibleColumns(), isNull);
+      expect(service.trackColumnWidths, isEmpty);
+      expect(service.getWorkColumnOrder(), isNull);
+      expect(service.getWorkVisibleColumns(), isNull);
+      expect(service.getPlaylistColumnOrder(), isNull);
+      expect(service.getPlaylistVisibleColumns(), isNull);
+
+      await service.setShowNowPlayingWaveform(false);
+      expect(service.showNowPlayingWaveform, isFalse);
+
+      await service.setShowInspectorWaveform(false);
+      expect(service.showInspectorWaveform, isFalse);
+
+      await service.setNowPlayingWaveformPoints(280);
+      expect(service.nowPlayingWaveformPoints, 280);
+
+      await service.setInspectorWaveformPoints(150);
+      expect(service.inspectorWaveformPoints, 150);
+
+      await service.setWaveformPulseAnimation(false);
+      expect(service.waveformPulseAnimation, isFalse);
+
+      await service.setWaveformHoverTimeGuide(false);
+      expect(service.waveformHoverTimeGuide, isFalse);
+
       await service.setAudioExclusiveMode(true);
       expect(service.audioExclusiveMode, isTrue);
 
@@ -157,6 +219,7 @@ void main() {
       final service = InMemoryPreferencesService();
 
       expect(service.themeMode, ThemeMode.dark);
+      expect(service.accentColor, 'zinc');
       expect(service.isSidebarCollapsed, isFalse);
       expect(service.sidebarWidth, 210.0);
       expect(service.inspectorWidth, 420.0);
@@ -168,6 +231,16 @@ void main() {
       expect(service.getWorkVisibleColumns(), isNull);
       expect(service.getPlaylistColumnOrder(), isNull);
       expect(service.getPlaylistVisibleColumns(), isNull);
+      expect(service.showNowPlayingWaveform, isTrue);
+      expect(service.showInspectorWaveform, isTrue);
+      expect(service.nowPlayingWaveformPoints, 140);
+      expect(service.inspectorWaveformPoints, 100);
+      expect(service.nowPlayingWaveformPulseAnimation, isTrue);
+      expect(service.inspectorWaveformPulseAnimation, isTrue);
+      expect(service.nowPlayingWaveformHoverTimeGuide, isTrue);
+      expect(service.inspectorWaveformHoverTimeGuide, isTrue);
+      expect(service.waveformPulseAnimation, isTrue);
+      expect(service.waveformHoverTimeGuide, isTrue);
       expect(service.audioExclusiveMode, isFalse);
       expect(service.audioBufferSize, 256);
       expect(service.audioDopEnabled, isFalse);
@@ -177,6 +250,7 @@ void main() {
     test('custom initial values and setters', () async {
       final service = InMemoryPreferencesService(
         themeMode: ThemeMode.light,
+        accentColor: 'blue',
         isSidebarCollapsed: true,
         sidebarWidth: 260.0,
         inspectorWidth: 500.0,
@@ -188,6 +262,12 @@ void main() {
         workVisibleColumns: {'c'},
         playlistColumnOrder: ['d'],
         playlistVisibleColumns: {'d'},
+        showNowPlayingWaveform: false,
+        showInspectorWaveform: false,
+        nowPlayingWaveformPoints: 70,
+        inspectorWaveformPoints: 50,
+        waveformPulseAnimation: false,
+        waveformHoverTimeGuide: false,
         audioExclusiveMode: true,
         audioBufferSize: 128,
         audioDopEnabled: true,
@@ -195,6 +275,7 @@ void main() {
       );
 
       expect(service.themeMode, ThemeMode.light);
+      expect(service.accentColor, 'blue');
       expect(service.isSidebarCollapsed, isTrue);
       expect(service.sidebarWidth, 260.0);
       expect(service.inspectorWidth, 500.0);
@@ -206,6 +287,16 @@ void main() {
       expect(service.getWorkVisibleColumns(), {'c'});
       expect(service.getPlaylistColumnOrder(), ['d']);
       expect(service.getPlaylistVisibleColumns(), {'d'});
+      expect(service.showNowPlayingWaveform, isFalse);
+      expect(service.showInspectorWaveform, isFalse);
+      expect(service.nowPlayingWaveformPoints, 70);
+      expect(service.inspectorWaveformPoints, 50);
+      expect(service.nowPlayingWaveformPulseAnimation, isFalse);
+      expect(service.inspectorWaveformPulseAnimation, isFalse);
+      expect(service.nowPlayingWaveformHoverTimeGuide, isFalse);
+      expect(service.inspectorWaveformHoverTimeGuide, isFalse);
+      expect(service.waveformPulseAnimation, isFalse);
+      expect(service.waveformHoverTimeGuide, isFalse);
       expect(service.audioExclusiveMode, isTrue);
       expect(service.audioBufferSize, 128);
       expect(service.audioDopEnabled, isTrue);
@@ -214,11 +305,17 @@ void main() {
       await service.setThemeMode(ThemeMode.dark);
       expect(service.themeMode, ThemeMode.dark);
 
+      await service.setAccentColor('rose');
+      expect(service.accentColor, 'rose');
+
       await service.setSidebarCollapsed(false);
       expect(service.isSidebarCollapsed, isFalse);
 
       await service.setSidebarWidth(320.0);
       expect(service.sidebarWidth, 320.0);
+
+      await service.resetSidebarWidth();
+      expect(service.sidebarWidth, 210.0);
 
       await service.setInspectorWidth(600.0);
       expect(service.inspectorWidth, 600.0);
@@ -247,6 +344,33 @@ void main() {
       await service.setPlaylistVisibleColumns({'p'});
       expect(service.getPlaylistVisibleColumns(), {'p'});
 
+      await service.resetTableColumns();
+      expect(service.getTrackColumnOrder(), isNull);
+      expect(service.getTrackVisibleColumns(), isNull);
+      expect(service.trackColumnWidths, isEmpty);
+      expect(service.getWorkColumnOrder(), isNull);
+      expect(service.getWorkVisibleColumns(), isNull);
+      expect(service.getPlaylistColumnOrder(), isNull);
+      expect(service.getPlaylistVisibleColumns(), isNull);
+
+      await service.setShowNowPlayingWaveform(true);
+      expect(service.showNowPlayingWaveform, isTrue);
+
+      await service.setShowInspectorWaveform(true);
+      expect(service.showInspectorWaveform, isTrue);
+
+      await service.setNowPlayingWaveformPoints(280);
+      expect(service.nowPlayingWaveformPoints, 280);
+
+      await service.setInspectorWaveformPoints(150);
+      expect(service.inspectorWaveformPoints, 150);
+
+      await service.setWaveformPulseAnimation(true);
+      expect(service.waveformPulseAnimation, isTrue);
+
+      await service.setWaveformHoverTimeGuide(true);
+      expect(service.waveformHoverTimeGuide, isTrue);
+
       await service.setAudioExclusiveMode(false);
       expect(service.audioExclusiveMode, isFalse);
 
@@ -258,6 +382,36 @@ void main() {
 
       await service.setCasAutoVerify(true);
       expect(service.casAutoVerify, isTrue);
+    });
+
+    test('notifies listeners when settings change', () async {
+      final service = InMemoryPreferencesService();
+      int notifyCount = 0;
+      service.addListener(() => notifyCount++);
+
+      await service.setShowNowPlayingWaveform(false);
+      expect(notifyCount, 1);
+
+      await service.setShowInspectorWaveform(false);
+      expect(notifyCount, 2);
+
+      await service.setNowPlayingWaveformPoints(70);
+      expect(notifyCount, 3);
+
+      await service.setInspectorWaveformPoints(50);
+      expect(notifyCount, 4);
+
+      await service.setWaveformPulseAnimation(false);
+      expect(notifyCount, 5);
+
+      await service.setWaveformHoverTimeGuide(false);
+      expect(notifyCount, 6);
+
+      await service.resetSidebarWidth();
+      expect(notifyCount, 7);
+
+      await service.resetTableColumns();
+      expect(notifyCount, 8);
     });
 
     test('defensive copying of lists, sets, and maps', () async {
@@ -564,6 +718,48 @@ void main() {
           shellState.playlistVisibleColumns,
           Set<TrackColumn>.from(PlaylistDetailView.defaultVisibleColumns),
         );
+      },
+    );
+    test(
+      'target-specific pulse and hover guide settings are decoupled in InMemory',
+      () async {
+        final service = InMemoryPreferencesService();
+        expect(service.nowPlayingWaveformPulseAnimation, isTrue);
+        expect(service.inspectorWaveformPulseAnimation, isTrue);
+
+        await service.setNowPlayingWaveformPulseAnimation(false);
+        expect(service.nowPlayingWaveformPulseAnimation, isFalse);
+        expect(service.inspectorWaveformPulseAnimation, isTrue);
+
+        await service.setInspectorWaveformHoverTimeGuide(false);
+        expect(service.nowPlayingWaveformHoverTimeGuide, isTrue);
+        expect(service.inspectorWaveformHoverTimeGuide, isFalse);
+
+        // Fallback setters update both
+        await service.setWaveformPulseAnimation(true);
+        expect(service.nowPlayingWaveformPulseAnimation, isTrue);
+        expect(service.inspectorWaveformPulseAnimation, isTrue);
+
+        await service.setWaveformHoverTimeGuide(false);
+        expect(service.nowPlayingWaveformHoverTimeGuide, isFalse);
+        expect(service.inspectorWaveformHoverTimeGuide, isFalse);
+      },
+    );
+
+    test(
+      'SharedPreferencesService decouples target-specific pulse and hover guide',
+      () async {
+        SharedPreferences.setMockInitialValues({});
+        final prefs = await SharedPreferences.getInstance();
+        final service = SharedPreferencesService(prefs);
+
+        await service.setNowPlayingWaveformPulseAnimation(false);
+        expect(service.nowPlayingWaveformPulseAnimation, isFalse);
+        expect(service.inspectorWaveformPulseAnimation, isTrue);
+
+        await service.setInspectorWaveformHoverTimeGuide(false);
+        expect(service.nowPlayingWaveformHoverTimeGuide, isTrue);
+        expect(service.inspectorWaveformHoverTimeGuide, isFalse);
       },
     );
   });
