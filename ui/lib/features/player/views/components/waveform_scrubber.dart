@@ -452,9 +452,15 @@ class _WaveformScrubberState extends State<WaveformScrubber>
                             if (hoverX == null) {
                               return const SizedBox.shrink();
                             }
-                            final badgeWidth = totalDuration.inHours > 0
+                            final double baseBadgeWidth =
+                                totalDuration.inHours >= 10
+                                ? 72.0
+                                : totalDuration.inHours > 0
                                 ? 62.0
                                 : 46.0;
+                            final double badgeWidth = maxWidth > 0
+                                ? math.min(baseBadgeWidth, maxWidth)
+                                : baseBadgeWidth;
                             final leftOffset = (hoverX - (badgeWidth / 2))
                                 .clamp(
                                   0.0,
@@ -471,9 +477,12 @@ class _WaveformScrubberState extends State<WaveformScrubber>
                             return Positioned(
                               top: -24.0,
                               left: leftOffset,
+                              width: badgeWidth,
                               child: IgnorePointer(
                                 key: const ValueKey('waveform_hover_tooltip'),
                                 child: Container(
+                                  width: badgeWidth,
+                                  alignment: Alignment.center,
                                   padding: const EdgeInsets.symmetric(
                                     horizontal: 5.0,
                                     vertical: 2.0,
@@ -497,6 +506,10 @@ class _WaveformScrubberState extends State<WaveformScrubber>
                                     _formatDuration(
                                       Duration(milliseconds: hoverMs),
                                     ),
+                                    textAlign: TextAlign.center,
+                                    maxLines: 1,
+                                    softWrap: false,
+                                    overflow: TextOverflow.clip,
                                     style:
                                         LyraTypography.mono(
                                           tokens,

@@ -316,6 +316,12 @@ void main() {
 
       // Floating hover badge at 50% of 120s is 1:00
       expect(find.text('1:00'), findsOneWidget);
+      final tooltipFinder = find.byKey(
+        const ValueKey('waveform_hover_tooltip'),
+      );
+      expect(tooltipFinder, findsOneWidget);
+      expect(tester.getSize(tooltipFinder).width, equals(46.0));
+      expect(tester.getCenter(tooltipFinder).dx, equals(hoverOffset.dx));
 
       // Move away
       await gesture.moveTo(Offset(topLeft.dx - 100, topLeft.dy - 100));
@@ -513,6 +519,141 @@ void main() {
           find.byKey(const ValueKey('waveform_hover_tooltip')),
           findsNothing,
         );
+      },
+    );
+
+    testWidgets(
+      'hover time badge center exactly matches hoverX and adapts width for mm:ss, hh:mm:ss, and >=10h',
+      (tester) async {
+        // 1. Under 1 hour (mm:ss) -> badge width = 46.0
+        await tester.pumpWidget(
+          _buildScrubberTest(
+            waveform: WaveformData.mock(points: 50),
+            position: Duration.zero,
+            duration: const Duration(minutes: 3, seconds: 30),
+            showTimeLabels: false,
+          ),
+        );
+        await tester.pump(const Duration(milliseconds: 50));
+
+        final gestureFinder = find.byType(GestureDetector);
+        final topLeft = tester.getTopLeft(gestureFinder);
+        final size = tester.getSize(gestureFinder);
+
+        final gesture = await tester.createGesture(
+          kind: PointerDeviceKind.mouse,
+        );
+        await gesture.addPointer(location: Offset.zero);
+
+        // Hover at center (x = 200)
+        final hoverMid = Offset(
+          topLeft.dx + 200.0,
+          topLeft.dy + size.height * 0.5,
+        );
+        await gesture.moveTo(hoverMid);
+        await tester.pump();
+
+        final tooltipFinder = find.byKey(
+          const ValueKey('waveform_hover_tooltip'),
+        );
+        expect(tooltipFinder, findsOneWidget);
+        expect(tester.getSize(tooltipFinder).width, equals(46.0));
+        expect(tester.getCenter(tooltipFinder).dx, equals(hoverMid.dx));
+
+        // 2. Over 1 hour (hh:mm:ss) -> badge width = 62.0
+        await tester.pumpWidget(
+          _buildScrubberTest(
+            waveform: WaveformData.mock(points: 50),
+            position: Duration.zero,
+            duration: const Duration(hours: 2, minutes: 15),
+            showTimeLabels: false,
+          ),
+        );
+        await tester.pump();
+        await gesture.moveTo(hoverMid);
+        await tester.pump();
+
+        expect(tester.getSize(tooltipFinder).width, equals(62.0));
+        expect(tester.getCenter(tooltipFinder).dx, equals(hoverMid.dx));
+
+        // 3. 10 hours or more -> badge width = 72.0
+        await tester.pumpWidget(
+          _buildScrubberTest(
+            waveform: WaveformData.mock(points: 50),
+            position: Duration.zero,
+            duration: const Duration(hours: 12),
+            showTimeLabels: false,
+          ),
+        );
+        await tester.pump();
+        await gesture.moveTo(hoverMid);
+        await tester.pump();
+
+        expect(tester.getSize(tooltipFinder).width, equals(72.0));
+        expect(tester.getCenter(tooltipFinder).dx, equals(hoverMid.dx));
+
+        // Clean up gesture
+        await gesture.moveTo(Offset(topLeft.dx - 100, topLeft.dy - 100));
+        await tester.pump();
+      },
+    );
+
+    testWidgets(
+      'hover time badge cleanly clamps at edges without overflowing maxWidth',
+      (tester) async {
+        await tester.pumpWidget(
+          _buildScrubberTest(
+            waveform: WaveformData.mock(points: 50),
+            position: Duration.zero,
+            duration: const Duration(minutes: 5),
+            showTimeLabels: false,
+          ),
+        );
+        await tester.pump(const Duration(milliseconds: 50));
+
+        final gestureFinder = find.byType(GestureDetector);
+        final topLeft = tester.getTopLeft(gestureFinder);
+        final size = tester.getSize(gestureFinder);
+
+        final gesture = await tester.createGesture(
+          kind: PointerDeviceKind.mouse,
+        );
+        await gesture.addPointer(location: Offset.zero);
+
+        // Hover near left edge (x = 5.0) -> clamped so left edge is at topLeft.dx
+        await gesture.moveTo(
+          Offset(topLeft.dx + 5.0, topLeft.dy + size.height * 0.5),
+        );
+        await tester.pump();
+
+        final tooltipFinder = find.byKey(
+          const ValueKey('waveform_hover_tooltip'),
+        );
+        expect(tooltipFinder, findsOneWidget);
+        expect(tester.getTopLeft(tooltipFinder).dx, equals(topLeft.dx));
+        expect(
+          tester.getBottomRight(tooltipFinder).dx,
+          lessThanOrEqualTo(topLeft.dx + size.width),
+        );
+
+        // Hover near right edge (x = size.width - 5.0) -> clamped so right edge is at topLeft.dx + size.width
+        await gesture.moveTo(
+          Offset(topLeft.dx + size.width - 5.0, topLeft.dy + size.height * 0.5),
+        );
+        await tester.pump();
+
+        expect(
+          tester.getBottomRight(tooltipFinder).dx,
+          equals(topLeft.dx + size.width),
+        );
+        expect(
+          tester.getTopLeft(tooltipFinder).dx,
+          greaterThanOrEqualTo(topLeft.dx),
+        );
+
+        // Clean up gesture
+        await gesture.moveTo(Offset(topLeft.dx - 100, topLeft.dy - 100));
+        await tester.pump();
       },
     );
   });
