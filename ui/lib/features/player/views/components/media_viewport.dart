@@ -102,7 +102,7 @@ class _MediaViewportState extends State<MediaViewport> {
                     decoration: BoxDecoration(
                       color: _currentMode == MediaViewportMode.song
                           ? tokens.card
-                          : const Color(0x00000000),
+                          : tokens.card.withValues(alpha: 0.0),
                       borderRadius: LyraRadius.fullRadius,
                       boxShadow: _currentMode == MediaViewportMode.song
                           ? const [
@@ -159,7 +159,7 @@ class _MediaViewportState extends State<MediaViewport> {
                     decoration: BoxDecoration(
                       color: _currentMode == MediaViewportMode.video
                           ? tokens.card
-                          : const Color(0x00000000),
+                          : tokens.card.withValues(alpha: 0.0),
                       borderRadius: LyraRadius.fullRadius,
                       boxShadow: _currentMode == MediaViewportMode.video
                           ? const [

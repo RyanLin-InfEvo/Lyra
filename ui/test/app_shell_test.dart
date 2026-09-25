@@ -1226,6 +1226,51 @@ void main() {
   );
 
   testWidgets(
+    'NowPlayingView overlay does not have artificial drop shadow BoxShadow in Light Theme',
+    (tester) async {
+      tester.view.physicalSize = const Size(1280, 800);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+
+      final lightThemeNotifier = ValueNotifier<ThemeMode>(ThemeMode.light);
+      addTearDown(lightThemeNotifier.dispose);
+
+      await tester.pumpWidget(
+        _buildAppShellTest(themeNotifier: lightThemeNotifier),
+      );
+      await tester.pumpAndSettle();
+
+      // Start playback and expand Now Playing
+      final trackFinder = find
+          .descendant(
+            of: find.byType(TracksView),
+            matching: find.text('Hotel California (Live on MTV 1994)'),
+          )
+          .first;
+      await tester.tap(trackFinder);
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byTooltip('Expand Now Playing'));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(NowPlayingView), findsOneWidget);
+
+      // Ensure there is no DecoratedBox ancestor with BoxShadow between Visibility and NowPlayingView
+      final nowPlayingVisibility = find.byKey(
+        const ValueKey('now_playing_visibility'),
+      );
+      final decoratedBoxAncestors = find.ancestor(
+        of: find.byType(NowPlayingView),
+        matching: find.descendant(
+          of: nowPlayingVisibility,
+          matching: find.byType(DecoratedBox),
+        ),
+      );
+      expect(decoratedBoxAncestors, findsNothing);
+    },
+  );
+
+  testWidgets(
     'AppShell isolates AnimatedSlide within RepaintBoundary and supports custom animation curve and duration',
     (tester) async {
       tester.view.physicalSize = const Size(1280, 800);

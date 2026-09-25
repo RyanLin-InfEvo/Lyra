@@ -759,6 +759,185 @@ void main() {
     );
 
     testWidgets(
+      'Light Theme: Up Next rows have transparent backgrounds by default with only hovered item receiving alpha highlight and current track using border',
+      (tester) async {
+        final controller = PlaybackQueueController(autoStartTimer: false);
+        addTearDown(controller.dispose);
+        controller.play(track1, contextQueue: [track1, track2, track3]);
+
+        final lightThemeNotifier = ValueNotifier<ThemeMode>(ThemeMode.light);
+        addTearDown(lightThemeNotifier.dispose);
+        final lightTokens = LyraThemeTokens.light();
+
+        await tester.pumpWidget(
+          _buildNowPlayingTest(
+            playbackController: controller,
+            themeNotifier: lightThemeNotifier,
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        final queueItemIds = controller.queueItemIds;
+        final track1Key = ValueKey('queue_item_${queueItemIds[0]}');
+        final track2Key = ValueKey('queue_item_${queueItemIds[1]}');
+
+        BoxDecoration getRowDecoration(Key rowKey) {
+          final container = tester.widget<AnimatedContainer>(
+            find.descendant(
+              of: find.byKey(rowKey),
+              matching: find.byType(AnimatedContainer),
+            ),
+          );
+          return container.decoration as BoxDecoration;
+        }
+
+        // 1. Initial State (No hover):
+        // Current playing track (track1) has subtle background tint (alpha 0.35) and 1px border
+        final track1InitialDeco = getRowDecoration(track1Key);
+        expect(
+          track1InitialDeco.color,
+          equals(lightTokens.secondary.withValues(alpha: 0.35)),
+        );
+        expect(
+          track1InitialDeco.border,
+          equals(Border.all(color: lightTokens.border, width: 1.0)),
+        );
+
+        // Non-playing track (track2) has zero-alpha background sharing secondary RGB and no border
+        final track2InitialDeco = getRowDecoration(track2Key);
+        expect(
+          track2InitialDeco.color,
+          equals(lightTokens.secondary.withValues(alpha: 0.0)),
+        );
+        expect(track2InitialDeco.border, isNull);
+
+        // 2. Hover over track2:
+        final gesture = await tester.createGesture(
+          kind: PointerDeviceKind.mouse,
+        );
+        await gesture.addPointer(location: Offset.zero);
+        addTearDown(gesture.removePointer);
+
+        await gesture.moveTo(tester.getCenter(find.byKey(track2Key)));
+        await tester.pumpAndSettle();
+
+        // Track 2 receives 50% alpha hover highlight
+        final track2HoverDeco = getRowDecoration(track2Key);
+        expect(
+          track2HoverDeco.color,
+          equals(lightTokens.secondary.withValues(alpha: 0.5)),
+        );
+
+        // Track 1 (playing track) remains at 35% alpha subtle tint, NOT simultaneously highlighted or whitened!
+        final track1DuringTrack2HoverDeco = getRowDecoration(track1Key);
+        expect(
+          track1DuringTrack2HoverDeco.color,
+          equals(lightTokens.secondary.withValues(alpha: 0.35)),
+        );
+
+        // 3. Hover over track1 (current playing track):
+        await gesture.moveTo(tester.getCenter(find.byKey(track1Key)));
+        await tester.pumpAndSettle();
+
+        // Track 1 receives deepened 65% alpha hover highlight
+        final track1HoverDeco = getRowDecoration(track1Key);
+        expect(
+          track1HoverDeco.color,
+          equals(lightTokens.secondary.withValues(alpha: 0.65)),
+        );
+
+        // Track 2 returns to zero-alpha secondary
+        final track2PostHoverDeco = getRowDecoration(track2Key);
+        expect(
+          track2PostHoverDeco.color,
+          equals(lightTokens.secondary.withValues(alpha: 0.0)),
+        );
+      },
+    );
+
+    testWidgets(
+      'UpNextTab moving hover between rows preserves RGB channels without flashing dark gray during animation',
+      (tester) async {
+        final controller = PlaybackQueueController(autoStartTimer: false);
+        addTearDown(controller.dispose);
+        controller.play(track1, contextQueue: [track1, track2, track3]);
+
+        final lightThemeNotifier = ValueNotifier<ThemeMode>(ThemeMode.light);
+        addTearDown(lightThemeNotifier.dispose);
+        final lightTokens = LyraThemeTokens.light();
+
+        await tester.pumpWidget(
+          _buildNowPlayingTest(
+            playbackController: controller,
+            themeNotifier: lightThemeNotifier,
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        final queueItemIds = controller.queueItemIds;
+        final track2Key = ValueKey('queue_item_${queueItemIds[1]}');
+        final track3Key = ValueKey('queue_item_${queueItemIds[2]}');
+
+        BoxDecoration getRowDecoration(Key rowKey) {
+          final container = tester.widget<AnimatedContainer>(
+            find.descendant(
+              of: find.byKey(rowKey),
+              matching: find.byType(AnimatedContainer),
+            ),
+          );
+          return container.decoration as BoxDecoration;
+        }
+
+        final gesture = await tester.createGesture(
+          kind: PointerDeviceKind.mouse,
+        );
+        await gesture.addPointer(location: Offset.zero);
+        addTearDown(gesture.removePointer);
+
+        // Hover over track 2
+        await gesture.moveTo(tester.getCenter(find.byKey(track2Key)));
+        await tester.pumpAndSettle();
+
+        expect(
+          getRowDecoration(track2Key).color,
+          equals(lightTokens.secondary.withValues(alpha: 0.5)),
+        );
+
+        // Move hover directly from track 2 to track 3
+        await gesture.moveTo(tester.getCenter(find.byKey(track3Key)));
+        // Pump halfway through the 120ms animation (60ms)
+        await tester.pump(const Duration(milliseconds: 60));
+
+        final track2MidDeco = getRowDecoration(track2Key);
+        final track3MidDeco = getRowDecoration(track3Key);
+
+        // Verify that intermediate RGB strictly matches tokens.secondary RGB (no dark gray dip towards 0,0,0)
+        final expectedR = lightTokens.secondary.r;
+        final expectedG = lightTokens.secondary.g;
+        final expectedB = lightTokens.secondary.b;
+
+        expect(track2MidDeco.color!.r, closeTo(expectedR, 0.01));
+        expect(track2MidDeco.color!.g, closeTo(expectedG, 0.01));
+        expect(track2MidDeco.color!.b, closeTo(expectedB, 0.01));
+
+        expect(track3MidDeco.color!.r, closeTo(expectedR, 0.01));
+        expect(track3MidDeco.color!.g, closeTo(expectedG, 0.01));
+        expect(track3MidDeco.color!.b, closeTo(expectedB, 0.01));
+
+        // Complete the animation
+        await tester.pumpAndSettle();
+        expect(
+          getRowDecoration(track2Key).color,
+          equals(lightTokens.secondary.withValues(alpha: 0.0)),
+        );
+        expect(
+          getRowDecoration(track3Key).color,
+          equals(lightTokens.secondary.withValues(alpha: 0.5)),
+        );
+      },
+    );
+
+    testWidgets(
       'whole-row dragging with movement >= 10px reorders queue in controller and view',
       (tester) async {
         final controller = PlaybackQueueController(autoStartTimer: false);

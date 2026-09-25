@@ -1692,46 +1692,30 @@ class AppShellState extends State<AppShell> {
                                           visible: isVisible,
                                           maintainState: true,
                                           child: RepaintBoundary(
-                                            child: DecoratedBox(
-                                              decoration: BoxDecoration(
-                                                boxShadow: [
-                                                  BoxShadow(
-                                                    color: Colors.black
-                                                        .withValues(
-                                                          alpha: 0.45,
-                                                        ),
-                                                    blurRadius: 28.0,
-                                                    offset: const Offset(0, -6),
-                                                  ),
-                                                ],
-                                              ),
-                                              child: NowPlayingView(
-                                                track: _currentTrack,
-                                                playbackController:
-                                                    _playbackController,
-                                                onCollapse: _collapseNowPlaying,
-                                                isExpanded:
-                                                    isNowPlayingExpanded,
-                                                musicService:
-                                                    widget.musicService,
-                                                preferencesService:
-                                                    widget.preferencesService,
-                                                selectedTabNotifier:
-                                                    _nowPlayingTabNotifier,
-                                                onAddToPlaylist:
-                                                    _showAddToPlaylistDialog,
-                                                onInspectAudio:
-                                                    _openInspectorForAudio,
-                                                onGoToAlbum: _navigateToAlbum,
-                                                onGoToArtist: _navigateToArtist,
-                                                queueSource:
-                                                    _activeTrackFilter != null
-                                                    ? _activeTrackFilter!.label
-                                                    : (_currentTab ==
-                                                              AppTab.playlists
-                                                          ? 'Playing from Playlist'
-                                                          : 'Playing from Library'),
-                                              ),
+                                            child: NowPlayingView(
+                                              track: _currentTrack,
+                                              playbackController:
+                                                  _playbackController,
+                                              onCollapse: _collapseNowPlaying,
+                                              isExpanded: isNowPlayingExpanded,
+                                              musicService: widget.musicService,
+                                              preferencesService:
+                                                  widget.preferencesService,
+                                              selectedTabNotifier:
+                                                  _nowPlayingTabNotifier,
+                                              onAddToPlaylist:
+                                                  _showAddToPlaylistDialog,
+                                              onInspectAudio:
+                                                  _openInspectorForAudio,
+                                              onGoToAlbum: _navigateToAlbum,
+                                              onGoToArtist: _navigateToArtist,
+                                              queueSource:
+                                                  _activeTrackFilter != null
+                                                  ? _activeTrackFilter!.label
+                                                  : (_currentTab ==
+                                                            AppTab.playlists
+                                                        ? 'Playing from Playlist'
+                                                        : 'Playing from Library'),
                                             ),
                                           ),
                                         ),

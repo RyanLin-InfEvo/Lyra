@@ -450,10 +450,12 @@ class _QueueItemRowState extends State<_QueueItemRow> {
                 margin: const EdgeInsets.symmetric(vertical: 2.0),
                 decoration: BoxDecoration(
                   color: isCurrent
-                      ? tokens.secondary
-                      : (_isHovered || _contextMenuController.isOpen
+                      ? ((_isHovered || _contextMenuController.isOpen)
+                            ? tokens.secondary.withValues(alpha: 0.65)
+                            : tokens.secondary.withValues(alpha: 0.35))
+                      : ((_isHovered || _contextMenuController.isOpen)
                             ? tokens.secondary.withValues(alpha: 0.5)
-                            : const Color(0x00000000)),
+                            : tokens.secondary.withValues(alpha: 0.0)),
                   borderRadius: LyraRadius.mdRadius,
                   border: isCurrent
                       ? Border.all(color: tokens.border, width: 1.0)
