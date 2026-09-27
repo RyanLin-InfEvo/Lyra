@@ -21,6 +21,7 @@ import 'package:ui/design_system/tokens/lyra_tokens.dart';
 import 'package:ui/features/models/album.dart';
 import 'package:ui/features/models/artist.dart';
 import 'package:ui/features/models/audio.dart';
+import 'package:ui/features/cas_pool/cas_view.dart';
 import 'package:ui/features/models/cas_object.dart';
 import 'package:ui/features/models/image_asset.dart';
 import 'package:ui/features/models/playlist.dart';
@@ -721,11 +722,27 @@ void main() {
         );
         await tester.tap(find.text('CAS Storage').first);
         await tester.pumpAndSettle();
-        expect(find.text('Content Addressable Storage'), findsOneWidget);
-        expect(find.text('TOTAL BLOBS'), findsOneWidget);
+        expect(find.byType(CasView), findsOneWidget);
+        expect(find.text('CAS Storage'), findsWidgets);
 
-        // Verify blobs
-        await tester.tap(find.text('Verify All Blobs'));
+        // Expand and navigate to Engine Settings sub-tab
+        await tester.scrollUntilVisible(
+          find.byKey(const Key('cas_header_chevron')),
+          50.0,
+          scrollable: sidebarScrollable,
+        );
+        await tester.tap(find.byKey(const Key('cas_header_chevron')));
+        await tester.pumpAndSettle();
+
+        await tester.scrollUntilVisible(
+          find.text('Engine Settings'),
+          50.0,
+          scrollable: sidebarScrollable,
+        );
+        await tester.tap(find.text('Engine Settings'));
+        await tester.pumpAndSettle();
+
+        await tester.tap(find.text('Verify Integrity'));
         await tester.pumpAndSettle();
 
         // 13. Click on Settings tab

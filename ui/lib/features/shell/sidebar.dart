@@ -8,8 +8,11 @@ import '../../design_system/contracts/lyra_contracts.dart';
 import '../../design_system/factory/lyra_design_system_scope.dart';
 import '../../design_system/tokens/lyra_tokens.dart';
 import '../../design_system/widgets/lyra_button.dart';
+import '../cas_pool/controllers/cas_controller.dart';
 import '../models/playlist.dart';
 import '../models/tag.dart';
+
+export '../cas_pool/controllers/cas_controller.dart' show CasTab;
 
 /// Navigation tabs available in Lyra Desktop.
 enum AppTab {
@@ -37,6 +40,10 @@ class LyraSidebar extends StatefulWidget {
   final String? selectedTagId;
   final ValueChanged<Tag>? onTagSelected;
   final VoidCallback? onTagsHeaderSelected;
+  final CasTab selectedCasTab;
+  final ValueChanged<CasTab>? onCasSubTabSelected;
+  final VoidCallback? onCasHeaderSelected;
+  final bool defaultCasExpanded;
   final VoidCallback? onSettingsPressed;
   final bool defaultPlaylistsExpanded;
   final bool defaultTagsExpanded;
@@ -62,6 +69,10 @@ class LyraSidebar extends StatefulWidget {
     this.selectedTagId,
     this.onTagSelected,
     this.onTagsHeaderSelected,
+    this.selectedCasTab = CasTab.storageOverview,
+    this.onCasSubTabSelected,
+    this.onCasHeaderSelected,
+    this.defaultCasExpanded = false,
     this.onSettingsPressed,
     this.defaultPlaylistsExpanded = true,
     this.defaultTagsExpanded = true,
@@ -81,6 +92,7 @@ class LyraSidebar extends StatefulWidget {
 class _LyraSidebarState extends State<LyraSidebar> {
   late bool _isPlaylistsExpanded;
   late bool _isTagsExpanded;
+  late bool _isCasExpanded;
   bool _isDragging = false;
 
   @override
@@ -88,6 +100,7 @@ class _LyraSidebarState extends State<LyraSidebar> {
     super.initState();
     _isPlaylistsExpanded = widget.defaultPlaylistsExpanded;
     _isTagsExpanded = widget.defaultTagsExpanded;
+    _isCasExpanded = widget.defaultCasExpanded;
   }
 
   @override
@@ -313,13 +326,55 @@ class _LyraSidebarState extends State<LyraSidebar> {
                             ),
                           ),
                         ),
-                      _buildNavItem(
-                        context: context,
-                        tokens: tokens,
-                        tab: AppTab.casStorage,
-                        icon: LucideIcons.hardDrive,
-                        label: 'CAS Storage',
-                      ),
+                      if (!widget.isCollapsed) ...[
+                        _buildExpandableNavItem(
+                          context: context,
+                          tokens: tokens,
+                          tab: AppTab.casStorage,
+                          icon: LucideIcons.hardDrive,
+                          label: 'CAS Storage',
+                          isExpanded: _isCasExpanded,
+                          hasSubItems: true,
+                          onToggle: () {
+                            setState(() {
+                              _isCasExpanded = !_isCasExpanded;
+                            });
+                          },
+                          chevronKey: const Key('cas_header_chevron'),
+                          onHeaderClick: widget.onCasHeaderSelected,
+                        ),
+                        if (_isCasExpanded) ...[
+                          _buildCasSubItem(
+                            context: context,
+                            tokens: tokens,
+                            subTab: CasTab.storageOverview,
+                            label: 'Storage Overview',
+                            icon: LucideIcons.hardDrive,
+                          ),
+                          _buildCasSubItem(
+                            context: context,
+                            tokens: tokens,
+                            subTab: CasTab.databaseExplorer,
+                            label: 'Database Explorer',
+                            icon: LucideIcons.database,
+                          ),
+                          _buildCasSubItem(
+                            context: context,
+                            tokens: tokens,
+                            subTab: CasTab.backendSettings,
+                            label: 'Engine Settings',
+                            icon: LucideIcons.slidersHorizontal,
+                          ),
+                        ],
+                      ] else ...[
+                        _buildNavItem(
+                          context: context,
+                          tokens: tokens,
+                          tab: AppTab.casStorage,
+                          icon: LucideIcons.hardDrive,
+                          label: 'CAS Storage',
+                        ),
+                      ],
                       _buildNavItem(
                         context: context,
                         tokens: tokens,
@@ -617,6 +672,61 @@ class _LyraSidebarState extends State<LyraSidebar> {
         child: Flexible(
           child: Text(
             tag.displayName,
+            maxLines: 1,
+            softWrap: false,
+            overflow: TextOverflow.ellipsis,
+            style: LyraTypography.small(tokens).copyWith(
+              fontSize: 13.0,
+              fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
+              color: isSelected ? tokens.text : tokens.textMuted,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildCasSubItem({
+    required BuildContext context,
+    required LyraThemeTokens tokens,
+    required CasTab subTab,
+    required String label,
+    required IconData icon,
+  }) {
+    final isSelected =
+        widget.currentTab == AppTab.casStorage &&
+        widget.selectedCasTab == subTab;
+
+    return Padding(
+      padding: const EdgeInsets.only(
+        left: LyraSpacing.sm,
+        top: 1.0,
+        bottom: 1.0,
+      ),
+      child: LyraButton(
+        width: double.infinity,
+        size: LyraButtonSize.sm,
+        mainAxisAlignment: MainAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.center,
+        variant: isSelected
+            ? LyraButtonVariant.secondary
+            : LyraButtonVariant.ghost,
+        padding: const EdgeInsets.symmetric(
+          horizontal: LyraSpacing.sm,
+          vertical: LyraSpacing.xs,
+        ),
+        onPressed: () {
+          widget.onCasSubTabSelected?.call(subTab);
+          widget.onTabSelected(AppTab.casStorage);
+        },
+        leading: Icon(
+          icon,
+          size: 14.0,
+          color: isSelected ? tokens.text : tokens.textMuted,
+        ),
+        child: Flexible(
+          child: Text(
+            label,
             maxLines: 1,
             softWrap: false,
             overflow: TextOverflow.ellipsis,

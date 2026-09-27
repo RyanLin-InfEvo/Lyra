@@ -173,11 +173,11 @@ void main() {
     expect(find.text('Hi-Res'), findsWidgets);
 
     // 6. Switch to CAS Storage
-    await tester.tap(find.text('CAS Storage'));
+    await tester.tap(find.text('CAS Storage').first);
     await tester.pumpAndSettle();
     expect(find.byType(CasView), findsOneWidget);
-    expect(find.text('Content Addressable Storage'), findsOneWidget);
-    expect(find.text('INTEGRITY HASH'), findsOneWidget);
+    expect(find.text('CAS Storage'), findsWidgets);
+    expect(find.text('Integrity Hash'), findsOneWidget);
 
     // 7. Switch to Settings
     await tester.tap(find.text('Settings'));
@@ -1087,16 +1087,14 @@ void main() {
       expect(find.text('CD-Rip'), findsOneWidget);
 
       // 10. Navigate to CAS Storage and click a blob to inspect
-      await tester.tap(find.text('CAS Storage'));
+      await tester.tap(find.text('CAS Storage').first);
       await tester.pumpAndSettle();
       expect(find.byType(CasView), findsOneWidget);
 
-      // Tap on a CAS object row in CasView
-      final casRow = find.text(
-        'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855',
-      );
-      expect(casRow, findsOneWidget);
-      await tester.tap(casRow);
+      // Tap on a CAS object row cell (MIME type) in CasView to inspect asset
+      final casRowCell = find.text('audio/flac').first;
+      expect(casRowCell, findsOneWidget);
+      await tester.tap(casRowCell);
       await tester.pumpAndSettle();
 
       // Verify inspector switches to CAS Asset mode
@@ -2373,6 +2371,58 @@ void main() {
           findsWidgets,
         );
         expect(find.text('Edit Metadata'), findsNothing);
+      },
+    );
+
+    testWidgets(
+      'AppShell navigates between CAS Storage sub-tabs from left sidebar',
+      (tester) async {
+        tester.view.physicalSize = const Size(1280, 950);
+        tester.view.devicePixelRatio = 1.0;
+        addTearDown(tester.view.resetPhysicalSize);
+
+        await tester.pumpWidget(_buildAppShellTest());
+        await tester.pumpAndSettle();
+
+        // 1. Expand CAS Storage section via chevron
+        await tester.tap(find.byKey(const Key('cas_header_chevron')));
+        await tester.pumpAndSettle();
+
+        // 2. Navigate to CAS Storage via sidebar sub-item 'Storage Overview'
+        await tester.tap(find.text('Storage Overview'));
+        await tester.pumpAndSettle();
+
+        expect(find.byType(CasView), findsOneWidget);
+        expect(find.text('Integrity Hash'), findsOneWidget);
+
+        // 2. Click 'Database Explorer' sub-item in sidebar
+        await tester.tap(find.text('Database Explorer'));
+        await tester.pumpAndSettle();
+
+        expect(
+          find.text(
+            'SQLite database health status, WAL checkpoints, and table statistics.',
+          ),
+          findsOneWidget,
+        );
+        expect(find.text('Integrity Hash'), findsNothing);
+
+        // 3. Click 'Engine Settings' sub-item in sidebar
+        await tester.tap(find.text('Engine Settings'));
+        await tester.pumpAndSettle();
+
+        expect(
+          find.text(
+            'Audio hardware buffers, exclusive mode, database tuning, and ingestion pipeline.',
+          ),
+          findsOneWidget,
+        );
+
+        // 4. Click back to 'Storage Overview'
+        await tester.tap(find.text('Storage Overview'));
+        await tester.pumpAndSettle();
+
+        expect(find.text('Integrity Hash'), findsOneWidget);
       },
     );
   });

@@ -77,6 +77,7 @@ class AppShellState extends State<AppShell> {
   late final PlaybackQueueController _playbackController;
   late final AudioDeviceController _audioDeviceController;
   AppTab _currentTab = AppTab.tracks;
+  CasTab _selectedCasTab = CasTab.storageOverview;
   late bool _isSidebarCollapsed;
   late final ValueNotifier<double> _sidebarWidthNotifier;
   late final ValueNotifier<double> _inspectorWidthNotifier;
@@ -1404,6 +1405,12 @@ class AppShellState extends State<AppShell> {
         return RepaintBoundary(
           child: CasView(
             casObjects: _casObjects,
+            activeTab: _selectedCasTab,
+            onTabChanged: (tab) {
+              setState(() {
+                _selectedCasTab = tab;
+              });
+            },
             onInspectAsset: (obj) => _openInspectorForAsset(obj),
             onVerifyAll: () async {
               ScaffoldMessenger.maybeOf(context)?.showSnackBar(
@@ -1534,6 +1541,24 @@ class AppShellState extends State<AppShell> {
                             _selectedTagId = null;
                             _selectedPlaylistId = null;
                             _currentTab = AppTab.tags;
+                          });
+                        },
+                        selectedCasTab: _selectedCasTab,
+                        onCasSubTabSelected: (subTab) {
+                          _isNowPlayingExpanded = false;
+                          setState(() {
+                            _selectedPlaylistId = null;
+                            _selectedTagId = null;
+                            _selectedCasTab = subTab;
+                            _currentTab = AppTab.casStorage;
+                          });
+                        },
+                        onCasHeaderSelected: () {
+                          _isNowPlayingExpanded = false;
+                          setState(() {
+                            _selectedPlaylistId = null;
+                            _selectedTagId = null;
+                            _currentTab = AppTab.casStorage;
                           });
                         },
                         onTabSelected: (tab) {

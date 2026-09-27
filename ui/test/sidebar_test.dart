@@ -25,6 +25,10 @@ Widget _buildSidebarTest({
   VoidCallback? onTagsHeaderSelected,
   bool defaultPlaylistsExpanded = true,
   bool defaultTagsExpanded = true,
+  CasTab selectedCasTab = CasTab.storageOverview,
+  ValueChanged<CasTab>? onCasSubTabSelected,
+  VoidCallback? onCasHeaderSelected,
+  bool defaultCasExpanded = true,
   ThemeMode themeMode = ThemeMode.dark,
   ValueNotifier<ThemeMode>? themeNotifier,
 }) {
@@ -70,6 +74,10 @@ Widget _buildSidebarTest({
                 onTagsHeaderSelected: onTagsHeaderSelected,
                 defaultPlaylistsExpanded: defaultPlaylistsExpanded,
                 defaultTagsExpanded: defaultTagsExpanded,
+                selectedCasTab: selectedCasTab,
+                onCasSubTabSelected: onCasSubTabSelected,
+                onCasHeaderSelected: onCasHeaderSelected,
+                defaultCasExpanded: defaultCasExpanded,
               ),
             ),
           ),
@@ -130,9 +138,60 @@ void main() {
 
     // System items
     expect(find.text('CAS Storage'), findsOneWidget);
+    expect(find.text('Storage Overview'), findsOneWidget);
+    expect(find.text('Database Explorer'), findsOneWidget);
+    expect(find.text('Engine Settings'), findsOneWidget);
     expect(find.text('Settings'), findsOneWidget);
     expect(find.text('Collapse'), findsNothing);
   });
+
+  testWidgets(
+    'LyraSidebar CAS Storage section is expandable, collapsible, and selects sub-tabs cleanly',
+    (tester) async {
+      tester.view.physicalSize = const Size(1280, 800);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+
+      CasTab? selectedCasTab;
+      AppTab? selectedAppTab;
+
+      await tester.pumpWidget(
+        _buildSidebarTest(
+          onCasSubTabSelected: (tab) => selectedCasTab = tab,
+          onTabSelected: (tab) => selectedAppTab = tab,
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      // Initially expanded
+      expect(find.text('Storage Overview'), findsOneWidget);
+      expect(find.text('Database Explorer'), findsOneWidget);
+      expect(find.text('Engine Settings'), findsOneWidget);
+
+      // Collapse CAS Storage section
+      await tester.tap(find.byKey(const Key('cas_header_chevron')));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Storage Overview'), findsNothing);
+      expect(find.text('Database Explorer'), findsNothing);
+      expect(find.text('Engine Settings'), findsNothing);
+
+      // Re-expand CAS Storage section
+      await tester.tap(find.byKey(const Key('cas_header_chevron')));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Storage Overview'), findsOneWidget);
+      expect(find.text('Database Explorer'), findsOneWidget);
+      expect(find.text('Engine Settings'), findsOneWidget);
+
+      // Tap Database Explorer sub-item
+      await tester.tap(find.text('Database Explorer'));
+      await tester.pumpAndSettle();
+
+      expect(selectedCasTab, equals(CasTab.databaseExplorer));
+      expect(selectedAppTab, equals(AppTab.casStorage));
+    },
+  );
 
   testWidgets(
     'LyraSidebar Playlists and Tags sections are expandable and collapsible',
