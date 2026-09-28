@@ -19,6 +19,7 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 *   **No Wholesale Pass-Through (禁止直通轉發):** The primary orchestrator must never forward user requests wholesale to subagents without structural analysis, scope definition, and task decomposition.
 *   **Dependency Analysis (任務相依性與順序分析):** Before delegating work, the orchestrator must analyze dependencies between subtasks to establish whether they must proceed sequentially or can run concurrently.
 *   **Single-Responsibility Subtasks (單一職責子任務):** Break down broad features or modifications into discrete, single-responsibility subtasks with crisp acceptance criteria.
+*   **UI Delegation with Apple HIG (UI 任務派工 Apple HIG 要求):** When delegating UI design, component refactoring, or view implementation tasks to subagents, the orchestrator MUST explicitly instruct the subagent to consult the `apple-design` skill (`/home/ryan/.gemini/config/skills/apple-design/SKILL.md`) and enforce Apple HIG and project design standards in its acceptance criteria.
 *   **Sequential Gating Workflow (循序閘門控制):** When tasks involve sequential deliverables or cross-dependencies (e.g., "first modify/commit A, then implement B"):
     1. Dispatch a subagent to address subtask A.
     2. Receive subagent report, synthesize progress, and propose a draft commit message for A.
@@ -46,6 +47,12 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 
 ## 4. Engineering & Implementation Standards Reference
 *   **Implementation Standards Authority:** All concrete C++ engineering rules (including CMake source registration and code formatting), Flutter UI modular design system standards (facade contracts, semantic tokens, layout safety, controller lifecycle, and elimination of redundant status badges), and test suite execution workflows MUST strictly adhere to .agents/AGENTS.md
+*   **Apple HIG Prerequisite for UI Tasks (UI 設計前置 Apple HIG 準則):** Whenever requested to perform UI design, review, or implementation work (including screen layouts, navigation hierarchy, typography, interactive states, or feedback micro-interactions), the agent MUST proactively consult and review the `apple-design` skill (`/home/ryan/.gemini/config/skills/apple-design/SKILL.md`) first. The design must adhere to Apple Human Interface Guidelines and project standards:
+    *   *Quiet Defaults & Zero AI-Clutter:* Strictly prohibit vanity status badges for normal states (e.g., "Verified", "100% Bit-Perfect"). Normal items must remain visually quiet; highlight only warnings, errors, or destructive states.
+    *   *Concise Header Typography:* Keep view titles minimal without redundant explanatory subtitles. Use Title Case for all table column headers.
+    *   *Hierarchical Navigation:* Anchor primary and secondary sections in the left sidebar hierarchy rather than cluttering content headers with redundant top-level tabs. Keep maintenance and destructive operations in dedicated settings views.
+    *   *Decoupled Interactions:* Secondary inline actions (such as copying a hash, downloading, or toggling) must never trigger row selection, navigation, or inspector drawer switching.
+    *   *Focal Point Feedback & Motion Smoothness:* Interaction feedback must transform in-place where the user is looking (e.g. within active tooltips). Maintain fixed geometry (`height: 28.0`) across state toggles to prevent vertical layout shifts, and use smooth curves (`Curves.easeInOutCubic`) with transitional animations (`AnimatedSize`, `AnimatedSwitcher`, `AnimatedContainer`).
 *   **Core Architectural Principles:**
     *   *Strict Server-Side Authority:* Critical identifiers and validation logic belong entirely to the core engine; client inputs are untrusted.
     *   *Root-Cause First (No Bandaid Patching):* Strictly prohibit symptom-level masking fixes when queries or relational lookups yield unexpected results. Resolve underlying data or query issues directly.
