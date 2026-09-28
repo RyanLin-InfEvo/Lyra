@@ -1,4 +1,7 @@
 {
     "markdown.validate.enabled": true,
-    "cmake.sourceDirectory": "${workspaceFolder}/core"
+    "cmake.sourceDirectory": "${workspaceFolder}/core",
+    "cmake.configureOnOpen": false,
+    "cmake.autoSelectActiveFolder": false,
+    "C_Cpp.intelliSenseEngine": "disabled"
 }
