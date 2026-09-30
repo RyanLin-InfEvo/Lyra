@@ -2399,12 +2399,8 @@ void main() {
         await tester.tap(find.text('Database Explorer'));
         await tester.pumpAndSettle();
 
-        expect(
-          find.text(
-            'SQLite database health status, WAL checkpoints, and table statistics.',
-          ),
-          findsOneWidget,
-        );
+        expect(find.byType(DatabaseExplorerTab), findsOneWidget);
+        expect(find.text('Database Health Status'), findsOneWidget);
         expect(find.text('Integrity Hash'), findsNothing);
 
         // 3. Click 'Engine Settings' sub-item in sidebar

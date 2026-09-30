@@ -13,10 +13,15 @@ import '../../design_system/widgets/lyra_card.dart';
 import '../../design_system/widgets/lyra_dialog.dart';
 import '../models/cas_object.dart';
 import 'controllers/cas_controller.dart';
+import 'controllers/database_explorer_controller.dart';
 import 'widgets/cas_storage_tab.dart';
+import 'widgets/database_explorer_tab.dart';
 
 export 'controllers/cas_controller.dart';
+export 'controllers/database_explorer_controller.dart';
+export 'models/database_stats.dart';
 export 'widgets/cas_storage_tab.dart';
+export 'widgets/database_explorer_tab.dart';
 
 /// Top-level workbench view for Content Addressable Storage, SQLite explorer, and backend settings.
 class CasView extends StatefulWidget {
@@ -24,6 +29,7 @@ class CasView extends StatefulWidget {
   final VoidCallback? onVerifyAll;
   final ValueChanged<CasObject>? onInspectAsset;
   final CasController? controller;
+  final DatabaseExplorerController? dbController;
   final CasTab? activeTab;
   final ValueChanged<CasTab>? onTabChanged;
 
@@ -33,6 +39,7 @@ class CasView extends StatefulWidget {
     this.onVerifyAll,
     this.onInspectAsset,
     this.controller,
+    this.dbController,
     this.activeTab,
     this.onTabChanged,
   });
@@ -43,11 +50,15 @@ class CasView extends StatefulWidget {
 
 class _CasViewState extends State<CasView> {
   CasController? _internalController;
+  DatabaseExplorerController? _internalDbController;
   bool _showPruneDialog = false;
   bool _showClearWaveformsDialog = false;
 
   CasController get _effectiveController =>
       widget.controller ?? _internalController!;
+
+  DatabaseExplorerController get _effectiveDbController =>
+      widget.dbController ?? _internalDbController!;
 
   @override
   void initState() {
@@ -59,6 +70,10 @@ class _CasViewState extends State<CasView> {
       );
     } else if (widget.activeTab != null) {
       widget.controller!.setTab(widget.activeTab!);
+    }
+
+    if (widget.dbController == null) {
+      _internalDbController = DatabaseExplorerController();
     }
   }
 
@@ -82,11 +97,19 @@ class _CasViewState extends State<CasView> {
       _internalController!.dispose();
       _internalController = null;
     }
+
+    if (widget.dbController == null) {
+      _internalDbController ??= DatabaseExplorerController();
+    } else if (_internalDbController != null) {
+      _internalDbController!.dispose();
+      _internalDbController = null;
+    }
   }
 
   @override
   void dispose() {
     _internalController?.dispose();
+    _internalDbController?.dispose();
     super.dispose();
   }
 
@@ -98,6 +121,12 @@ class _CasViewState extends State<CasView> {
     return ListenableBuilder(
       listenable: controller,
       builder: (context, _) {
+        final title = switch (controller.activeTab) {
+          CasTab.storageOverview => 'CAS Storage',
+          CasTab.databaseExplorer => 'Database Explorer',
+          CasTab.backendSettings => 'Engine Settings',
+        };
+
         return Stack(
           children: [
             Column(
@@ -110,7 +139,7 @@ class _CasViewState extends State<CasView> {
                     vertical: LyraSpacing.lg,
                   ),
                   child: Text(
-                    'CAS Storage',
+                    title,
                     style: LyraTypography.h2(tokens),
                     overflow: TextOverflow.ellipsis,
                   ),
@@ -124,8 +153,9 @@ class _CasViewState extends State<CasView> {
                       onInspectAsset: widget.onInspectAsset,
                       onVerifyAll: widget.onVerifyAll,
                     ),
-                    CasTab.databaseExplorer =>
-                      _buildDatabaseExplorerPlaceholder(tokens),
+                    CasTab.databaseExplorer => DatabaseExplorerTab(
+                      controller: _effectiveDbController,
+                    ),
                     CasTab.backendSettings => _buildEngineSettingsPlaceholder(
                       tokens,
                       controller,
@@ -214,31 +244,6 @@ class _CasViewState extends State<CasView> {
               child: const Text('Clear Cache'),
             ),
           ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildDatabaseExplorerPlaceholder(LyraThemeTokens tokens) {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(LyraSpacing.xl),
-        child: LyraCard(
-          padding: const EdgeInsets.all(LyraSpacing.xxl),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(LucideIcons.database, size: 36.0, color: tokens.textMuted),
-              const SizedBox(height: LyraSpacing.md),
-              Text('Database Explorer', style: LyraTypography.h3(tokens)),
-              const SizedBox(height: LyraSpacing.xs),
-              Text(
-                'SQLite database health status, WAL checkpoints, and table statistics.',
-                style: LyraTypography.muted(tokens),
-                textAlign: TextAlign.center,
-              ),
-            ],
-          ),
         ),
       ),
     );

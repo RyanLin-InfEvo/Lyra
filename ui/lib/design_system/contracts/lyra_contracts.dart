@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: 2026 Tzu-Ting Lin
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+export '../widgets/lyra_select.dart' show LyraSelect, LyraSelectItem;
+
 /// Button styling variants supported by the Lyra Design System.
 enum LyraButtonVariant { primary, secondary, outline, ghost, destructive, link }
 

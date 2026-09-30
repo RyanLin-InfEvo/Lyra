@@ -19,6 +19,7 @@ Widget _buildCasViewTest({
   VoidCallback? onVerifyAll,
   ValueChanged<CasObject>? onInspectAsset,
   CasController? controller,
+  DatabaseExplorerController? dbController,
   ValueNotifier<ThemeMode>? themeNotifier,
 }) {
   final themeModeNotifier =
@@ -73,6 +74,7 @@ Widget _buildCasViewTest({
                 onVerifyAll: onVerifyAll,
                 onInspectAsset: onInspectAsset,
                 controller: controller,
+                dbController: dbController,
               ),
             ),
           ),
@@ -175,24 +177,24 @@ void main() {
       await tester.pumpAndSettle();
 
       // Initially on Storage Overview
+      expect(find.text('CAS Storage'), findsOneWidget);
       expect(find.text('Integrity Hash'), findsOneWidget);
 
       // Switch to Database Explorer
       controller.setTab(CasTab.databaseExplorer);
       await tester.pumpAndSettle();
 
-      expect(
-        find.text(
-          'SQLite database health status, WAL checkpoints, and table statistics.',
-        ),
-        findsOneWidget,
-      );
+      expect(find.text('Database Explorer'), findsOneWidget);
+      expect(find.byType(DatabaseExplorerTab), findsOneWidget);
+      expect(find.text('Database Health Status'), findsOneWidget);
+      expect(find.text('SQLite Data Browser'), findsOneWidget);
       expect(find.text('Integrity Hash'), findsNothing);
 
       // Switch to Backend Engine Settings
       controller.setTab(CasTab.backendSettings);
       await tester.pumpAndSettle();
 
+      expect(find.text('Engine Settings'), findsOneWidget);
       expect(
         find.text(
           'Audio hardware buffers, exclusive mode, database tuning, and ingestion pipeline.',
@@ -208,6 +210,7 @@ void main() {
       controller.setTab(CasTab.storageOverview);
       await tester.pumpAndSettle();
 
+      expect(find.text('CAS Storage'), findsOneWidget);
       expect(find.text('Integrity Hash'), findsOneWidget);
     });
 
