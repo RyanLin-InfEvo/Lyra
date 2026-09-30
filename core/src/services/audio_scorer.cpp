@@ -85,7 +85,7 @@ ScoredAudioVersion AudioScorer::score_candidate_version(
     ScoredAudioVersion version;
     version.pcm_hash = audio.pcm_hash;
     version.format = qinfo.format;
-    version.quality_score = apply_lossless_bonus ? score : qinfo.quality_score;
+    version.quality_score = qinfo.quality_score;
     version.ranking_score = score;
     version.is_lossless = qinfo.is_lossless;
     version.file_size = qinfo.file_size;

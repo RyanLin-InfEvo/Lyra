@@ -39,6 +39,7 @@ class WorkController;
 class AudioEngine;
 class IngestionService;
 class CoverArtService;
+class PlaybackService;
 struct CoverResolutionResult;
 
 class Router {
@@ -49,6 +50,7 @@ class Router {
     json route(const json &request);
     void set_event_callback(std::function<void(const std::string &)> callback);
     AudioEngine &get_audio_engine();
+    PlaybackService &get_playback_service();
 
   private:
     void init_handlers();
@@ -150,6 +152,7 @@ class Router {
     std::unique_ptr<AudioEngine> m_audio_engine;
     std::unique_ptr<IngestionService> m_ingestion_service;
     std::unique_ptr<CoverArtService> m_cover_art_service;
+    std::unique_ptr<PlaybackService> m_playback_service;
 
     // Handler Mapping
     using Handler = std::function<json(const json &)>;

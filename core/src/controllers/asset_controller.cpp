@@ -13,8 +13,6 @@
 #include <vector>
 
 #include "../models/asset.h"
-#include "../services/audio_scorer.h"
-#include "../utils/audio_helper.h"
 #include "../utils/storage_helper.h"
 
 namespace lyra {
@@ -67,35 +65,6 @@ tl::expected<std::vector<std::string>, std::string> AssetController::get_assets_
 
 tl::expected<std::vector<Asset>, std::string> AssetController::get_assets_by_pcm(const std::string &pcm_hash) {
     return m_repo.get_assets_by_pcm(pcm_hash);
-}
-
-tl::expected<ResolvedAsset, std::string> AssetController::resolve_best_audio_asset(
-    const std::string &pcm_hash,
-    const std::optional<std::string> &preferred_format,
-    const std::optional<Audio> &audio_entity) {
-    auto assets_res = m_repo.get_assets_by_pcm(pcm_hash);
-    if (!assets_res || assets_res->empty()) {
-        return tl::unexpected("No assets found for audio: " + pcm_hash);
-    }
-
-    Audio audio;
-    if (audio_entity.has_value()) {
-        audio = *audio_entity;
-    } else {
-        audio.pcm_hash = pcm_hash;
-    }
-
-    auto candidates = AudioScorer::score_and_sort_candidate_assets(audio, *assets_res, preferred_format);
-
-    for (const auto &candidate : candidates) {
-        auto path_res = resolve_file_path(candidate.asset.file_hash);
-        if (path_res && std::filesystem::exists(*path_res)) {
-            return ResolvedAsset{candidate.asset, *path_res};
-        }
-        std::cerr << "[WARN] CAS physical file missing for asset: " << candidate.asset.file_hash << std::endl;
-    }
-
-    return tl::unexpected("Asset not found on disk");
 }
 
 } // namespace lyra

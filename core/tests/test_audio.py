@@ -3,6 +3,7 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 
 import os
+import shutil
 import sqlite3
 import subprocess
 import sys
@@ -1222,6 +1223,177 @@ class TestAudioController(BaseLyraTestCase):
         res_pinned_exists = self.dispatch("GetResourcePath", {"file_hash": hash2})
         self.assertResponseCode(res_pinned_exists, 200)
         self.assertEqual(res_pinned_exists["data"]["path"], hash2_file)
+
+    def test_pin_version_in_get_resource_path_and_queue_next(self):
+        """Test that pin_version is respected by both GetResourcePath and audio.queue_next."""
+        # 1. Master Audio (24-bit 96kHz)
+        pcm_master = "pcm-pin-test-master-96k"
+        file_master = "a" * 64
+        res_m = self.dispatch("CreateAudio", {
+            "pcm_hash": pcm_master,
+            "sample_rate": 96000,
+            "bit_depth": 24,
+            "channels": 2,
+            "duration": 60.0
+        })
+        self.assertResponseCode(res_m, 201)
+
+        wav_master = self._generate_wav_file("pin_master.wav", 1.0, freq=440.0)
+        wav_sec = self._generate_wav_file("pin_sec.wav", 1.0, freq=880.0)
+
+        m_dir = os.path.join(self.test_db_dir, "objects", file_master[:2], file_master[2:4])
+        os.makedirs(m_dir, exist_ok=True)
+        m_path = os.path.join(m_dir, f"{file_master}.wav")
+        shutil.copyfile(wav_master, m_path)
+
+        self.dispatch("CreateAsset", {
+            "file_hash": file_master,
+            "pcm_hash": pcm_master,
+            "mime_type": "audio/wav",
+            "asset_type": "audio",
+            "file_size": os.path.getsize(m_path)
+        })
+
+        # 2. Secondary Audio (16-bit 44.1kHz, parent -> master)
+        pcm_sec = "pcm-pin-test-sec-44k"
+        file_sec = "b" * 64
+        res_s = self.dispatch("CreateAudio", {
+            "pcm_hash": pcm_sec,
+            "parent_hash": pcm_master,
+            "sample_rate": 44100,
+            "bit_depth": 16,
+            "channels": 2,
+            "duration": 60.0
+        })
+        self.assertResponseCode(res_s, 201)
+
+        s_dir = os.path.join(self.test_db_dir, "objects", file_sec[:2], file_sec[2:4])
+        os.makedirs(s_dir, exist_ok=True)
+        s_path = os.path.join(s_dir, f"{file_sec}.wav")
+        shutil.copyfile(wav_sec, s_path)
+
+        self.dispatch("CreateAsset", {
+            "file_hash": file_sec,
+            "pcm_hash": pcm_sec,
+            "mime_type": "audio/wav",
+            "asset_type": "audio",
+            "file_size": os.path.getsize(s_path)
+        })
+
+        # 3. Track referencing the secondary audio
+        res_track = self.dispatch("CreateTrack", {
+            "title": "Pin Version Test Track",
+            "pcm_hash": pcm_sec
+        })
+        self.assertResponseCode(res_track, 201)
+        track_id = res_track["data"]["id"]
+
+        # 4. GetResourcePath without pin_version -> resolves to master
+        res_unpinned_path = self.dispatch("GetResourcePath", {"track_id": track_id})
+        self.assertResponseCode(res_unpinned_path, 200)
+        self.assertEqual(res_unpinned_path["data"]["path"], m_path)
+
+        # 5. GetResourcePath with pin_version: True -> resolves to pinned secondary
+        res_pinned_path = self.dispatch("GetResourcePath", {"track_id": track_id, "pin_version": True})
+        self.assertResponseCode(res_pinned_path, 200)
+        self.assertEqual(res_pinned_path["data"]["path"], s_path)
+
+        # 6. audio.queue_next without pin_version -> preloads master
+        res_unpinned_queue = self.dispatch("audio.queue_next", {"track_id": track_id})
+        self.assertResponseCode(res_unpinned_queue, 200)
+        self.assertEqual(res_unpinned_queue["data"]["next_file_path"], m_path)
+
+        # 7. audio.queue_next with pin_version: True -> preloads secondary
+        res_pinned_queue = self.dispatch("audio.queue_next", {"track_id": track_id, "pin_version": True})
+        self.assertResponseCode(res_pinned_queue, 200)
+        self.assertEqual(res_pinned_queue["data"]["next_file_path"], s_path)
+
+        # 8. audio.play without pin_version -> plays master
+        res_unpinned_play = self.dispatch("audio.play", {"track_id": track_id})
+        self.assertResponseCode(res_unpinned_play, 200)
+        self.assertEqual(res_unpinned_play["data"]["file_path"], m_path)
+        self.dispatch("audio.stop", {})
+
+        # 9. audio.play with pin_version: True -> plays secondary
+        res_pinned_play = self.dispatch("audio.play", {"track_id": track_id, "pin_version": True})
+        self.assertResponseCode(res_pinned_play, 200)
+        self.assertEqual(res_pinned_play["data"]["file_path"], s_path)
+        self.dispatch("audio.stop", {})
+
+    def test_audio_queue_next_invalid_or_null_parameters(self):
+        """Test audio.queue_next with null or invalid parameters returns 400 error and does not pass through."""
+        # 1. Null track_id
+        res = self.dispatch("audio.queue_next", {"track_id": None})
+        self.assertResponseCode(res, 400)
+        self.assertEqual(res["error"]["type"], "MissingParameter")
+
+        # 2. Null pcm_hash
+        res = self.dispatch("audio.queue_next", {"pcm_hash": None})
+        self.assertResponseCode(res, 400)
+        self.assertEqual(res["error"]["type"], "MissingParameter")
+
+        # 3. Null file_hash
+        res = self.dispatch("audio.queue_next", {"file_hash": None})
+        self.assertResponseCode(res, 400)
+        self.assertEqual(res["error"]["type"], "MissingParameter")
+
+        # 4. Null aliases (id, audio_id, asset_id)
+        res = self.dispatch("audio.queue_next", {"id": None})
+        self.assertResponseCode(res, 400)
+        self.assertEqual(res["error"]["type"], "MissingParameter")
+
+        res = self.dispatch("audio.queue_next", {"audio_id": None})
+        self.assertResponseCode(res, 400)
+        self.assertEqual(res["error"]["type"], "MissingParameter")
+
+        res = self.dispatch("audio.queue_next", {"asset_id": None})
+        self.assertResponseCode(res, 400)
+        self.assertEqual(res["error"]["type"], "MissingParameter")
+
+        # 5. Non-string types
+        res = self.dispatch("audio.queue_next", {"track_id": 12345})
+        self.assertResponseCode(res, 400)
+        self.assertEqual(res["error"]["type"], "InvalidValue")
+
+        res = self.dispatch("audio.queue_next", {"pcm_hash": True})
+        self.assertResponseCode(res, 400)
+        self.assertEqual(res["error"]["type"], "InvalidValue")
+
+        res = self.dispatch("audio.queue_next", {"file_path": 12345})
+        self.assertResponseCode(res, 400)
+        self.assertEqual(res["error"]["type"], "InvalidValue")
+
+        # 6. Empty strings
+        res = self.dispatch("audio.queue_next", {"track_id": ""})
+        self.assertResponseCode(res, 400)
+        self.assertEqual(res["error"]["type"], "MissingParameter")
+
+        res = self.dispatch("audio.queue_next", {"pcm_hash": ""})
+        self.assertResponseCode(res, 400)
+        self.assertEqual(res["error"]["type"], "MissingParameter")
+
+        res = self.dispatch("audio.queue_next", {"file_hash": ""})
+        self.assertResponseCode(res, 400)
+        self.assertEqual(res["error"]["type"], "MissingParameter")
+
+        # 7. Unrelated parameter keys
+        res = self.dispatch("audio.queue_next", {"unknown_key": "some_value"})
+        self.assertResponseCode(res, 400)
+        self.assertEqual(res["error"]["type"], "MissingParameter")
+
+    def test_playback_error_code_alignment_and_seam(self):
+        """Test PlaybackErrorCode::InvalidParameter returns 400 InvalidValue and GetResourcePath passes target.type"""
+        # 1. Invalid file_hash format (not 64 hex characters) -> returns 400 InvalidValue (not 404 AssetNotFound)
+        res_invalid_hash = self.dispatch("GetResourcePath", {"file_hash": "not-a-valid-64-hex-hash"})
+        self.assertResponseCode(res_invalid_hash, 400)
+        self.assertEqual(res_invalid_hash["error"]["type"], "InvalidValue")
+
+        # 2. Non-existent pcm_hash -> returns 404 AudioNotFound (not AssetNotFound)
+        res_missing_pcm = self.dispatch("GetResourcePath", {"pcm_hash": "pcm-non-existent-12345"})
+        self.assertResponseCode(res_missing_pcm, 404)
+        self.assertEqual(res_missing_pcm["error"]["type"], "AudioNotFound")
+
+
 
 
 

@@ -85,27 +85,72 @@ void test_4tier_comparator_tiers() {
         ScoredAudioVersion v1;
         v1.pcm_hash = "pcm_1";
         v1.quality_score = 95;
+        v1.ranking_score = 95;
 
         ScoredAudioVersion v2;
         v2.pcm_hash = "pcm_2";
         v2.quality_score = 80;
+        v2.ranking_score = 80;
 
         assert(AudioScorer::compare_audio_versions(v1, v2) == true);
         assert(AudioScorer::compare_audio_versions(v2, v1) == false);
+
+        // Ranking score takes precedence over pure quality_score
+        ScoredAudioVersion v_bonus;
+        v_bonus.pcm_hash = "pcm_bonus";
+        v_bonus.quality_score = 70;   // lower natural quality
+        v_bonus.ranking_score = 1070; // preferred format bonus
+
+        assert(AudioScorer::compare_audio_versions(v_bonus, v1) == true);
+        assert(AudioScorer::compare_audio_versions(v1, v_bonus) == false);
 
         // Tie-break with lossless
         ScoredAudioVersion v_lossless;
         v_lossless.pcm_hash = "pcm_lossless";
         v_lossless.quality_score = 71;
+        v_lossless.ranking_score = 71;
         v_lossless.is_lossless = true;
 
         ScoredAudioVersion v_lossy;
         v_lossy.pcm_hash = "pcm_lossy";
         v_lossy.quality_score = 71;
+        v_lossy.ranking_score = 71;
         v_lossy.is_lossless = false;
 
         assert(AudioScorer::compare_audio_versions(v_lossless, v_lossy) == true);
         assert(AudioScorer::compare_audio_versions(v_lossy, v_lossless) == false);
+
+        // Tie-break with file_size
+        ScoredAudioVersion v_big;
+        v_big.pcm_hash = "pcm_z";
+        v_big.ranking_score = 71;
+        v_big.is_lossless = true;
+        v_big.file_size = 5000;
+
+        ScoredAudioVersion v_small;
+        v_small.pcm_hash = "pcm_a";
+        v_small.ranking_score = 71;
+        v_small.is_lossless = true;
+        v_small.file_size = 3000;
+
+        assert(AudioScorer::compare_audio_versions(v_big, v_small) == true);
+        assert(AudioScorer::compare_audio_versions(v_small, v_big) == false);
+
+        // Tie-break with pcm_hash (identifier ASC)
+        ScoredAudioVersion v_ident_a;
+        v_ident_a.pcm_hash = "aaa";
+        v_ident_a.ranking_score = 71;
+        v_ident_a.is_lossless = true;
+        v_ident_a.file_size = 5000;
+
+        ScoredAudioVersion v_ident_b;
+        v_ident_b.pcm_hash = "bbb";
+        v_ident_b.ranking_score = 71;
+        v_ident_b.is_lossless = true;
+        v_ident_b.file_size = 5000;
+
+        assert(AudioScorer::compare_audio_versions(v_ident_a, v_ident_b) == true);
+        assert(AudioScorer::compare_audio_versions(v_ident_b, v_ident_a) == false);
     }
 
     std::cout << "  ✓ 4-Tier Comparator Tiers passed." << std::endl;
@@ -202,13 +247,22 @@ void test_candidate_audio_version_scoring() {
     assert(sorted_versions.size() == 2);
     assert(sorted_versions[0].pcm_hash == "pcm_root");
     assert(sorted_versions[0].is_master == true);
-    assert(sorted_versions[0].is_lossless == true);
     assert(sorted_versions[0].quality_score == 97);
+    assert(sorted_versions[0].ranking_score == 97);
 
     assert(sorted_versions[1].pcm_hash == "pcm_child");
     assert(sorted_versions[1].is_master == false);
     assert(sorted_versions[1].is_lossless == false);
     assert(sorted_versions[1].quality_score == 68);
+    assert(sorted_versions[1].ranking_score == 68);
+
+    // With preferred format "mp3", child MP3 receives bonus in ranking_score and wins
+    auto sorted_pref = AudioScorer::score_and_sort_candidate_versions(versions, "mp3");
+    assert(sorted_pref.size() == 2);
+    assert(sorted_pref[0].pcm_hash == "pcm_child");
+    assert(sorted_pref[0].is_master == true);
+    assert(sorted_pref[0].quality_score == 68); // natural quality score remains pure!
+    assert(sorted_pref[0].ranking_score == 68 + AudioScorer::PREFERRED_FORMAT_BONUS);
 
     std::cout << "  ✓ Candidate Audio Version Scoring passed." << std::endl;
 }

@@ -386,6 +386,12 @@ bool test_schema_indexes(const std::string &db_path) {
             std::cerr << "test_schema_indexes FAILED: idx_AudioAsset_file_hash index missing\n";
             return false;
         }
+
+        SQLite::Statement query_artist(db, "SELECT COUNT(*) FROM sqlite_master WHERE type = 'index' AND name = 'idx_TrackArtist_artist_id' AND tbl_name = 'Track_Artist';");
+        if (!query_artist.executeStep() || query_artist.getColumn(0).getInt() != 1) {
+            std::cerr << "test_schema_indexes FAILED: idx_TrackArtist_artist_id index missing\n";
+            return false;
+        }
         return true;
     } catch (const std::exception &e) {
         std::cerr << "test_schema_indexes failed with unexpected exception: " << e.what() << "\n";

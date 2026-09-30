@@ -23,6 +23,7 @@
 #include "services/cover_art_service.h"
 #include "services/database_context.h"
 #include "services/ingestion_service.h"
+#include "services/playback_service.h"
 #include "services/repositories/sqlite/sqlite_album_repository.h"
 #include "services/repositories/sqlite/sqlite_artist_repository.h"
 #include "services/repositories/sqlite/sqlite_asset_repository.h"
@@ -44,6 +45,81 @@ namespace lyra {
 
 using json = nlohmann::json;
 using Type = JsonFieldType;
+
+/**
+ * @brief Translates domain-level PlaybackError into JSON-RPC / API Error responses.
+ *
+ * Implements layered boundary defense between core domain errors and HTTP/API error codes:
+ *
+ * 1. **Fail-Fast Parameter Validation (HTTP 400 - ErrorType::InvalidValue):**
+ *    Invalid client parameters (empty identifiers, malformed UUIDs, non-hex hashes, invalid options)
+ *    are immediately mapped to `ErrorType::InvalidValue`. This ensures client protocol errors fail
+ *    fast before any database query or storage lookup is initiated.
+ *
+ * 2. **Missing Resource Boundary Defense (HTTP 404 - Not Found Matrix):**
+ *    When a requested entity does not exist in the database or physical CAS storage, the error is
+ *    mapped to a strongly typed semantic Not Found error corresponding to the target domain entity:
+ *    - DirectFile target: Generic `NotFound`
+ *    - Track target / "Track not found": `ErrorType::TrackNotFound`
+ *    - Audio target / "Audio not found" / NoPlayableAsset: `ErrorType::AudioNotFound`
+ *    - Asset target / CasObjectMissing: `ErrorType::AssetNotFound`
+ *
+ * 3. **Decoder / Engine Execution Errors (HTTP 400 - ErrorType::InvalidValue):**
+ *    If the underlying AudioEngine fails to initialize the decoder (corrupted audio headers,
+ *    unsupported codecs, truncated bitstreams), it maps to `ErrorType::InvalidValue` to indicate
+ *    an unprocessable media resource to the client.
+ */
+static json api_error_from_playback_error(const PlaybackError &err, PlaybackTargetType type) {
+    if (err.code == PlaybackErrorCode::InvalidParameter) {
+        return ApiResponse::error(Error{ErrorType::InvalidValue, err.message});
+    }
+
+    if (type == PlaybackTargetType::DirectFile) {
+        if (err.code == PlaybackErrorCode::EngineError) {
+            return ApiResponse::error(Error{ErrorType::InvalidValue, err.message});
+        }
+        return ApiResponse::error(Error{ErrorType::NotFound, err.message});
+    }
+
+    if (err.message.find("Track not found") != std::string::npos) {
+        return ApiResponse::error(Error{ErrorType::TrackNotFound, err.message});
+    }
+
+    if (type == PlaybackTargetType::Asset) {
+        if (err.code == PlaybackErrorCode::EngineError) {
+            return ApiResponse::error(Error{ErrorType::InvalidValue, err.message});
+        }
+        return ApiResponse::error(Error{ErrorType::AssetNotFound, err.message});
+    }
+
+    switch (err.code) {
+        case PlaybackErrorCode::TargetNotFound: {
+            if (err.message.find("Audio not found") != std::string::npos || type == PlaybackTargetType::Audio) { // TODO: String matching, Fragile!
+                return ApiResponse::error(Error{ErrorType::AudioNotFound, err.message});
+            }
+            if (type == PlaybackTargetType::Track) {
+                return ApiResponse::error(Error{ErrorType::TrackNotFound, err.message});
+            }
+            return ApiResponse::error(Error{ErrorType::AssetNotFound, err.message});
+        }
+        case PlaybackErrorCode::NoPlayableAsset: {
+            return ApiResponse::error(Error{ErrorType::AudioNotFound, err.message});
+        }
+        case PlaybackErrorCode::CasObjectMissing: {
+            return ApiResponse::error(Error{ErrorType::AssetNotFound, err.message});
+        }
+        case PlaybackErrorCode::EngineError: {
+            return ApiResponse::error(Error{ErrorType::InvalidValue, err.message});
+        }
+        case PlaybackErrorCode::InvalidParameter: {
+            return ApiResponse::error(Error{ErrorType::InvalidValue, err.message});
+        }
+        case PlaybackErrorCode::Success:
+        default: {
+            return ApiResponse::error(Error{ErrorType::NotFound, err.message});
+        }
+    }
+}
 
 Router::Router(const std::string &db_path) {
     m_db_context = std::make_unique<SqliteDatabaseContext>(db_path);
@@ -84,6 +160,12 @@ Router::Router(const std::string &db_path) {
         *m_playlist_repo,
         *m_asset_repo,
         m_storage_root);
+    m_playback_service = std::make_unique<PlaybackService>(
+        m_storage_root,
+        *m_audio_engine,
+        *m_track_repo,
+        *m_audio_repo,
+        *m_asset_repo);
 
     init_handlers();
 }
@@ -96,6 +178,10 @@ void Router::set_event_callback(std::function<void(const std::string &)> callbac
 
 AudioEngine &Router::get_audio_engine() {
     return *m_audio_engine;
+}
+
+PlaybackService &Router::get_playback_service() {
+    return *m_playback_service;
 }
 
 void Router::init_handlers() {
@@ -236,80 +322,6 @@ tl::expected<PaginationParams, json> parse_pagination(const json &params) {
     }
 
     return PaginationParams{offset, limit, search};
-}
-
-tl::expected<ResolvedAsset, json> resolveAudioAsset(
-    const json &params,
-    TrackController &track_controller,
-    AudioController &audio_controller,
-    AssetController &asset_controller) {
-    if (params.contains("file_hash") && !params["file_hash"].is_null()) {
-        if (!params["file_hash"].is_string()) {
-            return tl::unexpected(ApiResponse::error({ErrorType::InvalidValue, "file_hash must be a string"}));
-        }
-        std::string file_hash = params["file_hash"].get<std::string>();
-        if (file_hash.empty()) {
-            return tl::unexpected(ApiResponse::error({ErrorType::MissingParameter, "file_hash cannot be empty"}));
-        }
-        auto asset_res = asset_controller.get(file_hash);
-        if (!asset_res) {
-            return tl::unexpected(ApiResponse::error({ErrorType::AssetNotFound, asset_res.error()}));
-        }
-        auto path_res = asset_controller.resolve_file_path(file_hash);
-        if (!path_res) {
-            return tl::unexpected(ApiResponse::error({ErrorType::AssetNotFound, path_res.error()}));
-        }
-        if (!std::filesystem::exists(*path_res)) {
-            return tl::unexpected(ApiResponse::error({ErrorType::AssetNotFound, "Asset file not found in storage: " + file_hash}));
-        }
-        return ResolvedAsset{*asset_res, *path_res};
-    }
-
-    std::optional<std::string> preferred_format;
-    if (params.contains("preferred_format") && !params["preferred_format"].is_null() && params["preferred_format"].is_string()) {
-        preferred_format = params["preferred_format"].get<std::string>();
-    } else if (params.contains("format") && !params["format"].is_null() && params["format"].is_string()) {
-        preferred_format = params["format"].get<std::string>();
-    }
-
-    std::string pcm_hash;
-    if (params.contains("track_id") && !params["track_id"].is_null()) {
-        if (!params["track_id"].is_string()) {
-            return tl::unexpected(ApiResponse::error({ErrorType::InvalidValue, "track_id must be a string"}));
-        }
-        std::string track_id = params["track_id"].get<std::string>();
-        if (track_id.empty()) {
-            return tl::unexpected(ApiResponse::error({ErrorType::MissingParameter, "track_id cannot be empty"}));
-        }
-        auto track_res = track_controller.get(track_id);
-        if (!track_res) {
-            return tl::unexpected(ApiResponse::error({ErrorType::TrackNotFound, track_res.error()}));
-        }
-        pcm_hash = track_res.value().pcm_hash;
-        if (pcm_hash.empty()) {
-            return tl::unexpected(ApiResponse::error({ErrorType::AudioNotFound, "Track has no associated audio"}));
-        }
-    } else if (params.contains("pcm_hash") && !params["pcm_hash"].is_null()) {
-        if (!params["pcm_hash"].is_string()) {
-            return tl::unexpected(ApiResponse::error({ErrorType::InvalidValue, "pcm_hash must be a string"}));
-        }
-        pcm_hash = params["pcm_hash"].get<std::string>();
-        if (pcm_hash.empty()) {
-            return tl::unexpected(ApiResponse::error({ErrorType::MissingParameter, "pcm_hash cannot be empty"}));
-        }
-    } else {
-        return tl::unexpected(ApiResponse::error({ErrorType::MissingParameter, "Must provide track_id, pcm_hash, or file_hash"}));
-    }
-
-    auto audio_res = audio_controller.get(pcm_hash);
-    std::optional<Audio> audio_entity = audio_res ? std::make_optional(*audio_res) : std::nullopt;
-
-    auto best_res = asset_controller.resolve_best_audio_asset(pcm_hash, preferred_format, audio_entity);
-    if (!best_res) {
-        return tl::unexpected(ApiResponse::error({ErrorType::AssetNotFound, best_res.error()}));
-    }
-
-    return best_res.value();
 }
 
 } // namespace
@@ -654,22 +666,84 @@ json Router::handleIngestAsset(const json &params) {
     return ApiResponse::error({ErrorType::InvalidValue, res.error()});
 }
 
+/**
+ * @brief Handles 'GetResourcePath' to resolve the physical disk file path of an audio resource.
+ *
+ * Implements polymorphic Target resolution and fail-fast defensive parameter validation:
+ * 1. Schema Validation:
+ *    Enforces UUID format if track_id is present, and validates expected data types.
+ * 2. Option Extraction:
+ *    Parses `pin_version` (controls Star Topology arbitration vs pinned PCM playback)
+ *    and format preference (`preferred_format` or legacy `format`).
+ * 3. Polymorphic Target Extraction & Boundary Defense:
+ *    Inspects parameters in priority order (`file_hash` -> Asset, `track_id` -> Track, `pcm_hash` -> Audio).
+ *    Explicitly validates non-nullity, string type, and non-emptiness. Rejecting null or empty
+ *    strings prevents silent fallthroughs or database scans against uninitialized keys.
+ * 4. Resolution & Error Mapping:
+ *    Delegates resolution to `PlaybackService::resolve` and maps domain errors to API status codes
+ *    via `api_error_from_playback_error`.
+ */
 json Router::handleGetResourcePath(const json &params) {
     auto err = JsonValidator::validate(params, {{"track_id", Type::String, false, StringFormat::UUID},
                                                 {"file_hash", Type::String, false},
                                                 {"pcm_hash", Type::String, false},
                                                 {"preferred_format", Type::String, false},
-                                                {"format", Type::String, false}});
+                                                {"format", Type::String, false},
+                                                {"pin_version", Type::Boolean, false}});
     if (err) return *err;
 
-    auto resolved_res = resolveAudioAsset(params, *m_track_controller, *m_audio_controller, *m_asset_controller);
+    PlaybackTarget target;
+    PlaybackOptions options;
+
+    if (params.contains("pin_version") && params["pin_version"].is_boolean()) {
+        options.pin_version = params["pin_version"].get<bool>();
+    }
+
+    if (params.contains("preferred_format") && !params["preferred_format"].is_null() && params["preferred_format"].is_string()) {
+        options.preferred_format = params["preferred_format"].get<std::string>();
+    } else if (params.contains("format") && !params["format"].is_null() && params["format"].is_string()) {
+        options.preferred_format = params["format"].get<std::string>();
+    }
+
+    if (params.contains("file_hash") && !params["file_hash"].is_null()) {
+        if (!params["file_hash"].is_string()) {
+            return ApiResponse::error({ErrorType::InvalidValue, "file_hash must be a string"});
+        }
+        std::string file_hash = params["file_hash"].get<std::string>();
+        if (file_hash.empty()) {
+            return ApiResponse::error({ErrorType::MissingParameter, "file_hash cannot be empty"});
+        }
+        target = PlaybackTarget::from_asset(file_hash);
+    } else if (params.contains("track_id") && !params["track_id"].is_null()) {
+        if (!params["track_id"].is_string()) {
+            return ApiResponse::error({ErrorType::InvalidValue, "track_id must be a string"});
+        }
+        std::string track_id = params["track_id"].get<std::string>();
+        if (track_id.empty()) {
+            return ApiResponse::error({ErrorType::MissingParameter, "track_id cannot be empty"});
+        }
+        target = PlaybackTarget::from_track(track_id);
+    } else if (params.contains("pcm_hash") && !params["pcm_hash"].is_null()) {
+        if (!params["pcm_hash"].is_string()) {
+            return ApiResponse::error({ErrorType::InvalidValue, "pcm_hash must be a string"});
+        }
+        std::string pcm_hash = params["pcm_hash"].get<std::string>();
+        if (pcm_hash.empty()) {
+            return ApiResponse::error({ErrorType::MissingParameter, "pcm_hash cannot be empty"});
+        }
+        target = PlaybackTarget::from_audio(pcm_hash);
+    } else {
+        return ApiResponse::error({ErrorType::MissingParameter, "Must provide track_id, pcm_hash, or file_hash"});
+    }
+
+    auto resolved_res = m_playback_service->resolve(target, options);
     if (!resolved_res) {
-        return resolved_res.error();
+        return api_error_from_playback_error(resolved_res.error(), target.type);
     }
 
     json response_data;
     response_data["path"] = resolved_res->file_path;
-    response_data["mime_type"] = resolved_res->asset.mime_type;
+    response_data["mime_type"] = resolved_res->mime_type;
 
     return ApiResponse::success(response_data);
 }
@@ -1174,12 +1248,37 @@ json Router::handleGetTrackCover(const json &params) {
 
 json Router::handleAudioPlay(const json &p) {
     // Play a file_path, track_id, id, asset_id, or audio_id
-    std::string file_path;
-    if (p.contains("file_path") && !p["file_path"].is_null() && p["file_path"].is_string()) {
-        file_path = p["file_path"].get<std::string>();
+    PlaybackTarget target;
+    PlaybackOptions options;
+
+    if (p.contains("start_position") && p["start_position"].is_number()) {
+        options.start_position_seconds = p["start_position"].get<double>();
+    } else if (p.contains("start_position_seconds") && p["start_position_seconds"].is_number()) {
+        options.start_position_seconds = p["start_position_seconds"].get<double>();
+    }
+
+    if (p.contains("preferred_format") && !p["preferred_format"].is_null() && p["preferred_format"].is_string()) {
+        options.preferred_format = p["preferred_format"].get<std::string>();
+    } else if (p.contains("format") && !p["format"].is_null() && p["format"].is_string()) {
+        options.preferred_format = p["format"].get<std::string>();
+    }
+
+    if (p.contains("pin_version") && p["pin_version"].is_boolean()) {
+        options.pin_version = p["pin_version"].get<bool>();
+    }
+
+    if (p.contains("file_path") && !p["file_path"].is_null()) {
+        if (!p["file_path"].is_string()) {
+            return ApiResponse::error(Error{ErrorType::InvalidValue, "file_path must be a string"});
+        }
+        std::string file_path = p["file_path"].get<std::string>();
+        if (file_path.empty()) {
+            return ApiResponse::error(Error{ErrorType::MissingParameter, "file_path cannot be empty"});
+        }
         if (!std::filesystem::exists(file_path)) {
             return ApiResponse::error(Error{ErrorType::NotFound, "Audio file does not exist on disk: " + file_path});
         }
+        target = PlaybackTarget::from_file(file_path);
     } else {
         json params = p;
         if (!params.contains("track_id") && params.contains("id") && !params["id"].is_null()) {
@@ -1192,41 +1291,56 @@ json Router::handleAudioPlay(const json &p) {
             params["file_hash"] = params["asset_id"];
         }
 
-        if (!params.contains("track_id") && !params.contains("pcm_hash") && !params.contains("file_hash")) {
+        if (params.contains("file_hash") && !params["file_hash"].is_null()) {
+            if (!params["file_hash"].is_string()) {
+                return ApiResponse::error({ErrorType::InvalidValue, "file_hash must be a string"});
+            }
+            std::string file_hash = params["file_hash"].get<std::string>();
+            if (file_hash.empty()) {
+                return ApiResponse::error({ErrorType::MissingParameter, "file_hash cannot be empty"});
+            }
+            target = PlaybackTarget::from_asset(file_hash);
+        } else if (params.contains("track_id") && !params["track_id"].is_null()) {
+            if (!params["track_id"].is_string()) {
+                return ApiResponse::error({ErrorType::InvalidValue, "track_id must be a string"});
+            }
+            std::string track_id = params["track_id"].get<std::string>();
+            if (track_id.empty()) {
+                return ApiResponse::error({ErrorType::MissingParameter, "track_id cannot be empty"});
+            }
+            target = PlaybackTarget::from_track(track_id);
+        } else if (params.contains("pcm_hash") && !params["pcm_hash"].is_null()) {
+            if (!params["pcm_hash"].is_string()) {
+                return ApiResponse::error({ErrorType::InvalidValue, "pcm_hash must be a string"});
+            }
+            std::string pcm_hash = params["pcm_hash"].get<std::string>();
+            if (pcm_hash.empty()) {
+                return ApiResponse::error({ErrorType::MissingParameter, "pcm_hash cannot be empty"});
+            }
+            target = PlaybackTarget::from_audio(pcm_hash);
+        } else {
             return ApiResponse::error(Error{ErrorType::MissingParameter, "Missing 'file_path', 'track_id', 'id', 'asset_id', or 'audio_id' parameter"});
         }
-
-        auto resolved_res = resolveAudioAsset(params, *m_track_controller, *m_audio_controller, *m_asset_controller);
-        if (!resolved_res) {
-            return resolved_res.error();
-        }
-        file_path = resolved_res->file_path;
     }
 
-    double start_pos = 0.0;
-    if (p.contains("start_position") && p["start_position"].is_number()) {
-        start_pos = p["start_position"].get<double>();
-    } else if (p.contains("start_position_seconds") && p["start_position_seconds"].is_number()) {
-        start_pos = p["start_position_seconds"].get<double>();
+    auto play_res = m_playback_service->play(target, options);
+    if (!play_res) {
+        return api_error_from_playback_error(play_res.error(), target.type);
     }
 
-    bool success = m_audio_engine->play(file_path, start_pos);
-    if (!success) {
-        return ApiResponse::error(Error{ErrorType::InvalidValue, "Failed to initialize decoder for audio file: " + file_path});
-    }
-    return ApiResponse::success(m_audio_engine->get_state_json());
+    return ApiResponse::success(m_playback_service->get_state_json());
 }
 
 json Router::handleAudioPause(const json &p) {
     (void)p;
-    m_audio_engine->pause();
-    return ApiResponse::success(m_audio_engine->get_state_json());
+    m_playback_service->pause();
+    return ApiResponse::success(m_playback_service->get_state_json());
 }
 
 json Router::handleAudioResume(const json &p) {
     (void)p;
-    m_audio_engine->resume();
-    return ApiResponse::success(m_audio_engine->get_state_json());
+    m_playback_service->resume();
+    return ApiResponse::success(m_playback_service->get_state_json());
 }
 
 json Router::handleAudioSeek(const json &p) {
@@ -1244,14 +1358,14 @@ json Router::handleAudioSeek(const json &p) {
         relative = p["relative"].get<bool>();
     }
 
-    m_audio_engine->seek(pos, relative);
-    return ApiResponse::success(m_audio_engine->get_state_json());
+    m_playback_service->seek(pos, relative);
+    return ApiResponse::success(m_playback_service->get_state_json());
 }
 
 json Router::handleAudioStop(const json &p) {
     (void)p;
-    m_audio_engine->stop();
-    return ApiResponse::success(m_audio_engine->get_state_json());
+    m_playback_service->stop();
+    return ApiResponse::success(m_playback_service->get_state_json());
 }
 
 json Router::handleAudioSetVolume(const json &p) {
@@ -1259,17 +1373,24 @@ json Router::handleAudioSetVolume(const json &p) {
         return ApiResponse::error(Error{ErrorType::MissingParameter, "Missing or invalid 'volume' parameter"});
     }
     float vol = p["volume"].get<float>();
-    m_audio_engine->set_volume(vol);
-    return ApiResponse::success(m_audio_engine->get_state_json());
+    m_playback_service->set_volume(vol);
+    return ApiResponse::success(m_playback_service->get_state_json());
 }
 
 json Router::handleAudioGetState(const json &p) {
     (void)p;
-    return ApiResponse::success(m_audio_engine->get_state_json());
+    return ApiResponse::success(m_playback_service->get_state_json());
 }
 
 json Router::handleAudioCompareVersions(const json &p) {
-    std::vector<Audio> candidate_audios;
+    PlaybackOptions options;
+    if (p.contains("preferred_format") && !p["preferred_format"].is_null() && p["preferred_format"].is_string()) {
+        options.preferred_format = p["preferred_format"].get<std::string>();
+    } else if (p.contains("format") && !p["format"].is_null() && p["format"].is_string()) {
+        options.preferred_format = p["format"].get<std::string>();
+    }
+
+    tl::expected<VersionComparisonResult, PlaybackError> cmp_res;
 
     if (p.contains("track_id") && !p["track_id"].is_null()) {
         if (!p["track_id"].is_string()) {
@@ -1279,18 +1400,7 @@ json Router::handleAudioCompareVersions(const json &p) {
         if (track_id.empty()) {
             return ApiResponse::error({ErrorType::MissingParameter, "track_id cannot be empty"});
         }
-        auto track_res = m_track_controller->get(track_id);
-        if (!track_res) {
-            return ApiResponse::error({ErrorType::TrackNotFound, "Track not found: " + track_id});
-        }
-        if (track_res->pcm_hash.empty()) {
-            return ApiResponse::error({ErrorType::AudioNotFound, "Track has no associated audio"});
-        }
-        auto versions_res = m_audio_controller->get_related_versions(track_res->pcm_hash);
-        if (!versions_res || versions_res->empty()) {
-            return ApiResponse::error({ErrorType::AudioNotFound, "Audio not found: " + track_res->pcm_hash});
-        }
-        candidate_audios = std::move(versions_res.value());
+        cmp_res = m_playback_service->compare_versions(PlaybackTarget::from_track(track_id), options);
     } else if (p.contains("pcm_hashes") && !p["pcm_hashes"].is_null()) {
         if (!p["pcm_hashes"].is_array()) {
             return ApiResponse::error({ErrorType::InvalidValue, "pcm_hashes must be an array"});
@@ -1303,23 +1413,23 @@ json Router::handleAudioCompareVersions(const json &p) {
                 return ApiResponse::error({ErrorType::InvalidValue, "pcm_hashes items must be strings"});
             }
         }
+        std::vector<std::string> hashes;
+        hashes.reserve(p["pcm_hashes"].size());
         for (const auto &item : p["pcm_hashes"]) {
-            std::string hash = item.get<std::string>();
-            auto audio_res = m_audio_controller->get(hash);
-            if (!audio_res) {
-                return ApiResponse::error({ErrorType::AudioNotFound, "Audio not found: " + hash});
-            }
-            candidate_audios.push_back(std::move(audio_res.value()));
+            hashes.push_back(item.get<std::string>());
         }
+        cmp_res = m_playback_service->compare_versions(hashes, options);
     } else {
         return ApiResponse::error({ErrorType::MissingParameter, "Missing 'pcm_hashes' or 'track_id' parameter"});
     }
 
-    auto versions = AudioScorer::score_and_sort_candidate_versions(candidate_audios);
-    std::string recommended_master = versions.empty() ? "" : versions[0].pcm_hash;
+    if (!cmp_res) {
+        PlaybackTargetType target_type = p.contains("track_id") ? PlaybackTargetType::Track : PlaybackTargetType::Audio;
+        return api_error_from_playback_error(cmp_res.error(), target_type);
+    }
 
     json versions_array = json::array();
-    for (const auto &v : versions) {
+    for (const auto &v : cmp_res->versions) {
         json item;
         item["pcm_hash"] = v.pcm_hash;
         item["format"] = v.format;
@@ -1330,7 +1440,7 @@ json Router::handleAudioCompareVersions(const json &p) {
         versions_array.push_back(item);
     }
 
-    return ApiResponse::success({{"recommended_master", recommended_master},
+    return ApiResponse::success({{"recommended_master", cmp_res->recommended_master},
                                  {"versions", versions_array}});
 }
 
@@ -1388,18 +1498,17 @@ json Router::handleAudioGetWaveform(const json &p) {
     }
 
 
-    std::optional<std::string> preferred_format;
+    PlaybackOptions options;
     if (p.contains("preferred_format") && !p["preferred_format"].is_null() && p["preferred_format"].is_string()) {
-        preferred_format = p["preferred_format"].get<std::string>();
+        options.preferred_format = p["preferred_format"].get<std::string>();
     } else if (p.contains("format") && !p["format"].is_null() && p["format"].is_string()) {
-        preferred_format = p["format"].get<std::string>();
+        options.preferred_format = p["format"].get<std::string>();
     }
 
-    auto audio_entity = m_audio_controller->get(pcm_hash);
-    auto resolved_res = m_asset_controller->resolve_best_audio_asset(
-        pcm_hash, preferred_format, audio_entity ? std::make_optional(*audio_entity) : std::nullopt);
+    PlaybackTarget target = PlaybackTarget::from_audio(pcm_hash);
+    auto resolved_res = m_playback_service->resolve(target, options);
     if (!resolved_res) {
-        return ApiResponse::error({ErrorType::AssetNotFound, resolved_res.error()});
+        return api_error_from_playback_error(resolved_res.error(), target.type);
     }
 
     auto wf_res = WaveformService::get_or_compute_waveform(m_storage_root, pcm_hash, resolved_res->file_path, points);
@@ -1498,10 +1607,10 @@ json Router::handleGetEntityImages(const json &params) {
 }
 
 json Router::handleAudioListDevices([[maybe_unused]] const json &params) {
-    auto devices = m_audio_engine->list_devices();
+    auto devices = m_playback_service->list_devices();
     json data;
     data["devices"] = devices;
-    data["current_device_id"] = m_audio_engine->get_output_device();
+    data["current_device_id"] = m_playback_service->get_output_device();
     return ApiResponse::success(data);
 }
 
@@ -1514,7 +1623,7 @@ json Router::handleAudioSetOutputDevice(const json &params) {
         return ApiResponse::error({ErrorType::MissingParameter, "device_id cannot be empty"});
     }
 
-    if (!m_audio_engine->set_output_device(device_id)) {
+    if (!m_playback_service->set_output_device(device_id)) {
         return ApiResponse::error({ErrorType::InvalidValue, "Failed to set audio output device: " + device_id});
     }
 
@@ -1526,23 +1635,60 @@ json Router::handleAudioSetOutputDevice(const json &params) {
     return response;
 }
 
+/**
+ * @brief Handles 'audio.preload_next' and 'audio.queue_next' to buffer the subsequent track.
+ *
+ * Implements polymorphic Target resolution and defensive parameter validation:
+ * 1. Queue Cancellation Handling:
+ *    If parameters are empty, or `file_path` is explicitly null/empty with no other identifiers,
+ *    this indicates an explicit command to clear the preload queue.
+ *    Delegates to `m_playback_service->clear_preload_next()` and returns `{ "next_file_path": "", "queued": false }`.
+ * 2. Option Parsing:
+ *    Extracts `pin_version` (to prevent/allow Star Topology auto-arbitration) and format preferences.
+ * 3. Polymorphic Target Resolution & Boundary Defense:
+ *    - `file_path`: Validates file existence on local storage and creates DirectFile target.
+ *    - Backwards-compatibility Aliases: Normalizes `id` -> `track_id`, `audio_id` -> `pcm_hash`,
+ *      and `asset_id` -> `file_hash`.
+ *    - Defensive validation: Guarantees parameters are valid string types and non-empty.
+ *      Empty strings fail-fast with `ErrorType::MissingParameter`.
+ * 4. Preload Execution & Error Translation:
+ *    Calls `m_playback_service->preload_next(target, options)` and maps any resolution or
+ *    engine failure via `api_error_from_playback_error`.
+ */
 json Router::handleAudioQueueNext(const json &params) {
-    if (params.empty() || (params.contains("file_path") && params["file_path"].is_null() && !params.contains("track_id") && !params.contains("pcm_hash") && !params.contains("file_hash") && !params.contains("asset_id") && !params.contains("id") && !params.contains("audio_id"))) {
-        m_audio_engine->preload_next("");
+    if (params.empty() ||
+        (params.contains("file_path") && params["file_path"].is_null() &&
+         !params.contains("track_id") && !params.contains("pcm_hash") &&
+         !params.contains("file_hash") && !params.contains("asset_id") &&
+         !params.contains("id") && !params.contains("audio_id"))) {
+
+        m_playback_service->clear_preload_next();
         json data;
         data["next_file_path"] = "";
         data["queued"] = false;
         return ApiResponse::success(data);
     }
 
-    std::string file_path;
+    PlaybackTarget target;
+    PlaybackOptions options;
+
+    if (params.contains("pin_version") && params["pin_version"].is_boolean()) {
+        options.pin_version = params["pin_version"].get<bool>();
+    }
+
+    if (params.contains("preferred_format") && !params["preferred_format"].is_null() && params["preferred_format"].is_string()) {
+        options.preferred_format = params["preferred_format"].get<std::string>();
+    } else if (params.contains("format") && !params["format"].is_null() && params["format"].is_string()) {
+        options.preferred_format = params["format"].get<std::string>();
+    }
+
     if (params.contains("file_path") && !params["file_path"].is_null()) {
         if (!params["file_path"].is_string()) {
             return ApiResponse::error({ErrorType::InvalidValue, "file_path must be a string"});
         }
-        file_path = params["file_path"].get<std::string>();
+        std::string file_path = params["file_path"].get<std::string>();
         if (file_path.empty()) {
-            m_audio_engine->preload_next("");
+            m_playback_service->clear_preload_next();
             json data;
             data["next_file_path"] = "";
             data["queued"] = false;
@@ -1551,27 +1697,42 @@ json Router::handleAudioQueueNext(const json &params) {
         if (!std::filesystem::exists(file_path)) {
             return ApiResponse::error({ErrorType::NotFound, "Audio file does not exist on disk: " + file_path});
         }
+        target = PlaybackTarget::from_file(file_path);
     } else if (params.contains("track_id") || params.contains("pcm_hash") || params.contains("file_hash") || params.contains("asset_id") || params.contains("id") || params.contains("audio_id")) {
         json p = params;
         if (!p.contains("track_id") && p.contains("id") && !p["id"].is_null()) p["track_id"] = p["id"];
         if (!p.contains("pcm_hash") && p.contains("audio_id") && !p["audio_id"].is_null()) p["pcm_hash"] = p["audio_id"];
         if (!p.contains("file_hash") && p.contains("asset_id") && !p["asset_id"].is_null()) p["file_hash"] = p["asset_id"];
 
-        auto resolved_res = resolveAudioAsset(p, *m_track_controller, *m_audio_controller, *m_asset_controller);
-        if (!resolved_res) {
-            return resolved_res.error();
+        if (p.contains("file_hash") && !p["file_hash"].is_null()) {
+            if (!p["file_hash"].is_string()) return ApiResponse::error({ErrorType::InvalidValue, "file_hash must be a string"});
+            std::string file_hash = p["file_hash"].get<std::string>();
+            if (file_hash.empty()) return ApiResponse::error({ErrorType::MissingParameter, "file_hash cannot be empty"});
+            target = PlaybackTarget::from_asset(file_hash);
+        } else if (p.contains("track_id") && !p["track_id"].is_null()) {
+            if (!p["track_id"].is_string()) return ApiResponse::error({ErrorType::InvalidValue, "track_id must be a string"});
+            std::string track_id = p["track_id"].get<std::string>();
+            if (track_id.empty()) return ApiResponse::error({ErrorType::MissingParameter, "track_id cannot be empty"});
+            target = PlaybackTarget::from_track(track_id);
+        } else if (p.contains("pcm_hash") && !p["pcm_hash"].is_null()) {
+            if (!p["pcm_hash"].is_string()) return ApiResponse::error({ErrorType::InvalidValue, "pcm_hash must be a string"});
+            std::string pcm_hash = p["pcm_hash"].get<std::string>();
+            if (pcm_hash.empty()) return ApiResponse::error({ErrorType::MissingParameter, "pcm_hash cannot be empty"});
+            target = PlaybackTarget::from_audio(pcm_hash);
+        } else {
+            return ApiResponse::error({ErrorType::MissingParameter, "Missing 'file_path', 'track_id', or 'pcm_hash' parameter"});
         }
-        file_path = resolved_res->file_path;
     } else {
         return ApiResponse::error({ErrorType::MissingParameter, "Missing 'file_path', 'track_id', or 'pcm_hash' parameter"});
     }
 
-    if (!m_audio_engine->preload_next(file_path)) {
-        return ApiResponse::error({ErrorType::InvalidValue, "Failed to preload next audio track: " + file_path});
+    auto preload_res = m_playback_service->preload_next(target, options);
+    if (!preload_res) {
+        return api_error_from_playback_error(preload_res.error(), target.type);
     }
 
     json data;
-    data["next_file_path"] = file_path;
+    data["next_file_path"] = preload_res->file_path;
     data["queued"] = true;
     return ApiResponse::success(data);
 }

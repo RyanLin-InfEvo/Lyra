@@ -127,10 +127,10 @@ class TestAssetIngestion(BaseLyraTestCase):
         })
         self.assertResponseCode(res_create, 201)
 
-        # 2. Get resource path for this traversal hash - it should fail the validation in resolve_file_path
+        # 2. Get resource path for this traversal hash - it should fail the validation with InvalidValue (400)
         res_path = self.dispatch("GetResourcePath", {"file_hash": traversal_hash})
-        self.assertResponseCode(res_path, 404)
-        self.assertEqual(res_path["error"]["type"], "AssetNotFound")
+        self.assertResponseCode(res_path, 400)
+        self.assertEqual(res_path["error"]["type"], "InvalidValue")
         self.assertIn("Invalid file hash format", res_path["error"]["message"])
 
     def test_ingest_database_rollback_removes_cas_file(self):
@@ -187,10 +187,10 @@ class TestAssetIngestion(BaseLyraTestCase):
 
     def test_get_resource_path_boundary_errors(self):
         """Test GetResourcePath with boundary errors and missing physical files"""
-        # 1. No associated Asset test (pcm_hash doesn't exist)
+        # 1. No associated Audio test (pcm_hash doesn't exist)
         res1 = self.dispatch("GetResourcePath", {"pcm_hash": str(uuid.uuid4())})
         self.assertResponseCode(res1, 404)
-        self.assertEqual(res1["error"]["type"], "AssetNotFound")
+        self.assertEqual(res1["error"]["type"], "AudioNotFound")
 
         # 2. Invalid Track test (track_id doesn't exist)
         res2 = self.dispatch("GetResourcePath", {"track_id": str(uuid.uuid4())})
@@ -207,10 +207,10 @@ class TestAssetIngestion(BaseLyraTestCase):
         self.assertResponseCode(res_create_track, 201)
         track_id = res_create_track["data"]["id"]
 
-        # Call GetResourcePath using this track_id -> should fail with AssetNotFound
+        # Call GetResourcePath using this track_id -> should fail with AudioNotFound because pcm_hash does not exist
         res3 = self.dispatch("GetResourcePath", {"track_id": track_id})
         self.assertResponseCode(res3, 404)
-        self.assertEqual(res3["error"]["type"], "AssetNotFound")
+        self.assertEqual(res3["error"]["type"], "AudioNotFound")
 
         # 4. Database has records but physical file is missing test
         # Ingest a valid file to create DB records and physical file
