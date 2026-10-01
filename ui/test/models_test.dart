@@ -892,5 +892,31 @@ void main() {
       expect(updated.dominantColor, '#FFFFFF');
       expect(updated.role, 'artist_avatar');
     });
+
+    test(
+      'displayColorFormat handles uppercase MIME types case-insensitively',
+      () {
+        const pngUpper = ImageAsset(
+          imageHash: 'h1',
+          fileHash: 'f1',
+          mimeType: 'IMAGE/PNG',
+        );
+        expect(pngUpper.displayColorFormat, equals('32-bit RGBA'));
+
+        const webpUpper = ImageAsset(
+          imageHash: 'h2',
+          fileHash: 'f2',
+          mimeType: 'Image/WebP',
+        );
+        expect(webpUpper.displayColorFormat, equals('32-bit RGBA'));
+
+        const jpegUpper = ImageAsset(
+          imageHash: 'h3',
+          fileHash: 'f3',
+          mimeType: 'IMAGE/JPEG',
+        );
+        expect(jpegUpper.displayColorFormat, equals('24-bit RGB'));
+      },
+    );
   });
 }

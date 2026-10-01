@@ -64,6 +64,9 @@ class Asset {
   /// Alias for short hash.
   String get shortFileHash => shortHash;
 
+  /// Whether this asset represents an image container.
+  bool get isImage => mimeType.toLowerCase().startsWith('image/');
+
   /// Creates an [Asset] instance from a JSON map.
   factory Asset.fromJson(Map<String, dynamic> json) {
     DateTime parsedCreatedAt;

@@ -138,6 +138,9 @@ class EmptyMusicService implements MusicService {
   Future<Asset?> getAsset(String fileHash) async => null;
 
   @override
+  Future<ImageAsset?> getImageAsset(String fileHash) async => null;
+
+  @override
   Future<List<Audio>> getAudioVersions(String pcmHash) async => [];
 
   @override

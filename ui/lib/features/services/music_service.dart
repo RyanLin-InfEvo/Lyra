@@ -5,6 +5,7 @@ import '../models/album.dart';
 import '../models/artist.dart';
 import '../models/audio.dart';
 import '../models/cas_object.dart';
+import '../models/image_asset.dart';
 import '../models/playlist.dart';
 import '../models/source_data.dart';
 import '../models/tag.dart';
@@ -67,6 +68,9 @@ abstract class MusicService {
 
   /// Fetch physical file asset (Tier 4) for a given file hash.
   Future<Asset?> getAsset(String fileHash);
+
+  /// Fetch image asset metadata for a given physical file hash.
+  Future<ImageAsset?> getImageAsset(String fileHash);
 
   /// Fetch all Audio versions associated with a given PCM stream hash (Single-Level Star Topology).
   Future<List<Audio>> getAudioVersions(String pcmHash);

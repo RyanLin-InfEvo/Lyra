@@ -615,6 +615,12 @@ class _CasBlobRowState extends State<_CasBlobRow> {
                           ),
                           child: MouseRegion(
                             cursor: SystemMouseCursors.click,
+                            onExit: (event) {
+                              _copyTimer?.cancel();
+                              if (mounted && _copied) {
+                                setState(() => _copied = false);
+                              }
+                            },
                             child: GestureDetector(
                               behavior: HitTestBehavior.opaque,
                               onTap: _copyHash,

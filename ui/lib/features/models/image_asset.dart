@@ -33,6 +33,9 @@ class ImageAsset {
   /// Size of the image file in bytes.
   final int? fileSize;
 
+  /// Optional color depth / format string (e.g. '24-bit RGB', '32-bit RGBA').
+  final String? colorFormat;
+
   const ImageAsset({
     required this.imageHash,
     required this.fileHash,
@@ -42,7 +45,40 @@ class ImageAsset {
     this.role,
     this.mimeType,
     this.fileSize,
+    this.colorFormat,
   });
+
+  /// Formatted color depth or format (e.g. '24-bit RGB', '32-bit RGBA').
+  String get displayColorFormat {
+    if (colorFormat != null && colorFormat!.isNotEmpty) return colorFormat!;
+    final lowerMime = mimeType?.toLowerCase();
+    if (lowerMime == 'image/png' || lowerMime == 'image/webp') {
+      return '32-bit RGBA';
+    }
+    return '24-bit RGB';
+  }
+
+  /// Human-readable megapixels (e.g. "9.0 MP").
+  String get megapixels {
+    if (width <= 0 || height <= 0) return '—';
+    final mp = (width * height) / 1000000.0;
+    return '${mp.toStringAsFixed(1)} MP';
+  }
+
+  /// Formatted aspect ratio string (e.g. "1:1 (Square)", "2:1", "4:5").
+  String get formattedAspectRatio {
+    if (width <= 0 || height <= 0) return '—';
+    if (width == height) return '1:1 (Square)';
+    int gcd(int a, int b) => b == 0 ? a : gcd(b, a % b);
+    final d = gcd(width, height);
+    final w = width ~/ d;
+    final h = height ~/ d;
+    if (w <= 16 && h <= 16) {
+      return '$w:$h';
+    }
+    final ratio = width / height;
+    return '${ratio.toStringAsFixed(2)}:1';
+  }
 
   /// Aspect ratio of the image (width / height).
   double get aspectRatio => (width > 0 && height > 0) ? width / height : 1.0;
@@ -100,6 +136,7 @@ class ImageAsset {
       role: json['role']?.toString(),
       mimeType: (json['mime_type'] ?? json['mimeType'])?.toString(),
       fileSize: parseNullableInt(json['file_size'] ?? json['fileSize']),
+      colorFormat: (json['color_format'] ?? json['colorFormat'])?.toString(),
     );
   }
 
@@ -114,6 +151,7 @@ class ImageAsset {
       if (role != null) 'role': role,
       if (mimeType != null) 'mime_type': mimeType,
       if (fileSize != null) 'file_size': fileSize,
+      if (colorFormat != null) 'color_format': colorFormat,
     };
   }
 
@@ -127,6 +165,7 @@ class ImageAsset {
     String? role,
     String? mimeType,
     int? fileSize,
+    String? colorFormat,
   }) {
     return ImageAsset(
       imageHash: imageHash ?? this.imageHash,
@@ -137,6 +176,7 @@ class ImageAsset {
       role: role ?? this.role,
       mimeType: mimeType ?? this.mimeType,
       fileSize: fileSize ?? this.fileSize,
+      colorFormat: colorFormat ?? this.colorFormat,
     );
   }
 
@@ -151,7 +191,8 @@ class ImageAsset {
         other.dominantColor == dominantColor &&
         other.role == role &&
         other.mimeType == mimeType &&
-        other.fileSize == fileSize;
+        other.fileSize == fileSize &&
+        other.colorFormat == colorFormat;
   }
 
   @override
@@ -164,6 +205,7 @@ class ImageAsset {
     role,
     mimeType,
     fileSize,
+    colorFormat,
   );
 
   @override
@@ -176,7 +218,8 @@ class ImageAsset {
         'dominantColor: $dominantColor, '
         'role: $role, '
         'mimeType: $mimeType, '
-        'fileSize: $fileSize'
+        'fileSize: $fileSize, '
+        'colorFormat: $colorFormat'
         ')';
   }
 }

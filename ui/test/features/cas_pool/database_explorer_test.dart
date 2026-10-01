@@ -2,7 +2,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import 'dart:convert';
-import 'package:flutter/gestures.dart' show kSecondaryMouseButton;
+import 'package:flutter/gestures.dart'
+    show PointerDeviceKind, kSecondaryMouseButton;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -181,7 +182,8 @@ void main() {
       expect(controller.currentPage, equals(1));
       expect(controller.pageSize, equals(50));
       expect(controller.searchQuery, isEmpty);
-      expect(controller.availableTables.length, equals(9));
+      expect(controller.availableTables.length, equals(10));
+      expect(controller.availableTables, contains('Image'));
       expect(
         controller.currentColumns,
         equals(['id', 'entity_type', 'created_at', 'updated_at']),
@@ -970,7 +972,6 @@ void main() {
 
         // Showing 1-50 of 60 records
         expect(find.text('Showing 1–50 of 60 records'), findsOneWidget);
-        expect(find.text('60 records total'), findsOneWidget);
         expect(find.text('Page 1 of 2'), findsOneWidget);
       },
     );
@@ -1205,7 +1206,14 @@ void main() {
       await tester.pumpAndSettle();
 
       const uuid = 'da5d1c54-3f89-4b13-a00a-9228ae564f44';
-      expect(find.byTooltip(uuid), findsOneWidget);
+      final cellFinder = find.text(uuid);
+      expect(cellFinder, findsOneWidget);
+
+      final cellTooltip = tester.widget<Tooltip>(
+        find.ancestor(of: cellFinder, matching: find.byType(Tooltip)),
+      );
+      expect(cellTooltip.richMessage, isNotNull);
+      expect(cellTooltip.richMessage, isA<WidgetSpan>());
     });
 
     testWidgets(
@@ -1300,12 +1308,11 @@ void main() {
         // Left-click cell
         await tester.tap(cellFinder);
         await tester.pump();
+        await tester.pump(const Duration(milliseconds: 250));
 
         expect(clipboardData, equals('da5d1c54-3f89-4b13-a00a-9228ae564f44'));
-        expect(
-          find.byTooltip('Copied: da5d1c54-3f89-4b13-a00a-9228ae564f44'),
-          findsOneWidget,
-        );
+        expect(find.text('Copied'), findsOneWidget);
+        expect(find.byIcon(LucideIcons.check), findsOneWidget);
       },
     );
 
@@ -1518,22 +1525,169 @@ void main() {
         // Check ValueKey exists on cell
         final firstRow = controller.pagedRows.first;
         final expectedKey = ValueKey('${firstRow['id']}_id');
-        expect(find.byKey(expectedKey), findsOneWidget);
+        final cellFinder = find.byKey(expectedKey);
+        expect(cellFinder, findsOneWidget);
+
+        // Verify tooltip richMessage is configured on cell
+        final cellTooltip = tester.widget<Tooltip>(
+          find.descendant(of: cellFinder, matching: find.byType(Tooltip)),
+        );
+        expect(cellTooltip.richMessage, isNotNull);
+        expect(cellTooltip.richMessage, isA<WidgetSpan>());
+
+        // Hover over cell to verify tooltip displays 'Click to copy'
+        final gesture = await tester.createGesture(
+          kind: PointerDeviceKind.mouse,
+        );
+        await gesture.addPointer(location: tester.getCenter(cellFinder));
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 50));
+        expect(find.text('Click to copy'), findsOneWidget);
 
         // Click cell to copy
-        await tester.tap(find.byKey(expectedKey));
-        await tester.pump(); // Start animation
+        await tester.tap(cellFinder);
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 250));
 
         expect(clipboardData, equals(firstRow['id']));
 
-        // Verify copied state tooltip is shown
-        expect(find.byTooltip('Copied: ${firstRow['id']}'), findsOneWidget);
+        // Verify in-place feedback is shown (green checkmark + Copied)
+        expect(find.text('Copied'), findsOneWidget);
+        expect(find.byIcon(LucideIcons.check), findsOneWidget);
 
-        // Fast forward 1600ms to verify copy timer expiration and reset
+        // Fast forward 1600ms to verify copy timer expiration and reset to Click to copy
         await tester.pump(const Duration(milliseconds: 1600));
+        await tester.pump(const Duration(milliseconds: 250));
+
+        expect(find.text('Click to copy'), findsOneWidget);
+        expect(find.text('Copied'), findsNothing);
+
+        // Test stale-state reset immediately on mouse exit
+        await tester.tap(cellFinder);
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 250));
+        expect(find.text('Copied'), findsOneWidget);
+
+        // Move mouse away to trigger onExit
+        await gesture.moveTo(Offset.zero);
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 250));
+
+        // When mouse exits, stale Copied state is reset immediately
+        expect(find.text('Copied'), findsNothing);
+        await gesture.removePointer();
+      },
+    );
+
+    testWidgets(
+      'Image table schema aligns with core SQLite image table without role column',
+      (tester) async {
+        final controller = DatabaseExplorerController();
+        addTearDown(controller.dispose);
+        controller.selectTable('Image');
+
+        expect(
+          controller.currentColumns,
+          equals([
+            'image_hash',
+            'file_hash',
+            'width',
+            'height',
+            'dominant_color',
+          ]),
+        );
+        expect(controller.currentColumns.contains('role'), isFalse);
+      },
+    );
+
+    testWidgets(
+      'Asset table context menu provides Find in Image Table (Hash) for image mime types',
+      (tester) async {
+        tester.view.physicalSize = const Size(1280, 900);
+        tester.view.devicePixelRatio = 1.0;
+        addTearDown(tester.view.resetPhysicalSize);
+
+        final controller = DatabaseExplorerController();
+        addTearDown(controller.dispose);
+        controller.selectTable('Asset');
+
+        await tester.pumpWidget(
+          _buildDatabaseExplorerTest(controller: controller),
+        );
         await tester.pumpAndSettle();
 
-        expect(find.byTooltip(firstRow['id'] as String), findsOneWidget);
+        final imageRow = controller.pagedRows.firstWhere(
+          (r) => (r['mime_type'] as String).startsWith('image/'),
+        );
+        final fileHash = imageRow['file_hash'] as String;
+
+        final cellFinder = find.text(fileHash);
+        expect(cellFinder, findsOneWidget);
+
+        await tester.tap(cellFinder, buttons: kSecondaryMouseButton);
+        await tester.pumpAndSettle();
+
+        expect(find.text('Find in Image Table (Hash)'), findsOneWidget);
+        await tester.tap(find.text('Find in Image Table (Hash)'));
+        await tester.pumpAndSettle();
+
+        expect(controller.selectedTable, equals('Image'));
+        expect(controller.searchQuery, equals(fileHash));
+      },
+    );
+
+    testWidgets(
+      'Image table context menu provides View in Asset Table and primary tap copies value',
+      (tester) async {
+        tester.view.physicalSize = const Size(1280, 900);
+        tester.view.devicePixelRatio = 1.0;
+        addTearDown(tester.view.resetPhysicalSize);
+
+        final controller = DatabaseExplorerController();
+        addTearDown(controller.dispose);
+        controller.selectTable('Image');
+
+        String? clipboardData;
+        TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+            .setMockMethodCallHandler(SystemChannels.platform, (
+              MethodCall methodCall,
+            ) async {
+              if (methodCall.method == 'Clipboard.setData') {
+                clipboardData =
+                    (methodCall.arguments as Map)['text'] as String?;
+                return null;
+              }
+              return null;
+            });
+
+        await tester.pumpWidget(
+          _buildDatabaseExplorerTest(controller: controller),
+        );
+        await tester.pumpAndSettle();
+
+        final imgRow = controller.pagedRows.first;
+        final fileHash = imgRow['file_hash'] as String;
+
+        final cellFinder = find.text(fileHash);
+        expect(cellFinder, findsOneWidget);
+
+        // 1. Primary tap should copy to clipboard, NOT navigate away
+        await tester.tap(cellFinder);
+        await tester.pump();
+
+        expect(clipboardData, equals(fileHash));
+        expect(controller.selectedTable, equals('Image'));
+
+        // 2. Right-click should open context menu with 'View in Asset Table'
+        await tester.tap(cellFinder, buttons: kSecondaryMouseButton);
+        await tester.pumpAndSettle();
+
+        expect(find.text('View in Asset Table'), findsOneWidget);
+        await tester.tap(find.text('View in Asset Table'));
+        await tester.pumpAndSettle();
+
+        expect(controller.selectedTable, equals('Asset'));
+        expect(controller.searchQuery, equals(fileHash));
       },
     );
   });

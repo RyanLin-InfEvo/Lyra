@@ -1,8 +1,20 @@
 // SPDX-FileCopyrightText: 2026 Tzu-Ting Lin
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import 'dart:math' as math;
 import 'package:flutter/material.dart'
-    show Colors, Material, SelectionArea, showDialog;
+    show
+        Colors,
+        InkWell,
+        Material,
+        PopupMenuButton,
+        PopupMenuItem,
+        RoundSliderOverlayShape,
+        RoundSliderThumbShape,
+        SelectionArea,
+        Slider,
+        SliderTheme,
+        showDialog;
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
@@ -16,8 +28,10 @@ import '../../design_system/widgets/lyra_button.dart';
 import '../../design_system/widgets/lyra_copy_button.dart';
 import '../../design_system/widgets/lyra_dialog.dart';
 import '../../design_system/widgets/lyra_input.dart';
+import '../../design_system/widgets/lyra_tooltip.dart';
 import '../models/asset.dart';
 import '../models/audio.dart';
+import '../models/image_asset.dart';
 import '../models/source_data.dart';
 import '../models/track.dart';
 import '../player/controllers/playback_queue_controller.dart';
@@ -207,6 +221,7 @@ class _AudioInspectorContentState extends State<AudioInspectorContent> {
   Audio? _selectedAudio;
   SourceData? _sourceData;
   Asset? _resolvedAsset;
+  ImageAsset? _resolvedImageAsset;
   bool _isLoading = false;
   bool _isSwitchingActive = false;
 
@@ -334,6 +349,7 @@ class _AudioInspectorContentState extends State<AudioInspectorContent> {
       _selectedAudio = widget.initialAudio;
       _sourceData = widget.initialSourceData;
       _resolvedAsset = widget.asset;
+      _resolvedImageAsset = null;
       if (!_isEditing && !trackChanged) {
         _syncControllersFromTrack(_track);
       }
@@ -364,6 +380,16 @@ class _AudioInspectorContentState extends State<AudioInspectorContent> {
   }
 
   Future<void> _loadWaveform() async {
+    final effectiveAsset = _resolvedAsset ?? widget.asset;
+    if (_track == null && effectiveAsset?.isImage == true) {
+      if (mounted && _waveform != null) {
+        setState(() {
+          _waveform = null;
+        });
+      }
+      return;
+    }
+
     final showWaveform =
         widget.preferencesService?.showInspectorWaveform ?? true;
     if (!showWaveform) {
@@ -660,6 +686,16 @@ class _AudioInspectorContentState extends State<AudioInspectorContent> {
           _audioVersions = [_selectedAudio!];
         });
       }
+      if (widget.asset?.isImage == true && _resolvedImageAsset == null) {
+        setState(() {
+          _resolvedImageAsset = ImageAsset(
+            imageHash: widget.asset!.fileHash,
+            fileHash: widget.asset!.fileHash,
+            mimeType: widget.asset!.mimeType,
+            fileSize: widget.asset!.fileSize,
+          );
+        });
+      }
       return;
     }
 
@@ -707,10 +743,25 @@ class _AudioInspectorContentState extends State<AudioInspectorContent> {
         }
       }
 
-      // Tier 4: Fetch Asset and SourceData
+      // Tier 4: Fetch Asset, SourceData, and ImageAsset
+      ImageAsset? fetchedImageAsset = _resolvedImageAsset;
       if (fileHash != null && fileHash.isNotEmpty) {
         fetchedAsset ??= await service.getAsset(fileHash);
         fetchedSource ??= await service.getSourceData(fileHash);
+        if (fetchedAsset?.isImage == true || widget.asset?.isImage == true) {
+          fetchedImageAsset ??= await service.getImageAsset(fileHash);
+        }
+      }
+
+      if (fetchedImageAsset == null &&
+          (fetchedAsset?.isImage == true || widget.asset?.isImage == true)) {
+        final a = fetchedAsset ?? widget.asset!;
+        fetchedImageAsset = ImageAsset(
+          imageHash: a.fileHash,
+          fileHash: a.fileHash,
+          mimeType: a.mimeType,
+          fileSize: a.fileSize,
+        );
       }
 
       // Fallback asset from audio.assets if service didn't return one
@@ -728,6 +779,7 @@ class _AudioInspectorContentState extends State<AudioInspectorContent> {
             : (resolvedAudio != null ? [resolvedAudio] : []);
         _selectedAudio = resolvedAudio;
         _resolvedAsset = fetchedAsset;
+        _resolvedImageAsset = fetchedImageAsset;
         _sourceData = fetchedSource;
         _isLoading = false;
       });
@@ -933,6 +985,40 @@ class _AudioInspectorContentState extends State<AudioInspectorContent> {
 
     final hasEntitySummary =
         _track != null || (_resolvedAsset ?? widget.asset) != null;
+
+    final effectiveAsset = _resolvedAsset ?? widget.asset;
+    final isImageAsset = _track == null && (effectiveAsset?.isImage == true);
+
+    if (isImageAsset) {
+      return SingleChildScrollView(
+        padding: widget.padding,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Image Preview Surface (Hero Artwork & Lightbox Expand)
+            _ImagePreviewSurface(
+              asset: effectiveAsset!,
+              imageAsset: _resolvedImageAsset,
+              tokens: tokens,
+            ),
+            _buildSectionDivider(tokens),
+
+            // Image Specifications (Tier 3 Image Metadata)
+            _buildImageSpecificationsSection(tokens),
+            _buildSectionDivider(tokens),
+
+            // Section 2: File Storage (CAS Asset Reference - Tier 4)
+            _buildCasAssetSection(tokens),
+            _buildSectionDivider(tokens),
+
+            // Section 3: Source Information (SourceData - Tier 4)
+            _buildProvenanceSection(tokens),
+
+            const SizedBox(height: LyraSpacing.lg),
+          ],
+        ),
+      );
+    }
 
     return SingleChildScrollView(
       padding: widget.padding,
@@ -1777,6 +1863,116 @@ class _AudioInspectorContentState extends State<AudioInspectorContent> {
             ),
           ),
         ],
+      ],
+    );
+  }
+
+  Widget _buildDominantColorRow(String? hexColor, LyraThemeTokens tokens) {
+    if (hexColor == null || hexColor.isEmpty) {
+      return Text('—', style: LyraTypography.muted(tokens));
+    }
+
+    Color? parsedColor;
+    final cleanHex = hexColor.replaceFirst('#', '').trim();
+    final val = int.tryParse(
+      cleanHex.length == 6
+          ? 'FF$cleanHex'
+          : (cleanHex.length == 8 ? cleanHex : ''),
+      radix: 16,
+    );
+    if (val != null) parsedColor = Color(val);
+
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        LyraTooltip(
+          message: 'Copy hex $hexColor',
+          child: GestureDetector(
+            key: const Key('dominant_color_swatch'),
+            onTap: () => Clipboard.setData(ClipboardData(text: hexColor)),
+            child: Container(
+              width: 20.0,
+              height: 20.0,
+              decoration: BoxDecoration(
+                color: parsedColor ?? tokens.muted,
+                borderRadius: BorderRadius.circular(4.0),
+                border: Border.all(color: tokens.border, width: 1.0),
+              ),
+            ),
+          ),
+        ),
+        const SizedBox(width: LyraSpacing.sm),
+        Text(
+          hexColor,
+          style: LyraTypography.mono(
+            tokens,
+            fontSize: 12.0,
+          ).copyWith(fontWeight: FontWeight.w600, color: tokens.text),
+        ),
+        const SizedBox(width: LyraSpacing.xs),
+        LyraCopyButton.icon(
+          text: hexColor,
+          tooltip: 'Copy hex color',
+          copiedTooltip: 'Copied hex color',
+          size: 24.0,
+        ),
+      ],
+    );
+  }
+
+  Widget _buildImageSpecificationsSection(LyraThemeTokens tokens) {
+    final image = _resolvedImageAsset;
+    final dimensionsText = image != null && image.width > 0 && image.height > 0
+        ? '${image.width} × ${image.height} px (${image.megapixels})'
+        : '—';
+
+    final aspectRatioText = image?.formattedAspectRatio ?? '—';
+    final colorFormatText = image?.displayColorFormat ?? '24-bit RGB';
+    final roleText = _formatRoleLabel(image?.role);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _buildSectionHeader(
+          icon: LucideIcons.sliders,
+          title: 'Image Specifications',
+          tokens: tokens,
+        ),
+        _buildPropertyRow(
+          label: 'Dimensions',
+          value: dimensionsText,
+          tokens: tokens,
+        ),
+        _buildPropertyRow(
+          label: 'Aspect Ratio',
+          value: aspectRatioText,
+          tokens: tokens,
+        ),
+        _buildPropertyRow(
+          label: 'Color Depth',
+          value: colorFormatText,
+          tokens: tokens,
+        ),
+        _buildPropertyRow(
+          label: 'Dominant Color',
+          value: image?.dominantColor ?? '—',
+          customValue: _buildDominantColorRow(image?.dominantColor, tokens),
+          tokens: tokens,
+        ),
+        _buildPropertyRow(
+          label: 'Role',
+          value: roleText,
+          customValue: LyraBadge.secondary(
+            padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 2.0),
+            child: Text(
+              roleText,
+              style: LyraTypography.small(
+                tokens,
+              ).copyWith(fontSize: 11.0, fontWeight: FontWeight.w600),
+            ),
+          ),
+          tokens: tokens,
+        ),
       ],
     );
   }
@@ -2765,6 +2961,761 @@ class _AutocompleteItemTileState extends State<_AutocompleteItemTile> {
                   ),
                 ),
             ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+IconData _getRoleIcon(String? role) {
+  switch (role?.toLowerCase()) {
+    case 'front':
+    case 'front_cover':
+    case 'cover':
+      return LucideIcons.disc;
+    case 'back':
+    case 'back_cover':
+    case 'liner_notes':
+    case 'booklet':
+      return LucideIcons.bookOpen;
+    case 'artist':
+    case 'artist_avatar':
+    case 'band':
+      return LucideIcons.user;
+    case 'icon':
+    case 'logo':
+      return LucideIcons.sparkles;
+    case 'illustration':
+      return LucideIcons.palette;
+    default:
+      return LucideIcons.image;
+  }
+}
+
+String _formatRoleLabel(String? role) {
+  if (role == null || role.isEmpty) return 'Artwork';
+  switch (role.toLowerCase()) {
+    case 'front':
+    case 'front_cover':
+    case 'cover':
+      return 'Front Cover';
+    case 'back':
+    case 'back_cover':
+      return 'Back Cover';
+    case 'liner_notes':
+    case 'booklet':
+      return 'Booklet';
+    case 'artist':
+    case 'artist_avatar':
+    case 'band':
+      return 'Artist';
+    case 'icon':
+    case 'logo':
+      return 'Logo';
+    case 'illustration':
+      return 'Illustration';
+    default:
+      return role
+          .split(RegExp(r'[_\s]+'))
+          .where((part) => part.isNotEmpty)
+          .map(
+            (part) => part[0].toUpperCase() + part.substring(1).toLowerCase(),
+          )
+          .join(' ');
+  }
+}
+
+class _SubtleGridPainter extends CustomPainter {
+  final Color gridColor;
+  static const double cellSize = 16.0;
+
+  const _SubtleGridPainter({required this.gridColor});
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (size.width <= 0 || size.height <= 0) return;
+    canvas.clipRect(Offset.zero & size);
+
+    final paint = Paint()
+      ..color = gridColor
+      ..style = PaintingStyle.fill;
+
+    final numX = (size.width / cellSize).ceil();
+    final numY = (size.height / cellSize).ceil();
+
+    for (int i = 0; i < numX; i++) {
+      for (int j = 0; j < numY; j++) {
+        if ((i + j) % 2 == 0) {
+          final w = math.max(
+            0.0,
+            math.min(cellSize, size.width - i * cellSize),
+          );
+          final h = math.max(
+            0.0,
+            math.min(cellSize, size.height - j * cellSize),
+          );
+          if (w > 0 && h > 0) {
+            canvas.drawRect(
+              Rect.fromLTWH(i * cellSize, j * cellSize, w, h),
+              paint,
+            );
+          }
+        }
+      }
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _SubtleGridPainter oldDelegate) =>
+      oldDelegate.gridColor != gridColor;
+}
+
+Widget _buildArtworkGraphic(
+  Asset asset,
+  ImageAsset? imageAsset,
+  LyraThemeTokens tokens, {
+  bool isHero = false,
+}) {
+  Color? dominantColor;
+  final hex = imageAsset?.dominantColor;
+  if (hex != null) {
+    final cleanHex = hex.replaceFirst('#', '').trim();
+    final val = int.tryParse(
+      cleanHex.length == 6
+          ? 'FF$cleanHex'
+          : (cleanHex.length == 8 ? cleanHex : ''),
+      radix: 16,
+    );
+    if (val != null) dominantColor = Color(val);
+  }
+
+  final icon = _getRoleIcon(imageAsset?.role);
+  final iconSize = isHero ? 56.0 : 36.0;
+  final roleText = _formatRoleLabel(imageAsset?.role);
+
+  return Container(
+    decoration: BoxDecoration(
+      gradient: LinearGradient(
+        begin: Alignment.topLeft,
+        end: Alignment.bottomRight,
+        colors: [
+          (dominantColor ?? tokens.primary).withValues(alpha: 0.20),
+          (dominantColor ?? tokens.secondary).withValues(alpha: 0.08),
+        ],
+      ),
+    ),
+    child: Center(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            padding: EdgeInsets.all(isHero ? LyraSpacing.md : LyraSpacing.sm),
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: tokens.card.withValues(alpha: 0.75),
+              border: Border.all(
+                color: (dominantColor ?? tokens.border).withValues(alpha: 0.5),
+              ),
+            ),
+            child: Icon(
+              icon,
+              size: iconSize,
+              color: dominantColor ?? tokens.primary,
+            ),
+          ),
+          const SizedBox(height: LyraSpacing.xs),
+          Text(
+            roleText,
+            style: LyraTypography.small(tokens).copyWith(
+              fontWeight: FontWeight.w600,
+              fontSize: isHero ? 13.0 : 11.5,
+              color: tokens.text,
+            ),
+          ),
+          if (imageAsset != null &&
+              imageAsset.width > 0 &&
+              imageAsset.height > 0) ...[
+            const SizedBox(height: 2.0),
+            Text(
+              '${imageAsset.width} × ${imageAsset.height}',
+              style: LyraTypography.mono(
+                tokens,
+                fontSize: isHero ? 11.0 : 10.0,
+              ).copyWith(color: tokens.textMuted),
+            ),
+          ],
+        ],
+      ),
+    ),
+  );
+}
+
+class _ImagePreviewSurface extends StatelessWidget {
+  final Asset asset;
+  final ImageAsset? imageAsset;
+  final LyraThemeTokens tokens;
+
+  const _ImagePreviewSurface({
+    required this.asset,
+    required this.imageAsset,
+    required this.tokens,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final aspectRatio =
+        (imageAsset != null && imageAsset!.width > 0 && imageAsset!.height > 0)
+        ? (imageAsset!.width / imageAsset!.height).clamp(0.75, 1.77)
+        : 1.0;
+
+    return Container(
+      key: const Key('image_preview_surface'),
+      decoration: BoxDecoration(
+        color: tokens.card,
+        borderRadius: LyraRadius.mdRadius,
+        border: Border.all(color: tokens.border),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxHeight: 240.0, minHeight: 160.0),
+        child: AspectRatio(
+          aspectRatio: aspectRatio,
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              CustomPaint(
+                painter: _SubtleGridPainter(
+                  gridColor: tokens.border.withValues(alpha: 0.25),
+                ),
+              ),
+              _buildArtworkGraphic(asset, imageAsset, tokens),
+              Positioned.fill(
+                child: Material(
+                  color: Colors.transparent,
+                  child: InkWell(
+                    key: const Key('image_preview_inkwell'),
+                    borderRadius: LyraRadius.mdRadius,
+                    onTap: () {
+                      showDialog<void>(
+                        context: context,
+                        barrierDismissible: true,
+                        barrierLabel: 'Dismiss',
+                        builder: (dialogCtx) => LyraDesignSystemScope(
+                          factory: LyraDesignSystemScope.of(context).factory,
+                          tokens: LyraDesignSystemScope.of(context).tokens,
+                          themeModeNotifier: LyraDesignSystemScope.of(
+                            context,
+                          ).themeModeNotifier,
+                          child: _ImageLightboxDialog(
+                            asset: asset,
+                            imageAsset: imageAsset,
+                            tokens: tokens,
+                          ),
+                        ),
+                      );
+                    },
+                    child: Align(
+                      alignment: Alignment.bottomRight,
+                      child: Padding(
+                        padding: const EdgeInsets.all(LyraSpacing.sm),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 8.0,
+                            vertical: 4.0,
+                          ),
+                          decoration: BoxDecoration(
+                            color: tokens.card.withValues(alpha: 0.85),
+                            borderRadius: LyraRadius.smRadius,
+                            border: Border.all(color: tokens.border),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                LucideIcons.maximize2,
+                                size: 12.0,
+                                color: tokens.textMuted,
+                              ),
+                              const SizedBox(width: 4.0),
+                              Text(
+                                'Expand',
+                                style: LyraTypography.small(tokens).copyWith(
+                                  fontSize: 11.0,
+                                  color: tokens.textMuted,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _ImageLightboxDialog extends StatefulWidget {
+  final Asset asset;
+  final ImageAsset? imageAsset;
+  final LyraThemeTokens tokens;
+
+  const _ImageLightboxDialog({
+    required this.asset,
+    required this.imageAsset,
+    required this.tokens,
+  });
+
+  @override
+  State<_ImageLightboxDialog> createState() => _ImageLightboxDialogState();
+}
+
+class _ImageLightboxDialogState extends State<_ImageLightboxDialog> {
+  late final TransformationController _transformationController;
+  final GlobalKey _viewerKey = GlobalKey();
+  double _currentScale = 1.0;
+
+  @override
+  void initState() {
+    super.initState();
+    _transformationController = TransformationController();
+    _transformationController.addListener(_onTransformationChanged);
+  }
+
+  double _getScale() {
+    final s = _transformationController.value.storage;
+    return math.sqrt(s[0] * s[0] + s[1] * s[1]);
+  }
+
+  void _onTransformationChanged() {
+    if (!mounted) return;
+    final scale = _getScale();
+    final clamped = scale.clamp(0.25, 8.0);
+    if ((_currentScale - clamped).abs() > 0.001) {
+      setState(() {
+        _currentScale = clamped;
+      });
+    }
+  }
+
+  @override
+  void dispose() {
+    _transformationController.removeListener(_onTransformationChanged);
+    _transformationController.dispose();
+    super.dispose();
+  }
+
+  void _resetZoom() {
+    _transformationController.value = Matrix4.identity();
+  }
+
+  void _setScale(double targetScale) {
+    final target = targetScale.clamp(0.25, 8.0);
+    final current = _getScale();
+    if ((current - target).abs() < 0.001) return;
+
+    final renderBox =
+        _viewerKey.currentContext?.findRenderObject() as RenderBox?;
+    final size = renderBox?.hasSize == true ? renderBox!.size : null;
+    if (size != null && size.width > 0 && size.height > 0) {
+      final cx = size.width / 2.0;
+      final cy = size.height / 2.0;
+      final tx = _transformationController.value.storage[12];
+      final ty = _transformationController.value.storage[13];
+      if (current > 0) {
+        final childX = (cx - tx) / current;
+        final childY = (cy - ty) / current;
+        final newTx = cx - childX * target;
+        final newTy = cy - childY * target;
+        _transformationController.value = Matrix4.identity()
+          ..translateByDouble(newTx, newTy, 0.0, 1.0)
+          ..scaleByDouble(target, target, target, 1.0);
+      } else {
+        _transformationController.value = Matrix4.identity()
+          ..translateByDouble(cx, cy, 0.0, 1.0)
+          ..scaleByDouble(target, target, target, 1.0)
+          ..translateByDouble(-cx, -cy, 0.0, 1.0);
+      }
+    } else {
+      _transformationController.value = Matrix4.diagonal3Values(
+        target,
+        target,
+        target,
+      );
+    }
+  }
+
+  void _zoomIn() {
+    final next = (_currentScale + 0.25).clamp(0.25, 8.0);
+    _setScale(next);
+  }
+
+  void _zoomOut() {
+    final next = (_currentScale - 0.25).clamp(0.25, 8.0);
+    _setScale(next);
+  }
+
+  PopupMenuItem<double> _buildPopupMenuItem(
+    LyraThemeTokens tokens,
+    String label,
+    double value,
+  ) {
+    final isSelected = value < 0
+        ? (_currentScale - 1.0).abs() < 0.05
+        : (_currentScale - value).abs() < 0.05;
+
+    return PopupMenuItem<double>(
+      value: value,
+      height: 36.0,
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text(
+            label,
+            style: LyraTypography.small(tokens).copyWith(
+              fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
+              color: isSelected ? tokens.primary : tokens.text,
+            ),
+          ),
+          if (isSelected)
+            Icon(LucideIcons.check, size: 14.0, color: tokens.primary),
+        ],
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = widget.tokens;
+    final size = MediaQuery.sizeOf(context);
+    final dialogWidth = (size.width - 48.0).clamp(280.0, 720.0);
+    final dialogHeight = (size.height - 48.0).clamp(280.0, 560.0);
+
+    return Center(
+      key: const Key('image_lightbox_dialog'),
+      child: ConstrainedBox(
+        constraints: BoxConstraints(
+          maxWidth: dialogWidth,
+          maxHeight: dialogHeight,
+        ),
+        child: Material(
+          color: Colors.transparent,
+          child: Container(
+            decoration: BoxDecoration(
+              color: tokens.card,
+              borderRadius: LyraRadius.lgRadius,
+              border: Border.all(color: tokens.border),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.35),
+                  blurRadius: 24.0,
+                  offset: const Offset(0, 8),
+                ),
+              ],
+            ),
+            clipBehavior: Clip.antiAlias,
+            child: Column(
+              children: [
+                // Header
+                Container(
+                  height: 48.0,
+                  padding: const EdgeInsets.only(
+                    left: LyraSpacing.md,
+                    right: 8.0,
+                  ),
+                  decoration: BoxDecoration(
+                    color: tokens.muted.withValues(alpha: 0.4),
+                    border: Border(bottom: BorderSide(color: tokens.border)),
+                  ),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(
+                              _getRoleIcon(widget.imageAsset?.role),
+                              size: 16.0,
+                              color: tokens.primary,
+                            ),
+                            const SizedBox(width: LyraSpacing.sm),
+                            Flexible(
+                              child: Text(
+                                _formatRoleLabel(widget.imageAsset?.role),
+                                overflow: TextOverflow.ellipsis,
+                                style: LyraTypography.small(tokens).copyWith(
+                                  fontWeight: FontWeight.bold,
+                                  color: tokens.text,
+                                ),
+                              ),
+                            ),
+                            if (widget.imageAsset != null &&
+                                widget.imageAsset!.width > 0) ...[
+                              const SizedBox(width: LyraSpacing.sm),
+                              Flexible(
+                                fit: FlexFit.loose,
+                                child: Text(
+                                  '${widget.imageAsset!.width} × ${widget.imageAsset!.height} px',
+                                  overflow: TextOverflow.ellipsis,
+                                  style: LyraTypography.small(tokens).copyWith(
+                                    color: tokens.textMuted,
+                                    fontSize: 12.0,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ],
+                        ),
+                      ),
+                      const SizedBox(width: LyraSpacing.sm),
+                      LyraButton.ghost(
+                        key: const Key('lightbox_close_button'),
+                        size: LyraButtonSize.sm,
+                        width: 32.0,
+                        height: 32.0,
+                        padding: EdgeInsets.zero,
+                        onPressed: () => Navigator.of(context).pop(),
+                        child: const Icon(LucideIcons.x, size: 16.0),
+                      ),
+                    ],
+                  ),
+                ),
+                // Body
+                Expanded(
+                  child: Stack(
+                    fit: StackFit.expand,
+                    children: [
+                      CustomPaint(
+                        painter: _SubtleGridPainter(
+                          gridColor: tokens.border.withValues(alpha: 0.25),
+                        ),
+                      ),
+                      InteractiveViewer(
+                        key: _viewerKey,
+                        transformationController: _transformationController,
+                        boundaryMargin: const EdgeInsets.all(1600.0),
+                        minScale: 0.25,
+                        maxScale: 8.0,
+                        child: Center(
+                          child: _buildArtworkGraphic(
+                            widget.asset,
+                            widget.imageAsset,
+                            tokens,
+                            isHero: true,
+                          ),
+                        ),
+                      ),
+                      // Floating Zoom Toolbar
+                      Positioned(
+                        bottom: 16.0,
+                        left: 16.0,
+                        right: 16.0,
+                        child: Center(
+                          child: FittedBox(
+                            fit: BoxFit.scaleDown,
+                            child: Container(
+                              height: 40.0,
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 8.0,
+                                vertical: 6.0,
+                              ),
+                              decoration: BoxDecoration(
+                                color: tokens.card.withValues(alpha: 0.94),
+                                borderRadius: LyraRadius.mdRadius,
+                                border: Border.all(color: tokens.border),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: Colors.black.withValues(alpha: 0.35),
+                                    blurRadius: 12.0,
+                                    offset: const Offset(0, 4),
+                                  ),
+                                ],
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                crossAxisAlignment: CrossAxisAlignment.center,
+                                children: [
+                                  // Fit button
+                                  LyraButton.outline(
+                                    key: const Key('lightbox_fit_button'),
+                                    size: LyraButtonSize.sm,
+                                    height: 28.0,
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 10.0,
+                                    ),
+                                    onPressed: _resetZoom,
+                                    child: const Text('Fit'),
+                                  ),
+                                  const SizedBox(width: 6.0),
+                                  // Zoom-out button
+                                  LyraButton.ghost(
+                                    key: const Key('lightbox_zoom_out'),
+                                    size: LyraButtonSize.sm,
+                                    width: 28.0,
+                                    height: 28.0,
+                                    padding: EdgeInsets.zero,
+                                    onPressed: _currentScale > 0.25
+                                        ? _zoomOut
+                                        : null,
+                                    child: Icon(
+                                      LucideIcons.zoomOut,
+                                      size: 16.0,
+                                      color: _currentScale > 0.25
+                                          ? tokens.text
+                                          : tokens.textMuted.withValues(
+                                              alpha: 0.4,
+                                            ),
+                                    ),
+                                  ),
+                                  // Slider
+                                  SizedBox(
+                                    width: 120.0,
+                                    child: SliderTheme(
+                                      data: SliderTheme.of(context).copyWith(
+                                        trackHeight: 3.0,
+                                        activeTrackColor: tokens.primary,
+                                        inactiveTrackColor: tokens.muted
+                                            .withValues(alpha: 0.6),
+                                        thumbColor: tokens.textMuted,
+                                        overlayColor: tokens.primary.withValues(
+                                          alpha: 0.12,
+                                        ),
+                                        thumbShape: const RoundSliderThumbShape(
+                                          enabledThumbRadius: 6.0,
+                                        ),
+                                        overlayShape:
+                                            const RoundSliderOverlayShape(
+                                              overlayRadius: 12.0,
+                                            ),
+                                      ),
+                                      child: Slider(
+                                        key: const Key('lightbox_zoom_slider'),
+                                        value: _currentScale.clamp(0.25, 8.0),
+                                        min: 0.25,
+                                        max: 8.0,
+                                        onChanged: _setScale,
+                                      ),
+                                    ),
+                                  ),
+                                  // Zoom-in button
+                                  LyraButton.ghost(
+                                    key: const Key('lightbox_zoom_in'),
+                                    size: LyraButtonSize.sm,
+                                    width: 28.0,
+                                    height: 28.0,
+                                    padding: EdgeInsets.zero,
+                                    onPressed: _currentScale < 8.0
+                                        ? _zoomIn
+                                        : null,
+                                    child: Icon(
+                                      LucideIcons.zoomIn,
+                                      size: 16.0,
+                                      color: _currentScale < 8.0
+                                          ? tokens.text
+                                          : tokens.textMuted.withValues(
+                                              alpha: 0.4,
+                                            ),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 6.0),
+                                  // Zoom percentage selector
+                                  PopupMenuButton<double>(
+                                    key: const Key(
+                                      'lightbox_zoom_percentage_button',
+                                    ),
+                                    tooltip: 'Preset Zoom Levels',
+                                    color: tokens.card,
+                                    surfaceTintColor: Colors.transparent,
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: LyraRadius.mdRadius,
+                                      side: BorderSide(color: tokens.border),
+                                    ),
+                                    onSelected: (val) {
+                                      if (val < 0) {
+                                        _resetZoom();
+                                      } else {
+                                        _setScale(val);
+                                      }
+                                    },
+                                    itemBuilder: (ctx) => [
+                                      _buildPopupMenuItem(tokens, 'Fit', -1.0),
+                                      _buildPopupMenuItem(tokens, '25%', 0.25),
+                                      _buildPopupMenuItem(tokens, '50%', 0.50),
+                                      _buildPopupMenuItem(
+                                        tokens,
+                                        '100% (1×)',
+                                        1.0,
+                                      ),
+                                      _buildPopupMenuItem(
+                                        tokens,
+                                        '200% (2×)',
+                                        2.0,
+                                      ),
+                                      _buildPopupMenuItem(
+                                        tokens,
+                                        '400% (4×)',
+                                        4.0,
+                                      ),
+                                      _buildPopupMenuItem(
+                                        tokens,
+                                        '800% (8×)',
+                                        8.0,
+                                      ),
+                                    ],
+                                    child: Container(
+                                      height: 28.0,
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 8.0,
+                                      ),
+                                      decoration: BoxDecoration(
+                                        color: tokens.card,
+                                        borderRadius: LyraRadius.smRadius,
+                                        border: Border.all(
+                                          color: tokens.border,
+                                        ),
+                                      ),
+                                      child: Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          Text(
+                                            '${(_currentScale * 100).round()}%',
+                                            key: const Key(
+                                              'lightbox_zoom_percentage_text',
+                                            ),
+                                            style: LyraTypography.small(tokens)
+                                                .copyWith(
+                                                  fontSize: 12.0,
+                                                  fontWeight: FontWeight.w600,
+                                                  color: tokens.text,
+                                                ),
+                                          ),
+                                          const SizedBox(width: 4.0),
+                                          Icon(
+                                            LucideIcons.chevronDown,
+                                            size: 13.0,
+                                            color: tokens.textMuted,
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
       ),

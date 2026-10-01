@@ -41,6 +41,7 @@ class DatabaseExplorerController extends ChangeNotifier {
     'Tag',
     'Asset',
     'Audio',
+    'Image',
   ];
 
   /// Creates a new [DatabaseExplorerController] with optional initial statistics and table data.
@@ -819,6 +820,24 @@ class DatabaseExplorerController extends ChangeNotifier {
       });
     }
 
+    final imageCasAssets = [
+      {'hash': 'img-hash-001', 'size': 4200000, 'mime': 'image/jpeg'},
+      {'hash': 'img-hash-002', 'size': 3100000, 'mime': 'image/jpeg'},
+      {'hash': 'img-hash-003', 'size': 1500000, 'mime': 'image/png'},
+      {'hash': 'img-hash-004', 'size': 2800000, 'mime': 'image/webp'},
+      {'hash': 'img-hash-005', 'size': 1900000, 'mime': 'image/jpeg'},
+      {'hash': 'img-hash-006', 'size': 2200000, 'mime': 'image/png'},
+    ];
+    for (int i = 0; i < imageCasAssets.length; i++) {
+      final img = imageCasAssets[i];
+      assetRows.add({
+        'file_hash': img['hash'],
+        'size_bytes': img['size'],
+        'mime_type': img['mime'],
+        'created_at': '2026-01-${(15 + i).toString().padLeft(2, '0')} 10:30:00',
+      });
+    }
+
     // 9. Audio table (12 rows)
     final audioRows = <Map<String, dynamic>>[];
     for (int i = 1; i <= 12; i++) {
@@ -832,6 +851,52 @@ class DatabaseExplorerController extends ChangeNotifier {
         'format': i % 2 == 0 ? 'pcm_s24le' : 'pcm_s16le',
       });
     }
+
+    // 10. Image table (6 rows)
+    final imageRows = <Map<String, dynamic>>[
+      {
+        'image_hash': 'img-meta-001',
+        'file_hash': 'img-hash-001',
+        'width': 3000,
+        'height': 3000,
+        'dominant_color': '#1E3A8A',
+      },
+      {
+        'image_hash': 'img-meta-002',
+        'file_hash': 'img-hash-002',
+        'width': 2400,
+        'height': 2400,
+        'dominant_color': '#D97706',
+      },
+      {
+        'image_hash': 'img-meta-003',
+        'file_hash': 'img-hash-003',
+        'width': 2048,
+        'height': 1024,
+        'dominant_color': '#065F46',
+      },
+      {
+        'image_hash': 'img-meta-004',
+        'file_hash': 'img-hash-004',
+        'width': 3000,
+        'height': 3000,
+        'dominant_color': '#111827',
+      },
+      {
+        'image_hash': 'img-meta-005',
+        'file_hash': 'img-hash-005',
+        'width': 1600,
+        'height': 2000,
+        'dominant_color': '#4B5563',
+      },
+      {
+        'image_hash': 'img-meta-006',
+        'file_hash': 'img-hash-006',
+        'width': 1800,
+        'height': 2400,
+        'dominant_color': '#F3F4F6',
+      },
+    ];
 
     return {
       'Entity': TableData(
@@ -915,6 +980,18 @@ class DatabaseExplorerController extends ChangeNotifier {
         columns: ['pcm_hash', 'sample_rate', 'channels', 'bit_depth', 'format'],
         rows: audioRows,
         totalCount: audioRows.length,
+      ),
+      'Image': TableData(
+        tableName: 'Image',
+        columns: [
+          'image_hash',
+          'file_hash',
+          'width',
+          'height',
+          'dominant_color',
+        ],
+        rows: imageRows,
+        totalCount: imageRows.length,
       ),
     };
   }

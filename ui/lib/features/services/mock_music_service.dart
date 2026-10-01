@@ -7,6 +7,7 @@ import '../models/album.dart';
 import '../models/artist.dart';
 import '../models/audio.dart';
 import '../models/cas_object.dart';
+import '../models/image_asset.dart';
 import '../models/playlist.dart';
 import '../models/source_data.dart';
 import '../models/tag.dart';
@@ -453,7 +454,124 @@ class MockMusicService implements MusicService {
       createdAt: DateTime(2026, 1, 28, 16, 0),
       verified: true,
     ),
+    CasObject(
+      hash: 'img-hash-001',
+      sizeBytes: 4200000,
+      mimeType: 'image/jpeg',
+      createdAt: DateTime(2026, 1, 15, 10, 30),
+      verified: true,
+      assetType: 'image',
+    ),
+    CasObject(
+      hash: 'img-hash-002',
+      sizeBytes: 3100000,
+      mimeType: 'image/jpeg',
+      createdAt: DateTime(2026, 1, 16, 11, 0),
+      verified: true,
+      assetType: 'image',
+    ),
+    CasObject(
+      hash: 'img-hash-003',
+      sizeBytes: 1500000,
+      mimeType: 'image/png',
+      createdAt: DateTime(2026, 1, 17, 14, 15),
+      verified: true,
+      assetType: 'image',
+    ),
+    CasObject(
+      hash: 'img-hash-004',
+      sizeBytes: 2800000,
+      mimeType: 'image/webp',
+      createdAt: DateTime(2026, 1, 18, 9, 20),
+      verified: true,
+      assetType: 'image',
+    ),
+    CasObject(
+      hash: 'img-hash-005',
+      sizeBytes: 1900000,
+      mimeType: 'image/jpeg',
+      createdAt: DateTime(2026, 1, 19, 16, 40),
+      verified: true,
+      assetType: 'image',
+    ),
+    CasObject(
+      hash: 'img-hash-006',
+      sizeBytes: 2200000,
+      mimeType: 'image/png',
+      createdAt: DateTime(2026, 1, 20, 13, 10),
+      verified: true,
+      assetType: 'image',
+    ),
   ];
+
+  final Map<String, ImageAsset> _imageAssets = {
+    'img-hash-001': const ImageAsset(
+      imageHash: 'img-meta-001',
+      fileHash: 'img-hash-001',
+      width: 3000,
+      height: 3000,
+      dominantColor: '#1E3A8A',
+      role: 'front',
+      mimeType: 'image/jpeg',
+      fileSize: 4200000,
+      colorFormat: '24-bit RGB',
+    ),
+    'img-hash-002': const ImageAsset(
+      imageHash: 'img-meta-002',
+      fileHash: 'img-hash-002',
+      width: 2400,
+      height: 2400,
+      dominantColor: '#D97706',
+      role: 'front',
+      mimeType: 'image/jpeg',
+      fileSize: 3100000,
+      colorFormat: '24-bit RGB',
+    ),
+    'img-hash-003': const ImageAsset(
+      imageHash: 'img-meta-003',
+      fileHash: 'img-hash-003',
+      width: 2048,
+      height: 1024,
+      dominantColor: '#065F46',
+      role: 'spectrogram',
+      mimeType: 'image/png',
+      fileSize: 1500000,
+      colorFormat: '32-bit RGBA',
+    ),
+    'img-hash-004': const ImageAsset(
+      imageHash: 'img-meta-004',
+      fileHash: 'img-hash-004',
+      width: 3000,
+      height: 3000,
+      dominantColor: '#111827',
+      role: 'front',
+      mimeType: 'image/webp',
+      fileSize: 2800000,
+      colorFormat: '24-bit RGB',
+    ),
+    'img-hash-005': const ImageAsset(
+      imageHash: 'img-meta-005',
+      fileHash: 'img-hash-005',
+      width: 1600,
+      height: 2000,
+      dominantColor: '#4B5563',
+      role: 'artist_avatar',
+      mimeType: 'image/jpeg',
+      fileSize: 1900000,
+      colorFormat: '24-bit RGB',
+    ),
+    'img-hash-006': const ImageAsset(
+      imageHash: 'img-meta-006',
+      fileHash: 'img-hash-006',
+      width: 1800,
+      height: 2400,
+      dominantColor: '#F3F4F6',
+      role: 'leaflet',
+      mimeType: 'image/png',
+      fileSize: 2200000,
+      colorFormat: '24-bit RGB',
+    ),
+  };
 
   @override
   Future<List<Track>> getTracks({String? query}) async {
@@ -1178,6 +1296,11 @@ class MockMusicService implements MusicService {
       }
     }
     return null;
+  }
+
+  @override
+  Future<ImageAsset?> getImageAsset(String fileHash) async {
+    return _imageAssets[fileHash];
   }
 
   @override

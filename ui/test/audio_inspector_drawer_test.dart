@@ -16,6 +16,7 @@ import 'package:ui/features/models/asset.dart';
 import 'package:ui/features/models/audio.dart';
 import 'package:ui/features/models/track.dart';
 import 'package:ui/features/player/controllers/playback_queue_controller.dart';
+import 'package:ui/features/player/views/components/waveform_scrubber.dart';
 import 'package:ui/features/services/mock_music_service.dart';
 import 'package:ui/features/services/music_service.dart';
 
@@ -907,6 +908,285 @@ void main() {
         // Step 4: Verify Track B is displayed and not hanging
         expect(find.text(trackB.displayTitle), findsOneWidget);
         expect(find.text('Edit Metadata'), findsNothing);
+      },
+    );
+
+    testWidgets(
+      'Image asset inspection displays preview surface, dimensions, megapixels, and dominant color swatch',
+      (tester) async {
+        tester.view.physicalSize = const Size(1280, 800);
+        tester.view.devicePixelRatio = 1.0;
+        addTearDown(tester.view.resetPhysicalSize);
+
+        final service = MockMusicService();
+        final imageAsset = Asset(
+          fileHash: 'img-hash-001',
+          mimeType: 'image/jpeg',
+          fileSize: 4 * 1024 * 1024,
+          createdAt: DateTime(2026, 1, 15, 10, 30),
+        );
+
+        await tester.pumpWidget(
+          _buildAudioInspectorTestWidget(
+            asset: imageAsset,
+            musicService: service,
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        // 1. Verify Image Preview Surface is present
+        expect(find.byKey(const Key('image_preview_surface')), findsOneWidget);
+
+        // 2. Verify Image Specifications section
+        expect(find.text('Image Specifications'), findsOneWidget);
+        expect(find.textContaining('3000 × 3000 px'), findsOneWidget);
+        expect(find.textContaining('9.0 MP'), findsOneWidget);
+        expect(find.text('1:1 (Square)'), findsOneWidget);
+        expect(find.text('24-bit RGB'), findsOneWidget);
+
+        // 3. Verify dominant color text and swatch
+        expect(find.text('#1E3A8A'), findsOneWidget);
+        expect(find.byKey(const Key('dominant_color_swatch')), findsOneWidget);
+
+        // 4. Verify role badge
+        expect(find.text('Front Cover'), findsWidgets);
+      },
+    );
+
+    testWidgets(
+      'Image asset inspection suppresses acoustic specifications and waveform scrubber',
+      (tester) async {
+        tester.view.physicalSize = const Size(1280, 800);
+        tester.view.devicePixelRatio = 1.0;
+        addTearDown(tester.view.resetPhysicalSize);
+
+        final service = MockMusicService();
+        final imageAsset = Asset(
+          fileHash: 'img-hash-001',
+          mimeType: 'image/jpeg',
+          fileSize: 4 * 1024 * 1024,
+          createdAt: DateTime(2026, 1, 15, 10, 30),
+        );
+
+        await tester.pumpWidget(
+          _buildAudioInspectorTestWidget(
+            asset: imageAsset,
+            musicService: service,
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        // Acoustic specifications and scrubber must be suppressed
+        expect(find.text('Audio Specifications'), findsNothing);
+        expect(find.byType(WaveformScrubber), findsNothing);
+        expect(find.text('Audio Versions'), findsNothing);
+
+        // General file storage and provenance sections should still be present
+        expect(find.text('File Storage'), findsOneWidget);
+        expect(find.text('Source Information'), findsOneWidget);
+      },
+    );
+
+    testWidgets(
+      'Lightbox zoom dialog opens with dedicated zoom toolbar and top-right close button',
+      (tester) async {
+        tester.view.physicalSize = const Size(1280, 800);
+        tester.view.devicePixelRatio = 1.0;
+        addTearDown(tester.view.resetPhysicalSize);
+
+        final service = MockMusicService();
+        final imageAsset = Asset(
+          fileHash: 'img-hash-001',
+          mimeType: 'image/jpeg',
+          fileSize: 4 * 1024 * 1024,
+          createdAt: DateTime(2026, 1, 15, 10, 30),
+        );
+
+        await tester.pumpWidget(
+          _buildAudioInspectorTestWidget(
+            asset: imageAsset,
+            musicService: service,
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        // Tap the preview surface to open lightbox
+        await tester.tap(find.byKey(const Key('image_preview_surface')));
+        await tester.pumpAndSettle();
+
+        // 1. Verify lightbox is open
+        expect(find.byKey(const Key('image_lightbox_dialog')), findsOneWidget);
+        expect(find.byType(InteractiveViewer), findsOneWidget);
+
+        // 2. Old scale toggle removed from header
+        expect(find.byKey(const Key('lightbox_scale_toggle')), findsNothing);
+
+        // 3. Top-right close button exists and is symmetrically positioned (8px from top and right of header)
+        final closeBtnFinder = find
+            .byKey(const Key('lightbox_close_button'))
+            .first;
+        expect(closeBtnFinder, findsOneWidget);
+        final closeBtnRect = tester.getRect(closeBtnFinder);
+        final headerContainerFinder = find
+            .ancestor(of: closeBtnFinder, matching: find.byType(Container))
+            .first;
+        final headerRect = tester.getRect(headerContainerFinder);
+        expect(headerRect.right - closeBtnRect.right, closeTo(8.0, 0.5));
+        expect(closeBtnRect.top - headerRect.top, closeTo(8.0, 0.5));
+        expect(closeBtnRect.width, equals(32.0));
+        expect(closeBtnRect.height, equals(32.0));
+
+        // 4. Verify dedicated zoom toolbar components exist
+        expect(find.byKey(const Key('lightbox_fit_button')), findsWidgets);
+        expect(find.byKey(const Key('lightbox_zoom_out')), findsWidgets);
+        expect(find.byKey(const Key('lightbox_zoom_slider')), findsOneWidget);
+        expect(find.byKey(const Key('lightbox_zoom_in')), findsWidgets);
+        expect(
+          find.byKey(const Key('lightbox_zoom_percentage_button')),
+          findsOneWidget,
+        );
+
+        // Initial percentage is 100%
+        expect(find.text('100%'), findsOneWidget);
+
+        // 5. Tap zoom-in button increases scale
+        await tester.tap(find.byKey(const Key('lightbox_zoom_in')).first);
+        await tester.pumpAndSettle();
+        expect(find.text('125%'), findsOneWidget);
+
+        // 6. Tap zoom-out button decreases scale
+        await tester.tap(find.byKey(const Key('lightbox_zoom_out')).first);
+        await tester.pumpAndSettle();
+        expect(find.text('100%'), findsOneWidget);
+
+        // 7. Test slider interaction
+        final sliderFinder = find.byKey(const Key('lightbox_zoom_slider'));
+        expect(sliderFinder, findsOneWidget);
+        final sliderWidget = tester.widget<Slider>(sliderFinder);
+        expect(sliderWidget.min, equals(0.25));
+        expect(sliderWidget.max, equals(8.0));
+
+        // 8. Test percentage selector popup menu
+        await tester.tap(
+          find.byKey(const Key('lightbox_zoom_percentage_button')),
+        );
+        await tester.pumpAndSettle();
+
+        // Check preset options in menu
+        expect(find.text('Fit'), findsWidgets);
+        expect(find.text('25%'), findsOneWidget);
+        expect(find.text('50%'), findsOneWidget);
+        expect(find.text('100% (1×)'), findsOneWidget);
+        expect(find.text('200% (2×)'), findsOneWidget);
+        expect(find.text('400% (4×)'), findsOneWidget);
+        expect(find.text('800% (8×)'), findsOneWidget);
+
+        // Select 200% (2×)
+        await tester.tap(find.text('200% (2×)'));
+        await tester.pumpAndSettle();
+        expect(find.text('200%'), findsOneWidget);
+
+        // Select 50% from preset menu (scale < 1.0)
+        await tester.tap(
+          find.byKey(const Key('lightbox_zoom_percentage_button')),
+        );
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('50%'));
+        await tester.pumpAndSettle();
+        expect(find.text('50%'), findsOneWidget);
+        final iv = tester.widget<InteractiveViewer>(
+          find.byType(InteractiveViewer),
+        );
+        expect(
+          iv.transformationController!.value.getMaxScaleOnAxis(),
+          closeTo(0.5, 0.01),
+        );
+
+        // Select 25% from preset menu (minimum scale < 1.0)
+        await tester.tap(
+          find.byKey(const Key('lightbox_zoom_percentage_button')),
+        );
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('25%'));
+        await tester.pumpAndSettle();
+        expect(find.text('25%'), findsOneWidget);
+        expect(
+          iv.transformationController!.value.getMaxScaleOnAxis(),
+          closeTo(0.25, 0.01),
+        );
+
+        // Test slider moving below 1.0 continuously
+        final slider = tester.widget<Slider>(
+          find.byKey(const Key('lightbox_zoom_slider')),
+        );
+        slider.onChanged!(0.75);
+        await tester.pump();
+        slider.onChanged!(0.60);
+        await tester.pump();
+        slider.onChanged!(0.40);
+        await tester.pumpAndSettle();
+        expect(find.text('40%'), findsOneWidget);
+        expect(
+          iv.transformationController!.value.getMaxScaleOnAxis(),
+          closeTo(0.40, 0.01),
+        );
+        expect(iv.transformationController!.value.storage[12].isFinite, isTrue);
+        expect(iv.transformationController!.value.storage[13].isFinite, isTrue);
+
+        // 9. Tap Fit button resets scale
+        await tester.tap(find.byKey(const Key('lightbox_fit_button')).first);
+        await tester.pumpAndSettle();
+        expect(find.text('100%'), findsOneWidget);
+
+        // 10. Close dialog via top-right close button
+        await tester.tap(find.byKey(const Key('lightbox_close_button')).first);
+        await tester.pumpAndSettle();
+
+        expect(find.byKey(const Key('image_lightbox_dialog')), findsNothing);
+      },
+    );
+
+    testWidgets(
+      'Lightbox dialog renders without RenderFlex overflow on narrow viewport',
+      (tester) async {
+        tester.view.physicalSize = const Size(360, 640);
+        tester.view.devicePixelRatio = 1.0;
+        addTearDown(tester.view.resetPhysicalSize);
+
+        final service = MockMusicService();
+        final imageAsset = Asset(
+          fileHash: 'img-hash-001',
+          mimeType: 'image/jpeg',
+          fileSize: 4 * 1024 * 1024,
+          createdAt: DateTime(2026, 1, 15, 10, 30),
+        );
+
+        await tester.pumpWidget(
+          _buildAudioInspectorTestWidget(
+            asset: imageAsset,
+            musicService: service,
+            width: 360,
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        // Tap the preview surface to open lightbox
+        await tester.tap(find.byKey(const Key('image_preview_surface')));
+        await tester.pumpAndSettle();
+
+        // Verify lightbox is open and no RenderFlex overflow exception occurred
+        expect(find.byKey(const Key('image_lightbox_dialog')), findsOneWidget);
+        expect(tester.takeException(), isNull);
+
+        // Verify zoom toolbar and close button exist
+        expect(find.byKey(const Key('lightbox_fit_button')), findsWidgets);
+        expect(find.byKey(const Key('lightbox_close_button')), findsWidgets);
+
+        // Close dialog
+        await tester.tap(find.byKey(const Key('lightbox_close_button')).first);
+        await tester.pumpAndSettle();
+
+        expect(find.byKey(const Key('image_lightbox_dialog')), findsNothing);
       },
     );
   });

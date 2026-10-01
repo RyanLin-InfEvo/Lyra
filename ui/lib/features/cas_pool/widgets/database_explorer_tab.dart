@@ -3,7 +3,7 @@
 
 import 'dart:async';
 import 'dart:convert';
-import 'package:flutter/material.dart' show Colors, Tooltip;
+import 'package:flutter/material.dart' show Tooltip, TooltipState;
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
@@ -824,6 +824,7 @@ class _DatabaseExplorerTabState extends State<DatabaseExplorerTab> {
       case 'id':
       case 'pcm_hash':
       case 'file_hash':
+      case 'image_hash':
       case 'work_id':
         return 280.0;
       case 'title':
@@ -844,6 +845,7 @@ class _DatabaseExplorerTabState extends State<DatabaseExplorerTab> {
       case 'category':
       case 'format':
       case 'mime_type':
+      case 'dominant_color':
         return 130.0;
       case 'duration':
       case 'recording_year':
@@ -854,6 +856,8 @@ class _DatabaseExplorerTabState extends State<DatabaseExplorerTab> {
       case 'channels':
       case 'bit_depth':
       case 'size_bytes':
+      case 'width':
+      case 'height':
         return 110.0;
       default:
         return 150.0;
@@ -1123,6 +1127,7 @@ class _DataCellWidgetState extends State<_DataCellWidget> {
 
   bool _copied = false;
   Timer? _copyTimer;
+  final GlobalKey<TooltipState> _tooltipKey = GlobalKey<TooltipState>();
 
   @override
   void didUpdateWidget(covariant _DataCellWidget oldWidget) {
@@ -1146,6 +1151,12 @@ class _DataCellWidgetState extends State<_DataCellWidget> {
     if (!mounted) return;
     setState(() => _copied = true);
     _copyTimer?.cancel();
+    _tooltipKey.currentState?.ensureTooltipVisible();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted && _copied) {
+        _tooltipKey.currentState?.ensureTooltipVisible();
+      }
+    });
     _copyTimer = Timer(const Duration(milliseconds: 1500), () {
       if (mounted) setState(() => _copied = false);
     });
@@ -1162,6 +1173,10 @@ class _DataCellWidgetState extends State<_DataCellWidget> {
     }
   }
 
+  void _onCellTap() {
+    _copy();
+  }
+
   @override
   Widget build(BuildContext context) {
     final tokens = widget.tokens;
@@ -1174,20 +1189,8 @@ class _DataCellWidgetState extends State<_DataCellWidget> {
         constraints: const BoxConstraints(minWidth: 200),
         popoverReverseDuration: const Duration(milliseconds: 50),
         items: items,
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 200),
-          curve: Curves.easeInOutCubic,
+        child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 4.0, vertical: 2.0),
-          decoration: BoxDecoration(
-            color: _copied
-                ? tokens.success.withValues(alpha: 0.12)
-                : Colors.transparent,
-            borderRadius: LyraRadius.smRadius,
-            border: Border.all(
-              color: _copied ? tokens.success : Colors.transparent,
-              width: 1.0,
-            ),
-          ),
           child: Text(
             'NULL',
             style: TextStyle(
@@ -1203,36 +1206,112 @@ class _DataCellWidgetState extends State<_DataCellWidget> {
     final str = value.toString();
     final isMonospace = _uuidRegex.hasMatch(str) || _hexHashRegex.hasMatch(str);
 
-    final tooltipMessage = _copied ? 'Copied: $str' : str;
-
     return ShadContextMenuRegion(
       constraints: const BoxConstraints(minWidth: 200),
       popoverReverseDuration: const Duration(milliseconds: 50),
       items: items,
       child: Tooltip(
-        message: tooltipMessage,
-        waitDuration: const Duration(milliseconds: 400),
+        key: _tooltipKey,
+        enableTapToDismiss: false,
+        waitDuration: Duration.zero,
+        showDuration: const Duration(milliseconds: 2000),
+        padding: EdgeInsets.zero,
+        margin: EdgeInsets.zero,
+        decoration: const BoxDecoration(color: Color(0x00000000)),
+        richMessage: WidgetSpan(
+          alignment: PlaceholderAlignment.middle,
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 200),
+            curve: Curves.easeInOutCubic,
+            height: 28.0,
+            padding: const EdgeInsets.symmetric(horizontal: 10.0),
+            decoration: BoxDecoration(
+              color: tokens.card,
+              borderRadius: LyraRadius.smRadius,
+              border: Border.all(
+                color: _copied ? tokens.success : tokens.border,
+                width: 1.0,
+              ),
+              boxShadow: const [
+                BoxShadow(
+                  color: Color(0x33000000),
+                  blurRadius: 4.0,
+                  offset: Offset(0, 2),
+                ),
+              ],
+            ),
+            child: Center(
+              widthFactor: 1.0,
+              heightFactor: 1.0,
+              child: AnimatedSize(
+                duration: const Duration(milliseconds: 200),
+                curve: Curves.easeInOutCubic,
+                child: AnimatedSwitcher(
+                  duration: const Duration(milliseconds: 200),
+                  switchInCurve: Curves.easeInOutCubic,
+                  switchOutCurve: Curves.easeInOutCubic,
+                  transitionBuilder: (child, animation) {
+                    return FadeTransition(
+                      opacity: animation,
+                      child: ScaleTransition(
+                        scale: Tween<double>(
+                          begin: 0.9,
+                          end: 1.0,
+                        ).animate(animation),
+                        child: child,
+                      ),
+                    );
+                  },
+                  child: _copied
+                      ? Row(
+                          key: const ValueKey<bool>(true),
+                          mainAxisSize: MainAxisSize.min,
+                          crossAxisAlignment: CrossAxisAlignment.center,
+                          children: [
+                            Icon(
+                              LucideIcons.check,
+                              size: 13.0,
+                              color: tokens.success,
+                            ),
+                            const SizedBox(width: 4.0),
+                            Text(
+                              'Copied',
+                              style: TextStyle(
+                                color: tokens.success,
+                                fontSize: 12.0,
+                                fontWeight: FontWeight.w600,
+                                height: 1.2,
+                              ),
+                            ),
+                          ],
+                        )
+                      : Text(
+                          'Click to copy',
+                          key: const ValueKey<bool>(false),
+                          style: TextStyle(
+                            color: tokens.text,
+                            fontSize: 12.0,
+                            height: 1.2,
+                          ),
+                        ),
+                ),
+              ),
+            ),
+          ),
+        ),
         child: MouseRegion(
           cursor: SystemMouseCursors.click,
+          onExit: (event) {
+            _copyTimer?.cancel();
+            if (mounted && _copied) setState(() => _copied = false);
+          },
           child: GestureDetector(
             behavior: HitTestBehavior.opaque,
-            onTap: _copy,
-            child: AnimatedContainer(
-              duration: const Duration(milliseconds: 200),
-              curve: Curves.easeInOutCubic,
+            onTap: _onCellTap,
+            child: Padding(
               padding: const EdgeInsets.symmetric(
                 horizontal: 4.0,
                 vertical: 2.0,
-              ),
-              decoration: BoxDecoration(
-                color: _copied
-                    ? tokens.success.withValues(alpha: 0.12)
-                    : Colors.transparent,
-                borderRadius: LyraRadius.smRadius,
-                border: Border.all(
-                  color: _copied ? tokens.success : Colors.transparent,
-                  width: 1.0,
-                ),
               ),
               child: Text(
                 str,
@@ -1402,6 +1481,30 @@ class _DataCellWidgetState extends State<_DataCellWidget> {
           ),
         );
       }
+      final mimeType = row['mime_type']?.toString().toLowerCase();
+      if (fileHash != null &&
+          fileHash.isNotEmpty &&
+          mimeType != null &&
+          mimeType.startsWith('image/')) {
+        items.add(
+          ShadContextMenuItem(
+            leading: const Icon(LucideIcons.image, size: 14.0),
+            onPressed: () =>
+                controller.navigateToTable('Image', filter: fileHash),
+            child: const Text('Find in Image Table (Hash)'),
+          ),
+        );
+      }
+    } else if (currentTable == 'Image') {
+      final fileHash = row['file_hash']?.toString().trim();
+      items.add(
+        ShadContextMenuItem(
+          leading: const Icon(LucideIcons.fileArchive, size: 14.0),
+          onPressed: () =>
+              controller.navigateToTable('Asset', filter: fileHash ?? ''),
+          child: const Text('View in Asset Table'),
+        ),
+      );
     } else if ([
       'Artist',
       'Album',

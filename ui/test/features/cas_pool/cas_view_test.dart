@@ -467,6 +467,26 @@ void main() {
         await tester.pump(const Duration(milliseconds: 250));
         expect(find.text('Click to copy hash'), findsOneWidget);
         expect(hashFinder, findsOneWidget);
+
+        // Test stale-state reset immediately on mouse exit
+        await tester.tap(hashFinder);
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 250));
+        expect(find.text('Copied'), findsOneWidget);
+
+        final gesture = await tester.createGesture(
+          kind: PointerDeviceKind.mouse,
+        );
+        await gesture.addPointer(location: tester.getCenter(hashFinder));
+        await tester.pump();
+        await gesture.moveTo(Offset.zero);
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 250));
+
+        // When mouse exits, stale Copied state is reset immediately
+        expect(find.text('Copied'), findsNothing);
+        expect(find.text('Click to copy hash'), findsOneWidget);
+        await gesture.removePointer();
       },
     );
 
