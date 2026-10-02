@@ -347,15 +347,22 @@ class ShadcnFactory extends LyraDesignSystemFactory {
       title: title,
       description: description,
       actions: actions ?? const [],
-      closeIcon: onClose != null
-          ? ShadIconButton.ghost(
-              icon: const Icon(LucideIcons.x, size: 16),
-              width: 20,
-              height: 20,
-              padding: EdgeInsets.zero,
-              onPressed: onClose,
-            )
-          : null,
+      closeIcon: Builder(
+        builder: (dialogContext) => ShadIconButton.ghost(
+          icon: const Icon(LucideIcons.x, size: 16),
+          width: 20,
+          height: 20,
+          padding: EdgeInsets.zero,
+          onPressed:
+              onClose ??
+              () {
+                final route = ModalRoute.of(dialogContext);
+                if (route is PopupRoute && route.isCurrent) {
+                  Navigator.maybeOf(dialogContext)?.pop();
+                }
+              },
+        ),
+      ),
       child: child,
     );
   }

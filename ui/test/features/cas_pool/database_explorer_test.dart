@@ -804,6 +804,74 @@ void main() {
       },
     );
 
+    testWidgets(
+      'Vacuum Database dialog X close button dismisses dialog without popping host view',
+      (tester) async {
+        tester.view.physicalSize = const Size(1280, 1200);
+        tester.view.devicePixelRatio = 1.0;
+        addTearDown(tester.view.resetPhysicalSize);
+
+        final controller = DatabaseExplorerController();
+        addTearDown(controller.dispose);
+
+        await tester.pumpWidget(
+          _buildDatabaseExplorerTest(controller: controller),
+        );
+        await tester.pumpAndSettle();
+
+        final vacuumButton = find.widgetWithText(LyraButton, 'Vacuum Database');
+        await tester.ensureVisible(vacuumButton);
+        await tester.tap(vacuumButton);
+        await tester.pumpAndSettle();
+
+        expect(find.byType(LyraDialog), findsOneWidget);
+
+        final closeIcon = find.descendant(
+          of: find.byType(LyraDialog),
+          matching: find.byIcon(LucideIcons.x),
+        );
+        expect(closeIcon, findsOneWidget);
+        await tester.tap(closeIcon);
+        await tester.pumpAndSettle();
+
+        expect(find.byType(LyraDialog), findsNothing);
+        expect(find.byType(DatabaseExplorerTab), findsOneWidget);
+        expect(find.text('Database Health Status'), findsOneWidget);
+        expect(controller.isVacuuming, isFalse);
+      },
+    );
+
+    testWidgets(
+      'Vacuum Database dialog wraps with BlockSemantics and dismisses on Escape key',
+      (tester) async {
+        tester.view.physicalSize = const Size(1280, 1200);
+        tester.view.devicePixelRatio = 1.0;
+        addTearDown(tester.view.resetPhysicalSize);
+
+        final controller = DatabaseExplorerController();
+        addTearDown(controller.dispose);
+
+        await tester.pumpWidget(
+          _buildDatabaseExplorerTest(controller: controller),
+        );
+        await tester.pumpAndSettle();
+
+        final vacuumButton = find.widgetWithText(LyraButton, 'Vacuum Database');
+        await tester.ensureVisible(vacuumButton);
+        await tester.tap(vacuumButton);
+        await tester.pumpAndSettle();
+
+        expect(find.byType(LyraDialog), findsOneWidget);
+
+        await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+        await tester.pumpAndSettle();
+
+        expect(find.byType(LyraDialog), findsNothing);
+        expect(find.byType(DatabaseExplorerTab), findsOneWidget);
+        expect(controller.isVacuuming, isFalse);
+      },
+    );
+
     testWidgets('Vacuum Database confirms in LyraDialog and executes vacuum', (
       tester,
     ) async {

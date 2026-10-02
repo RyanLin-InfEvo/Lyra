@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shadcn_ui/shadcn_ui.dart';
 import 'package:ui/design_system/factory/lyra_design_system_scope.dart';
@@ -345,6 +346,127 @@ void main() {
         themeLight.colorScheme.card,
         equals(const ShadZincColorScheme.light().card),
       );
+    },
+  );
+
+  testWidgets(
+    'Create Tag dialog X close button dismisses dialog without popping host view',
+    (tester) async {
+      await tester.pumpWidget(
+        _buildTagsViewTest(
+          tags: const [],
+          onCreateTag: ({required name, required category}) async {},
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Create Tag'));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(LyraDialog), findsOneWidget);
+
+      final closeIcon = find.descendant(
+        of: find.byType(LyraDialog),
+        matching: find.byIcon(LucideIcons.x),
+      );
+      expect(closeIcon, findsOneWidget);
+      await tester.tap(closeIcon);
+      await tester.pumpAndSettle();
+
+      expect(find.byType(LyraDialog), findsNothing);
+      expect(find.byType(TagsView), findsOneWidget);
+      expect(find.text('No tags created yet'), findsOneWidget);
+    },
+  );
+
+  testWidgets(
+    'Delete Tag dialog X close button dismisses dialog without popping host view',
+    (tester) async {
+      tester.view.physicalSize = const Size(1280, 800);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+
+      await tester.pumpWidget(
+        _buildTagsViewTest(
+          tags: sampleTags,
+          tagTrackCounts: sampleCounts,
+          onDeleteTag: (_) {},
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final trashIcons = find.byIcon(LucideIcons.trash2);
+      await tester.tap(trashIcons.first);
+      await tester.pumpAndSettle();
+
+      expect(find.byType(LyraDialog), findsOneWidget);
+      expect(find.text('Delete Tag'), findsOneWidget);
+
+      final closeIcon = find.descendant(
+        of: find.byType(LyraDialog),
+        matching: find.byIcon(LucideIcons.x),
+      );
+      expect(closeIcon, findsOneWidget);
+      await tester.tap(closeIcon);
+      await tester.pumpAndSettle();
+
+      expect(find.byType(LyraDialog), findsNothing);
+      expect(find.byType(TagsView), findsOneWidget);
+      expect(find.text('Audiophile Master'), findsOneWidget);
+    },
+  );
+
+  testWidgets(
+    'Create Tag dialog wraps with BlockSemantics and dismisses on Escape key',
+    (tester) async {
+      await tester.pumpWidget(
+        _buildTagsViewTest(
+          tags: const [],
+          onCreateTag: ({required name, required category}) async {},
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Create Tag'));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(LyraDialog), findsOneWidget);
+
+      await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+      await tester.pumpAndSettle();
+
+      expect(find.byType(LyraDialog), findsNothing);
+      expect(find.byType(TagsView), findsOneWidget);
+    },
+  );
+
+  testWidgets(
+    'Delete Tag dialog wraps with BlockSemantics and dismisses on Escape key',
+    (tester) async {
+      tester.view.physicalSize = const Size(1280, 800);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+
+      await tester.pumpWidget(
+        _buildTagsViewTest(
+          tags: sampleTags,
+          tagTrackCounts: sampleCounts,
+          onDeleteTag: (_) {},
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final trashIcons = find.byIcon(LucideIcons.trash2);
+      await tester.tap(trashIcons.first);
+      await tester.pumpAndSettle();
+
+      expect(find.byType(LyraDialog), findsOneWidget);
+
+      await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+      await tester.pumpAndSettle();
+
+      expect(find.byType(LyraDialog), findsNothing);
+      expect(find.byType(TagsView), findsOneWidget);
     },
   );
 }

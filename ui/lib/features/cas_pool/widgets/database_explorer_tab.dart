@@ -926,34 +926,47 @@ class _DatabaseExplorerTabState extends State<DatabaseExplorerTab> {
     LyraThemeTokens tokens,
     DatabaseExplorerController controller,
   ) {
-    return Container(
-      color: const Color(0x80000000),
-      alignment: Alignment.center,
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 440.0),
-        child: LyraDialog(
-          title: Text('Vacuum Database', style: LyraTypography.h3(tokens)),
-          description: Text(
-            'Are you sure you want to vacuum the database? '
-            'This rebuilds the database file, defragmenting allocated pages '
-            'and reclaiming unused disk space. This operation may take several seconds.',
-            style: LyraTypography.muted(tokens),
+    void dismiss() => setState(() => _showVacuumDialog = false);
+    return BlockSemantics(
+      child: CallbackShortcuts(
+        bindings: {const SingleActivator(LogicalKeyboardKey.escape): dismiss},
+        child: Focus(
+          autofocus: true,
+          child: Container(
+            color: const Color(0x80000000),
+            alignment: Alignment.center,
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 440.0),
+              child: LyraDialog(
+                onClose: dismiss,
+                title: Text(
+                  'Vacuum Database',
+                  style: LyraTypography.h3(tokens),
+                ),
+                description: Text(
+                  'Are you sure you want to vacuum the database? '
+                  'This rebuilds the database file, defragmenting allocated pages '
+                  'and reclaiming unused disk space. This operation may take several seconds.',
+                  style: LyraTypography.muted(tokens),
+                ),
+                actions: [
+                  LyraButton.ghost(
+                    size: LyraButtonSize.sm,
+                    onPressed: dismiss,
+                    child: const Text('Cancel'),
+                  ),
+                  LyraButton.destructive(
+                    size: LyraButtonSize.sm,
+                    onPressed: () async {
+                      dismiss();
+                      await controller.vacuumDatabase();
+                    },
+                    child: const Text('Confirm Vacuum'),
+                  ),
+                ],
+              ),
+            ),
           ),
-          actions: [
-            LyraButton.ghost(
-              size: LyraButtonSize.sm,
-              onPressed: () => setState(() => _showVacuumDialog = false),
-              child: const Text('Cancel'),
-            ),
-            LyraButton.destructive(
-              size: LyraButtonSize.sm,
-              onPressed: () async {
-                setState(() => _showVacuumDialog = false);
-                await controller.vacuumDatabase();
-              },
-              child: const Text('Confirm Vacuum'),
-            ),
-          ],
         ),
       ),
     );

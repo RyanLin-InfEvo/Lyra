@@ -194,6 +194,215 @@ void main() {
       expect(closed, isTrue);
     });
 
+    testWidgets(
+      'LyraDialog with onClose == null guards against popping root navigator in non-route context',
+      (tester) async {
+        await tester.pumpWidget(
+          _buildTestApp(
+            child: const LyraDialog(
+              title: Text('Non-route Dialog'),
+              child: Text('Dialog Content'),
+            ),
+          ),
+        );
+
+        expect(find.text('Non-route Dialog'), findsOneWidget);
+        final closeIcon = find.byIcon(LucideIcons.x);
+        expect(closeIcon, findsOneWidget);
+
+        // Tapping X button when canPop is false should not pop the root route or crash
+        await tester.tap(closeIcon);
+        await tester.pumpAndSettle();
+
+        // Host page remains mounted without white screen or unmounting
+        expect(find.text('Non-route Dialog'), findsOneWidget);
+      },
+    );
+
+    testWidgets(
+      'LyraDialog with onClose == null in a modal route pops dialog route safely',
+      (tester) async {
+        await tester.pumpWidget(
+          _buildTestApp(
+            child: Builder(
+              builder: (context) {
+                final scope = LyraDesignSystemScope.of(context);
+                return ElevatedButton(
+                  onPressed: () {
+                    showDialog<void>(
+                      context: context,
+                      builder: (ctx) => LyraDesignSystemScope(
+                        factory: scope.factory,
+                        tokens: scope.tokens,
+                        themeModeNotifier: scope.themeModeNotifier,
+                        child: const LyraDialog(
+                          title: Text('Modal Route Dialog'),
+                          child: Text('Modal Content'),
+                        ),
+                      ),
+                    );
+                  },
+                  child: const Text('Open Modal'),
+                );
+              },
+            ),
+          ),
+        );
+
+        await tester.tap(find.text('Open Modal'));
+        await tester.pumpAndSettle();
+
+        expect(find.text('Modal Route Dialog'), findsOneWidget);
+
+        // In a modal route, canPop() is true, so tapping X pops the modal route
+        final closeIcon = find.descendant(
+          of: find.byType(LyraDialog),
+          matching: find.byIcon(LucideIcons.x),
+        );
+        expect(closeIcon, findsOneWidget);
+        await tester.tap(closeIcon);
+        await tester.pumpAndSettle();
+
+        expect(find.text('Modal Route Dialog'), findsNothing);
+        expect(find.text('Open Modal'), findsOneWidget);
+      },
+    );
+
+    testWidgets(
+      'LyraDialog with onClose == null inside a pushed PageRoute does not pop the PageRoute',
+      (tester) async {
+        await tester.pumpWidget(
+          _buildTestApp(
+            child: Builder(
+              builder: (context) {
+                final scope = LyraDesignSystemScope.of(context);
+                return ElevatedButton(
+                  onPressed: () {
+                    Navigator.of(context).push(
+                      MaterialPageRoute<void>(
+                        builder: (pushedCtx) => LyraDesignSystemScope(
+                          factory: scope.factory,
+                          tokens: scope.tokens,
+                          themeModeNotifier: scope.themeModeNotifier,
+                          child: const Scaffold(
+                            body: Column(
+                              children: [
+                                Text('Pushed Page Host'),
+                                LyraDialog(
+                                  title: Text('In-Tree Dialog in PageRoute'),
+                                  child: Text('Content'),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                    );
+                  },
+                  child: const Text('Push Page'),
+                );
+              },
+            ),
+          ),
+        );
+
+        await tester.tap(find.text('Push Page'));
+        await tester.pumpAndSettle();
+
+        expect(find.text('Pushed Page Host'), findsOneWidget);
+        expect(find.text('In-Tree Dialog in PageRoute'), findsOneWidget);
+
+        final closeIcon = find.descendant(
+          of: find.byType(LyraDialog),
+          matching: find.byIcon(LucideIcons.x),
+        );
+        expect(closeIcon, findsOneWidget);
+
+        // Tapping X button on in-tree dialog with onClose == null must NOT pop the enclosing PageRoute
+        await tester.tap(closeIcon);
+        await tester.pumpAndSettle();
+
+        expect(find.text('Pushed Page Host'), findsOneWidget);
+        expect(find.text('In-Tree Dialog in PageRoute'), findsOneWidget);
+      },
+    );
+
+    testWidgets(
+      'LyraDialog with onClose == null rapid double-tap on PopupRoute does not pop host route',
+      (tester) async {
+        await tester.pumpWidget(
+          _buildTestApp(
+            child: Builder(
+              builder: (context) {
+                final scope = LyraDesignSystemScope.of(context);
+                return ElevatedButton(
+                  onPressed: () {
+                    Navigator.of(context).push(
+                      MaterialPageRoute<void>(
+                        builder: (pageCtx) => Scaffold(
+                          body: Column(
+                            children: [
+                              const Text('Host Page Screen'),
+                              ElevatedButton(
+                                onPressed: () {
+                                  showDialog<void>(
+                                    context: pageCtx,
+                                    builder: (dlgCtx) => LyraDesignSystemScope(
+                                      factory: scope.factory,
+                                      tokens: scope.tokens,
+                                      themeModeNotifier:
+                                          scope.themeModeNotifier,
+                                      child: const LyraDialog(
+                                        title: Text('Popup Dialog'),
+                                        child: Text('Dialog Content'),
+                                      ),
+                                    ),
+                                  );
+                                },
+                                child: const Text('Show Dialog'),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    );
+                  },
+                  child: const Text('Open Page'),
+                );
+              },
+            ),
+          ),
+        );
+
+        // Push the host page
+        await tester.tap(find.text('Open Page'));
+        await tester.pumpAndSettle();
+        expect(find.text('Host Page Screen'), findsOneWidget);
+
+        // Open the popup dialog
+        await tester.tap(find.text('Show Dialog'));
+        await tester.pumpAndSettle();
+        expect(find.text('Popup Dialog'), findsOneWidget);
+
+        final closeIcon = find.descendant(
+          of: find.byType(LyraDialog),
+          matching: find.byIcon(LucideIcons.x),
+        );
+        expect(closeIcon, findsOneWidget);
+
+        final closeButton = tester.widget<ShadButton>(
+          find.ancestor(of: closeIcon, matching: find.byType(ShadButton)),
+        );
+        closeButton.onPressed?.call();
+        closeButton.onPressed?.call();
+        await tester.pumpAndSettle();
+
+        // Dialog should be dismissed, and Host Page Screen MUST still be present
+        expect(find.text('Popup Dialog'), findsNothing);
+        expect(find.text('Host Page Screen'), findsOneWidget);
+      },
+    );
+
     testWidgets('LyraBadge renders variants correctly', (tester) async {
       await tester.pumpWidget(
         _buildTestApp(

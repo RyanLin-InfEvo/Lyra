@@ -370,6 +370,152 @@ void main() {
       },
     );
 
+    testWidgets(
+      'Prune Orphans dialog X close button dismisses dialog without popping host view',
+      (tester) async {
+        tester.view.physicalSize = const Size(1280, 800);
+        tester.view.devicePixelRatio = 1.0;
+        addTearDown(tester.view.resetPhysicalSize);
+
+        final controller = CasController(
+          initialTab: CasTab.backendSettings,
+          initialOrphanedCount: 3,
+          initialOrphanedBytes: 12 * 1024 * 1024,
+        );
+        addTearDown(controller.dispose);
+
+        await tester.pumpWidget(_buildCasViewTest(controller: controller));
+        await tester.pumpAndSettle();
+
+        await tester.tap(find.text('Prune Orphans (12.0 MB)'));
+        await tester.pumpAndSettle();
+
+        expect(find.byType(LyraDialog), findsOneWidget);
+
+        final closeIcon = find.descendant(
+          of: find.byType(LyraDialog),
+          matching: find.byIcon(LucideIcons.x),
+        );
+        expect(closeIcon, findsOneWidget);
+        await tester.tap(closeIcon);
+        await tester.pumpAndSettle();
+
+        expect(find.byType(LyraDialog), findsNothing);
+        expect(find.byType(CasView), findsOneWidget);
+        expect(find.text('Storage & Cache Maintenance'), findsOneWidget);
+        expect(controller.orphanedCount, equals(3));
+      },
+    );
+
+    testWidgets(
+      'Clear Waveform Cache dialog X close button dismisses dialog without popping host view',
+      (tester) async {
+        tester.view.physicalSize = const Size(1280, 800);
+        tester.view.devicePixelRatio = 1.0;
+        addTearDown(tester.view.resetPhysicalSize);
+
+        final controller = CasController(
+          initialTab: CasTab.backendSettings,
+          initialWaveformCacheBytes: 40 * 1024 * 1024,
+        );
+        addTearDown(controller.dispose);
+
+        await tester.pumpWidget(_buildCasViewTest(controller: controller));
+        await tester.pumpAndSettle();
+
+        await tester.tap(find.text('Clear Waveform Cache'));
+        await tester.pumpAndSettle();
+
+        expect(find.byType(LyraDialog), findsOneWidget);
+
+        final closeIcon = find.descendant(
+          of: find.byType(LyraDialog),
+          matching: find.byIcon(LucideIcons.x),
+        );
+        expect(closeIcon, findsOneWidget);
+        await tester.tap(closeIcon);
+        await tester.pumpAndSettle();
+
+        expect(find.byType(LyraDialog), findsNothing);
+        expect(find.byType(CasView), findsOneWidget);
+        expect(find.text('Storage & Cache Maintenance'), findsOneWidget);
+        expect(controller.waveformCacheBytes, equals(40 * 1024 * 1024));
+      },
+    );
+
+    testWidgets(
+      'Prune Orphans dialog wraps with BlockSemantics and dismisses on Escape key',
+      (tester) async {
+        tester.view.physicalSize = const Size(1280, 800);
+        tester.view.devicePixelRatio = 1.0;
+        addTearDown(tester.view.resetPhysicalSize);
+
+        final controller = CasController(
+          initialTab: CasTab.backendSettings,
+          initialOrphanedCount: 3,
+          initialOrphanedBytes: 12 * 1024 * 1024,
+        );
+        addTearDown(controller.dispose);
+
+        await tester.pumpWidget(_buildCasViewTest(controller: controller));
+        await tester.pumpAndSettle();
+
+        await tester.tap(find.text('Prune Orphans (12.0 MB)'));
+        await tester.pumpAndSettle();
+
+        expect(find.byType(LyraDialog), findsOneWidget);
+        expect(
+          find.ancestor(
+            of: find.byType(LyraDialog),
+            matching: find.byType(BlockSemantics),
+          ),
+          findsOneWidget,
+        );
+
+        await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+        await tester.pumpAndSettle();
+
+        expect(find.byType(LyraDialog), findsNothing);
+        expect(find.byType(CasView), findsOneWidget);
+      },
+    );
+
+    testWidgets(
+      'Clear Waveform Cache dialog wraps with BlockSemantics and dismisses on Escape key',
+      (tester) async {
+        tester.view.physicalSize = const Size(1280, 800);
+        tester.view.devicePixelRatio = 1.0;
+        addTearDown(tester.view.resetPhysicalSize);
+
+        final controller = CasController(
+          initialTab: CasTab.backendSettings,
+          initialWaveformCacheBytes: 40 * 1024 * 1024,
+        );
+        addTearDown(controller.dispose);
+
+        await tester.pumpWidget(_buildCasViewTest(controller: controller));
+        await tester.pumpAndSettle();
+
+        await tester.tap(find.text('Clear Waveform Cache'));
+        await tester.pumpAndSettle();
+
+        expect(find.byType(LyraDialog), findsOneWidget);
+        expect(
+          find.ancestor(
+            of: find.byType(LyraDialog),
+            matching: find.byType(BlockSemantics),
+          ),
+          findsOneWidget,
+        );
+
+        await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+        await tester.pumpAndSettle();
+
+        expect(find.byType(LyraDialog), findsNothing);
+        expect(find.byType(CasView), findsOneWidget);
+      },
+    );
+
     testWidgets('Tapping blob row triggers onInspectAsset callback', (
       tester,
     ) async {

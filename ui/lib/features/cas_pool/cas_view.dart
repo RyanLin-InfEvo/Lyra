@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import 'package:flutter/material.dart' show LinearProgressIndicator;
+import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
@@ -178,34 +179,47 @@ class _CasViewState extends State<CasView> {
   }
 
   Widget _buildPruneDialog(LyraThemeTokens tokens, CasController controller) {
-    return Container(
-      color: const Color(0x80000000),
-      alignment: Alignment.center,
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 440.0),
-        child: LyraDialog(
-          title: Text('Prune Orphaned Blobs', style: LyraTypography.h3(tokens)),
-          description: Text(
-            'Are you sure you want to prune unreferenced orphaned blobs? '
-            'This will permanently reclaim ${controller.formattedOrphanedBytes} '
-            'across ${controller.orphanedCount} blobs from the storage pool.',
-            style: LyraTypography.muted(tokens),
+    void dismiss() => setState(() => _showPruneDialog = false);
+    return BlockSemantics(
+      child: CallbackShortcuts(
+        bindings: {const SingleActivator(LogicalKeyboardKey.escape): dismiss},
+        child: Focus(
+          autofocus: true,
+          child: Container(
+            color: const Color(0x80000000),
+            alignment: Alignment.center,
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 440.0),
+              child: LyraDialog(
+                onClose: dismiss,
+                title: Text(
+                  'Prune Orphaned Blobs',
+                  style: LyraTypography.h3(tokens),
+                ),
+                description: Text(
+                  'Are you sure you want to prune unreferenced orphaned blobs? '
+                  'This will permanently reclaim ${controller.formattedOrphanedBytes} '
+                  'across ${controller.orphanedCount} blobs from the storage pool.',
+                  style: LyraTypography.muted(tokens),
+                ),
+                actions: [
+                  LyraButton.ghost(
+                    size: LyraButtonSize.sm,
+                    onPressed: dismiss,
+                    child: const Text('Cancel'),
+                  ),
+                  LyraButton.destructive(
+                    size: LyraButtonSize.sm,
+                    onPressed: () async {
+                      dismiss();
+                      await controller.pruneOrphans();
+                    },
+                    child: const Text('Confirm Prune'),
+                  ),
+                ],
+              ),
+            ),
           ),
-          actions: [
-            LyraButton.ghost(
-              size: LyraButtonSize.sm,
-              onPressed: () => setState(() => _showPruneDialog = false),
-              child: const Text('Cancel'),
-            ),
-            LyraButton.destructive(
-              size: LyraButtonSize.sm,
-              onPressed: () async {
-                setState(() => _showPruneDialog = false);
-                await controller.pruneOrphans();
-              },
-              child: const Text('Confirm Prune'),
-            ),
-          ],
         ),
       ),
     );
@@ -215,35 +229,47 @@ class _CasViewState extends State<CasView> {
     LyraThemeTokens tokens,
     CasController controller,
   ) {
-    return Container(
-      color: const Color(0x80000000),
-      alignment: Alignment.center,
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 440.0),
-        child: LyraDialog(
-          title: Text('Clear Waveform Cache', style: LyraTypography.h3(tokens)),
-          description: Text(
-            'Are you sure you want to clear the precomputed waveform cache '
-            '(${controller.formattedWaveformCacheBytes})? Waveforms will '
-            'be recomputed on demand during audio playback.',
-            style: LyraTypography.muted(tokens),
+    void dismiss() => setState(() => _showClearWaveformsDialog = false);
+    return BlockSemantics(
+      child: CallbackShortcuts(
+        bindings: {const SingleActivator(LogicalKeyboardKey.escape): dismiss},
+        child: Focus(
+          autofocus: true,
+          child: Container(
+            color: const Color(0x80000000),
+            alignment: Alignment.center,
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 440.0),
+              child: LyraDialog(
+                onClose: dismiss,
+                title: Text(
+                  'Clear Waveform Cache',
+                  style: LyraTypography.h3(tokens),
+                ),
+                description: Text(
+                  'Are you sure you want to clear the precomputed waveform cache '
+                  '(${controller.formattedWaveformCacheBytes})? Waveforms will '
+                  'be recomputed on demand during audio playback.',
+                  style: LyraTypography.muted(tokens),
+                ),
+                actions: [
+                  LyraButton.ghost(
+                    size: LyraButtonSize.sm,
+                    onPressed: dismiss,
+                    child: const Text('Cancel'),
+                  ),
+                  LyraButton.destructive(
+                    size: LyraButtonSize.sm,
+                    onPressed: () async {
+                      dismiss();
+                      await controller.clearWaveforms();
+                    },
+                    child: const Text('Clear Cache'),
+                  ),
+                ],
+              ),
+            ),
           ),
-          actions: [
-            LyraButton.ghost(
-              size: LyraButtonSize.sm,
-              onPressed: () =>
-                  setState(() => _showClearWaveformsDialog = false),
-              child: const Text('Cancel'),
-            ),
-            LyraButton.destructive(
-              size: LyraButtonSize.sm,
-              onPressed: () async {
-                setState(() => _showClearWaveformsDialog = false);
-                await controller.clearWaveforms();
-              },
-              child: const Text('Clear Cache'),
-            ),
-          ],
         ),
       ),
     );

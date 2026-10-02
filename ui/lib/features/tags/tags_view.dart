@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Tzu-Ting Lin
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
@@ -286,59 +287,82 @@ class _TagsViewState extends State<TagsView> {
   }
 
   Widget _buildCreateDialog(LyraThemeTokens tokens) {
-    return Container(
-      color: const Color(0x80000000),
-      alignment: Alignment.center,
-      child: _CreateTagModal(
-        tokens: tokens,
-        onClose: () => setState(() => _showCreateDialog = false),
-        onCreate: (name, category) async {
-          setState(() => _showCreateDialog = false);
-          if (widget.onCreateTag != null) {
-            await widget.onCreateTag!(name: name, category: category);
-          }
-        },
+    void dismiss() => setState(() => _showCreateDialog = false);
+    return BlockSemantics(
+      child: CallbackShortcuts(
+        bindings: {const SingleActivator(LogicalKeyboardKey.escape): dismiss},
+        child: Focus(
+          autofocus: true,
+          child: Container(
+            color: const Color(0x80000000),
+            alignment: Alignment.center,
+            child: _CreateTagModal(
+              tokens: tokens,
+              onClose: dismiss,
+              onCreate: (name, category) async {
+                dismiss();
+                if (widget.onCreateTag != null) {
+                  await widget.onCreateTag!(name: name, category: category);
+                }
+              },
+            ),
+          ),
+        ),
       ),
     );
   }
 
   Widget _buildDeleteDialog(LyraThemeTokens tokens) {
     final tag = _tagToDelete!;
-    return Container(
-      color: const Color(0x80000000),
-      alignment: Alignment.center,
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 420.0),
-        child: LyraDialog(
-          title: Row(
-            children: [
-              Icon(LucideIcons.trash2, size: 18.0, color: tokens.destructive),
-              const SizedBox(width: LyraSpacing.sm),
-              Text('Delete Tag', style: LyraTypography.h3(tokens)),
-            ],
-          ),
-          description: Text(
-            'Are you sure you want to delete "${tag.displayName}"? This will remove this tag from all assigned tracks.',
-            style: LyraTypography.muted(tokens),
-          ),
-          actions: [
-            LyraButton.ghost(
-              size: LyraButtonSize.sm,
-              onPressed: () => setState(() => _tagToDelete = null),
-              child: const Text('Cancel'),
+    void dismiss() => setState(() => _tagToDelete = null);
+    return BlockSemantics(
+      child: CallbackShortcuts(
+        bindings: {const SingleActivator(LogicalKeyboardKey.escape): dismiss},
+        child: Focus(
+          autofocus: true,
+          child: Container(
+            color: const Color(0x80000000),
+            alignment: Alignment.center,
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 420.0),
+              child: LyraDialog(
+                onClose: dismiss,
+                title: Row(
+                  children: [
+                    Icon(
+                      LucideIcons.trash2,
+                      size: 18.0,
+                      color: tokens.destructive,
+                    ),
+                    const SizedBox(width: LyraSpacing.sm),
+                    Text('Delete Tag', style: LyraTypography.h3(tokens)),
+                  ],
+                ),
+                description: Text(
+                  'Are you sure you want to delete "${tag.displayName}"? This will remove this tag from all assigned tracks.',
+                  style: LyraTypography.muted(tokens),
+                ),
+                actions: [
+                  LyraButton.ghost(
+                    size: LyraButtonSize.sm,
+                    onPressed: dismiss,
+                    child: const Text('Cancel'),
+                  ),
+                  LyraButton.destructive(
+                    size: LyraButtonSize.sm,
+                    onPressed: () {
+                      final toDelete = _tagToDelete;
+                      dismiss();
+                      if (toDelete != null && widget.onDeleteTag != null) {
+                        widget.onDeleteTag!(toDelete);
+                      }
+                    },
+                    child: const Text('Delete'),
+                  ),
+                ],
+              ),
             ),
-            LyraButton.destructive(
-              size: LyraButtonSize.sm,
-              onPressed: () {
-                final toDelete = _tagToDelete;
-                setState(() => _tagToDelete = null);
-                if (toDelete != null && widget.onDeleteTag != null) {
-                  widget.onDeleteTag!(toDelete);
-                }
-              },
-              child: const Text('Delete'),
-            ),
-          ],
+          ),
         ),
       ),
     );
@@ -513,6 +537,7 @@ class _CreateTagModalState extends State<_CreateTagModal> {
     return ConstrainedBox(
       constraints: const BoxConstraints(maxWidth: 460.0),
       child: LyraDialog(
+        onClose: widget.onClose,
         title: Row(
           children: [
             Container(

@@ -119,6 +119,7 @@ class _ImportAudioModalState extends State<ImportAudioModal> {
       child: ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: 520.0),
         child: LyraDialog(
+          onClose: widget.onClose,
           title: Row(
             children: [
               Container(
