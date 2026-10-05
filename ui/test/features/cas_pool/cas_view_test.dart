@@ -197,10 +197,18 @@ void main() {
       expect(find.text('Engine Settings'), findsOneWidget);
       expect(
         find.text(
-          'Audio hardware buffers, exclusive mode, database tuning, and ingestion pipeline.',
+          'Output device selection, exclusive mode, hardware buffer frames, volume strategy, and resampler profiles.',
         ),
         findsOneWidget,
       );
+      expect(find.text('Audio Hardware'), findsOneWidget);
+      expect(find.text('Database Engine'), findsOneWidget);
+      expect(find.text('Ingestion Pipeline'), findsOneWidget);
+      expect(find.text('Storage & Maintenance'), findsOneWidget);
+
+      await tester.tap(find.text('Storage & Maintenance'));
+      await tester.pumpAndSettle();
+
       expect(find.text('Storage & Cache Maintenance'), findsOneWidget);
       expect(find.text('Verify Integrity'), findsOneWidget);
       expect(find.text('Prune Orphans'), findsOneWidget);
@@ -268,6 +276,9 @@ void main() {
         );
         await tester.pumpAndSettle();
 
+        await tester.tap(find.text('Storage & Maintenance'));
+        await tester.pumpAndSettle();
+
         expect(find.text('Storage & Cache Maintenance'), findsOneWidget);
 
         // Tap Verify Integrity
@@ -302,6 +313,9 @@ void main() {
         addTearDown(controller.dispose);
 
         await tester.pumpWidget(_buildCasViewTest(controller: controller));
+        await tester.pumpAndSettle();
+
+        await tester.tap(find.text('Storage & Maintenance'));
         await tester.pumpAndSettle();
 
         expect(find.text('Storage & Cache Maintenance'), findsOneWidget);
@@ -351,6 +365,9 @@ void main() {
         await tester.pumpWidget(_buildCasViewTest(controller: controller));
         await tester.pumpAndSettle();
 
+        await tester.tap(find.text('Storage & Maintenance'));
+        await tester.pumpAndSettle();
+
         expect(find.text('Storage & Cache Maintenance'), findsOneWidget);
 
         // Open Dialog
@@ -387,6 +404,9 @@ void main() {
         await tester.pumpWidget(_buildCasViewTest(controller: controller));
         await tester.pumpAndSettle();
 
+        await tester.tap(find.text('Storage & Maintenance'));
+        await tester.pumpAndSettle();
+
         await tester.tap(find.text('Prune Orphans (12.0 MB)'));
         await tester.pumpAndSettle();
 
@@ -421,6 +441,9 @@ void main() {
         addTearDown(controller.dispose);
 
         await tester.pumpWidget(_buildCasViewTest(controller: controller));
+        await tester.pumpAndSettle();
+
+        await tester.tap(find.text('Storage & Maintenance'));
         await tester.pumpAndSettle();
 
         await tester.tap(find.text('Clear Waveform Cache'));
@@ -460,6 +483,9 @@ void main() {
         await tester.pumpWidget(_buildCasViewTest(controller: controller));
         await tester.pumpAndSettle();
 
+        await tester.tap(find.text('Storage & Maintenance'));
+        await tester.pumpAndSettle();
+
         await tester.tap(find.text('Prune Orphans (12.0 MB)'));
         await tester.pumpAndSettle();
 
@@ -494,6 +520,9 @@ void main() {
         addTearDown(controller.dispose);
 
         await tester.pumpWidget(_buildCasViewTest(controller: controller));
+        await tester.pumpAndSettle();
+
+        await tester.tap(find.text('Storage & Maintenance'));
         await tester.pumpAndSettle();
 
         await tester.tap(find.text('Clear Waveform Cache'));
@@ -713,6 +742,9 @@ void main() {
             onVerifyAll: () => verifyAllCalled = true,
           ),
         );
+        await tester.pumpAndSettle();
+
+        await tester.tap(find.text('Storage & Maintenance'));
         await tester.pumpAndSettle();
 
         final button = find.widgetWithText(LyraButton, 'Verify Integrity');

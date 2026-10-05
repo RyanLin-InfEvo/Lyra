@@ -2409,7 +2409,7 @@ void main() {
 
         expect(
           find.text(
-            'Audio hardware buffers, exclusive mode, database tuning, and ingestion pipeline.',
+            'Output device selection, exclusive mode, hardware buffer frames, volume strategy, and resampler profiles.',
           ),
           findsOneWidget,
         );

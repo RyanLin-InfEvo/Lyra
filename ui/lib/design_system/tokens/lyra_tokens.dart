@@ -264,6 +264,39 @@ class LyraThemeTokens {
     warning,
     warningForeground,
   ]);
+
+  // ===========================================================================
+  // Interactive State Color & Border Helpers
+  // ===========================================================================
+
+  /// Transparent background preserving the exact RGB channels of [secondary],
+  /// preventing dark-gray interpolation artifacts during Color.lerp transitions in Light Theme.
+  Color get itemHoverTransparent => secondary.withValues(alpha: 0.0);
+
+  /// Standard subtle hover highlight background for interactive items.
+  Color get itemHoverBackground => secondary.withValues(alpha: 0.5);
+
+  /// Standard selected background for interactive items.
+  Color get itemSelectedBackground => secondary;
+
+  /// Unified background color for list/nav items based on selection and hover/focus state.
+  Color itemBackground({
+    bool isSelected = false,
+    bool isHovered = false,
+    bool isFocused = false,
+  }) {
+    if (isSelected) return itemSelectedBackground;
+    if (isHovered || isFocused) return itemHoverBackground;
+    return itemHoverTransparent;
+  }
+
+  /// Focused ring border with [ring] color.
+  Border focusedRingBorder({double width = 1.5}) =>
+      Border.all(color: ring, width: width);
+
+  /// Unfocused ring border preserving [ring] RGB channels to prevent dark-gray flashes during Border.lerp.
+  Border unfocusedRingBorder({double width = 1.5}) =>
+      Border.all(color: ring.withValues(alpha: 0.0), width: width);
 }
 
 /// Parses a hex color string (e.g. '#3B82F6', '3B82F6', '0xFF3B82F6').

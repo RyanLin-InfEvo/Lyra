@@ -3,6 +3,7 @@
 
 import 'dart:async';
 
+import '../../features/cas_pool/models/engine_config.dart';
 import 'lyra_bridge.dart';
 
 /// Pure Dart implementation of [LyraBridge] providing mock responses.
@@ -15,6 +16,7 @@ class MockLyraBridge implements LyraBridge {
 
   final Map<String, MockCommandHandler> _mockHandlers = {};
   String _mockAudioOutputDeviceId = 'default';
+  EngineConfig _mockEngineConfig = EngineConfig.defaults();
 
   MockLyraBridge() {
     registerDefaultMockHandlers();
@@ -128,6 +130,7 @@ class MockLyraBridge implements LyraBridge {
   /// Registers standard mock responses for built-in Lyra commands.
   void registerDefaultMockHandlers() {
     _mockAudioOutputDeviceId = 'default';
+    _mockEngineConfig = EngineConfig.defaults();
 
     // --- Works Mock Handlers ---
     _mockHandlers['ListWorks'] = (params) async => {
@@ -1006,6 +1009,57 @@ class MockLyraBridge implements LyraBridge {
         'status': 'success',
         'data': {'device_id': deviceId, 'success': true},
         'message': 'Output device updated successfully.',
+      };
+    };
+
+    // --- System Engine Config Mock Handlers ---
+    _mockHandlers['system.get_config'] = (params) async => {
+      'code': 200,
+      'status': 'success',
+      'data': _mockEngineConfig.toJson(),
+    };
+
+    _mockHandlers['system.set_config'] = (params) async {
+      bool restartRequired = false;
+      final audioParams = params['audio'];
+      if (audioParams is Map) {
+        if (audioParams.containsKey('buffer_size_frames')) {
+          final newFrames = (audioParams['buffer_size_frames'] as num?)
+              ?.toInt();
+          if (newFrames != null &&
+              newFrames != _mockEngineConfig.audio.bufferSizeFrames) {
+            restartRequired = true;
+          }
+        }
+        if (audioParams.containsKey('exclusive_mode')) {
+          final newExclusive = audioParams['exclusive_mode'] as bool?;
+          if (newExclusive != null &&
+              newExclusive != _mockEngineConfig.audio.exclusiveMode) {
+            restartRequired = true;
+          }
+        }
+      }
+
+      // Merge incoming partial or full config parameters
+      final currentJson = _mockEngineConfig.toJson();
+      for (final entry in params.entries) {
+        final key = entry.key.toString();
+        final value = entry.value;
+        if (value is Map && currentJson[key] is Map) {
+          (currentJson[key] as Map<String, dynamic>).addAll(
+            value.map((k, v) => MapEntry(k.toString(), v)),
+          );
+        } else if (value != null) {
+          currentJson[key] = value;
+        }
+      }
+      _mockEngineConfig = EngineConfig.fromJson(currentJson);
+
+      return {
+        'code': 200,
+        'status': 'success',
+        'data': {'restart_required': restartRequired, 'success': true},
+        'message': 'Engine configuration updated successfully.',
       };
     };
   }

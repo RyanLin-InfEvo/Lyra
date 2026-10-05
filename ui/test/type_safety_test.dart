@@ -745,6 +745,10 @@ void main() {
         await tester.tap(find.text('Engine Settings'));
         await tester.pumpAndSettle();
 
+        // Navigate to Storage & Maintenance section
+        await tester.tap(find.text('Storage & Maintenance'));
+        await tester.pumpAndSettle();
+
         await tester.tap(find.text('Verify Integrity'));
         await tester.pumpAndSettle();
 

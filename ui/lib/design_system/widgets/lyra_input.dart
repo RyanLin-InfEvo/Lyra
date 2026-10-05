@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Tzu-Ting Lin
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import 'package:flutter/services.dart' show TextInputFormatter;
 import 'package:flutter/widgets.dart';
 
 import '../factory/lyra_design_system_scope.dart';
@@ -20,6 +21,8 @@ class LyraInput extends StatelessWidget {
   final bool autofocus;
   final TextStyle? style;
   final EdgeInsetsGeometry? padding;
+  final List<TextInputFormatter>? inputFormatters;
+  final TextInputType? keyboardType;
 
   const LyraInput({
     super.key,
@@ -36,6 +39,8 @@ class LyraInput extends StatelessWidget {
     this.autofocus = false,
     this.style,
     this.padding,
+    this.inputFormatters,
+    this.keyboardType,
   });
 
   @override
@@ -56,6 +61,8 @@ class LyraInput extends StatelessWidget {
       autofocus: autofocus,
       style: style,
       padding: padding,
+      inputFormatters: inputFormatters,
+      keyboardType: keyboardType,
     );
   }
 }

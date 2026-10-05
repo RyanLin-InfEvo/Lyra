@@ -1,26 +1,28 @@
 // SPDX-FileCopyrightText: 2026 Tzu-Ting Lin
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import 'package:flutter/material.dart' show LinearProgressIndicator;
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
-import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../../design_system/contracts/lyra_contracts.dart';
 import '../../design_system/factory/lyra_design_system_scope.dart';
 import '../../design_system/tokens/lyra_tokens.dart';
 import '../../design_system/widgets/lyra_button.dart';
-import '../../design_system/widgets/lyra_card.dart';
 import '../../design_system/widgets/lyra_dialog.dart';
 import '../models/cas_object.dart';
+import 'controllers/backend_settings_controller.dart';
 import 'controllers/cas_controller.dart';
 import 'controllers/database_explorer_controller.dart';
+import 'widgets/backend_settings_tab.dart';
 import 'widgets/cas_storage_tab.dart';
 import 'widgets/database_explorer_tab.dart';
 
+export 'controllers/backend_settings_controller.dart';
 export 'controllers/cas_controller.dart';
 export 'controllers/database_explorer_controller.dart';
 export 'models/database_stats.dart';
+export 'models/engine_config.dart';
+export 'widgets/backend_settings_tab.dart';
 export 'widgets/cas_storage_tab.dart';
 export 'widgets/database_explorer_tab.dart';
 
@@ -31,6 +33,7 @@ class CasView extends StatefulWidget {
   final ValueChanged<CasObject>? onInspectAsset;
   final CasController? controller;
   final DatabaseExplorerController? dbController;
+  final BackendSettingsController? backendSettingsController;
   final CasTab? activeTab;
   final ValueChanged<CasTab>? onTabChanged;
 
@@ -41,6 +44,7 @@ class CasView extends StatefulWidget {
     this.onInspectAsset,
     this.controller,
     this.dbController,
+    this.backendSettingsController,
     this.activeTab,
     this.onTabChanged,
   });
@@ -52,6 +56,7 @@ class CasView extends StatefulWidget {
 class _CasViewState extends State<CasView> {
   CasController? _internalController;
   DatabaseExplorerController? _internalDbController;
+  BackendSettingsController? _internalBackendSettingsController;
   bool _showPruneDialog = false;
   bool _showClearWaveformsDialog = false;
 
@@ -60,6 +65,9 @@ class _CasViewState extends State<CasView> {
 
   DatabaseExplorerController get _effectiveDbController =>
       widget.dbController ?? _internalDbController!;
+
+  BackendSettingsController get _effectiveBackendSettingsController =>
+      widget.backendSettingsController ?? _internalBackendSettingsController!;
 
   @override
   void initState() {
@@ -75,6 +83,10 @@ class _CasViewState extends State<CasView> {
 
     if (widget.dbController == null) {
       _internalDbController = DatabaseExplorerController();
+    }
+
+    if (widget.backendSettingsController == null) {
+      _internalBackendSettingsController = BackendSettingsController();
     }
   }
 
@@ -105,12 +117,20 @@ class _CasViewState extends State<CasView> {
       _internalDbController!.dispose();
       _internalDbController = null;
     }
+
+    if (widget.backendSettingsController == null) {
+      _internalBackendSettingsController ??= BackendSettingsController();
+    } else if (_internalBackendSettingsController != null) {
+      _internalBackendSettingsController!.dispose();
+      _internalBackendSettingsController = null;
+    }
   }
 
   @override
   void dispose() {
     _internalController?.dispose();
     _internalDbController?.dispose();
+    _internalBackendSettingsController?.dispose();
     super.dispose();
   }
 
@@ -157,9 +177,14 @@ class _CasViewState extends State<CasView> {
                     CasTab.databaseExplorer => DatabaseExplorerTab(
                       controller: _effectiveDbController,
                     ),
-                    CasTab.backendSettings => _buildEngineSettingsPlaceholder(
-                      tokens,
-                      controller,
+                    CasTab.backendSettings => BackendSettingsTab(
+                      controller: _effectiveBackendSettingsController,
+                      casController: controller,
+                      onVerifyAll: widget.onVerifyAll,
+                      onRequestPrune: () =>
+                          setState(() => _showPruneDialog = true),
+                      onRequestClearWaveforms: () =>
+                          setState(() => _showClearWaveformsDialog = true),
                     ),
                   },
                 ),
@@ -271,176 +296,6 @@ class _CasViewState extends State<CasView> {
             ),
           ),
         ),
-      ),
-    );
-  }
-
-  Widget _buildEngineSettingsPlaceholder(
-    LyraThemeTokens tokens,
-    CasController controller,
-  ) {
-    return SingleChildScrollView(
-      padding: const EdgeInsets.symmetric(horizontal: LyraSpacing.xl),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          // Storage & Cache Maintenance Card
-          LyraCard(
-            padding: const EdgeInsets.all(LyraSpacing.xl),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.all(LyraSpacing.sm),
-                      decoration: BoxDecoration(
-                        color: tokens.secondary,
-                        borderRadius: LyraRadius.smRadius,
-                      ),
-                      child: Icon(
-                        LucideIcons.wrench,
-                        size: 20.0,
-                        color: tokens.primary,
-                      ),
-                    ),
-                    const SizedBox(width: LyraSpacing.md),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'Storage & Cache Maintenance',
-                            style: LyraTypography.h4(tokens),
-                          ),
-                          const SizedBox(height: LyraSpacing.xs),
-                          Text(
-                            'Perform diagnostic verification, prune unreferenced blobs, or clear precomputed waveform caches.',
-                            style: LyraTypography.muted(tokens),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: LyraSpacing.lg),
-                Wrap(
-                  spacing: LyraSpacing.sm,
-                  runSpacing: LyraSpacing.xs,
-                  crossAxisAlignment: WrapCrossAlignment.center,
-                  children: [
-                    LyraButton.outline(
-                      size: LyraButtonSize.sm,
-                      onPressed: controller.isVerifying
-                          ? null
-                          : () async {
-                              await controller.verifyIntegrity();
-                              if (mounted) {
-                                widget.onVerifyAll?.call();
-                              }
-                            },
-                      child: const Text('Verify Integrity'),
-                    ),
-                    LyraButton.outline(
-                      size: LyraButtonSize.sm,
-                      onPressed: controller.isPruning
-                          ? null
-                          : () => setState(() => _showPruneDialog = true),
-                      child: Text(
-                        controller.orphanedBytes > 0
-                            ? 'Prune Orphans (${controller.formattedOrphanedBytes})'
-                            : 'Prune Orphans',
-                      ),
-                    ),
-                    LyraButton.outline(
-                      size: LyraButtonSize.sm,
-                      onPressed: controller.isClearingWaveforms
-                          ? null
-                          : () => setState(
-                              () => _showClearWaveformsDialog = true,
-                            ),
-                      child: const Text('Clear Waveform Cache'),
-                    ),
-                  ],
-                ),
-                if (controller.isVerifying) ...[
-                  const SizedBox(height: LyraSpacing.md),
-                  Container(
-                    padding: const EdgeInsets.all(LyraSpacing.sm),
-                    decoration: BoxDecoration(
-                      color: tokens.secondary,
-                      borderRadius: LyraRadius.mdRadius,
-                      border: Border.all(color: tokens.border),
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            Text(
-                              'Verifying Storage Integrity...',
-                              style: LyraTypography.small(tokens).copyWith(
-                                fontWeight: FontWeight.w600,
-                                color: tokens.primary,
-                              ),
-                            ),
-                            Text(
-                              '${(controller.verificationProgress * 100).toInt()}%',
-                              style: LyraTypography.small(tokens).copyWith(
-                                fontWeight: FontWeight.w600,
-                                color: tokens.primary,
-                              ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: LyraSpacing.xs),
-                        ClipRRect(
-                          borderRadius: LyraRadius.smRadius,
-                          child: LinearProgressIndicator(
-                            value: controller.verificationProgress > 0.0
-                                ? controller.verificationProgress
-                                : null,
-                            backgroundColor: tokens.card,
-                            valueColor: AlwaysStoppedAnimation<Color>(
-                              tokens.primary,
-                            ),
-                            minHeight: 4.0,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ],
-            ),
-          ),
-          const SizedBox(height: LyraSpacing.lg),
-
-          // Backend Engine Settings Overview Card
-          LyraCard(
-            padding: const EdgeInsets.all(LyraSpacing.xxl),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(LucideIcons.settings, size: 36.0, color: tokens.textMuted),
-                const SizedBox(height: LyraSpacing.md),
-                Text(
-                  'Backend Engine Settings',
-                  style: LyraTypography.h3(tokens),
-                ),
-                const SizedBox(height: LyraSpacing.xs),
-                Text(
-                  'Audio hardware buffers, exclusive mode, database tuning, and ingestion pipeline.',
-                  style: LyraTypography.muted(tokens),
-                  textAlign: TextAlign.center,
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: LyraSpacing.xl),
-        ],
       ),
     );
   }

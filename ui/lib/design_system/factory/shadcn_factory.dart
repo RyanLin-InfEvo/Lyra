@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import 'package:flutter/material.dart' show Tooltip;
+import 'package:flutter/services.dart' show TextInputFormatter;
 import 'package:flutter/widgets.dart';
 import 'package:shadcn_ui/shadcn_ui.dart';
 
@@ -71,6 +72,26 @@ class ShadcnFactory extends LyraDesignSystemFactory {
           child: child,
         );
       case LyraButtonVariant.outline:
+        // Compensate for the 1px inside border (top: 1px, bottom: 1px, left: 1px, right: 1px)
+        // so that outline buttons have identical outer layout dimensions and inner alignment
+        // as unbordered variants (secondary, primary, etc.) without painting outside bounds.
+        final defaultOutlineHeight = switch (size) {
+          LyraButtonSize.sm => 36.0,
+          LyraButtonSize.md => 40.0,
+          LyraButtonSize.lg => 44.0,
+        };
+        final defaultOutlinePadding = switch (size) {
+          LyraButtonSize.sm => const EdgeInsets.symmetric(horizontal: 11.0),
+          LyraButtonSize.md => const EdgeInsets.symmetric(
+            horizontal: 15.0,
+            vertical: 7.0,
+          ),
+          LyraButtonSize.lg => const EdgeInsets.symmetric(
+            horizontal: 31.0,
+            vertical: 7.0,
+          ),
+        };
+
         return ShadButton.outline(
           key: key,
           onPressed: onPressed,
@@ -81,9 +102,11 @@ class ShadcnFactory extends LyraDesignSystemFactory {
           crossAxisAlignment: crossAxisAlignment,
           autofocus: autofocus,
           focusNode: focusNode,
-          width: width,
-          height: height,
-          padding: padding,
+          width: width != null ? width - 2.0 : null,
+          height: (height ?? defaultOutlineHeight) - 2.0,
+          padding: padding != null
+              ? _deflatePadding(padding, 1.0)
+              : defaultOutlinePadding,
           child: child,
         );
       case LyraButtonVariant.ghost:
@@ -223,6 +246,8 @@ class ShadcnFactory extends LyraDesignSystemFactory {
     bool autofocus = false,
     TextStyle? style,
     EdgeInsetsGeometry? padding,
+    List<TextInputFormatter>? inputFormatters,
+    TextInputType? keyboardType,
   }) {
     return ShadInput(
       key: key,
@@ -239,6 +264,8 @@ class ShadcnFactory extends LyraDesignSystemFactory {
       autofocus: autofocus,
       style: style,
       padding: padding,
+      inputFormatters: inputFormatters,
+      keyboardType: keyboardType,
     );
   }
 
@@ -647,4 +674,23 @@ class _SmoothShadSwitch extends StatelessWidget {
       ),
     );
   }
+}
+
+EdgeInsetsGeometry _deflatePadding(EdgeInsetsGeometry p, double amount) {
+  if (p is EdgeInsets) {
+    return EdgeInsets.fromLTRB(
+      (p.left - amount).clamp(0.0, double.infinity),
+      (p.top - amount).clamp(0.0, double.infinity),
+      (p.right - amount).clamp(0.0, double.infinity),
+      (p.bottom - amount).clamp(0.0, double.infinity),
+    );
+  } else if (p is EdgeInsetsDirectional) {
+    return EdgeInsetsDirectional.fromSTEB(
+      (p.start - amount).clamp(0.0, double.infinity),
+      (p.top - amount).clamp(0.0, double.infinity),
+      (p.end - amount).clamp(0.0, double.infinity),
+      (p.bottom - amount).clamp(0.0, double.infinity),
+    );
+  }
+  return p;
 }

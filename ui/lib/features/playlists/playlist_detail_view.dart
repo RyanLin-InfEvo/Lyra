@@ -1111,9 +1111,9 @@ class _PlaylistTrackRowState extends State<_PlaylistTrackRow> {
                     ? (tokens.isDark
                           ? const Color(0xFF27272A)
                           : const Color(0xFFE4E4E7))
-                    : (_isHovered || _contextMenuController.isOpen
-                          ? tokens.secondary.withValues(alpha: 0.5)
-                          : const Color(0x00000000)),
+                    : tokens.itemBackground(
+                        isHovered: _isHovered || _contextMenuController.isOpen,
+                      ),
                 border: Border(
                   bottom: BorderSide(
                     color: tokens.border.withValues(alpha: 0.5),

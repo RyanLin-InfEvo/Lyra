@@ -525,7 +525,7 @@ class _NowPlayingViewState extends State<NowPlayingView> {
             vertical: 6.0,
           ),
           decoration: BoxDecoration(
-            color: isSelected ? tokens.secondary : const Color(0x00000000),
+            color: tokens.itemBackground(isSelected: isSelected),
             borderRadius: LyraRadius.mdRadius,
             border: isSelected
                 ? Border.all(color: tokens.border, width: 1.0)

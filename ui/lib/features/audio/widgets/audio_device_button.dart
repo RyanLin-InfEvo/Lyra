@@ -249,7 +249,7 @@ class _DeviceItemState extends State<_DeviceItem> {
                 ? tokens.secondary
                 : (isSelected
                       ? tokens.secondary.withValues(alpha: 0.6)
-                      : const Color(0x00000000)),
+                      : tokens.itemHoverTransparent),
             borderRadius: BorderRadius.circular(10.0),
           ),
           child: Row(

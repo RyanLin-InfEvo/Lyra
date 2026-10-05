@@ -2220,9 +2220,7 @@ class _PlaylistModalItemState extends State<_PlaylistModalItem> {
             vertical: 6.0,
           ),
           decoration: BoxDecoration(
-            color: _isHovered
-                ? tokens.secondary.withValues(alpha: 0.5)
-                : const Color(0x00000000),
+            color: tokens.itemBackground(isHovered: _isHovered),
             borderRadius: LyraRadius.mdRadius,
           ),
           child: Row(

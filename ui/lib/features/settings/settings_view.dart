@@ -9,6 +9,7 @@ import '../../design_system/factory/lyra_design_system_scope.dart';
 import '../../design_system/tokens/lyra_tokens.dart';
 import '../../design_system/widgets/lyra_button.dart';
 import '../../design_system/widgets/lyra_card.dart';
+import '../../design_system/widgets/lyra_settings_layout.dart';
 import '../../design_system/widgets/lyra_switch.dart';
 import 'services/preferences_service.dart';
 
@@ -245,119 +246,32 @@ class _SettingsViewState extends State<SettingsView> {
     final tokens = scope.tokens;
     final currentThemeMode = scope.themeModeNotifier.value;
 
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final header = Padding(
-          padding: const EdgeInsets.fromLTRB(
-            LyraSpacing.xl,
-            LyraSpacing.lg,
-            LyraSpacing.xl,
-            LyraSpacing.md,
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text('Settings', style: LyraTypography.h2(tokens)),
-              const SizedBox(height: LyraSpacing.xs),
-              Text(
-                'Appearance and Waveform Visualization preferences',
-                style: LyraTypography.muted(tokens),
-              ),
-            ],
-          ),
-        );
-
-        final divider = Container(height: 1.0, color: tokens.border);
-
-        final leftNav = Container(
-          width: 200.0,
-          decoration: BoxDecoration(
-            border: Border(right: BorderSide(color: tokens.border, width: 1.0)),
-          ),
-          child: ListView(
-            padding: const EdgeInsets.symmetric(
-              horizontal: LyraSpacing.md,
-              vertical: LyraSpacing.md,
-            ),
-            children: [
-              _SubNavItem(
-                label: 'Appearance',
-                icon: LucideIcons.palette,
-                isSelected: _currentSection == SettingsNavSection.appearance,
-                onTap: () => setState(
-                  () => _currentSection = SettingsNavSection.appearance,
-                ),
-                tokens: tokens,
-              ),
-              const SizedBox(height: LyraSpacing.xs),
-              _SubNavItem(
-                label: 'Waveform Visualization',
-                icon: LucideIcons.activity,
-                isSelected: _currentSection == SettingsNavSection.waveform,
-                onTap: () => setState(
-                  () => _currentSection = SettingsNavSection.waveform,
-                ),
-                tokens: tokens,
-              ),
-            ],
-          ),
-        );
-
-        final rightContent = SingleChildScrollView(
-          padding: const EdgeInsets.symmetric(
-            horizontal: LyraSpacing.xl,
-            vertical: LyraSpacing.lg,
-          ),
-          child: Align(
-            alignment: Alignment.topLeft,
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 720),
-              child: _currentSection == SettingsNavSection.appearance
-                  ? _buildAppearanceSection(
-                      context,
-                      tokens,
-                      currentThemeMode,
-                      scope,
-                    )
-                  : _buildWaveformSection(context, tokens),
-            ),
-          ),
-        );
-
-        if (constraints.hasBoundedHeight) {
-          return Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              header,
-              divider,
-              Expanded(
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    leftNav,
-                    Expanded(child: rightContent),
-                  ],
-                ),
-              ),
-            ],
-          );
-        } else {
-          return Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              header,
-              divider,
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  leftNav,
-                  Expanded(child: rightContent),
-                ],
-              ),
-            ],
-          );
-        }
-      },
+    return LyraSettingsLayout<SettingsNavSection>(
+      title: 'Settings',
+      subtitle: 'Appearance and Waveform Visualization preferences',
+      sidebarWidth: 200.0,
+      contentMaxWidth: 720.0,
+      contentPadding: const EdgeInsets.symmetric(
+        horizontal: LyraSpacing.xl,
+        vertical: LyraSpacing.lg,
+      ),
+      selectedSection: _currentSection,
+      onSectionChanged: (section) => setState(() => _currentSection = section),
+      sections: [
+        LyraSettingsSection<SettingsNavSection>(
+          id: SettingsNavSection.appearance,
+          label: 'Appearance',
+          icon: LucideIcons.palette,
+          builder: (context) =>
+              _buildAppearanceSection(context, tokens, currentThemeMode, scope),
+        ),
+        LyraSettingsSection<SettingsNavSection>(
+          id: SettingsNavSection.waveform,
+          label: 'Waveform Visualization',
+          icon: LucideIcons.activity,
+          builder: (context) => _buildWaveformSection(context, tokens),
+        ),
+      ],
     );
   }
 
@@ -734,81 +648,6 @@ class _SettingsViewState extends State<SettingsView> {
   }
 }
 
-class _SubNavItem extends StatefulWidget {
-  final String label;
-  final IconData icon;
-  final bool isSelected;
-  final VoidCallback onTap;
-  final LyraThemeTokens tokens;
-
-  const _SubNavItem({
-    required this.label,
-    required this.icon,
-    required this.isSelected,
-    required this.onTap,
-    required this.tokens,
-  });
-
-  @override
-  State<_SubNavItem> createState() => _SubNavItemState();
-}
-
-class _SubNavItemState extends State<_SubNavItem> {
-  bool _isHovered = false;
-
-  @override
-  Widget build(BuildContext context) {
-    final tokens = widget.tokens;
-    final bg = widget.isSelected
-        ? (tokens.isDark ? LyraColors.zinc800 : LyraColors.zinc100)
-        : (_isHovered
-              ? (tokens.isDark
-                    ? LyraColors.zinc800.withValues(alpha: 0.5)
-                    : LyraColors.zinc100.withValues(alpha: 0.6))
-              : Colors.transparent);
-
-    final fg = widget.isSelected ? tokens.text : tokens.textMuted;
-
-    return MouseRegion(
-      cursor: SystemMouseCursors.click,
-      onEnter: (_) => setState(() => _isHovered = true),
-      onExit: (_) => setState(() => _isHovered = false),
-      child: GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onTap: widget.onTap,
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 150),
-          curve: Curves.easeOut,
-          padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 8.0),
-          decoration: BoxDecoration(
-            color: bg,
-            borderRadius: BorderRadius.circular(6.0),
-          ),
-          child: Row(
-            children: [
-              Icon(widget.icon, size: 16.0, color: fg),
-              const SizedBox(width: 8.0),
-              Expanded(
-                child: Text(
-                  widget.label,
-                  style: TextStyle(
-                    fontSize: 13.0,
-                    fontWeight: widget.isSelected
-                        ? FontWeight.w600
-                        : FontWeight.normal,
-                    color: fg,
-                  ),
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
 class _SettingRow extends StatelessWidget {
   final String title;
   final String? description;
@@ -954,7 +793,7 @@ class _AccentColorCard extends StatelessWidget {
           vertical: 6.0,
         ),
         decoration: BoxDecoration(
-          color: isSelected ? tokens.secondary : const Color(0x00000000),
+          color: tokens.itemBackground(isSelected: isSelected),
           borderRadius: LyraRadius.mdRadius,
           border: Border.all(
             color: isSelected ? tokens.ring : tokens.border,

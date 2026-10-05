@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Tzu-Ting Lin
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import 'package:flutter/services.dart' show TextInputFormatter;
 import 'package:flutter/widgets.dart';
 import '../contracts/lyra_contracts.dart';
 
@@ -59,6 +60,8 @@ abstract class LyraDesignSystemFactory {
     bool autofocus = false,
     TextStyle? style,
     EdgeInsetsGeometry? padding,
+    List<TextInputFormatter>? inputFormatters,
+    TextInputType? keyboardType,
   });
 
   /// Creates a badge for status or metadata tags.
