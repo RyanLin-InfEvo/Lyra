@@ -31,6 +31,7 @@ set(CPP
     src/lyra_c_api.cpp
     src/router.cpp
     src/services/database_context.cpp
+    src/services/configuration_service.cpp
     src/services/repositories/sqlite/sqlite_album_repository.cpp
     src/services/repositories/sqlite/sqlite_artist_repository.cpp
     src/services/repositories/sqlite/sqlite_asset_repository.cpp

@@ -39,9 +39,11 @@ std::string device_id_to_hex(const ma_device_id &id) {
 }
 
 bool hex_to_device_id(const std::string &hex, ma_device_id &id) {
-    if (hex.length() != sizeof(ma_device_id) * 2) return false;
+    if (hex.length() != sizeof(ma_device_id) * 2 && hex.length() != 64) return false;
+    std::memset(&id, 0, sizeof(ma_device_id));
     uint8_t *bytes = reinterpret_cast<uint8_t *>(&id);
-    for (size_t i = 0; i < sizeof(ma_device_id); ++i) {
+    size_t byte_count = hex.length() / 2;
+    for (size_t i = 0; i < byte_count; ++i) {
         char h1 = hex[i * 2];
         char h2 = hex[i * 2 + 1];
         auto char_to_nibble = [](char c) -> int {

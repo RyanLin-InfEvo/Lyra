@@ -20,6 +20,7 @@
 #include "models/track.h"
 #include "services/audio_engine.h"
 #include "services/audio_scorer.h"
+#include "services/configuration_service.h"
 #include "services/cover_art_service.h"
 #include "services/database_context.h"
 #include "services/ingestion_service.h"
@@ -167,6 +168,10 @@ Router::Router(const std::string &db_path) {
         *m_audio_repo,
         *m_asset_repo);
 
+    m_configuration_service = std::make_unique<ConfigurationService>(
+        *m_db_context, m_storage_root, m_audio_engine.get());
+    m_configuration_service->apply_runtime_settings();
+
     init_handlers();
 }
 
@@ -182,6 +187,10 @@ AudioEngine &Router::get_audio_engine() {
 
 PlaybackService &Router::get_playback_service() {
     return *m_playback_service;
+}
+
+ConfigurationService &Router::get_configuration_service() {
+    return *m_configuration_service;
 }
 
 void Router::init_handlers() {
@@ -268,6 +277,10 @@ void Router::init_handlers() {
     m_handlers["audio.set_output_device"] = [this](const json &p) { return handleAudioSetOutputDevice(p); };
     m_handlers["audio.preload_next"] = [this](const json &p) { return handleAudioQueueNext(p); };
     m_handlers["audio.queue_next"] = [this](const json &p) { return handleAudioQueueNext(p); };
+
+    // System Config endpoints
+    m_handlers["system.get_config"] = [this](const json &p) { return handleSystemGetConfig(p); };
+    m_handlers["system.set_config"] = [this](const json &p) { return handleSystemSetConfig(p); };
 }
 
 
@@ -1735,6 +1748,24 @@ json Router::handleAudioQueueNext(const json &params) {
     data["next_file_path"] = preload_res->file_path;
     data["queued"] = true;
     return ApiResponse::success(data);
+}
+
+json Router::handleSystemGetConfig([[maybe_unused]] const json &p) {
+    if (!m_configuration_service) {
+        return ApiResponse::error({ErrorType::DatabaseError, "Configuration service not available"});
+    }
+    return ApiResponse::success(m_configuration_service->get_config_json());
+}
+
+json Router::handleSystemSetConfig(const json &p) {
+    if (!m_configuration_service) {
+        return ApiResponse::error({ErrorType::DatabaseError, "Configuration service not available"});
+    }
+    auto res = m_configuration_service->update_config(p);
+    if (!res) {
+        return res.error();
+    }
+    return ApiResponse::success(*res);
 }
 
 json Router::route(const json &request) {

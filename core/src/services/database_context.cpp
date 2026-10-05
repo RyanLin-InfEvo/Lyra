@@ -35,6 +35,15 @@ void SqliteDatabaseContext::init_schema() {
     auto &m_db = get_db();
 
     m_db.exec(R"(
+        CREATE TABLE IF NOT EXISTS System_Config (
+          key TEXT NOT NULL,
+          value TEXT NOT NULL,
+          updated_at TEXT DEFAULT (datetime('now')),
+          PRIMARY KEY (key)
+        );
+    )");
+
+    m_db.exec(R"(
         CREATE TABLE IF NOT EXISTS Asset (
           file_hash TEXT NOT NULL,
           mime_type TEXT NULL DEFAULT NULL,

@@ -40,6 +40,7 @@ class AudioEngine;
 class IngestionService;
 class CoverArtService;
 class PlaybackService;
+class ConfigurationService;
 struct CoverResolutionResult;
 
 class Router {
@@ -51,6 +52,7 @@ class Router {
     void set_event_callback(std::function<void(const std::string &)> callback);
     AudioEngine &get_audio_engine();
     PlaybackService &get_playback_service();
+    ConfigurationService &get_configuration_service();
 
   private:
     void init_handlers();
@@ -129,6 +131,10 @@ class Router {
     json handleAudioSetOutputDevice(const json &p);
     json handleAudioQueueNext(const json &p);
 
+    // System Config Handlers
+    json handleSystemGetConfig(const json &p);
+    json handleSystemSetConfig(const json &p);
+
     // Dependencies
     std::string m_storage_root;
     std::unique_ptr<IDatabaseContext> m_db_context;
@@ -153,6 +159,7 @@ class Router {
     std::unique_ptr<IngestionService> m_ingestion_service;
     std::unique_ptr<CoverArtService> m_cover_art_service;
     std::unique_ptr<PlaybackService> m_playback_service;
+    std::unique_ptr<ConfigurationService> m_configuration_service;
 
     // Handler Mapping
     using Handler = std::function<json(const json &)>;
