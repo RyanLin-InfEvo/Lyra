@@ -3,12 +3,15 @@
 
 import 'dart:async';
 import 'dart:convert';
-import 'package:flutter/material.dart' show Tooltip, TooltipState;
+import 'dart:math' as math;
+import 'package:flutter/gestures.dart' show kSecondaryMouseButton;
+import 'package:flutter/material.dart'
+    show Scrollbar, Tooltip, TooltipState, TooltipTriggerMode;
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
-import 'package:shadcn_ui/shadcn_ui.dart'
-    show ShadContextMenuRegion, ShadContextMenuItem;
+
+import '../../common/context_menu_coordinator.dart';
 
 import '../../../design_system/contracts/lyra_contracts.dart';
 import '../../../design_system/factory/lyra_design_system_scope.dart';
@@ -72,6 +75,7 @@ class _DatabaseExplorerTabState extends State<DatabaseExplorerTab> {
 
   bool _showVacuumDialog = false;
   late final TextEditingController _searchController;
+  late final ScrollController _horizontalScrollController;
 
   @override
   void initState() {
@@ -79,6 +83,7 @@ class _DatabaseExplorerTabState extends State<DatabaseExplorerTab> {
     _searchController = TextEditingController(
       text: widget.controller.searchQuery,
     );
+    _horizontalScrollController = ScrollController();
     widget.controller.addListener(_onControllerChanged);
   }
 
@@ -106,6 +111,7 @@ class _DatabaseExplorerTabState extends State<DatabaseExplorerTab> {
   void dispose() {
     widget.controller.removeListener(_onControllerChanged);
     _searchController.dispose();
+    _horizontalScrollController.dispose();
     super.dispose();
   }
 
@@ -126,11 +132,13 @@ class _DatabaseExplorerTabState extends State<DatabaseExplorerTab> {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               // Section 1: Compact Database Health Status
-              _buildDatabaseHealthCard(tokens, stats, controller),
+              RepaintBoundary(
+                child: _buildDatabaseHealthCard(tokens, stats, controller),
+              ),
               const SizedBox(height: LyraSpacing.lg),
 
               // Section 2: SQLite Data Browser
-              _buildDataBrowserCard(tokens, controller),
+              RepaintBoundary(child: _buildDataBrowserCard(tokens, controller)),
               const SizedBox(height: LyraSpacing.xl),
             ],
           ),
@@ -628,194 +636,189 @@ class _DatabaseExplorerTabState extends State<DatabaseExplorerTab> {
     final columns = controller.currentColumns;
     final rows = controller.pagedRows;
 
-    return Container(
-      decoration: BoxDecoration(
-        color: tokens.card,
-        borderRadius: LyraRadius.smRadius,
-        border: Border.all(
-          color: tokens.border.withValues(alpha: 0.5),
-          width: 1.0,
-        ),
-      ),
-      clipBehavior: Clip.antiAlias,
-      child: SingleChildScrollView(
-        scrollDirection: Axis.horizontal,
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(minWidth: 700.0),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // Header Row
-              Container(
-                decoration: BoxDecoration(
-                  color: tokens.secondary.withValues(alpha: 0.45),
-                  border: Border(
-                    bottom: BorderSide(
-                      color: tokens.border.withValues(alpha: 0.5),
-                      width: 1.0,
-                    ),
+    final totalColumnsWidth = columns.fold<double>(
+      48.0,
+      (sum, col) => sum + _getColumnWidth(col),
+    );
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final gridWidth = math.max(constraints.maxWidth, totalColumnsWidth);
+        const headerHeight = 38.0;
+        const itemExtent = 44.0;
+
+        if (rows.isEmpty) {
+          return Container(
+            decoration: BoxDecoration(
+              color: tokens.card,
+              borderRadius: LyraRadius.smRadius,
+              border: Border.all(
+                color: tokens.border.withValues(alpha: 0.5),
+                width: 1.0,
+              ),
+            ),
+            clipBehavior: Clip.antiAlias,
+            child: Scrollbar(
+              controller: _horizontalScrollController,
+              child: SingleChildScrollView(
+                controller: _horizontalScrollController,
+                scrollDirection: Axis.horizontal,
+                child: SizedBox(
+                  width: gridWidth,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      _buildHeaderRow(tokens, columns),
+                      SizedBox(
+                        width: constraints.maxWidth,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(vertical: 36.0),
+                          alignment: Alignment.center,
+                          child: Center(
+                            child: Text(
+                              'No matching records found',
+                              style: LyraTypography.muted(tokens),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
-                padding: const EdgeInsets.symmetric(vertical: LyraSpacing.sm),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
+              ),
+            ),
+          );
+        }
+
+        final gridHeight =
+            math.min(rows.length * itemExtent, 528.0) + headerHeight;
+
+        return Container(
+          decoration: BoxDecoration(
+            color: tokens.card,
+            borderRadius: LyraRadius.smRadius,
+            border: Border.all(
+              color: tokens.border.withValues(alpha: 0.5),
+              width: 1.0,
+            ),
+          ),
+          clipBehavior: Clip.antiAlias,
+          child: Scrollbar(
+            controller: _horizontalScrollController,
+            child: SingleChildScrollView(
+              controller: _horizontalScrollController,
+              scrollDirection: Axis.horizontal,
+              child: SizedBox(
+                width: gridWidth,
+                height: gridHeight,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // Row Number Gutter Header
-                    Container(
-                      width: 48.0,
-                      alignment: Alignment.center,
-                      decoration: BoxDecoration(
-                        border: Border(
-                          right: BorderSide(
-                            color: tokens.border.withValues(alpha: 0.4),
-                            width: 1.0,
-                          ),
-                        ),
-                      ),
-                      child: Text(
-                        '#',
-                        style: LyraTypography.small(tokens).copyWith(
-                          fontWeight: FontWeight.w600,
-                          color: tokens.textMuted,
-                        ),
+                    _buildHeaderRow(tokens, columns),
+                    Expanded(
+                      child: ListView.builder(
+                        primary: false,
+                        itemExtent: itemExtent,
+                        itemCount: rows.length,
+                        itemBuilder: (context, rowIndex) {
+                          final row = rows[rowIndex];
+                          final rowNumber =
+                              (controller.currentPage - 1) *
+                                  controller.pageSize +
+                              rowIndex +
+                              1;
+                          final isLast = rowIndex == rows.length - 1;
+                          final isOdd = rowIndex.isOdd;
+
+                          return _DataRowWidget(
+                            key: ValueKey<String>(
+                              (row['id'] ??
+                                      row['file_hash'] ??
+                                      row['pcm_hash'] ??
+                                      '${controller.currentPage}_$rowIndex')
+                                  .toString(),
+                            ),
+                            rowIndex: rowIndex,
+                            row: row,
+                            columns: columns,
+                            getColumnWidth: _getColumnWidth,
+                            tokens: tokens,
+                            controller: controller,
+                            rowNumber: rowNumber,
+                            isLast: isLast,
+                            isOdd: isOdd,
+                          );
+                        },
                       ),
                     ),
-
-                    // Column Headers
-                    ...columns.map((col) {
-                      final width = _getColumnWidth(col);
-                      return Container(
-                        width: width,
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: LyraSpacing.md,
-                        ),
-                        child: Tooltip(
-                          message: 'Column: $col',
-                          waitDuration: const Duration(milliseconds: 500),
-                          child: Text(
-                            formatColumnHeader(col),
-                            style: LyraTypography.small(tokens).copyWith(
-                              fontWeight: FontWeight.w600,
-                              color: tokens.textMuted,
-                            ),
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ),
-                      );
-                    }),
                   ],
                 ),
               ),
-
-              // Data Rows / Empty State
-              if (rows.isEmpty)
-                Container(
-                  padding: const EdgeInsets.symmetric(vertical: 36.0),
-                  alignment: Alignment.center,
-                  child: Center(
-                    child: Text(
-                      'No matching records found',
-                      style: LyraTypography.muted(tokens),
-                    ),
-                  ),
-                )
-              else
-                ...rows.asMap().entries.map((entry) {
-                  final rowIndex = entry.key;
-                  final row = entry.value;
-                  final rowNumber =
-                      (controller.currentPage - 1) * controller.pageSize +
-                      rowIndex +
-                      1;
-                  final isLast = rowIndex == rows.length - 1;
-                  final isOdd = rowIndex.isOdd;
-
-                  return Container(
-                    decoration: BoxDecoration(
-                      color: isOdd
-                          ? tokens.secondary.withValues(alpha: 0.15)
-                          : null,
-                      border: isLast
-                          ? null
-                          : Border(
-                              bottom: BorderSide(
-                                color: tokens.border.withValues(alpha: 0.3),
-                                width: 1.0,
-                              ),
-                            ),
-                    ),
-                    padding: const EdgeInsets.symmetric(
-                      vertical: LyraSpacing.sm,
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        // Row Number Gutter
-                        Container(
-                          width: 48.0,
-                          alignment: Alignment.center,
-                          decoration: BoxDecoration(
-                            border: Border(
-                              right: BorderSide(
-                                color: tokens.border.withValues(alpha: 0.4),
-                                width: 1.0,
-                              ),
-                            ),
-                          ),
-                          child: Text(
-                            '$rowNumber',
-                            style: LyraTypography.mono(
-                              tokens,
-                            ).copyWith(fontSize: 12.0, color: tokens.textMuted),
-                          ),
-                        ),
-
-                        // Columns Data Cells
-                        ...columns.map((col) {
-                          final width = _getColumnWidth(col);
-                          final value = row[col];
-
-                          return Container(
-                            width: width,
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: LyraSpacing.md,
-                            ),
-                            child: _buildCellWidget(
-                              tokens,
-                              value,
-                              column: col,
-                              row: row,
-                              rowIndex: rowIndex,
-                              controller: controller,
-                            ),
-                          );
-                        }),
-                      ],
-                    ),
-                  );
-                }),
-            ],
+            ),
           ),
-        ),
-      ),
+        );
+      },
     );
   }
 
-  Widget _buildCellWidget(
-    LyraThemeTokens tokens,
-    dynamic value, {
-    String column = '',
-    Map<String, dynamic> row = const {},
-    int rowIndex = 0,
-    DatabaseExplorerController? controller,
-  }) {
-    return _DataCellWidget(
-      key: ValueKey('${row['id'] ?? rowIndex}_$column'),
-      tokens: tokens,
-      value: value,
-      column: column,
-      row: row,
-      controller: controller ?? widget.controller,
+  Widget _buildHeaderRow(LyraThemeTokens tokens, List<String> columns) {
+    return Container(
+      height: 38.0,
+      decoration: BoxDecoration(
+        color: tokens.secondary.withValues(alpha: 0.45),
+        border: Border(
+          bottom: BorderSide(
+            color: tokens.border.withValues(alpha: 0.5),
+            width: 1.0,
+          ),
+        ),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          // Row Number Gutter Header
+          Container(
+            width: 48.0,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              border: Border(
+                right: BorderSide(
+                  color: tokens.border.withValues(alpha: 0.4),
+                  width: 1.0,
+                ),
+              ),
+            ),
+            child: Text(
+              '#',
+              style: LyraTypography.small(
+                tokens,
+              ).copyWith(fontWeight: FontWeight.w600, color: tokens.textMuted),
+            ),
+          ),
+
+          // Column Headers
+          ...columns.map((col) {
+            final width = _getColumnWidth(col);
+            return Container(
+              width: width,
+              padding: const EdgeInsets.symmetric(horizontal: LyraSpacing.md),
+              alignment: Alignment.centerLeft,
+              child: Tooltip(
+                message: 'Column: $col',
+                waitDuration: const Duration(milliseconds: 500),
+                child: Text(
+                  formatColumnHeader(col),
+                  style: LyraTypography.small(tokens).copyWith(
+                    fontWeight: FontWeight.w600,
+                    color: tokens.textMuted,
+                  ),
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+            );
+          }),
+        ],
+      ),
     );
   }
 
@@ -1109,73 +1112,70 @@ class _DatabasePathBarState extends State<_DatabasePathBar> {
 }
 
 // -----------------------------------------------------------------------------
-// Interactive Data Cell Widget with Click-to-Copy & Right-Click Context Menu
+// Interactive Data Row Widget with Row-Level Context Menu
 // -----------------------------------------------------------------------------
 
-class _DataCellWidget extends StatefulWidget {
-  final LyraThemeTokens tokens;
-  final dynamic value;
-  final String column;
+class _DataRowWidget extends StatefulWidget {
+  final int rowIndex;
   final Map<String, dynamic> row;
+  final List<String> columns;
+  final double Function(String) getColumnWidth;
+  final LyraThemeTokens tokens;
   final DatabaseExplorerController controller;
+  final int rowNumber;
+  final bool isLast;
+  final bool isOdd;
 
-  const _DataCellWidget({
+  const _DataRowWidget({
     super.key,
-    required this.tokens,
-    required this.value,
-    required this.column,
+    required this.rowIndex,
     required this.row,
+    required this.columns,
+    required this.getColumnWidth,
+    required this.tokens,
     required this.controller,
+    required this.rowNumber,
+    required this.isLast,
+    required this.isOdd,
   });
 
   @override
-  State<_DataCellWidget> createState() => _DataCellWidgetState();
+  State<_DataRowWidget> createState() => _DataRowWidgetState();
 }
 
-class _DataCellWidgetState extends State<_DataCellWidget> {
-  static final _uuidRegex = RegExp(
-    r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$',
-  );
-  static final _hexHashRegex = RegExp(r'^[a-fA-F0-9]{32,64}$');
-
-  bool _copied = false;
-  Timer? _copyTimer;
-  final GlobalKey<TooltipState> _tooltipKey = GlobalKey<TooltipState>();
+class _DataRowWidgetState extends State<_DataRowWidget> {
+  late final ShadContextMenuController _contextMenuController;
+  final ValueNotifier<dynamic> _selectedCellValueNotifier =
+      ValueNotifier<dynamic>(null);
 
   @override
-  void didUpdateWidget(covariant _DataCellWidget oldWidget) {
+  void initState() {
+    super.initState();
+    _contextMenuController = ShadContextMenuController();
+  }
+
+  @override
+  void didUpdateWidget(covariant _DataRowWidget oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.value != widget.value) {
-      _copied = false;
-      _copyTimer?.cancel();
+    if (oldWidget.row != widget.row) {
+      _selectedCellValueNotifier.value = null;
     }
   }
 
   @override
   void dispose() {
-    _copyTimer?.cancel();
+    LyraContextMenuCoordinator.onDisposed(_contextMenuController);
+    _contextMenuController.dispose();
+    _selectedCellValueNotifier.dispose();
     super.dispose();
   }
 
-  void _copy() {
-    if (widget.value == null) return;
-    final str = widget.value.toString();
-    Clipboard.setData(ClipboardData(text: str));
-    if (!mounted) return;
-    setState(() => _copied = true);
-    _copyTimer?.cancel();
-    _tooltipKey.currentState?.ensureTooltipVisible();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted && _copied) {
-        _tooltipKey.currentState?.ensureTooltipVisible();
-      }
-    });
-    _copyTimer = Timer(const Duration(milliseconds: 1500), () {
-      if (mounted) setState(() => _copied = false);
-    });
+  void _onCellSecondaryTap(dynamic value) {
+    _selectedCellValueNotifier.value = value;
+    LyraContextMenuCoordinator.setActive(_contextMenuController);
   }
 
-  void _copyRowJson(Map<String, dynamic> row) {
+  static void _copyRowJson(Map<String, dynamic> row) {
     try {
       final json = const JsonEncoder.withIndent(
         '  ',
@@ -1186,178 +1186,26 @@ class _DataCellWidgetState extends State<_DataCellWidget> {
     }
   }
 
-  void _onCellTap() {
-    _copy();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final tokens = widget.tokens;
-    final value = widget.value;
-
-    final items = _buildMenuItems(tokens);
-
-    if (value == null) {
-      return ShadContextMenuRegion(
-        constraints: const BoxConstraints(minWidth: 200),
-        popoverReverseDuration: const Duration(milliseconds: 50),
-        items: items,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 4.0, vertical: 2.0),
-          child: Text(
-            'NULL',
-            style: TextStyle(
-              fontStyle: FontStyle.italic,
-              color: tokens.textMuted.withValues(alpha: 0.6),
-              fontSize: 13.0,
-            ),
-          ),
-        ),
-      );
-    }
-
-    final str = value.toString();
-    final isMonospace = _uuidRegex.hasMatch(str) || _hexHashRegex.hasMatch(str);
-
-    return ShadContextMenuRegion(
-      constraints: const BoxConstraints(minWidth: 200),
-      popoverReverseDuration: const Duration(milliseconds: 50),
-      items: items,
-      child: Tooltip(
-        key: _tooltipKey,
-        enableTapToDismiss: false,
-        waitDuration: Duration.zero,
-        showDuration: const Duration(milliseconds: 2000),
-        padding: EdgeInsets.zero,
-        margin: EdgeInsets.zero,
-        decoration: const BoxDecoration(color: Color(0x00000000)),
-        richMessage: WidgetSpan(
-          alignment: PlaceholderAlignment.middle,
-          child: AnimatedContainer(
-            duration: const Duration(milliseconds: 200),
-            curve: Curves.easeInOutCubic,
-            height: 28.0,
-            padding: const EdgeInsets.symmetric(horizontal: 10.0),
-            decoration: BoxDecoration(
-              color: tokens.card,
-              borderRadius: LyraRadius.smRadius,
-              border: Border.all(
-                color: _copied ? tokens.success : tokens.border,
-                width: 1.0,
-              ),
-              boxShadow: const [
-                BoxShadow(
-                  color: Color(0x33000000),
-                  blurRadius: 4.0,
-                  offset: Offset(0, 2),
-                ),
-              ],
-            ),
-            child: Center(
-              widthFactor: 1.0,
-              heightFactor: 1.0,
-              child: AnimatedSize(
-                duration: const Duration(milliseconds: 200),
-                curve: Curves.easeInOutCubic,
-                child: AnimatedSwitcher(
-                  duration: const Duration(milliseconds: 200),
-                  switchInCurve: Curves.easeInOutCubic,
-                  switchOutCurve: Curves.easeInOutCubic,
-                  transitionBuilder: (child, animation) {
-                    return FadeTransition(
-                      opacity: animation,
-                      child: ScaleTransition(
-                        scale: Tween<double>(
-                          begin: 0.9,
-                          end: 1.0,
-                        ).animate(animation),
-                        child: child,
-                      ),
-                    );
-                  },
-                  child: _copied
-                      ? Row(
-                          key: const ValueKey<bool>(true),
-                          mainAxisSize: MainAxisSize.min,
-                          crossAxisAlignment: CrossAxisAlignment.center,
-                          children: [
-                            Icon(
-                              LucideIcons.check,
-                              size: 13.0,
-                              color: tokens.success,
-                            ),
-                            const SizedBox(width: 4.0),
-                            Text(
-                              'Copied',
-                              style: TextStyle(
-                                color: tokens.success,
-                                fontSize: 12.0,
-                                fontWeight: FontWeight.w600,
-                                height: 1.2,
-                              ),
-                            ),
-                          ],
-                        )
-                      : Text(
-                          'Click to copy',
-                          key: const ValueKey<bool>(false),
-                          style: TextStyle(
-                            color: tokens.text,
-                            fontSize: 12.0,
-                            height: 1.2,
-                          ),
-                        ),
-                ),
-              ),
-            ),
-          ),
-        ),
-        child: MouseRegion(
-          cursor: SystemMouseCursors.click,
-          onExit: (event) {
-            _copyTimer?.cancel();
-            if (mounted && _copied) setState(() => _copied = false);
-          },
-          child: GestureDetector(
-            behavior: HitTestBehavior.opaque,
-            onTap: _onCellTap,
-            child: Padding(
-              padding: const EdgeInsets.symmetric(
-                horizontal: 4.0,
-                vertical: 2.0,
-              ),
-              child: Text(
-                str,
-                style: isMonospace
-                    ? LyraTypography.mono(
-                        tokens,
-                      ).copyWith(fontSize: 12.0, color: tokens.text)
-                    : LyraTypography.small(tokens),
-                overflow: TextOverflow.ellipsis,
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  List<Widget> _buildMenuItems(LyraThemeTokens tokens) {
+  List<Widget> _buildMenuItems() {
     final row = widget.row;
     final controller = widget.controller;
-    final value = widget.value;
     final currentTable = controller.selectedTable;
 
     final items = <Widget>[
-      ShadContextMenuItem(
-        leading: const Icon(LucideIcons.copy, size: 14.0),
-        enabled: value != null,
-        onPressed: value != null
-            ? () {
-                Clipboard.setData(ClipboardData(text: value.toString()));
-              }
-            : null,
-        child: Text(value == null ? 'Copy Value (Empty)' : 'Copy Value'),
+      ValueListenableBuilder<dynamic>(
+        valueListenable: _selectedCellValueNotifier,
+        builder: (context, value, _) {
+          return ShadContextMenuItem(
+            leading: const Icon(LucideIcons.copy, size: 14.0),
+            enabled: value != null,
+            onPressed: value != null
+                ? () {
+                    Clipboard.setData(ClipboardData(text: value.toString()));
+                  }
+                : null,
+            child: Text(value == null ? 'Copy Value (Empty)' : 'Copy Value'),
+          );
+        },
       ),
       ShadContextMenuItem(
         leading: const Icon(LucideIcons.code, size: 14.0),
@@ -1538,5 +1386,305 @@ class _DataCellWidgetState extends State<_DataCellWidget> {
     }
 
     return items;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = widget.tokens;
+    final row = widget.row;
+    final columns = widget.columns;
+    final isOdd = widget.isOdd;
+    final isLast = widget.isLast;
+    final rowNumber = widget.rowNumber;
+
+    return RepaintBoundary(
+      child: ShadContextMenuRegion(
+        controller: _contextMenuController,
+        tapEnabled: false,
+        constraints: const BoxConstraints(minWidth: 200),
+        popoverReverseDuration: const Duration(milliseconds: 50),
+        items: _buildMenuItems(),
+        child: Container(
+          height: 44.0,
+          decoration: BoxDecoration(
+            color: isOdd ? tokens.secondary.withValues(alpha: 0.15) : null,
+            border: isLast
+                ? null
+                : Border(
+                    bottom: BorderSide(
+                      color: tokens.border.withValues(alpha: 0.3),
+                      width: 1.0,
+                    ),
+                  ),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // Row Number Gutter
+              Container(
+                width: 48.0,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  border: Border(
+                    right: BorderSide(
+                      color: tokens.border.withValues(alpha: 0.4),
+                      width: 1.0,
+                    ),
+                  ),
+                ),
+                child: Text(
+                  '$rowNumber',
+                  style: LyraTypography.mono(
+                    tokens,
+                  ).copyWith(fontSize: 12.0, color: tokens.textMuted),
+                ),
+              ),
+
+              // Columns Data Cells
+              ...columns.map((col) {
+                final width = widget.getColumnWidth(col);
+                final value = row[col];
+
+                return SizedBox(
+                  width: width,
+                  height: double.infinity,
+                  child: _DataCellWidget(
+                    key: ValueKey(
+                      '${row['id'] ?? row['file_hash'] ?? row['pcm_hash'] ?? '${widget.controller.currentPage}_${widget.rowIndex}'}_$col',
+                    ),
+                    tokens: tokens,
+                    value: value,
+                    column: col,
+                    row: row,
+                    controller: widget.controller,
+                    onSecondaryTap: _onCellSecondaryTap,
+                  ),
+                );
+              }),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// -----------------------------------------------------------------------------
+// Interactive Data Cell Widget with Click-to-Copy
+// -----------------------------------------------------------------------------
+
+class _DataCellWidget extends StatefulWidget {
+  final LyraThemeTokens tokens;
+  final dynamic value;
+  final String column;
+  final Map<String, dynamic> row;
+  final DatabaseExplorerController controller;
+  final ValueChanged<dynamic>? onSecondaryTap;
+
+  const _DataCellWidget({
+    super.key,
+    required this.tokens,
+    required this.value,
+    required this.column,
+    required this.row,
+    required this.controller,
+    this.onSecondaryTap,
+  });
+
+  @override
+  State<_DataCellWidget> createState() => _DataCellWidgetState();
+}
+
+class _DataCellWidgetState extends State<_DataCellWidget> {
+  static final _uuidRegex = RegExp(
+    r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$',
+  );
+  static final _hexHashRegex = RegExp(r'^[a-fA-F0-9]{32,64}$');
+
+  bool _copied = false;
+  Timer? _copyTimer;
+
+  @override
+  void didUpdateWidget(covariant _DataCellWidget oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.value != widget.value) {
+      _copied = false;
+      _copyTimer?.cancel();
+    }
+  }
+
+  @override
+  void dispose() {
+    _copyTimer?.cancel();
+    super.dispose();
+  }
+
+  void _copy(BuildContext cellContext) {
+    if (widget.value == null) return;
+    final str = widget.value.toString();
+    Clipboard.setData(ClipboardData(text: str));
+    if (!mounted) return;
+    setState(() => _copied = true);
+    _copyTimer?.cancel();
+    cellContext.findAncestorStateOfType<TooltipState>()?.ensureTooltipVisible();
+    _copyTimer = Timer(const Duration(milliseconds: 1500), () {
+      if (mounted) setState(() => _copied = false);
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = widget.tokens;
+    final value = widget.value;
+
+    if (value == null) {
+      return Listener(
+        behavior: HitTestBehavior.opaque,
+        onPointerDown: (event) {
+          if (event.buttons == kSecondaryMouseButton) {
+            widget.onSecondaryTap?.call(null);
+          }
+        },
+        child: Container(
+          width: double.infinity,
+          height: double.infinity,
+          alignment: Alignment.centerLeft,
+          padding: const EdgeInsets.symmetric(horizontal: LyraSpacing.md),
+          child: Text(
+            'NULL',
+            style: TextStyle(
+              fontStyle: FontStyle.italic,
+              color: tokens.textMuted.withValues(alpha: 0.6),
+              fontSize: 13.0,
+            ),
+          ),
+        ),
+      );
+    }
+
+    final str = value.toString();
+    final isMonospace = _uuidRegex.hasMatch(str) || _hexHashRegex.hasMatch(str);
+
+    return Listener(
+      behavior: HitTestBehavior.opaque,
+      onPointerDown: (event) {
+        if (event.buttons == kSecondaryMouseButton) {
+          widget.onSecondaryTap?.call(value);
+        }
+      },
+      child: Tooltip(
+        triggerMode: TooltipTriggerMode.tap,
+        enableTapToDismiss: false,
+        waitDuration: Duration.zero,
+        showDuration: const Duration(milliseconds: 1500),
+        padding: EdgeInsets.zero,
+        margin: EdgeInsets.zero,
+        decoration: const BoxDecoration(color: Color(0x00000000)),
+        richMessage: WidgetSpan(
+          alignment: PlaceholderAlignment.middle,
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 150),
+            curve: Curves.easeInOutCubic,
+            height: 28.0,
+            padding: const EdgeInsets.symmetric(horizontal: 10.0),
+            decoration: BoxDecoration(
+              color: tokens.card,
+              borderRadius: LyraRadius.smRadius,
+              border: Border.all(
+                color: _copied ? tokens.success : tokens.border,
+                width: 1.0,
+              ),
+              boxShadow: const [
+                BoxShadow(
+                  color: Color(0x33000000),
+                  blurRadius: 4.0,
+                  offset: Offset(0, 2),
+                ),
+              ],
+            ),
+            child: AnimatedSize(
+              duration: const Duration(milliseconds: 150),
+              curve: Curves.easeInOutCubic,
+              child: AnimatedSwitcher(
+                duration: const Duration(milliseconds: 150),
+                switchInCurve: Curves.easeInOutCubic,
+                switchOutCurve: Curves.easeInOutCubic,
+                transitionBuilder: (child, animation) {
+                  return FadeTransition(
+                    opacity: animation,
+                    child: ScaleTransition(scale: animation, child: child),
+                  );
+                },
+                child: Row(
+                  key: ValueKey<bool>(_copied),
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    if (_copied) ...[
+                      Icon(
+                        LucideIcons.check,
+                        size: 13.0,
+                        color: tokens.success,
+                      ),
+                      const SizedBox(width: 4.0),
+                      Text(
+                        'Copied',
+                        style: TextStyle(
+                          color: tokens.success,
+                          fontSize: 12.0,
+                          fontWeight: FontWeight.w600,
+                          height: 1.2,
+                        ),
+                      ),
+                    ] else
+                      Text(
+                        'Click to copy',
+                        style: TextStyle(
+                          color: tokens.text,
+                          fontSize: 12.0,
+                          height: 1.2,
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+        child: Builder(
+          builder: (cellContext) {
+            return MouseRegion(
+              cursor: SystemMouseCursors.click,
+              onExit: (event) {
+                if (_copyTimer == null || !_copyTimer!.isActive) {
+                  if (mounted && _copied) setState(() => _copied = false);
+                }
+              },
+              child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: () => _copy(cellContext),
+                child: Container(
+                  width: double.infinity,
+                  height: double.infinity,
+                  alignment: Alignment.centerLeft,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: LyraSpacing.md,
+                  ),
+                  child: Text(
+                    str,
+                    style: isMonospace
+                        ? LyraTypography.mono(
+                            tokens,
+                          ).copyWith(fontSize: 12.0, color: tokens.text)
+                        : LyraTypography.small(tokens),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              ),
+            );
+          },
+        ),
+      ),
+    );
   }
 }

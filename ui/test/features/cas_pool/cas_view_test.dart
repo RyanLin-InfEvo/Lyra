@@ -222,6 +222,49 @@ void main() {
       expect(find.text('Integrity Hash'), findsOneWidget);
     });
 
+    testWidgets(
+      'CasView uses IndexedStack to preserve subtab state across tab switches',
+      (tester) async {
+        tester.view.physicalSize = const Size(1280, 800);
+        tester.view.devicePixelRatio = 1.0;
+        addTearDown(tester.view.resetPhysicalSize);
+
+        final controller = CasController();
+        addTearDown(controller.dispose);
+        final dbController = DatabaseExplorerController();
+        addTearDown(dbController.dispose);
+
+        await tester.pumpWidget(
+          _buildCasViewTest(controller: controller, dbController: dbController),
+        );
+        await tester.pumpAndSettle();
+
+        // 1. IndexedStack exists in widget tree
+        expect(find.byType(IndexedStack), findsOneWidget);
+
+        // 2. Switch to Database Explorer
+        controller.setTab(CasTab.databaseExplorer);
+        await tester.pumpAndSettle();
+
+        expect(find.text('Database Explorer'), findsOneWidget);
+        // Select 'Track' table
+        dbController.selectTable('Track');
+        await tester.pumpAndSettle();
+        expect(dbController.selectedTable, equals('Track'));
+
+        // 3. Switch back to Storage Overview
+        controller.setTab(CasTab.storageOverview);
+        await tester.pumpAndSettle();
+        expect(find.text('CAS Storage'), findsOneWidget);
+
+        // 4. Switch back to Database Explorer: selection is preserved without re-mounting
+        controller.setTab(CasTab.databaseExplorer);
+        await tester.pumpAndSettle();
+        expect(find.text('Database Explorer'), findsOneWidget);
+        expect(dbController.selectedTable, equals('Track'));
+      },
+    );
+
     testWidgets('Search input filters blob objects and shows empty state', (
       tester,
     ) async {

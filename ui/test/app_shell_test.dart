@@ -2421,5 +2421,100 @@ void main() {
         expect(find.text('Integrity Hash'), findsOneWidget);
       },
     );
+
+    testWidgets(
+      'AppShell retains DatabaseExplorerController state across tab navigations',
+      (tester) async {
+        tester.view.physicalSize = const Size(1280, 950);
+        tester.view.devicePixelRatio = 1.0;
+        addTearDown(tester.view.resetPhysicalSize);
+
+        await tester.pumpWidget(_buildAppShellTest());
+        await tester.pumpAndSettle();
+
+        // 1. Expand CAS Storage section and go to Database Explorer
+        await tester.tap(find.byKey(const Key('cas_header_chevron')));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('Database Explorer'));
+        await tester.pumpAndSettle();
+
+        expect(find.byType(DatabaseExplorerTab), findsOneWidget);
+
+        // 2. Switch table in Database Explorer to 'Track'
+        final casView = tester.widget<CasView>(find.byType(CasView));
+        expect(casView.dbController, isNotNull);
+        final dbController = casView.dbController!;
+        dbController.selectTable('Track');
+        await tester.pumpAndSettle();
+        expect(dbController.selectedTable, equals('Track'));
+
+        // 3. Navigate away to Tracks tab
+        await tester.tap(find.text('Tracks').first);
+        await tester.pumpAndSettle();
+        expect(find.byType(TracksView), findsOneWidget);
+
+        // 4. Navigate back to Database Explorer
+        await tester.tap(find.text('Database Explorer'));
+        await tester.pumpAndSettle();
+
+        // 5. DatabaseExplorerController is retained and table remains 'Track'
+        final casViewReturned = tester.widget<CasView>(find.byType(CasView));
+        expect(casViewReturned.dbController, same(dbController));
+        expect(dbController.selectedTable, equals('Track'));
+      },
+    );
+
+    testWidgets(
+      'Defect 5: AppShell maintains CasController and BackendSettingsController symmetry with DatabaseExplorerController',
+      (tester) async {
+        tester.view.physicalSize = const Size(1280, 950);
+        tester.view.devicePixelRatio = 1.0;
+        addTearDown(tester.view.resetPhysicalSize);
+
+        await tester.pumpWidget(_buildAppShellTest());
+        await tester.pumpAndSettle();
+
+        // 1. Expand CAS Storage section and go to CAS Storage Overview
+        await tester.tap(find.byKey(const Key('cas_header_chevron')));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('Storage Overview'));
+        await tester.pumpAndSettle();
+
+        expect(find.byType(CasView), findsOneWidget);
+        final casView = tester.widget<CasView>(find.byType(CasView));
+        expect(
+          casView.controller,
+          isNotNull,
+          reason: 'CasController must be owned symmetrically by AppShell',
+        );
+        expect(
+          casView.backendSettingsController,
+          isNotNull,
+          reason:
+              'BackendSettingsController must be owned symmetrically by AppShell',
+        );
+        expect(casView.dbController, isNotNull);
+
+        final casController = casView.controller!;
+        final backendSettingsController = casView.backendSettingsController!;
+
+        // 2. Navigate away to Tracks
+        await tester.tap(find.text('Tracks').first);
+        await tester.pumpAndSettle();
+        expect(find.byType(TracksView), findsOneWidget);
+
+        // 3. Navigate back to CAS Storage Overview
+        await tester.tap(find.text('Storage Overview'));
+        await tester.pumpAndSettle();
+
+        // 4. Verify controllers are retained symmetrically
+        final casViewReturned = tester.widget<CasView>(find.byType(CasView));
+        expect(casViewReturned.controller, same(casController));
+        expect(
+          casViewReturned.backendSettingsController,
+          same(backendSettingsController),
+        );
+      },
+    );
   });
 }
