@@ -1630,18 +1630,21 @@ void main() {
         expect(find.text('Click to copy'), findsOneWidget);
         expect(find.text('Copied'), findsNothing);
 
-        // Test stale-state reset immediately on mouse exit
+        // Test mouse exit does not prematurely clear copy state while timer is active
         await tester.tap(cellFinder);
         await tester.pump();
         await tester.pump(const Duration(milliseconds: 250));
         expect(find.text('Copied'), findsOneWidget);
 
-        // Move mouse away to trigger onExit
+        // Move mouse away to trigger onExit - feedback remains visible
         await gesture.moveTo(Offset.zero);
         await tester.pump();
         await tester.pump(const Duration(milliseconds: 250));
+        expect(find.text('Copied'), findsOneWidget);
 
-        // When mouse exits, stale Copied state is reset immediately
+        // Advance timer past 1500ms expiration
+        await tester.pump(const Duration(milliseconds: 1200));
+        await tester.pumpAndSettle();
         expect(find.text('Copied'), findsNothing);
         await gesture.removePointer();
       },
@@ -1756,6 +1759,259 @@ void main() {
 
         expect(controller.selectedTable, equals('Asset'));
         expect(controller.searchQuery, equals(fileHash));
+      },
+    );
+
+    testWidgets(
+      'Table rows are virtualized via ListView.builder with RepaintBoundary and 44.0 itemExtent',
+      (tester) async {
+        tester.view.physicalSize = const Size(1280, 900);
+        tester.view.devicePixelRatio = 1.0;
+        addTearDown(tester.view.resetPhysicalSize);
+
+        final controller = DatabaseExplorerController();
+        addTearDown(controller.dispose);
+
+        await tester.pumpWidget(
+          _buildDatabaseExplorerTest(controller: controller),
+        );
+        await tester.pumpAndSettle();
+
+        // Data grid contains ListView with fixed itemExtent 44.0
+        final listViewFinder = find.byType(ListView);
+        expect(listViewFinder, findsOneWidget);
+        final listView = tester.widget<ListView>(listViewFinder);
+        expect(listView.itemExtent, equals(44.0));
+
+        // Rows and cards are wrapped in RepaintBoundary
+        expect(find.byType(RepaintBoundary), findsWidgets);
+      },
+    );
+
+    testWidgets(
+      'Defect 1: Right-clicking empty cell space at cellWidth - 10 hits cell and updates context menu value',
+      (tester) async {
+        tester.view.physicalSize = const Size(1280, 900);
+        tester.view.devicePixelRatio = 1.0;
+        addTearDown(tester.view.resetPhysicalSize);
+
+        final controller = DatabaseExplorerController();
+        addTearDown(controller.dispose);
+
+        String? clipboardData;
+        TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+            .setMockMethodCallHandler(SystemChannels.platform, (
+              MethodCall methodCall,
+            ) async {
+              if (methodCall.method == 'Clipboard.setData') {
+                clipboardData =
+                    (methodCall.arguments as Map)['text'] as String?;
+                return null;
+              }
+              return null;
+            });
+
+        await tester.pumpWidget(
+          _buildDatabaseExplorerTest(controller: controller),
+        );
+        await tester.pumpAndSettle();
+
+        // 1. Right click on first column ('id') glyphs to set a previous value
+        final idCellFinder = find.text('da5d1c54-3f89-4b13-a00a-9228ae564f44');
+        await tester.tap(idCellFinder, buttons: kSecondaryMouseButton);
+        await tester.pumpAndSettle();
+        expect(find.text('Copy Value'), findsOneWidget);
+        // Dismiss menu
+        await tester.tapAt(const Offset(10, 10));
+        await tester.pumpAndSettle();
+
+        // 2. The second column ('entity_type') cell has value 'artist'
+        final artistCellFinder = find.byKey(
+          const ValueKey('da5d1c54-3f89-4b13-a00a-9228ae564f44_entity_type'),
+        );
+        expect(artistCellFinder, findsOneWidget);
+        final cellRect = tester.getRect(artistCellFinder);
+        expect(cellRect.width, equals(130.0));
+
+        // Right-click empty cell space at Offset(cellWidth - 10, cellHeight / 2)
+        final emptyCellOffset =
+            cellRect.topLeft +
+            Offset(cellRect.width - 10.0, cellRect.height / 2);
+        await tester.tapAt(emptyCellOffset, buttons: kSecondaryMouseButton);
+        await tester.pumpAndSettle();
+
+        expect(find.text('Copy Value'), findsOneWidget);
+        await tester.tap(find.text('Copy Value'));
+        await tester.pumpAndSettle();
+
+        // Must be 'artist', not stale id from step 1!
+        expect(clipboardData, equals('artist'));
+      },
+    );
+
+    testWidgets(
+      'Defect 2: Tables without id (Asset/Audio) use unique row keys across pagination and reset row state',
+      (tester) async {
+        tester.view.physicalSize = const Size(1280, 900);
+        tester.view.devicePixelRatio = 1.0;
+        addTearDown(tester.view.resetPhysicalSize);
+
+        final controller = DatabaseExplorerController(
+          initialTable: 'Asset',
+          initialPageSize: 5,
+        );
+        addTearDown(controller.dispose);
+
+        String? clipboardData;
+        TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+            .setMockMethodCallHandler(SystemChannels.platform, (
+              MethodCall methodCall,
+            ) async {
+              if (methodCall.method == 'Clipboard.setData') {
+                clipboardData =
+                    (methodCall.arguments as Map)['text'] as String?;
+                return null;
+              }
+              return null;
+            });
+
+        await tester.pumpWidget(
+          _buildDatabaseExplorerTest(controller: controller),
+        );
+        await tester.pumpAndSettle();
+
+        final page1Row0Hash = controller.pagedRows[0]['file_hash'] as String;
+
+        // 1. Right click row 0 on Page 1
+        final page1Finder = find.text(page1Row0Hash);
+        expect(page1Finder, findsOneWidget);
+        await tester.tap(page1Finder, buttons: kSecondaryMouseButton);
+        await tester.pumpAndSettle();
+
+        expect(find.text('Copy Value'), findsOneWidget);
+        await tester.tap(find.text('Copy Value'));
+        await tester.pumpAndSettle();
+        expect(clipboardData, equals(page1Row0Hash));
+
+        // 2. Navigate to Page 2
+        controller.nextPage();
+        await tester.pumpAndSettle();
+        expect(controller.currentPage, equals(2));
+
+        final page2Row0Hash = controller.pagedRows[0]['file_hash'] as String;
+        expect(page2Row0Hash, isNot(equals(page1Row0Hash)));
+
+        // Verify row keys on page 2 do not collide with row keys on page 1 (ValueKey(0))
+        final row0Finder = find.byKey(ValueKey<String>(page2Row0Hash));
+        expect(
+          row0Finder,
+          findsOneWidget,
+          reason:
+              'Row key must incorporate file_hash or page index, not collide on rowIndex',
+        );
+
+        // Right click row 0 on Page 2 and copy value
+        final page2Finder = find.text(page2Row0Hash);
+        expect(page2Finder, findsOneWidget);
+        await tester.tap(page2Finder, buttons: kSecondaryMouseButton);
+        await tester.pumpAndSettle();
+
+        expect(find.text('Copy Value'), findsOneWidget);
+        await tester.tap(find.text('Copy Value'));
+        await tester.pumpAndSettle();
+
+        expect(clipboardData, equals(page2Row0Hash));
+      },
+    );
+
+    testWidgets(
+      'Defect 3: Click-to-copy tooltip enforces Apple HIG motion smoothness (AnimatedContainer, AnimatedSize, AnimatedSwitcher, 28.0 height, 1500ms duration)',
+      (tester) async {
+        tester.view.physicalSize = const Size(1280, 900);
+        tester.view.devicePixelRatio = 1.0;
+        addTearDown(tester.view.resetPhysicalSize);
+
+        final controller = DatabaseExplorerController();
+        addTearDown(controller.dispose);
+
+        await tester.pumpWidget(
+          _buildDatabaseExplorerTest(controller: controller),
+        );
+        await tester.pumpAndSettle();
+
+        // 1. Tooltip has 1500ms showDuration
+        final tooltips = tester.widgetList<Tooltip>(find.byType(Tooltip));
+        final cellTooltip = tooltips.firstWhere(
+          (t) =>
+              t.triggerMode == TooltipTriggerMode.tap && t.richMessage != null,
+        );
+        expect(
+          cellTooltip.showDuration,
+          equals(const Duration(milliseconds: 1500)),
+        );
+
+        // 2. richMessage contains AnimatedContainer, AnimatedSize, AnimatedSwitcher
+        final span = cellTooltip.richMessage! as WidgetSpan;
+        expect(span.child, isA<AnimatedContainer>());
+        final animatedContainer = span.child as AnimatedContainer;
+        expect(animatedContainer.constraints?.minHeight ?? 28.0, equals(28.0));
+        expect(animatedContainer.curve, equals(Curves.easeInOutCubic));
+
+        final animatedSize = animatedContainer.child as AnimatedSize;
+        expect(animatedSize.curve, equals(Curves.easeInOutCubic));
+        final animatedSwitcher = animatedSize.child as AnimatedSwitcher;
+        expect(animatedSwitcher.switchInCurve, equals(Curves.easeInOutCubic));
+
+        // 3. Tapping cell shows Copied and MouseRegion onExit does not immediately clear Copied while copyTimer is active
+        final cellText = find.text('da5d1c54-3f89-4b13-a00a-9228ae564f44');
+        await tester.tap(cellText);
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 250));
+        expect(find.text('Copied'), findsOneWidget);
+
+        // Move mouse away (trigger onExit)
+        final gesture = await tester.createGesture(
+          kind: PointerDeviceKind.mouse,
+        );
+        addTearDown(gesture.removePointer);
+        await gesture.addPointer(location: tester.getCenter(cellText));
+        await gesture.moveTo(const Offset(10, 10));
+        await tester.pump(const Duration(milliseconds: 200));
+
+        // Must still show 'Copied' because 1500ms timer hasn't expired yet
+        expect(find.text('Copied'), findsOneWidget);
+
+        // Advance timer past 1500ms
+        await tester.pump(const Duration(milliseconds: 1300));
+        await tester.pumpAndSettle();
+        expect(find.text('Copied'), findsNothing);
+      },
+    );
+
+    testWidgets(
+      'Defect 4: Data grid uses LayoutBuilder for responsive width, contains horizontal Scrollbar, and centers empty state',
+      (tester) async {
+        tester.view.physicalSize = const Size(1600, 900);
+        tester.view.devicePixelRatio = 1.0;
+        addTearDown(tester.view.resetPhysicalSize);
+
+        final controller = DatabaseExplorerController();
+        addTearDown(controller.dispose);
+
+        await tester.pumpWidget(
+          _buildDatabaseExplorerTest(controller: controller),
+        );
+        await tester.pumpAndSettle();
+
+        // 1. Data grid wraps horizontal SingleChildScrollView with Scrollbar
+        expect(find.byType(Scrollbar), findsWidgets);
+
+        // 2. Set search query to nonexistent to trigger empty state
+        controller.setSearchQuery('__nonexistent_query__');
+        await tester.pumpAndSettle();
+
+        expect(find.text('No matching records found'), findsOneWidget);
+        expect(find.byType(Scrollbar), findsWidgets);
       },
     );
   });

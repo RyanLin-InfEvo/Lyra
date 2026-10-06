@@ -717,7 +717,9 @@ class _LyraSidebarState extends State<LyraSidebar> {
         ),
         onPressed: () {
           widget.onCasSubTabSelected?.call(subTab);
-          widget.onTabSelected(AppTab.casStorage);
+          if (widget.currentTab != AppTab.casStorage) {
+            widget.onTabSelected(AppTab.casStorage);
+          }
         },
         leading: Icon(
           icon,

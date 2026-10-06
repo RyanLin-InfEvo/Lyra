@@ -54,6 +54,9 @@ class TrackFilter {
 class AppShell extends StatefulWidget {
   final MusicService musicService;
   final PlaybackQueueController? playbackController;
+  final CasController? casController;
+  final DatabaseExplorerController? dbController;
+  final BackendSettingsController? backendSettingsController;
   final Curve nowPlayingCurve;
   final Duration nowPlayingDuration;
   final PreferencesService? preferencesService;
@@ -62,6 +65,9 @@ class AppShell extends StatefulWidget {
     super.key,
     required this.musicService,
     this.playbackController,
+    this.casController,
+    this.dbController,
+    this.backendSettingsController,
     this.nowPlayingCurve = LyraAnimation.deceleration,
     this.nowPlayingDuration = LyraAnimation.normal,
     this.preferencesService,
@@ -76,6 +82,9 @@ class AppShellState extends State<AppShell> {
   late final FocusNode _searchFocusNode;
   late final PlaybackQueueController _playbackController;
   late final AudioDeviceController _audioDeviceController;
+  late final CasController _casController;
+  late final DatabaseExplorerController _dbController;
+  late final BackendSettingsController _backendSettingsController;
   AppTab _currentTab = AppTab.tracks;
   CasTab _selectedCasTab = CasTab.storageOverview;
   late bool _isSidebarCollapsed;
@@ -180,6 +189,11 @@ class AppShellState extends State<AppShell> {
     _searchController = TextEditingController();
     _searchFocusNode = FocusNode();
     _audioDeviceController = AudioDeviceController();
+    _casController =
+        widget.casController ?? CasController(initialObjects: _casObjects);
+    _dbController = widget.dbController ?? DatabaseExplorerController();
+    _backendSettingsController =
+        widget.backendSettingsController ?? BackendSettingsController();
     _playbackController =
         widget.playbackController ??
         PlaybackQueueController(timerInterval: const Duration(seconds: 1));
@@ -355,6 +369,15 @@ class AppShellState extends State<AppShell> {
     HardwareKeyboard.instance.removeHandler(_handleGlobalKeyEvent);
     _searchFocusNode.dispose();
     _audioDeviceController.dispose();
+    if (widget.casController == null) {
+      _casController.dispose();
+    }
+    if (widget.dbController == null) {
+      _dbController.dispose();
+    }
+    if (widget.backendSettingsController == null) {
+      _backendSettingsController.dispose();
+    }
     _volumeNotifier.removeListener(_onVolumeNotifierChanged);
     _volumeNotifier.dispose();
     _nowPlayingTabNotifier.dispose();
@@ -423,6 +446,7 @@ class AppShellState extends State<AppShell> {
       _playlists = playlists;
       _tags = tags;
       _casObjects = casObjects;
+      _casController.setCasObjects(casObjects);
       _isLoading = false;
 
       if (_playbackController.queue.isEmpty && tracks.isNotEmpty) {
@@ -1406,10 +1430,14 @@ class AppShellState extends State<AppShell> {
           child: CasView(
             casObjects: _casObjects,
             activeTab: _selectedCasTab,
+            controller: _casController,
+            dbController: _dbController,
+            backendSettingsController: _backendSettingsController,
             onTabChanged: (tab) {
               setState(() {
                 _selectedCasTab = tab;
               });
+              _casController.setTab(tab);
             },
             onInspectAsset: (obj) => _openInspectorForAsset(obj),
             onVerifyAll: () async {

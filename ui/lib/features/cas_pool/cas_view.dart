@@ -77,8 +77,14 @@ class _CasViewState extends State<CasView> {
         initialTab: widget.activeTab ?? CasTab.storageOverview,
         initialObjects: widget.casObjects,
       );
-    } else if (widget.activeTab != null) {
-      widget.controller!.setTab(widget.activeTab!);
+    } else {
+      if (widget.activeTab != null) {
+        widget.controller!.setTab(widget.activeTab!);
+      }
+      if (widget.casObjects.isNotEmpty &&
+          widget.controller!.casObjects.isEmpty) {
+        widget.controller!.setCasObjects(widget.casObjects);
+      }
     }
 
     if (widget.dbController == null) {
@@ -106,9 +112,14 @@ class _CasViewState extends State<CasView> {
       } else if (oldWidget.casObjects != widget.casObjects) {
         _internalController!.setCasObjects(widget.casObjects);
       }
-    } else if (_internalController != null) {
-      _internalController!.dispose();
-      _internalController = null;
+    } else {
+      if (_internalController != null) {
+        _internalController!.dispose();
+        _internalController = null;
+      }
+      if (oldWidget.casObjects != widget.casObjects) {
+        _effectiveController.setCasObjects(widget.casObjects);
+      }
     }
 
     if (widget.dbController == null) {
@@ -168,25 +179,30 @@ class _CasViewState extends State<CasView> {
 
                 // Active Tab Content (Navigation driven by Left Sidebar)
                 Expanded(
-                  child: switch (controller.activeTab) {
-                    CasTab.storageOverview => CasStorageTab(
-                      controller: controller,
-                      onInspectAsset: widget.onInspectAsset,
-                      onVerifyAll: widget.onVerifyAll,
-                    ),
-                    CasTab.databaseExplorer => DatabaseExplorerTab(
-                      controller: _effectiveDbController,
-                    ),
-                    CasTab.backendSettings => BackendSettingsTab(
-                      controller: _effectiveBackendSettingsController,
-                      casController: controller,
-                      onVerifyAll: widget.onVerifyAll,
-                      onRequestPrune: () =>
-                          setState(() => _showPruneDialog = true),
-                      onRequestClearWaveforms: () =>
-                          setState(() => _showClearWaveformsDialog = true),
-                    ),
-                  },
+                  child: IndexedStack(
+                    index: switch (controller.activeTab) {
+                      CasTab.storageOverview => 0,
+                      CasTab.databaseExplorer => 1,
+                      CasTab.backendSettings => 2,
+                    },
+                    children: [
+                      CasStorageTab(
+                        controller: controller,
+                        onInspectAsset: widget.onInspectAsset,
+                        onVerifyAll: widget.onVerifyAll,
+                      ),
+                      DatabaseExplorerTab(controller: _effectiveDbController),
+                      BackendSettingsTab(
+                        controller: _effectiveBackendSettingsController,
+                        casController: controller,
+                        onVerifyAll: widget.onVerifyAll,
+                        onRequestPrune: () =>
+                            setState(() => _showPruneDialog = true),
+                        onRequestClearWaveforms: () =>
+                            setState(() => _showClearWaveformsDialog = true),
+                      ),
+                    ],
+                  ),
                 ),
               ],
             ),
