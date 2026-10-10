@@ -760,6 +760,22 @@ void main() {
       expect(tag.displayCategory, 'general');
     });
 
+    test('sanitizes whitespace tag name and category with clean fallbacks', () {
+      const whitespaceTag = Tag(id: 'tag-ws', name: '   ', category: '   ');
+      expect(whitespaceTag.displayName, 'Untitled Tag');
+      expect(whitespaceTag.displayCategory, 'general');
+      expect(whitespaceTag.groupName, 'general');
+
+      const paddedTag = Tag(
+        id: 'tag-pad',
+        name: '  Pop  ',
+        category: '  genre  ',
+      );
+      expect(paddedTag.displayName, 'Pop');
+      expect(paddedTag.displayCategory, 'genre');
+      expect(paddedTag.groupName, 'genre');
+    });
+
     test('serializes to and from JSON', () {
       final now = DateTime.parse('2026-01-10T00:00:00.000Z');
       final json = {
@@ -792,6 +808,101 @@ void main() {
       expect(updated.name, 'Modal Jazz');
       expect(updated.category, 'genre');
     });
+
+    test(
+      'supports Obsidian-style 2-tier hierarchical getters (groupName, subTagName, isHierarchical)',
+      () {
+        // 1. Slash notation tags
+        const kpopTag = Tag(
+          id: 't-kpop',
+          name: 'artist/kpop',
+          category: 'artist',
+        );
+        expect(kpopTag.isHierarchical, isTrue);
+        expect(kpopTag.groupName, 'artist');
+        expect(kpopTag.subTagName, 'kpop');
+        expect(kpopTag.displayName, 'artist/kpop');
+
+        const lowQualityTag = Tag(
+          id: 't-lq',
+          name: 'audio/low_quality',
+          category: 'audio',
+        );
+        expect(lowQualityTag.isHierarchical, isTrue);
+        expect(lowQualityTag.groupName, 'audio');
+        expect(lowQualityTag.subTagName, 'low_quality');
+
+        // 2. Trimming with spaces around slash
+        const spacedTag = Tag(
+          id: 't-space',
+          name: '  genre / electronic  ',
+          category: 'general',
+        );
+        expect(spacedTag.isHierarchical, isTrue);
+        expect(spacedTag.groupName, 'genre');
+        expect(spacedTag.subTagName, 'electronic');
+
+        // 3. Flat tag with category != 'general'
+        const qualityTag = Tag(
+          id: 't-qual',
+          name: 'Audiophile',
+          category: 'quality',
+        );
+        expect(qualityTag.isHierarchical, isFalse);
+        expect(qualityTag.groupName, 'quality');
+        expect(qualityTag.subTagName, 'Audiophile');
+
+        // 4. Flat tag with category == 'general' or empty
+        const rockTag = Tag(id: 't-rock', name: 'Rock', category: 'general');
+        expect(rockTag.isHierarchical, isFalse);
+        expect(rockTag.groupName, 'general');
+        expect(rockTag.subTagName, 'Rock');
+
+        const jazzTag = Tag(id: 't-jazz', name: 'Jazz', category: '');
+        expect(jazzTag.isHierarchical, isFalse);
+        expect(jazzTag.groupName, 'general');
+        expect(jazzTag.subTagName, 'Jazz');
+
+        // 5. Degenerate slash cases fall back cleanly
+        const slashOnly = Tag(id: 't-slash', name: '/', category: 'custom');
+        expect(slashOnly.isHierarchical, isFalse);
+        expect(slashOnly.groupName, 'custom');
+        expect(slashOnly.subTagName, '/');
+
+        const emptyNameTag = Tag(id: 't-empty', name: '', category: 'custom');
+        expect(emptyNameTag.isHierarchical, isFalse);
+        expect(emptyNameTag.groupName, 'custom');
+        expect(emptyNameTag.subTagName, 'Untitled Tag');
+
+        // Degenerate slash cases with trailing slash, leading slash, and whitespace
+        const trailingSlash = Tag(
+          id: 't-deg-1',
+          name: 'audio/',
+          category: 'custom',
+        );
+        expect(trailingSlash.isHierarchical, isFalse);
+        expect(trailingSlash.groupName, 'custom');
+        expect(trailingSlash.subTagName, 'audio/');
+
+        const leadingSlash = Tag(
+          id: 't-deg-2',
+          name: '/pop',
+          category: 'custom',
+        );
+        expect(leadingSlash.isHierarchical, isFalse);
+        expect(leadingSlash.groupName, 'custom');
+        expect(leadingSlash.subTagName, '/pop');
+
+        const whitespaceSlash = Tag(
+          id: 't-deg-3',
+          name: '   /   ',
+          category: 'custom',
+        );
+        expect(whitespaceSlash.isHierarchical, isFalse);
+        expect(whitespaceSlash.groupName, 'custom');
+        expect(whitespaceSlash.subTagName, '/');
+      },
+    );
   });
 
   group('ImageAsset Model', () {

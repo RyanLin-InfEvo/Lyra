@@ -21,6 +21,7 @@ Widget _buildSidebarTest({
   ValueChanged<Playlist>? onPlaylistSelected,
   List<Tag> tags = const [],
   String? selectedTagId,
+  Iterable<String>? selectedTagIds,
   ValueChanged<Tag>? onTagSelected,
   VoidCallback? onTagsHeaderSelected,
   bool defaultPlaylistsExpanded = true,
@@ -70,6 +71,7 @@ Widget _buildSidebarTest({
                 onPlaylistSelected: onPlaylistSelected,
                 tags: tags,
                 selectedTagId: selectedTagId,
+                selectedTagIds: selectedTagIds,
                 onTagSelected: onTagSelected,
                 onTagsHeaderSelected: onTagsHeaderSelected,
                 defaultPlaylistsExpanded: defaultPlaylistsExpanded,
@@ -582,4 +584,247 @@ void main() {
       expect(tester.takeException(), isNull);
     },
   );
+
+  testWidgets(
+    'LyraSidebar groups tags in Obsidian 2-tier structure with headers and capsules',
+    (tester) async {
+      final hierarchicalTags = [
+        const Tag(id: 't-1', name: 'artist/kpop', category: 'artist'),
+        const Tag(id: 't-2', name: 'artist/rock', category: 'artist'),
+        const Tag(id: 't-3', name: 'audio/low_quality', category: 'audio'),
+        const Tag(id: 't-4', name: 'Audiophile', category: 'quality'),
+      ];
+
+      await tester.pumpWidget(_buildSidebarTest(tags: hierarchicalTags));
+      await tester.pumpAndSettle();
+
+      // Tier 1 group headers
+      expect(find.text('# artist'), findsOneWidget);
+      expect(find.text('# audio'), findsOneWidget);
+      expect(find.text('# quality'), findsOneWidget);
+
+      // Tier 2 capsule labels (subTagName)
+      expect(find.text('kpop'), findsOneWidget);
+      expect(find.text('rock'), findsOneWidget);
+      expect(find.text('low_quality'), findsOneWidget);
+      expect(find.text('Audiophile'), findsOneWidget);
+
+      // Tooltips with full names
+      expect(find.byTooltip('artist/kpop'), findsOneWidget);
+      expect(find.byTooltip('audio/low_quality'), findsOneWidget);
+      expect(find.byTooltip('Audiophile'), findsOneWidget);
+    },
+  );
+
+  testWidgets(
+    'LyraSidebar tag capsules do NOT render checkmarks and toggle visual state via capsule color',
+    (tester) async {
+      final tags = [
+        const Tag(id: 't-1', name: 'artist/kpop', category: 'artist'),
+        const Tag(id: 't-2', name: 'Audiophile', category: 'quality'),
+      ];
+
+      Tag? tappedTag;
+      await tester.pumpWidget(
+        _buildSidebarTest(
+          tags: tags,
+          selectedTagId: 't-1',
+          onTagSelected: (t) => tappedTag = t,
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      // 1. Apple HIG & Quiet Defaults: NO checkmarks, NO ticks anywhere
+      expect(find.byIcon(LucideIcons.check), findsNothing);
+
+      // 2. Active capsule (kpop) has subtle translucent primary tint (tokens.primary)
+      final selectedContainer = tester.widget<AnimatedContainer>(
+        find
+            .ancestor(
+              of: find.text('kpop'),
+              matching: find.byType(AnimatedContainer),
+            )
+            .first,
+      );
+      final selectedDec = selectedContainer.decoration as BoxDecoration;
+      expect(
+        selectedDec.color,
+        equals(LyraColors.zinc50.withValues(alpha: 0.15)),
+      );
+      final selectedBorder = selectedDec.border as Border?;
+      expect(
+        selectedBorder?.top.color,
+        equals(LyraColors.zinc50.withValues(alpha: 0.65)),
+      );
+
+      final selectedText = tester.widget<Text>(find.text('kpop'));
+      expect(
+        selectedText.style?.color,
+        equals(LyraColors.zinc50),
+      ); // tokens.primary in dark mode
+      expect(selectedText.style?.fontWeight, equals(FontWeight.w600));
+
+      // 3. Inactive capsule (Audiophile) has subtle quiet secondary background
+      final unselectedContainer = tester.widget<AnimatedContainer>(
+        find
+            .ancestor(
+              of: find.text('Audiophile'),
+              matching: find.byType(AnimatedContainer),
+            )
+            .first,
+      );
+      final unselectedDec = unselectedContainer.decoration as BoxDecoration;
+      expect(
+        unselectedDec.color,
+        isNot(equals(LyraColors.zinc50.withValues(alpha: 0.15))),
+      );
+
+      final unselectedText = tester.widget<Text>(find.text('Audiophile'));
+      expect(
+        unselectedText.style?.color,
+        equals(LyraColors.zinc400),
+      ); // tokens.textMuted in dark mode
+      expect(unselectedText.style?.fontWeight, equals(FontWeight.w500));
+
+      // 4. Tapping capsule fires onTagSelected
+      await tester.tap(find.text('Audiophile'));
+      await tester.pumpAndSettle();
+      expect(tappedTag?.id, equals('t-2'));
+    },
+  );
+
+  testWidgets(
+    'LyraSidebar supports selectedTagIds for multiple/set selection active styling',
+    (tester) async {
+      final tags = [
+        const Tag(id: 't-1', name: 'artist/kpop', category: 'artist'),
+        const Tag(id: 't-2', name: 'audio/low_quality', category: 'audio'),
+      ];
+
+      await tester.pumpWidget(
+        _buildSidebarTest(tags: tags, selectedTagIds: {'t-2'}),
+      );
+      await tester.pumpAndSettle();
+
+      final lowQualityContainer = tester.widget<AnimatedContainer>(
+        find
+            .ancestor(
+              of: find.text('low_quality'),
+              matching: find.byType(AnimatedContainer),
+            )
+            .first,
+      );
+      final lqDec = lowQualityContainer.decoration as BoxDecoration;
+      expect(lqDec.color, equals(LyraColors.zinc50.withValues(alpha: 0.15)));
+
+      final kpopContainer = tester.widget<AnimatedContainer>(
+        find
+            .ancestor(
+              of: find.text('kpop'),
+              matching: find.byType(AnimatedContainer),
+            )
+            .first,
+      );
+      final kpopDec = kpopContainer.decoration as BoxDecoration;
+      expect(
+        kpopDec.color,
+        isNot(equals(LyraColors.zinc50.withValues(alpha: 0.15))),
+      );
+    },
+  );
+
+  testWidgets(
+    'LyraSidebar tag capsules adhere to Apple HIG geometry (28px height), full-contrast header, semantics, and keyboard activation',
+    (tester) async {
+      Tag? activatedTag;
+      final tags = [
+        const Tag(id: 't-1', name: 'artist/kpop', category: 'artist'),
+      ];
+
+      await tester.pumpWidget(
+        _buildSidebarTest(tags: tags, onTagSelected: (t) => activatedTag = t),
+      );
+      await tester.pumpAndSettle();
+
+      // 1. Group header contrast: opacity must be 1.0 (no alpha reduction on textMuted)
+      final headerTextWidget = tester.widget<Text>(find.text('# artist'));
+      expect(headerTextWidget.style?.color, equals(LyraColors.zinc400));
+
+      // 2. Capsule height must be 28.0 (GEMINI.md mandated fixed geometry)
+      final capsuleFinder = find
+          .ancestor(
+            of: find.text('kpop'),
+            matching: find.byType(AnimatedContainer),
+          )
+          .first;
+      final capsuleSize = tester.getSize(capsuleFinder);
+      expect(capsuleSize.height, equals(28.0));
+
+      // 3. Accessibility Semantics: button = true, label = 'artist/kpop'
+      final semanticsFinder = find.byWidgetPredicate(
+        (w) =>
+            w is Semantics &&
+            w.properties.button == true &&
+            w.properties.label == 'artist/kpop',
+      );
+      expect(semanticsFinder, findsOneWidget);
+
+      // 4. Keyboard activation via FocusableActionDetector
+      expect(find.byType(FocusableActionDetector), findsWidgets);
+      await tester.tap(find.text('kpop'));
+      await tester.pumpAndSettle();
+      expect(activatedTag?.id, equals('t-1'));
+    },
+  );
+
+  testWidgets(
+    'LyraSidebar groups and tag capsules are deterministically sorted alphabetically',
+    (tester) async {
+      final unsortedTags = [
+        const Tag(id: 't-1', name: 'zebra/sub_z', category: 'zebra'),
+        const Tag(id: 't-2', name: 'alpha/z_sub', category: 'alpha'),
+        const Tag(id: 't-3', name: 'alpha/a_sub', category: 'alpha'),
+      ];
+
+      await tester.pumpWidget(_buildSidebarTest(tags: unsortedTags));
+      await tester.pumpAndSettle();
+
+      // 1. Group headers must be sorted: '# alpha' before '# zebra'
+      final alphaHeaderY = tester.getTopLeft(find.text('# alpha')).dy;
+      final zebraHeaderY = tester.getTopLeft(find.text('# zebra')).dy;
+      expect(alphaHeaderY, lessThan(zebraHeaderY));
+
+      // 2. Inside '# alpha', capsules must be sorted: 'a_sub' before 'z_sub'
+      final aCapsuleX = tester.getTopLeft(find.text('a_sub')).dx;
+      final zCapsuleX = tester.getTopLeft(find.text('z_sub')).dx;
+      expect(aCapsuleX, lessThan(zCapsuleX));
+    },
+  );
+
+  testWidgets(
+    'LyraSidebar ignores tags whose subTagName is purely whitespace',
+    (tester) async {
+      final tags = [
+        const Tag(id: 't-1', name: 'artist/kpop', category: 'artist'),
+        const _BlankSubTag(),
+      ];
+
+      await tester.pumpWidget(_buildSidebarTest(tags: tags));
+      await tester.pumpAndSettle();
+
+      expect(find.text('# artist'), findsOneWidget);
+      expect(find.text('kpop'), findsOneWidget);
+      expect(find.text('   '), findsNothing);
+      expect(find.byType(GestureDetector), findsWidgets);
+      // Verify tag capsule for blank subTagName is ignored
+      expect(find.byTooltip('artist/blank'), findsNothing);
+    },
+  );
+}
+
+class _BlankSubTag extends Tag {
+  const _BlankSubTag()
+    : super(id: 't-blank', name: 'artist/blank', category: 'artist');
+  @override
+  String get subTagName => '   ';
 }

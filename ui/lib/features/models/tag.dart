@@ -28,10 +28,50 @@ class Tag {
   });
 
   /// Safe display label with fallback.
-  String get displayName => name.isNotEmpty ? name : 'Untitled Tag';
+  String get displayName =>
+      name.trim().isNotEmpty ? name.trim() : 'Untitled Tag';
 
   /// Safe display category with fallback.
-  String get displayCategory => category.isNotEmpty ? category : 'general';
+  String get displayCategory =>
+      category.trim().isNotEmpty ? category.trim() : 'general';
+
+  /// Whether this tag uses hierarchical slash notation (e.g., "artist/kpop", "audio/low_quality").
+  bool get isHierarchical {
+    final slashIndex = name.indexOf('/');
+    if (slashIndex <= 0 || slashIndex >= name.length - 1) return false;
+    final prefix = name.substring(0, slashIndex).trim();
+    final suffix = name.substring(slashIndex + 1).trim();
+    return prefix.isNotEmpty && suffix.isNotEmpty;
+  }
+
+  /// The first-level group structure name for Obsidian-style 2-tier grouping.
+  ///
+  /// - If [isHierarchical] is true, the trimmed prefix before the first `/` is used.
+  /// - Otherwise, if [category] is non-empty and != `'general'`, trimmed [category] is used.
+  /// - Otherwise, defaults to `'general'`.
+  String get groupName {
+    if (isHierarchical) {
+      final slashIndex = name.indexOf('/');
+      return name.substring(0, slashIndex).trim();
+    }
+    final trimmedCategory = category.trim();
+    if (trimmedCategory.isNotEmpty && trimmedCategory != 'general') {
+      return trimmedCategory;
+    }
+    return 'general';
+  }
+
+  /// The second-level capsule label for display.
+  ///
+  /// - If [isHierarchical] is true, the trimmed suffix after the first `/` is used.
+  /// - Otherwise, falls back to [displayName].
+  String get subTagName {
+    if (isHierarchical) {
+      final slashIndex = name.indexOf('/');
+      return name.substring(slashIndex + 1).trim();
+    }
+    return displayName;
+  }
 
   /// Creates a [Tag] instance from a JSON map.
   factory Tag.fromJson(Map<String, dynamic> json) {

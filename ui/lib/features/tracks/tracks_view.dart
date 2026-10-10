@@ -857,37 +857,44 @@ class _TracksViewState extends State<TracksView> {
                   ),
                   if (widget.filterLabel != null) ...[
                     const SizedBox(width: LyraSpacing.lg),
-                    Container(
-                      padding: EdgeInsets.only(
-                        left: 8.0,
-                        top: widget.onClearFilter != null ? 2.0 : 4.0,
-                        bottom: widget.onClearFilter != null ? 2.0 : 4.0,
-                        right: widget.onClearFilter != null ? 3.0 : 8.0,
-                      ),
-                      decoration: BoxDecoration(
-                        color: tokens.secondary.withValues(alpha: 0.6),
-                        borderRadius: BorderRadius.circular(6.0),
-                        border: Border.all(color: tokens.border, width: 1.0),
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Text(
-                            widget.filterLabel!,
-                            style: LyraTypography.small(tokens).copyWith(
-                              fontSize: 12.0,
-                              fontWeight: FontWeight.w500,
-                              color: tokens.text,
+                    Flexible(
+                      child: Container(
+                        constraints: const BoxConstraints(maxWidth: 360.0),
+                        padding: EdgeInsets.only(
+                          left: 8.0,
+                          top: widget.onClearFilter != null ? 2.0 : 4.0,
+                          bottom: widget.onClearFilter != null ? 2.0 : 4.0,
+                          right: widget.onClearFilter != null ? 3.0 : 8.0,
+                        ),
+                        decoration: BoxDecoration(
+                          color: tokens.secondary.withValues(alpha: 0.6),
+                          borderRadius: BorderRadius.circular(6.0),
+                          border: Border.all(color: tokens.border, width: 1.0),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Flexible(
+                              child: Text(
+                                widget.filterLabel!,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: LyraTypography.small(tokens).copyWith(
+                                  fontSize: 12.0,
+                                  fontWeight: FontWeight.w500,
+                                  color: tokens.text,
+                                ),
+                              ),
                             ),
-                          ),
-                          if (widget.onClearFilter != null) ...[
-                            const SizedBox(width: 4.0),
-                            _FilterCloseButton(
-                              onTap: widget.onClearFilter,
-                              tokens: tokens,
-                            ),
+                            if (widget.onClearFilter != null) ...[
+                              const SizedBox(width: 4.0),
+                              _FilterCloseButton(
+                                onTap: widget.onClearFilter,
+                                tokens: tokens,
+                              ),
+                            ],
                           ],
-                        ],
+                        ),
                       ),
                     ),
                   ],

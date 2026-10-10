@@ -31,7 +31,6 @@ import '../player/controllers/playback_queue_controller.dart';
 import '../player/views/now_playing_view.dart';
 import '../playlists/playlist_detail_view.dart';
 import '../playlists/playlists_view.dart';
-import '../services/mock_music_service.dart';
 import '../services/music_service.dart';
 import '../settings/services/preferences_service.dart';
 import '../settings/settings_view.dart';
@@ -60,6 +59,7 @@ class AppShell extends StatefulWidget {
   final Curve nowPlayingCurve;
   final Duration nowPlayingDuration;
   final PreferencesService? preferencesService;
+  final Map<String, Set<String>>? initialTaggedTrackIds;
 
   const AppShell({
     super.key,
@@ -71,6 +71,7 @@ class AppShell extends StatefulWidget {
     this.nowPlayingCurve = LyraAnimation.deceleration,
     this.nowPlayingDuration = LyraAnimation.normal,
     this.preferencesService,
+    this.initialTaggedTrackIds,
   });
 
   @override
@@ -114,10 +115,11 @@ class AppShellState extends State<AppShell> {
   List<Playlist> _sidebarPlaylists = [];
   List<Playlist> _playlists = [];
   List<Tag> _tags = [];
-  final Map<String, Set<String>> _taggedTrackIdsByTag = {};
+  late final Map<String, Set<String>> _taggedTrackIdsByTag;
   List<CasObject> _casObjects = [];
   String? _selectedPlaylistId;
   String? _selectedTagId;
+  Set<String> _selectedTagIds = {};
   TrackFilter? _activeTrackFilter;
   bool _isLoading = true;
 
@@ -135,6 +137,66 @@ class AppShellState extends State<AppShell> {
   ValueNotifier<Duration> get _positionNotifier =>
       _playbackController.positionNotifier;
 
+  static bool trackMatchesTag(
+    Track track,
+    Tag tag, [
+    Map<String, Set<String>>? taggedTrackIds,
+  ]) {
+    if (taggedTrackIds?[tag.id]?.contains(track.id) ?? false) {
+      return true;
+    }
+    final tagLower = tag.name.trim().toLowerCase();
+    final subLower = tag.subTagName.trim().toLowerCase();
+    final hasTagMatch = tagLower.isNotEmpty;
+    final hasSubMatch = subLower.isNotEmpty && subLower != tagLower;
+
+    if (tagLower == 'hi-res' || subLower == 'hi-res') {
+      return (track.bitDepth != null && track.bitDepth! >= 24) ||
+          (track.sampleRate != null && track.sampleRate! > 48000);
+    }
+    if (tagLower == 'audiophile' ||
+        subLower == 'audiophile' ||
+        tagLower == 'reference master' ||
+        subLower == 'reference master' ||
+        tagLower == 'direct stream' ||
+        subLower == 'direct stream') {
+      return track.verified ||
+          (track.bitDepth != null && track.bitDepth! >= 24);
+    }
+    final genreLower = (track.genre ?? '').toLowerCase();
+    final formatLower = (track.format ?? '').toLowerCase();
+    final titleLower = track.displayTitle.toLowerCase();
+    final artistLower = track.artist.toLowerCase();
+    final albumLower = track.album.toLowerCase();
+
+    final groupLower = tag.groupName.trim().toLowerCase();
+    if (groupLower == 'artist') {
+      return (hasSubMatch && artistLower.contains(subLower)) ||
+          (hasTagMatch && artistLower.contains(tagLower));
+    }
+    if (groupLower == 'genre') {
+      return (hasSubMatch && genreLower.contains(subLower)) ||
+          (hasTagMatch && genreLower.contains(tagLower));
+    }
+    if (groupLower == 'album') {
+      return (hasSubMatch && albumLower.contains(subLower)) ||
+          (hasTagMatch && albumLower.contains(tagLower));
+    }
+
+    return (hasTagMatch &&
+            (formatLower.contains(tagLower) ||
+                genreLower.contains(tagLower) ||
+                titleLower.contains(tagLower) ||
+                artistLower.contains(tagLower) ||
+                albumLower.contains(tagLower))) ||
+        (hasSubMatch &&
+            (formatLower.contains(subLower) ||
+                genreLower.contains(subLower) ||
+                titleLower.contains(subLower) ||
+                artistLower.contains(subLower) ||
+                albumLower.contains(subLower)));
+  }
+
   static Map<String, int> _computeTagTrackCounts(
     List<Tag> tags,
     List<Track> tracks, [
@@ -142,25 +204,8 @@ class AppShellState extends State<AppShell> {
   ]) {
     final Map<String, int> counts = {};
     for (final tag in tags) {
-      final tagLower = tag.name.toLowerCase();
       counts[tag.id] = tracks.where((track) {
-        if (taggedTrackIds?[tag.id]?.contains(track.id) ?? false) {
-          return true;
-        }
-        if (tagLower == 'hi-res') {
-          return (track.bitDepth != null && track.bitDepth! >= 24) ||
-              (track.sampleRate != null && track.sampleRate! > 48000);
-        }
-        if (tagLower == 'audiophile' ||
-            tagLower == 'reference master' ||
-            tagLower == 'direct stream') {
-          return track.verified ||
-              (track.bitDepth != null && track.bitDepth! >= 24);
-        }
-        return (track.format ?? '').toLowerCase().contains(tagLower) ||
-            track.displayTitle.toLowerCase().contains(tagLower) ||
-            track.artist.toLowerCase().contains(tagLower) ||
-            track.album.toLowerCase().contains(tagLower);
+        return trackMatchesTag(track, tag, taggedTrackIds);
       }).length;
     }
     return counts;
@@ -198,6 +243,12 @@ class AppShellState extends State<AppShell> {
         widget.playbackController ??
         PlaybackQueueController(timerInterval: const Duration(seconds: 1));
     _playbackController.addListener(_onPlaybackChanged);
+    _taggedTrackIdsByTag = {};
+    if (widget.initialTaggedTrackIds != null) {
+      widget.initialTaggedTrackIds!.forEach(
+        (k, v) => _taggedTrackIdsByTag[k] = Set<String>.from(v),
+      );
+    }
     _loadCatalog();
   }
 
@@ -459,6 +510,7 @@ class AppShellState extends State<AppShell> {
     if (query.isNotEmpty) {
       _activeTrackFilter = null;
       _selectedTagId = null;
+      _selectedTagIds = {};
     }
     _loadCatalog(query: query);
   }
@@ -467,6 +519,7 @@ class AppShellState extends State<AppShell> {
     if (query.isNotEmpty) {
       _activeTrackFilter = null;
       _selectedTagId = null;
+      _selectedTagIds = {};
     }
     _loadCatalog(query: query);
 
@@ -527,6 +580,21 @@ class AppShellState extends State<AppShell> {
   Set<WorkColumn> get workVisibleColumns => _workVisibleColumns;
   List<TrackColumn> get playlistColumnOrder => _playlistColumnOrder;
   Set<TrackColumn> get playlistVisibleColumns => _playlistVisibleColumns;
+  TrackFilter? get activeTrackFilter => _activeTrackFilter;
+  String? get selectedTagId => _selectedTagId;
+  Set<String> get selectedTagIds => _selectedTagIds;
+  String? get selectedPlaylistId => _selectedPlaylistId;
+
+  @visibleForTesting
+  void setTagAndPlaylistSelectionForTesting({
+    String? tagId,
+    Set<String>? tagIds,
+    String? playlistId,
+  }) {
+    _selectedTagId = tagId;
+    _selectedTagIds = tagIds ?? {};
+    _selectedPlaylistId = playlistId;
+  }
 
   bool get _isNowPlayingExpanded => _isNowPlayingExpandedNotifier.value;
   set _isNowPlayingExpanded(bool value) {
@@ -545,6 +613,7 @@ class AppShellState extends State<AppShell> {
     _collapseNowPlaying();
     setState(() {
       _selectedTagId = null;
+      _selectedTagIds = {};
       _selectedPlaylistId = null;
       _activeTrackFilter = TrackFilter(
         label: 'Album: $title',
@@ -560,6 +629,7 @@ class AppShellState extends State<AppShell> {
     _collapseNowPlaying();
     setState(() {
       _selectedTagId = null;
+      _selectedTagIds = {};
       _selectedPlaylistId = null;
       _activeTrackFilter = TrackFilter(
         label: 'Artist: $name',
@@ -789,35 +859,47 @@ class AppShellState extends State<AppShell> {
     _volumeNotifier.value = volume;
   }
 
+  bool _trackMatchesTag(Track track, Tag tag) {
+    return trackMatchesTag(track, tag, _taggedTrackIdsByTag);
+  }
+
   void _filterByTag(Tag tag) {
     _isNowPlayingExpanded = false;
+    final updatedTagIds = Set<String>.from(_selectedTagIds);
+    if (updatedTagIds.contains(tag.id)) {
+      updatedTagIds.remove(tag.id);
+    } else {
+      updatedTagIds.add(tag.id);
+    }
+
     setState(() {
-      _selectedTagId = tag.id;
+      _selectedTagIds = updatedTagIds;
       _selectedPlaylistId = null;
-      _activeTrackFilter = TrackFilter(
-        label: 'Tag: ${tag.name}',
-        predicate: (track) {
-          if (_taggedTrackIdsByTag[tag.id]?.contains(track.id) ?? false) {
-            return true;
-          }
-          final tagLower = tag.name.toLowerCase();
-          if (tagLower == 'hi-res') {
-            return (track.bitDepth != null && track.bitDepth! >= 24) ||
-                (track.sampleRate != null && track.sampleRate! > 48000);
-          }
-          if (tagLower == 'audiophile' ||
-              tagLower == 'reference master' ||
-              tagLower == 'direct stream') {
-            return track.verified ||
-                (track.bitDepth != null && track.bitDepth! >= 24);
-          }
-          return (track.format ?? '').toLowerCase().contains(tagLower) ||
-              track.displayTitle.toLowerCase().contains(tagLower) ||
-              track.artist.toLowerCase().contains(tagLower) ||
-              track.album.toLowerCase().contains(tagLower);
-        },
-      );
-      _currentTab = AppTab.tracks;
+
+      if (_selectedTagIds.isEmpty) {
+        _selectedTagId = null;
+        _activeTrackFilter = null;
+      } else {
+        _selectedTagId = _selectedTagIds.last;
+        final selectedTags = [
+          for (final id in _selectedTagIds)
+            _tags.firstWhere(
+              (t) => t.id == id,
+              orElse: () => Tag(id: id, name: id),
+            ),
+        ];
+
+        final label = selectedTags.length == 1
+            ? 'Tag: ${selectedTags.first.name}'
+            : 'Tags: ${selectedTags.map((t) => t.name).join(', ')}';
+
+        _activeTrackFilter = TrackFilter(
+          label: label,
+          predicate: (track) =>
+              selectedTags.any((t) => _trackMatchesTag(track, t)),
+        );
+        _currentTab = AppTab.tracks;
+      }
     });
   }
 
@@ -830,6 +912,8 @@ class AppShellState extends State<AppShell> {
     if (!mounted) return;
     setState(() {
       _selectedPlaylistId = newPl.id;
+      _selectedTagId = null;
+      _selectedTagIds = {};
       _currentTab = AppTab.playlists;
     });
   }
@@ -1115,6 +1199,7 @@ class AppShellState extends State<AppShell> {
             onClearFilter: () => setState(() {
               _activeTrackFilter = null;
               _selectedTagId = null;
+              _selectedTagIds = {};
               if (_searchController.text.isNotEmpty) {
                 _searchController.clear();
                 _loadCatalog();
@@ -1158,6 +1243,9 @@ class AppShellState extends State<AppShell> {
             },
             onWorkSelected: (work) {
               setState(() {
+                _selectedTagId = null;
+                _selectedTagIds = {};
+                _selectedPlaylistId = null;
                 _activeTrackFilter = TrackFilter(
                   label: 'Work: ${work.title}',
                   predicate: (track) =>
@@ -1546,6 +1634,7 @@ class AppShellState extends State<AppShell> {
                           setState(() {
                             _selectedPlaylistId = pl.id;
                             _selectedTagId = null;
+                            _selectedTagIds = {};
                             _currentTab = AppTab.playlists;
                           });
                         },
@@ -1554,11 +1643,13 @@ class AppShellState extends State<AppShell> {
                           setState(() {
                             _selectedPlaylistId = null;
                             _selectedTagId = null;
+                            _selectedTagIds = {};
                             _currentTab = AppTab.playlists;
                           });
                         },
                         tags: _tags,
                         selectedTagId: _selectedTagId,
+                        selectedTagIds: _selectedTagIds,
                         onTagSelected: (tag) {
                           _isNowPlayingExpanded = false;
                           _filterByTag(tag);
@@ -1567,6 +1658,7 @@ class AppShellState extends State<AppShell> {
                           _isNowPlayingExpanded = false;
                           setState(() {
                             _selectedTagId = null;
+                            _selectedTagIds = {};
                             _selectedPlaylistId = null;
                             _currentTab = AppTab.tags;
                           });
@@ -1577,6 +1669,7 @@ class AppShellState extends State<AppShell> {
                           setState(() {
                             _selectedPlaylistId = null;
                             _selectedTagId = null;
+                            _selectedTagIds = {};
                             _selectedCasTab = subTab;
                             _currentTab = AppTab.casStorage;
                           });
@@ -1586,21 +1679,18 @@ class AppShellState extends State<AppShell> {
                           setState(() {
                             _selectedPlaylistId = null;
                             _selectedTagId = null;
+                            _selectedTagIds = {};
                             _currentTab = AppTab.casStorage;
                           });
                         },
                         onTabSelected: (tab) {
                           _isNowPlayingExpanded = false;
                           setState(() {
-                            if (tab == AppTab.tracks) {
-                              _activeTrackFilter = null;
-                              _selectedTagId = null;
-                            } else if (tab == AppTab.playlists) {
+                            _selectedTagId = null;
+                            _selectedTagIds = {};
+                            _activeTrackFilter = null;
+                            if (tab != AppTab.playlists) {
                               _selectedPlaylistId = null;
-                              _selectedTagId = null;
-                            } else if (tab != AppTab.tags) {
-                              _selectedPlaylistId = null;
-                              _selectedTagId = null;
                             }
                             _currentTab = tab;
                           });
@@ -1610,6 +1700,7 @@ class AppShellState extends State<AppShell> {
                           setState(() {
                             _selectedPlaylistId = null;
                             _selectedTagId = null;
+                            _selectedTagIds = {};
                             _currentTab = AppTab.settings;
                           });
                         },
@@ -1947,11 +2038,11 @@ class _AddToPlaylistDialogState extends State<_AddToPlaylistDialog> {
                                 final updatedPlaylist = playlist.copyWith(
                                   trackIds: updatedTrackIds,
                                 );
-                                if (widget.musicService is MockMusicService) {
-                                  for (final tid in trackIdsToAdd) {
-                                    (widget.musicService as MockMusicService)
-                                        .addTrackToPlaylist(playlist.id, tid);
-                                  }
+                                for (final tid in trackIdsToAdd) {
+                                  widget.musicService.addTrackToPlaylist(
+                                    playlist.id,
+                                    tid,
+                                  );
                                 }
                                 widget.onPlaylistUpdated(updatedPlaylist);
                                 Navigator.of(context).pop();
