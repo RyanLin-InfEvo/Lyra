@@ -78,6 +78,9 @@ abstract class MusicService {
   /// Switch the active Audio version for a given track in the catalog.
   Future<void> switchTrackAudio(String trackId, String newPcmHash);
 
+  /// Add a track to the specified playlist if not already present.
+  Future<void> addTrackToPlaylist(String playlistId, String trackId);
+
   /// Remove a track from the specified playlist.
   /// If [atIndex] is provided, removes the track instance at that specific index.
   Future<void> removeTrackFromPlaylist(

@@ -331,14 +331,20 @@ class MockMusicService implements MusicService {
     ),
   ];
 
-  final List<Tag> _tags = [
-    const Tag(id: 'tag-001', name: 'Audiophile', category: 'quality'),
-    const Tag(id: 'tag-002', name: 'Hi-Res', category: 'quality'),
-    const Tag(id: 'tag-003', name: 'DSD', category: 'format'),
-    const Tag(id: 'tag-004', name: 'Direct Stream', category: 'source'),
-    const Tag(id: 'tag-005', name: 'Live Recording', category: 'type'),
-    const Tag(id: 'tag-006', name: 'Reference Master', category: 'quality'),
+  static const List<Tag> defaultTags = [
+    Tag(id: 'tag-001', name: 'Audiophile', category: 'quality'),
+    Tag(id: 'tag-002', name: 'Hi-Res', category: 'quality'),
+    Tag(id: 'tag-003', name: 'DSD', category: 'format'),
+    Tag(id: 'tag-004', name: 'Direct Stream', category: 'source'),
+    Tag(id: 'tag-005', name: 'Live Recording', category: 'type'),
+    Tag(id: 'tag-006', name: 'Reference Master', category: 'quality'),
   ];
+
+  late final List<Tag> _tags;
+
+  MockMusicService({List<Tag>? tags}) {
+    _tags = tags != null ? List<Tag>.from(tags) : List<Tag>.from(defaultTags);
+  }
 
   final List<Album> _albums = const [
     Album(
@@ -681,7 +687,8 @@ class MockMusicService implements MusicService {
   }
 
   /// Adds a track ID to a playlist if not already present.
-  void addTrackToPlaylist(String playlistId, String trackId) {
+  @override
+  Future<void> addTrackToPlaylist(String playlistId, String trackId) async {
     final index = _playlists.indexWhere((p) => p.id == playlistId);
     if (index != -1) {
       final pl = _playlists[index];

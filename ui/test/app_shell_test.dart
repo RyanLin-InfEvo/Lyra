@@ -17,6 +17,9 @@ import 'package:ui/features/cas_pool/cas_view.dart';
 import 'package:ui/features/common/context_menu_coordinator.dart';
 import 'package:ui/features/inspector/asset_inspector_drawer.dart';
 import 'package:ui/features/player/views/now_playing_view.dart';
+import 'package:ui/features/models/tag.dart';
+import 'package:ui/features/models/track.dart';
+import 'package:ui/features/models/work.dart';
 import 'package:ui/features/playlists/playlist_detail_view.dart';
 import 'package:ui/features/playlists/playlists_view.dart';
 import 'package:ui/features/services/mock_music_service.dart';
@@ -36,6 +39,7 @@ Widget _buildAppShellTest({
   Curve? nowPlayingCurve,
   Duration? nowPlayingDuration,
   PreferencesService? preferencesService,
+  Map<String, Set<String>>? initialTaggedTrackIds,
 }) {
   final themeModeNotifier =
       themeNotifier ?? ValueNotifier<ThemeMode>(ThemeMode.dark);
@@ -70,6 +74,7 @@ Widget _buildAppShellTest({
               nowPlayingCurve: nowPlayingCurve ?? LyraAnimation.defaultCurve,
               nowPlayingDuration: nowPlayingDuration ?? LyraAnimation.sheet,
               preferencesService: preferencesService,
+              initialTaggedTrackIds: initialTaggedTrackIds,
             ),
           ),
         );
@@ -281,6 +286,256 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.byType(TagsView), findsOneWidget);
       expect(find.text('Tags'), findsWidgets);
+    },
+  );
+
+  testWidgets('AppShell sidebar tag tapping toggles selection ON and OFF', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(1280, 800);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+
+    await tester.pumpWidget(_buildAppShellTest());
+    await tester.pumpAndSettle();
+
+    // 1. Initial state: Audiophile capsule is rendered
+    expect(find.text('Audiophile'), findsOneWidget);
+
+    // 2. Tap Audiophile capsule -> selects it, showing filter badge
+    await tester.tap(find.text('Audiophile'));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(TracksView), findsOneWidget);
+    expect(
+      find.descendant(
+        of: find.byType(TracksView),
+        matching: find.text('Tag: Audiophile'),
+      ),
+      findsOneWidget,
+    );
+
+    // 3. Tap Audiophile capsule again -> toggles OFF, clearing filter badge
+    await tester.tap(find.text('Audiophile'));
+    await tester.pumpAndSettle();
+
+    expect(
+      find.descendant(
+        of: find.byType(TracksView),
+        matching: find.text('Tag: Audiophile'),
+      ),
+      findsNothing,
+    );
+  });
+
+  testWidgets(
+    'AppShell sidebar supports multi-selection of tags and toggling',
+    (tester) async {
+      tester.view.physicalSize = const Size(1280, 800);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+
+      await tester.pumpWidget(_buildAppShellTest());
+      await tester.pumpAndSettle();
+
+      // 1. Tap Audiophile -> verify filter 'Tag: Audiophile'
+      await tester.tap(find.text('Audiophile'));
+      await tester.pumpAndSettle();
+      expect(
+        find.descendant(
+          of: find.byType(TracksView),
+          matching: find.text('Tag: Audiophile'),
+        ),
+        findsOneWidget,
+      );
+
+      // 2. Tap Hi-Res -> verify multi-tag filter 'Tags: Audiophile, Hi-Res'
+      await tester.tap(find.text('Hi-Res'));
+      await tester.pumpAndSettle();
+      expect(
+        find.descendant(
+          of: find.byType(TracksView),
+          matching: find.text('Tags: Audiophile, Hi-Res'),
+        ),
+        findsOneWidget,
+      );
+
+      // 3. Tap Audiophile again -> verify toggles off, leaving 'Tag: Hi-Res'
+      await tester.tap(find.text('Audiophile'));
+      await tester.pumpAndSettle();
+      expect(
+        find.descendant(
+          of: find.byType(TracksView),
+          matching: find.text('Tag: Hi-Res'),
+        ),
+        findsOneWidget,
+      );
+
+      // 4. Tap Hi-Res again -> verify toggles off, clearing the filter
+      await tester.tap(find.text('Hi-Res'));
+      await tester.pumpAndSettle();
+      expect(
+        find.descendant(
+          of: find.byType(TracksView),
+          matching: find.text('Tag: Hi-Res'),
+        ),
+        findsNothing,
+      );
+      expect(
+        find.descendant(
+          of: find.byType(TracksView),
+          matching: find.textContaining('Tag'),
+        ),
+        findsNothing,
+      );
+    },
+  );
+
+  testWidgets(
+    'AppShell clears _activeTrackFilter unconditionally when switching tabs from sidebar',
+    (tester) async {
+      tester.view.physicalSize = const Size(1280, 800);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+
+      await tester.pumpWidget(_buildAppShellTest());
+      await tester.pumpAndSettle();
+
+      // 1. Filter by Audiophile tag
+      await tester.tap(find.text('Audiophile'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Tag: Audiophile'), findsWidgets);
+      final shellState = tester.state<AppShellState>(find.byType(AppShell));
+      expect(shellState.activeTrackFilter, isNotNull);
+      expect(shellState.activeTrackFilter!.label, equals('Tag: Audiophile'));
+
+      // 2. Switch to Albums tab via sidebar
+      await tester.tap(find.text('Albums'));
+      await tester.pumpAndSettle();
+
+      // 3. activeTrackFilter must be cleared unconditionally on tab switch
+      expect(shellState.activeTrackFilter, isNull);
+      expect(find.text('Tag: Audiophile'), findsNothing);
+    },
+  );
+
+  testWidgets(
+    'AppShell onWorkSelected resets selectedTagId, selectedTagIds, and selectedPlaylistId',
+    (tester) async {
+      tester.view.physicalSize = const Size(1280, 800);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+
+      await tester.pumpWidget(_buildAppShellTest());
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Works'));
+      await tester.pumpAndSettle();
+
+      final shellState = tester.state<AppShellState>(find.byType(AppShell));
+      final worksView = tester.widget<WorksView>(find.byType(WorksView));
+
+      // Simulate residual tag and playlist selections
+      shellState.setTagAndPlaylistSelectionForTesting(
+        tagId: 'tag-001',
+        tagIds: {'tag-001'},
+        playlistId: 'pl-001',
+      );
+
+      // Invoke onWorkSelected callback
+      worksView.onWorkSelected!(
+        const Work(id: 'wrk-test', title: 'Hotel California'),
+      );
+      await tester.pumpAndSettle();
+
+      // Acceptance Criteria: onWorkSelected must reset _selectedTagId, _selectedTagIds, _selectedPlaylistId
+      expect(shellState.selectedTagId, isNull);
+      expect(shellState.selectedTagIds, isEmpty);
+      expect(shellState.selectedPlaylistId, isNull);
+      expect(
+        shellState.activeTrackFilter?.label,
+        equals('Work: Hotel California'),
+      );
+    },
+  );
+
+  testWidgets(
+    'AppShell filters by hierarchical tag audio/low_quality with subTagName via _taggedTrackIdsByTag',
+    (tester) async {
+      tester.view.physicalSize = const Size(1280, 800);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+
+      final service = MockMusicService(
+        tags: [
+          ...MockMusicService.defaultTags,
+          const Tag(
+            id: 'tag-008',
+            name: 'audio/low_quality',
+            category: 'audio',
+          ),
+        ],
+      );
+      await tester.pumpWidget(
+        _buildAppShellTest(
+          service: service,
+          initialTaggedTrackIds: {
+            'tag-008': {'trk-007'},
+          },
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      // 1. Group # audio has low_quality capsule
+      expect(find.text('# audio'), findsOneWidget);
+      expect(find.text('low_quality'), findsOneWidget);
+
+      // 2. Tap low_quality capsule -> selects it, filter badge shown
+      await tester.tap(find.text('low_quality'));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(TracksView), findsOneWidget);
+      expect(
+        find.descendant(
+          of: find.byType(TracksView),
+          matching: find.text('Tag: audio/low_quality'),
+        ),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(
+          of: find.byType(TracksView),
+          matching: find.text('Brothers in Arms'),
+        ),
+        findsWidgets,
+      );
+      expect(
+        find.descendant(
+          of: find.byType(TracksView),
+          matching: find.text('Dire Straits'),
+        ),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(
+          of: find.byType(TracksView),
+          matching: find.text('Hotel California (Live on MTV 1994)'),
+        ),
+        findsNothing,
+      );
+
+      // 3. Tap low_quality capsule again -> toggles OFF
+      await tester.tap(find.text('low_quality'));
+      await tester.pumpAndSettle();
+
+      expect(
+        find.descendant(
+          of: find.byType(TracksView),
+          matching: find.text('Tag: audio/low_quality'),
+        ),
+        findsNothing,
+      );
     },
   );
 
@@ -2516,5 +2771,212 @@ void main() {
         );
       },
     );
+
+    testWidgets(
+      'AppShell clears _selectedTagId when switching away from tracks and tapping tag from TagsView always switches to tracks view and filters',
+      (tester) async {
+        tester.view.physicalSize = const Size(1280, 800);
+        tester.view.devicePixelRatio = 1.0;
+        addTearDown(tester.view.resetPhysicalSize);
+
+        await tester.pumpWidget(_buildAppShellTest());
+        await tester.pumpAndSettle();
+
+        // 1. In tracks view, tap Audiophile tag to select it
+        await tester.tap(find.text('Audiophile'));
+        await tester.pumpAndSettle();
+        expect(find.byType(TracksView), findsOneWidget);
+        expect(
+          find.descendant(
+            of: find.byType(TracksView),
+            matching: find.text('Tag: Audiophile'),
+          ),
+          findsOneWidget,
+        );
+
+        // 2. Switch away to Tags tab via onTabSelected
+        final sidebar = tester.widget<LyraSidebar>(find.byType(LyraSidebar));
+        sidebar.onTabSelected(AppTab.tags);
+        await tester.pumpAndSettle();
+        expect(find.byType(TagsView), findsOneWidget);
+
+        // 3. Tap Audiophile tag in TagsView
+        await tester.tap(
+          find.descendant(
+            of: find.byType(TagsView),
+            matching: find.text('Audiophile'),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        // 4. Must switch back to TracksView with filter active, NOT stay in TagsView / deselect!
+        expect(find.byType(TracksView), findsOneWidget);
+        expect(
+          find.descendant(
+            of: find.byType(TracksView),
+            matching: find.text('Tag: Audiophile'),
+          ),
+          findsOneWidget,
+        );
+      },
+    );
+
+    testWidgets(
+      'AppShell empty or whitespace tag names do not match every track in catalog',
+      (tester) async {
+        tester.view.physicalSize = const Size(1280, 800);
+        tester.view.devicePixelRatio = 1.0;
+        addTearDown(tester.view.resetPhysicalSize);
+
+        final service = MockMusicService(
+          tags: [
+            ...MockMusicService.defaultTags,
+            const Tag(id: 'tag-empty', name: '', category: 'general'),
+          ],
+        );
+        await tester.pumpWidget(_buildAppShellTest(service: service));
+        await tester.pumpAndSettle();
+
+        // Go to Tags tab
+        await tester.tap(find.text('Tags').first);
+        await tester.pumpAndSettle();
+        expect(find.byType(TagsView), findsOneWidget);
+
+        // In TagsView, find the empty tag ('Untitled Tag') and tap it
+        expect(find.text('Untitled Tag'), findsOneWidget);
+        await tester.tap(find.text('Untitled Tag'));
+        await tester.pumpAndSettle();
+
+        // Switched to TracksView with filter
+        expect(find.byType(TracksView), findsOneWidget);
+
+        // Empty tag name must NOT match every track in catalog
+        expect(find.text('No matching tracks found'), findsOneWidget);
+        expect(
+          find.descendant(
+            of: find.byType(TracksView),
+            matching: find.text('Hotel California (Live on MTV 1994)'),
+          ),
+          findsNothing,
+        );
+      },
+    );
+
+    group('Scoped Tag Matching Rules (Task 4)', () {
+      test(
+        'scoped artist tag matches artist name and does NOT match track title',
+        () {
+          const tag = Tag(
+            id: 'tag-artist-time',
+            name: 'artist/Time',
+            category: 'artist',
+          );
+          const trackPinkFloyd = Track(
+            id: 'trk-pf-time',
+            title: 'Time',
+            artistName: 'Pink Floyd',
+            albumTitle: 'The Dark Side of the Moon',
+            genre: 'Rock',
+          );
+          // "Time" is the title, NOT the artist -> must NOT match
+          expect(AppShellState.trackMatchesTag(trackPinkFloyd, tag), isFalse);
+
+          const trackTimeArtist = Track(
+            id: 'trk-time-band',
+            title: 'Jungle Love',
+            artistName: 'The Time',
+            albumTitle: 'Ice Cream Castle',
+            genre: 'Funk',
+          );
+          expect(AppShellState.trackMatchesTag(trackTimeArtist, tag), isTrue);
+        },
+      );
+
+      test(
+        'scoped genre tag matches track genre and does NOT match track title',
+        () {
+          const genreTag = Tag(
+            id: 'tag-genre-jazz',
+            name: 'genre/Jazz',
+            category: 'genre',
+          );
+          const trackWithGenre = Track(
+            id: 'trk-jazz-1',
+            title: 'Blue in Green',
+            artistName: 'Miles Davis',
+            albumTitle: 'Kind of Blue',
+            genre: 'Jazz',
+          );
+          expect(
+            AppShellState.trackMatchesTag(trackWithGenre, genreTag),
+            isTrue,
+          );
+
+          const trackWithTitleJazz = Track(
+            id: 'trk-rock-jazz-song',
+            title: 'Jazz Police',
+            artistName: 'Leonard Cohen',
+            albumTitle: 'I\'m Your Man',
+            genre: 'Singer-Songwriter',
+          );
+          // "Jazz Police" has Jazz in title, but genre is Singer-Songwriter -> must NOT match
+          expect(
+            AppShellState.trackMatchesTag(trackWithTitleJazz, genreTag),
+            isFalse,
+          );
+        },
+      );
+
+      test('scoped album tag matches album title and does NOT match artist', () {
+        const albumTag = Tag(
+          id: 'tag-album-abbey',
+          name: 'album/Abbey Road',
+          category: 'album',
+        );
+        const trackOnAlbum = Track(
+          id: 'trk-beatles-come-together',
+          title: 'Come Together',
+          artistName: 'The Beatles',
+          albumTitle: 'Abbey Road',
+          genre: 'Rock',
+        );
+        expect(AppShellState.trackMatchesTag(trackOnAlbum, albumTag), isTrue);
+
+        const trackWithArtistAbbey = Track(
+          id: 'trk-abbey-lincoln',
+          title: 'Afro Blue',
+          artistName: 'Abbey Lincoln',
+          albumTitle: 'Abbey Is Blue',
+          genre: 'Jazz',
+        );
+        // Abbey Lincoln has Abbey in artist, but album is Abbey Is Blue (not Abbey Road) -> must NOT match
+        expect(
+          AppShellState.trackMatchesTag(trackWithArtistAbbey, albumTag),
+          isFalse,
+        );
+      });
+
+      test(
+        'general un-scoped tag matches across genre as well as standard fields',
+        () {
+          const flatGenreTag = Tag(
+            id: 'tag-flat-fusion',
+            name: 'Fusion',
+            category: 'general',
+          );
+          const trackFusionGenre = Track(
+            id: 'trk-fusion-genre',
+            title: 'Chameleon',
+            artistName: 'Herbie Hancock',
+            albumTitle: 'Head Hunters',
+            genre: 'Jazz-Fusion',
+          );
+          expect(
+            AppShellState.trackMatchesTag(trackFusionGenre, flatGenreTag),
+            isTrue,
+          );
+        },
+      );
+    });
   });
 }

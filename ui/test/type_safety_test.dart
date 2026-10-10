@@ -147,6 +147,9 @@ class EmptyMusicService implements MusicService {
   Future<void> switchTrackAudio(String trackId, String newPcmHash) async {}
 
   @override
+  Future<void> addTrackToPlaylist(String playlistId, String trackId) async {}
+
+  @override
   Future<void> removeTrackFromPlaylist(
     String playlistId,
     String trackId, {

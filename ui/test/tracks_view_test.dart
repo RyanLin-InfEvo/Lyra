@@ -319,6 +319,45 @@ void main() {
     },
   );
 
+  testWidgets(
+    'TracksView header filter token handles long multi-tag label in narrow width without overflow and truncates with ellipsis',
+    (tester) async {
+      tester.view.physicalSize = const Size(400, 600);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+
+      const longLabel =
+          'Tags: Very Long Tag Name One, Very Long Tag Name Two, Very Long Tag Name Three, Very Long Tag Name Four';
+
+      await tester.pumpWidget(
+        _buildTracksViewTest(
+          tracks: sampleTracks,
+          filterLabel: longLabel,
+          onClearFilter: () {},
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      // Verify no RenderFlex overflow
+      expect(tester.takeException(), isNull);
+
+      final filterText = tester.widget<Text>(find.text(longLabel));
+      expect(filterText.maxLines, equals(1));
+      expect(filterText.overflow, equals(TextOverflow.ellipsis));
+
+      // Container max width constraint
+      final container = tester.widget<Container>(
+        find
+            .ancestor(
+              of: find.text(longLabel),
+              matching: find.byType(Container),
+            )
+            .first,
+      );
+      expect(container.constraints?.maxWidth, equals(360.0));
+    },
+  );
+
   testWidgets('TracksView empty state with filterLabel renders clear button', (
     tester,
   ) async {
