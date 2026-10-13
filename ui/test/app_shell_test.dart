@@ -1870,6 +1870,166 @@ void main() {
   );
 
   testWidgets(
+    'Inspector right sidebar: smooth expand/collapse animation, OverflowBox fixed width, pointer safety, and state preservation',
+    (tester) async {
+      tester.view.physicalSize = const Size(1280, 800);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+
+      await tester.pumpWidget(_buildAppShellTest());
+      await tester.pumpAndSettle();
+
+      final animContainerFinder = find.byKey(
+        const ValueKey('inspector_animated_container'),
+      );
+      final overflowBoxFinder = find.byKey(
+        const ValueKey('inspector_overflow_box'),
+      );
+      final ignorePointerFinder = find.byKey(
+        const ValueKey('inspector_ignore_pointer'),
+      );
+      final visibilityFinder = find.byKey(
+        const ValueKey('inspector_visibility'),
+      );
+
+      // Initially closed:
+      // 1. Container width is 0.0 with HIG motion curve and normal duration
+      expect(
+        tester.widget<AnimatedContainer>(animContainerFinder).curve,
+        Curves.easeInOutCubic,
+      );
+      expect(
+        tester.widget<AnimatedContainer>(animContainerFinder).duration,
+        LyraAnimation.normal,
+      );
+      expect(tester.getSize(animContainerFinder).width, 0.0);
+
+      // 2. Pointer safety: IgnorePointer ignores events when closed
+      expect(
+        tester.widget<IgnorePointer>(ignorePointerFinder).ignoring,
+        isTrue,
+      );
+
+      // 3. State preservation: drawer is offstage, not cold unmounted
+      expect(find.byType(AudioInspectorDrawer), findsNothing);
+      expect(
+        find.byType(AudioInspectorDrawer, skipOffstage: false),
+        findsOneWidget,
+      );
+      expect(tester.widget<Visibility>(visibilityFinder).maintainState, isTrue);
+
+      // Trigger expand via Meta+I
+      await tester.sendKeyDownEvent(LogicalKeyboardKey.meta);
+      await tester.sendKeyEvent(LogicalKeyboardKey.keyI);
+      await tester.sendKeyUpEvent(LogicalKeyboardKey.meta);
+      await tester.pump(); // Start animation frame
+
+      // Mid-flight animation at t=100ms: width is animating
+      await tester.pump(const Duration(milliseconds: 100));
+      final midWidth = tester.getSize(animContainerFinder).width;
+      expect(midWidth, greaterThan(0.0));
+      expect(midWidth, lessThan(420.0));
+
+      // OverflowBox ensures AudioInspectorDrawer retains target fixed width without squashing
+      final overflowBox = tester.widget<OverflowBox>(overflowBoxFinder);
+      expect(overflowBox.alignment, Alignment.topRight);
+      expect(overflowBox.minWidth, 420.0);
+      expect(overflowBox.maxWidth, 420.0);
+      expect(tester.getSize(find.byType(AudioInspectorDrawer)).width, 420.0);
+
+      // Settle expand animation
+      await tester.pumpAndSettle();
+      expect(tester.getSize(animContainerFinder).width, 420.0);
+      expect(
+        tester.widget<IgnorePointer>(ignorePointerFinder).ignoring,
+        isFalse,
+      );
+      expect(find.byType(AudioInspectorDrawer), findsOneWidget);
+
+      // Trigger collapse via Meta+I
+      await tester.sendKeyDownEvent(LogicalKeyboardKey.meta);
+      await tester.sendKeyEvent(LogicalKeyboardKey.keyI);
+      await tester.sendKeyUpEvent(LogicalKeyboardKey.meta);
+      await tester.pump(); // Start closing animation
+
+      // While closing, pointer events are immediately ignored for safety
+      expect(
+        tester.widget<IgnorePointer>(ignorePointerFinder).ignoring,
+        isTrue,
+      );
+
+      // Mid-flight closing animation at t=100ms: still rendering while sliding out
+      await tester.pump(const Duration(milliseconds: 100));
+      final closingWidth = tester.getSize(animContainerFinder).width;
+      expect(closingWidth, greaterThan(0.0));
+      expect(closingWidth, lessThan(420.0));
+      expect(find.byType(AudioInspectorDrawer), findsOneWidget);
+
+      // Settle closing animation
+      await tester.pumpAndSettle();
+      expect(tester.getSize(animContainerFinder).width, 0.0);
+      expect(find.byType(AudioInspectorDrawer), findsNothing);
+      // State is maintained offstage
+      expect(
+        find.byType(AudioInspectorDrawer, skipOffstage: false),
+        findsOneWidget,
+      );
+    },
+  );
+
+  testWidgets(
+    'Inspector right sidebar: resizing sets duration to zero for instantaneous feedback',
+    (tester) async {
+      tester.view.physicalSize = const Size(1280, 800);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+
+      await tester.pumpWidget(_buildAppShellTest());
+      await tester.pumpAndSettle();
+
+      // Open inspector
+      await tester.sendKeyDownEvent(LogicalKeyboardKey.meta);
+      await tester.sendKeyEvent(LogicalKeyboardKey.keyI);
+      await tester.sendKeyUpEvent(LogicalKeyboardKey.meta);
+      await tester.pumpAndSettle();
+
+      final animContainerFinder = find.byKey(
+        const ValueKey('inspector_animated_container'),
+      );
+      final resizeHandle = find.byKey(const Key('inspector_resize_handle'));
+      expect(resizeHandle, findsOneWidget);
+
+      // Initial duration is LyraAnimation.normal
+      expect(
+        tester.widget<AnimatedContainer>(animContainerFinder).duration,
+        LyraAnimation.normal,
+      );
+
+      // Start drag gesture
+      final gesture = await tester.startGesture(tester.getCenter(resizeHandle));
+      await tester.pump();
+
+      // Dragging is active: duration is Duration.zero
+      await gesture.moveBy(const Offset(-50.0, 0.0));
+      await tester.pump();
+      expect(
+        tester.widget<AnimatedContainer>(animContainerFinder).duration,
+        Duration.zero,
+      );
+
+      // End drag gesture
+      await gesture.up();
+      await tester.pumpAndSettle();
+
+      // Duration restores to LyraAnimation.normal after resize end
+      expect(
+        tester.widget<AnimatedContainer>(animContainerFinder).duration,
+        LyraAnimation.normal,
+      );
+    },
+  );
+
+  testWidgets(
     'Desktop keyboard shortcuts: Meta+I/Ctrl+I in expanded NowPlayingView toggles Details tab',
     (tester) async {
       await tester.pumpWidget(_buildAppShellTest());

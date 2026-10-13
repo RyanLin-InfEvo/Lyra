@@ -101,6 +101,8 @@ class AppShellState extends State<AppShell> {
 
   // Inspector Drawer State (Phase 4.3)
   bool _isInspectorOpen = false;
+  bool _isInspectorResizing = false;
+  bool _isInspectorVisible = false;
   Track? _inspectedTrack;
   Asset? _inspectedAsset;
 
@@ -1103,6 +1105,7 @@ class AppShellState extends State<AppShell> {
       _inspectedTrack = track;
       _inspectedAsset = null;
       _isInspectorOpen = true;
+      _isInspectorVisible = true;
     });
   }
 
@@ -1111,6 +1114,7 @@ class AppShellState extends State<AppShell> {
       _inspectedTrack = track;
       _inspectedAsset = null;
       _isInspectorOpen = true;
+      _isInspectorVisible = true;
     });
   }
 
@@ -1119,6 +1123,7 @@ class AppShellState extends State<AppShell> {
       _inspectedAsset = asset;
       _inspectedTrack = null;
       _isInspectorOpen = true;
+      _isInspectorVisible = true;
     });
   }
 
@@ -1131,13 +1136,23 @@ class AppShellState extends State<AppShell> {
   void _toggleInspector() {
     setState(() {
       _isInspectorOpen = !_isInspectorOpen;
-      if (_isInspectorOpen &&
-          _inspectedTrack == null &&
-          _inspectedAsset == null &&
-          _currentTrack != null) {
-        _inspectedTrack = _currentTrack;
+      if (_isInspectorOpen) {
+        _isInspectorVisible = true;
+        if (_inspectedTrack == null &&
+            _inspectedAsset == null &&
+            _currentTrack != null) {
+          _inspectedTrack = _currentTrack;
+        }
       }
     });
+  }
+
+  void _onInspectorAnimationEnd() {
+    if (!_isInspectorOpen && _isInspectorVisible) {
+      setState(() {
+        _isInspectorVisible = false;
+      });
+    }
   }
 
   void _handlePlayerBarInspectTrack() {
@@ -1451,11 +1466,7 @@ class AppShellState extends State<AppShell> {
                       newIndex,
                     ),
                 onInspectAudio: (track) {
-                  setState(() {
-                    _inspectedTrack = track;
-                    _inspectedAsset = null;
-                    _isInspectorOpen = true;
-                  });
+                  _openInspectorForAudio(track);
                 },
               ),
             );
@@ -1745,59 +1756,130 @@ class AppShellState extends State<AppShell> {
                                     child: _buildMainContent(),
                                   ),
                                 ),
-                                if (_isInspectorOpen)
-                                  ValueListenableBuilder<double>(
-                                    valueListenable: _inspectorWidthNotifier,
-                                    builder: (context, inspectorWidth, _) {
-                                      final maxInspectorWidth = math.max(
-                                        320.0,
-                                        MediaQuery.sizeOf(context).width * 0.5,
-                                      );
-                                      return RepaintBoundary(
-                                        child: AudioInspectorDrawer(
-                                          width: inspectorWidth,
-                                          showLeftBorder: true,
-                                          playbackController:
-                                              _playbackController,
-                                          track:
-                                              _inspectedTrack ??
-                                              (_inspectedAsset != null
-                                                  ? null
-                                                  : _currentTrack),
-                                          asset: _inspectedAsset,
-                                          musicService: widget.musicService,
-                                          preferencesService:
-                                              widget.preferencesService,
-                                          onClose: _closeInspector,
-                                          onActiveAudioChanged: (newPcmHash) {
-                                            _loadCatalog();
-                                          },
-                                          onTrackUpdated: _handleTrackUpdated,
-                                          onResizeDelta: (delta) {
-                                            _inspectorWidthNotifier.value =
-                                                (_inspectorWidthNotifier.value -
-                                                        delta)
-                                                    .clamp(
-                                                      300.0,
-                                                      maxInspectorWidth,
-                                                    );
-                                          },
-                                          onResizeEnd: () {
-                                            widget.preferencesService
-                                                ?.setInspectorWidth(
-                                                  _inspectorWidthNotifier.value,
-                                                );
-                                          },
-                                          onResetWidth: () {
-                                            _inspectorWidthNotifier.value =
-                                                420.0;
-                                            widget.preferencesService
-                                                ?.setInspectorWidth(420.0);
-                                          },
-                                        ),
-                                      );
-                                    },
+                                ValueListenableBuilder<double>(
+                                  key: const ValueKey(
+                                    'inspector_width_builder',
                                   ),
+                                  valueListenable: _inspectorWidthNotifier,
+                                  builder: (context, inspectorWidth, _) {
+                                    final maxInspectorWidth = math.max(
+                                      320.0,
+                                      MediaQuery.sizeOf(context).width * 0.5,
+                                    );
+                                    final effectiveTargetWidth =
+                                        _isInspectorOpen ? inspectorWidth : 0.0;
+                                    final isVisible =
+                                        _isInspectorOpen || _isInspectorVisible;
+
+                                    return RepaintBoundary(
+                                      child: AnimatedContainer(
+                                        key: const ValueKey(
+                                          'inspector_animated_container',
+                                        ),
+                                        duration: _isInspectorResizing
+                                            ? Duration.zero
+                                            : LyraAnimation.normal,
+                                        curve: Curves.easeInOutCubic,
+                                        width: effectiveTargetWidth,
+                                        onEnd: _onInspectorAnimationEnd,
+                                        child: ClipRect(
+                                          child: OverflowBox(
+                                            key: const ValueKey(
+                                              'inspector_overflow_box',
+                                            ),
+                                            alignment: Alignment.topRight,
+                                            minWidth: inspectorWidth,
+                                            maxWidth: inspectorWidth,
+                                            child: IgnorePointer(
+                                              key: const ValueKey(
+                                                'inspector_ignore_pointer',
+                                              ),
+                                              ignoring: !_isInspectorOpen,
+                                              child: ExcludeFocus(
+                                                key: const ValueKey(
+                                                  'inspector_exclude_focus',
+                                                ),
+                                                excluding: !_isInspectorOpen,
+                                                child: Visibility(
+                                                  key: const ValueKey(
+                                                    'inspector_visibility',
+                                                  ),
+                                                  visible: isVisible,
+                                                  maintainState: true,
+                                                  child: RepaintBoundary(
+                                                    child: AudioInspectorDrawer(
+                                                      width: inspectorWidth,
+                                                      showLeftBorder: true,
+                                                      playbackController:
+                                                          _playbackController,
+                                                      track:
+                                                          _inspectedTrack ??
+                                                          (_inspectedAsset !=
+                                                                  null
+                                                              ? null
+                                                              : _currentTrack),
+                                                      asset: _inspectedAsset,
+                                                      musicService:
+                                                          widget.musicService,
+                                                      preferencesService: widget
+                                                          .preferencesService,
+                                                      onClose: _closeInspector,
+                                                      onActiveAudioChanged:
+                                                          (newPcmHash) {
+                                                            _loadCatalog();
+                                                          },
+                                                      onTrackUpdated:
+                                                          _handleTrackUpdated,
+                                                      onResizeStart: () {
+                                                        setState(() {
+                                                          _isInspectorResizing =
+                                                              true;
+                                                        });
+                                                      },
+                                                      onResizeDelta: (delta) {
+                                                        _inspectorWidthNotifier
+                                                                .value =
+                                                            (_inspectorWidthNotifier
+                                                                        .value -
+                                                                    delta)
+                                                                .clamp(
+                                                                  300.0,
+                                                                  maxInspectorWidth,
+                                                                );
+                                                      },
+                                                      onResizeEnd: () {
+                                                        setState(() {
+                                                          _isInspectorResizing =
+                                                              false;
+                                                        });
+                                                        widget
+                                                            .preferencesService
+                                                            ?.setInspectorWidth(
+                                                              _inspectorWidthNotifier
+                                                                  .value,
+                                                            );
+                                                      },
+                                                      onResetWidth: () {
+                                                        _inspectorWidthNotifier
+                                                                .value =
+                                                            420.0;
+                                                        widget
+                                                            .preferencesService
+                                                            ?.setInspectorWidth(
+                                                              420.0,
+                                                            );
+                                                      },
+                                                    ),
+                                                  ),
+                                                ),
+                                              ),
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                    );
+                                  },
+                                ),
                               ],
                             ),
 
