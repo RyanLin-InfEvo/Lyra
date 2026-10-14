@@ -103,6 +103,7 @@ class AppShellState extends State<AppShell> {
   bool _isInspectorOpen = false;
   bool _isInspectorResizing = false;
   bool _isInspectorVisible = false;
+  bool _hasOpenedInspectorOnce = false;
   Track? _inspectedTrack;
   Asset? _inspectedAsset;
 
@@ -490,6 +491,14 @@ class AppShellState extends State<AppShell> {
         _sidebarPlaylists = playlists;
       } else if (_catalogTracks.isEmpty) {
         _catalogTracks = tracks;
+      }
+      if (_inspectedTrack != null) {
+        final synced = tracks
+            .where((t) => t.id == _inspectedTrack!.id)
+            .firstOrNull;
+        if (synced != null) {
+          _inspectedTrack = synced;
+        }
       }
       _audioVersionCounts = versionCounts;
       _tagTrackCounts = tagTrackCounts;
@@ -1102,6 +1111,7 @@ class AppShellState extends State<AppShell> {
 
   void _openInspectorForTrack(Track track) {
     setState(() {
+      _hasOpenedInspectorOnce = true;
       _inspectedTrack = track;
       _inspectedAsset = null;
       _isInspectorOpen = true;
@@ -1111,6 +1121,7 @@ class AppShellState extends State<AppShell> {
 
   void _openInspectorForAudio(Track track) {
     setState(() {
+      _hasOpenedInspectorOnce = true;
       _inspectedTrack = track;
       _inspectedAsset = null;
       _isInspectorOpen = true;
@@ -1120,6 +1131,7 @@ class AppShellState extends State<AppShell> {
 
   void _openInspectorForAsset(Asset asset) {
     setState(() {
+      _hasOpenedInspectorOnce = true;
       _inspectedAsset = asset;
       _inspectedTrack = null;
       _isInspectorOpen = true;
@@ -1137,6 +1149,7 @@ class AppShellState extends State<AppShell> {
     setState(() {
       _isInspectorOpen = !_isInspectorOpen;
       if (_isInspectorOpen) {
+        _hasOpenedInspectorOnce = true;
         _isInspectorVisible = true;
         if (_inspectedTrack == null &&
             _inspectedAsset == null &&
@@ -1781,6 +1794,16 @@ class AppShellState extends State<AppShell> {
                                             : LyraAnimation.normal,
                                         curve: Curves.easeInOutCubic,
                                         width: effectiveTargetWidth,
+                                        decoration: isVisible
+                                            ? BoxDecoration(
+                                                border: Border(
+                                                  left: BorderSide(
+                                                    color: tokens.border,
+                                                    width: 1.0,
+                                                  ),
+                                                ),
+                                              )
+                                            : null,
                                         onEnd: _onInspectorAnimationEnd,
                                         child: ClipRect(
                                           child: OverflowBox(
@@ -1806,71 +1829,87 @@ class AppShellState extends State<AppShell> {
                                                   ),
                                                   visible: isVisible,
                                                   maintainState: true,
-                                                  child: RepaintBoundary(
-                                                    child: AudioInspectorDrawer(
-                                                      width: inspectorWidth,
-                                                      showLeftBorder: true,
-                                                      playbackController:
-                                                          _playbackController,
-                                                      track:
-                                                          _inspectedTrack ??
-                                                          (_inspectedAsset !=
-                                                                  null
-                                                              ? null
-                                                              : _currentTrack),
-                                                      asset: _inspectedAsset,
-                                                      musicService:
-                                                          widget.musicService,
-                                                      preferencesService: widget
-                                                          .preferencesService,
-                                                      onClose: _closeInspector,
-                                                      onActiveAudioChanged:
-                                                          (newPcmHash) {
-                                                            _loadCatalog();
-                                                          },
-                                                      onTrackUpdated:
-                                                          _handleTrackUpdated,
-                                                      onResizeStart: () {
-                                                        setState(() {
-                                                          _isInspectorResizing =
-                                                              true;
-                                                        });
-                                                      },
-                                                      onResizeDelta: (delta) {
-                                                        _inspectorWidthNotifier
-                                                                .value =
-                                                            (_inspectorWidthNotifier
-                                                                        .value -
-                                                                    delta)
-                                                                .clamp(
-                                                                  300.0,
-                                                                  maxInspectorWidth,
-                                                                );
-                                                      },
-                                                      onResizeEnd: () {
-                                                        setState(() {
-                                                          _isInspectorResizing =
-                                                              false;
-                                                        });
-                                                        widget
-                                                            .preferencesService
-                                                            ?.setInspectorWidth(
+                                                  child: _hasOpenedInspectorOnce
+                                                      ? RepaintBoundary(
+                                                          child: AudioInspectorDrawer(
+                                                            width:
+                                                                inspectorWidth,
+                                                            showLeftBorder:
+                                                                false,
+                                                            playbackController:
+                                                                _playbackController,
+                                                            track:
+                                                                _inspectedTrack ??
+                                                                (_inspectedAsset !=
+                                                                        null
+                                                                    ? null
+                                                                    : _currentTrack),
+                                                            asset:
+                                                                _inspectedAsset,
+                                                            musicService: widget
+                                                                .musicService,
+                                                            preferencesService:
+                                                                widget
+                                                                    .preferencesService,
+                                                            onClose:
+                                                                _closeInspector,
+                                                            onActiveAudioChanged: (newPcmHash) {
+                                                              if (_inspectedTrack !=
+                                                                  null) {
+                                                                setState(() {
+                                                                  _inspectedTrack =
+                                                                      _inspectedTrack!.copyWith(
+                                                                        pcmHash:
+                                                                            newPcmHash,
+                                                                      );
+                                                                });
+                                                              }
+                                                              _loadCatalog();
+                                                            },
+                                                            onTrackUpdated:
+                                                                _handleTrackUpdated,
+                                                            onResizeStart: () {
+                                                              setState(() {
+                                                                _isInspectorResizing =
+                                                                    true;
+                                                              });
+                                                            },
+                                                            onResizeDelta: (delta) {
                                                               _inspectorWidthNotifier
-                                                                  .value,
-                                                            );
-                                                      },
-                                                      onResetWidth: () {
-                                                        _inspectorWidthNotifier
-                                                                .value =
-                                                            420.0;
-                                                        widget
-                                                            .preferencesService
-                                                            ?.setInspectorWidth(
-                                                              420.0,
-                                                            );
-                                                      },
-                                                    ),
-                                                  ),
+                                                                      .value =
+                                                                  (_inspectorWidthNotifier
+                                                                              .value -
+                                                                          delta)
+                                                                      .clamp(
+                                                                        300.0,
+                                                                        maxInspectorWidth,
+                                                                      );
+                                                            },
+                                                            onResizeEnd: () {
+                                                              setState(() {
+                                                                _isInspectorResizing =
+                                                                    false;
+                                                              });
+                                                              widget
+                                                                  .preferencesService
+                                                                  ?.setInspectorWidth(
+                                                                    _inspectorWidthNotifier
+                                                                        .value,
+                                                                  );
+                                                            },
+                                                            onResetWidth: () {
+                                                              _inspectorWidthNotifier
+                                                                      .value =
+                                                                  420.0;
+                                                              widget
+                                                                  .preferencesService
+                                                                  ?.setInspectorWidth(
+                                                                    420.0,
+                                                                  );
+                                                            },
+                                                          ),
+                                                        )
+                                                      : const SizedBox.shrink(),
                                                 ),
                                               ),
                                             ),

@@ -115,7 +115,7 @@ void main() {
     sourceType: 'cd_rip',
     originalPath:
         '/Volumes/MasterAudio/Eagles/HellFreezesOver/01_Hotel_California.flac',
-    createdAt: DateTime(2026, 1, 15, 10, 30),
+    createdAt: DateTime.utc(2026, 1, 15, 10, 30),
     note:
         'EAC Secure Mode (v1.6), AccurateRip confidence 28/28, Plextor Premium II',
   );
@@ -126,7 +126,7 @@ void main() {
     fileSize: 156824912,
     mimeType: 'audio/flac',
     assetType: 'audio',
-    createdAt: DateTime(2026, 1, 15, 10, 30),
+    createdAt: DateTime.utc(2026, 1, 15, 10, 30),
     verified: true,
   );
 

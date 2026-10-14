@@ -28,6 +28,7 @@ import '../../design_system/widgets/lyra_button.dart';
 import '../../design_system/widgets/lyra_copy_button.dart';
 import '../../design_system/widgets/lyra_dialog.dart';
 import '../../design_system/widgets/lyra_input.dart';
+import '../../design_system/widgets/lyra_skeleton.dart';
 import '../../design_system/widgets/lyra_tooltip.dart';
 import '../models/asset.dart';
 import '../models/audio.dart';
@@ -247,6 +248,7 @@ class _AudioInspectorContentState extends State<AudioInspectorContent> {
   int _fetchDetailsCallId = 0;
   WaveformData? _waveform;
   int _waveformCallId = 0;
+  int _selectVersionCallId = 0;
 
   static final _iswcRegex = RegExp(
     r'^T[-.]?(?:\d{9}|\d{3}[-.]\d{3}[-.]\d{3})[-.]?\d$',
@@ -280,6 +282,15 @@ class _AudioInspectorContentState extends State<AudioInspectorContent> {
 
     _artistFocusNode = FocusNode();
     _albumFocusNode = FocusNode();
+
+    final activePcmHash =
+        widget.track?.pcmHash ?? widget.initialAudio?.pcmHash ?? '';
+    final explicitFileHash = widget.asset?.fileHash;
+    final hasEntityToFetch =
+        widget.musicService != null &&
+        (activePcmHash.isNotEmpty ||
+            (explicitFileHash != null && explicitFileHash.isNotEmpty));
+    _isLoading = hasEntityToFetch;
 
     _syncControllersFromTrack(_track);
     _fetchDetails();
@@ -325,6 +336,7 @@ class _AudioInspectorContentState extends State<AudioInspectorContent> {
     }
 
     final trackChanged = oldWidget.track?.id != widget.track?.id;
+    final assetChanged = oldWidget.asset?.fileHash != widget.asset?.fileHash;
     final trackDataChanged = oldWidget.track != widget.track;
     final serviceChanged = oldWidget.musicService != widget.musicService;
 
@@ -334,7 +346,7 @@ class _AudioInspectorContentState extends State<AudioInspectorContent> {
 
     if (trackChanged ||
         oldWidget.track?.pcmHash != widget.track?.pcmHash ||
-        oldWidget.asset?.fileHash != widget.asset?.fileHash ||
+        assetChanged ||
         oldWidget.initialAudio != widget.initialAudio ||
         oldWidget.initialSourceData != widget.initialSourceData ||
         serviceChanged) {
@@ -344,6 +356,11 @@ class _AudioInspectorContentState extends State<AudioInspectorContent> {
         _isEditing = false;
         _isSaving = false;
         _validationErrors.clear();
+      }
+      // State Caching / Continuity:
+      // Avoid needlessly clearing _audioVersions if the inspected audio entity hasn't changed.
+      if (trackChanged || assetChanged) {
+        _audioVersions = [];
       }
       _track = widget.track;
       _selectedAudio = widget.initialAudio;
@@ -577,7 +594,8 @@ class _AudioInspectorContentState extends State<AudioInspectorContent> {
   }
 
   Future<void> _saveEditing() async {
-    if (_track == null) return;
+    final targetTrack = _track;
+    if (targetTrack == null) return;
 
     if (!_validateFields()) {
       return;
@@ -601,7 +619,7 @@ class _AudioInspectorContentState extends State<AudioInspectorContent> {
       ),
     );
 
-    if (confirmed != true || !mounted) return;
+    if (confirmed != true || !mounted || _track?.id != targetTrack.id) return;
 
     final yearText = _yearController.text.trim();
     final trackNumberText = _trackNumberController.text.trim();
@@ -611,36 +629,36 @@ class _AudioInspectorContentState extends State<AudioInspectorContent> {
         : null;
 
     final updatedTrack = Track(
-      id: _track!.id,
-      pcmHash: _track!.pcmHash,
-      workId: _track!.workId,
-      workTitle: _track!.workTitle,
+      id: targetTrack.id,
+      pcmHash: targetTrack.pcmHash,
+      workId: targetTrack.workId,
+      workTitle: targetTrack.workTitle,
       title: _titleController.text.trim(),
       recordingYear: parsedYear,
-      recordingMonth: _track!.recordingMonth,
-      recordingDay: _track!.recordingDay,
-      recordingLocation: _track!.recordingLocation,
-      durationMs: _track!.durationMs,
+      recordingMonth: targetTrack.recordingMonth,
+      recordingDay: targetTrack.recordingDay,
+      recordingLocation: targetTrack.recordingLocation,
+      durationMs: targetTrack.durationMs,
       isrc: _isrcController.text.trim().isNotEmpty
           ? _isrcController.text.trim()
           : null,
       iswc: _iswcController.text.trim().isNotEmpty
           ? _iswcController.text.trim()
           : null,
-      musicbrainzId: _track!.musicbrainzId,
-      spotifyId: _track!.spotifyId,
-      ytmId: _track!.ytmId,
+      musicbrainzId: targetTrack.musicbrainzId,
+      spotifyId: targetTrack.spotifyId,
+      ytmId: targetTrack.ytmId,
       artistName: _artistController.text.trim(),
       albumTitle: _albumController.text.trim(),
-      format: _track!.format,
-      sampleRate: _track!.sampleRate,
-      bitDepth: _track!.bitDepth,
-      verified: _track!.verified,
+      format: targetTrack.format,
+      sampleRate: targetTrack.sampleRate,
+      bitDepth: targetTrack.bitDepth,
+      verified: targetTrack.verified,
       genre: _genreController.text.trim().isNotEmpty
           ? _genreController.text.trim()
           : null,
       trackNumber: parsedTrackNumber,
-      discNumber: _track!.discNumber,
+      discNumber: targetTrack.discNumber,
     );
 
     setState(() {
@@ -656,7 +674,7 @@ class _AudioInspectorContentState extends State<AudioInspectorContent> {
       }
     }
 
-    if (!mounted) return;
+    if (!mounted || _track?.id != targetTrack.id) return;
 
     widget.onTrackUpdated?.call(savedTrack);
 
@@ -696,30 +714,77 @@ class _AudioInspectorContentState extends State<AudioInspectorContent> {
           );
         });
       }
+      if (_isLoading) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
       return;
     }
 
     if (activePcmHash.isEmpty &&
         (explicitFileHash == null || explicitFileHash.isEmpty)) {
+      if (_isLoading) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
       return;
     }
 
-    setState(() {
-      _isLoading = true;
-    });
+    if (!_isLoading) {
+      setState(() {
+        _isLoading = true;
+      });
+    }
 
     try {
-      List<Audio> versions = [];
+      List<Audio> versions = _audioVersions;
       Audio? resolvedAudio = _selectedAudio;
       SourceData? fetchedSource = _sourceData;
       Asset? fetchedAsset = _resolvedAsset;
+      ImageAsset? fetchedImageAsset = _resolvedImageAsset;
+
+      // Accelerated parallel pre-fetch: if explicit file hash is present upfront, fetch concurrently
+      Future<Asset?>? explicitAssetFuture;
+      Future<SourceData?>? explicitSourceFuture;
+      Future<ImageAsset?>? explicitImageFuture;
+
+      if (explicitFileHash != null && explicitFileHash.isNotEmpty) {
+        if (fetchedAsset == null) {
+          explicitAssetFuture = service
+              .getAsset(explicitFileHash)
+              .catchError((_) => null);
+        }
+        if (fetchedSource == null) {
+          explicitSourceFuture = service
+              .getSourceData(explicitFileHash)
+              .catchError((_) => null);
+        }
+        if (fetchedImageAsset == null &&
+            (widget.asset?.isImage == true || fetchedAsset?.isImage == true)) {
+          explicitImageFuture = service
+              .getImageAsset(explicitFileHash)
+              .catchError((_) => null);
+        }
+      }
 
       // Tier 3: Fetch Audio versions via Single-Level Star Topology
       if (activePcmHash.isNotEmpty) {
-        versions = await service.getAudioVersions(activePcmHash);
-        if (versions.isEmpty) {
-          final single = await service.getAudioDetails(activePcmHash);
-          if (single != null) versions = [single];
+        final fetchedVersions = await service
+            .getAudioVersions(activePcmHash)
+            .catchError((_) => <Audio>[]);
+        if (fetchedVersions.isEmpty) {
+          final single = await service
+              .getAudioDetails(activePcmHash)
+              .catchError((_) => null);
+          if (single != null) {
+            versions = [single];
+          } else {
+            versions = [];
+          }
+        } else {
+          versions = fetchedVersions;
         }
 
         // Set inspected audio version: default to currently active version
@@ -729,27 +794,97 @@ class _AudioInspectorContentState extends State<AudioInspectorContent> {
             orElse: () => versions.first,
           );
         } else {
-          resolvedAudio ??= await service.getAudioDetails(activePcmHash);
+          resolvedAudio ??= await service
+              .getAudioDetails(activePcmHash)
+              .catchError((_) => null);
+        }
+
+        // Fast state update: update _audioVersions as soon as versions resolve to eliminate sequential waiting
+        if (mounted && callId == _fetchDetailsCallId) {
+          setState(() {
+            _audioVersions = versions.isNotEmpty
+                ? versions
+                : (resolvedAudio != null ? [resolvedAudio] : []);
+            _selectedAudio = resolvedAudio;
+          });
         }
       }
 
-      // Resolve physical file hash from selected Audio assets or parentHash
+      // Resolve physical file hash from selected Audio assets or parent Audio
       String? fileHash = explicitFileHash;
       if (fileHash == null || fileHash.isEmpty) {
         if (resolvedAudio != null && resolvedAudio.assets.isNotEmpty) {
           fileHash = resolvedAudio.assets.first.fileHash;
         } else if (resolvedAudio?.parentHash.isNotEmpty == true) {
-          fileHash = resolvedAudio!.parentHash;
+          try {
+            final parentAudio = await service.getAudioDetails(
+              resolvedAudio!.parentHash,
+            );
+            if (parentAudio != null && parentAudio.assets.isNotEmpty) {
+              fetchedAsset ??= parentAudio.assets.first;
+              fileHash = parentAudio.assets.first.fileHash;
+            }
+          } catch (_) {}
         }
       }
 
-      // Tier 4: Fetch Asset, SourceData, and ImageAsset
-      ImageAsset? fetchedImageAsset = _resolvedImageAsset;
+      // Concurrently resolve downstream Asset, SourceData, and ImageAsset
       if (fileHash != null && fileHash.isNotEmpty) {
-        fetchedAsset ??= await service.getAsset(fileHash);
-        fetchedSource ??= await service.getSourceData(fileHash);
-        if (fetchedAsset?.isImage == true || widget.asset?.isImage == true) {
-          fetchedImageAsset ??= await service.getImageAsset(fileHash);
+        if (fileHash == explicitFileHash) {
+          if (explicitAssetFuture != null) {
+            final a = await explicitAssetFuture;
+            if (a != null) fetchedAsset = a;
+          }
+          if (explicitSourceFuture != null) {
+            final s = await explicitSourceFuture;
+            if (s != null) fetchedSource = s;
+          }
+          if (explicitImageFuture != null) {
+            final img = await explicitImageFuture;
+            if (img != null) fetchedImageAsset = img;
+          }
+        } else {
+          final needAsset = fetchedAsset == null;
+          final needSource = fetchedSource == null;
+          final isImage =
+              (fetchedAsset?.isImage == true) ||
+              (widget.asset?.isImage == true);
+          final needImage = isImage && fetchedImageAsset == null;
+
+          final futures = <Future<void>>[];
+          if (needAsset) {
+            futures.add(
+              service
+                  .getAsset(fileHash)
+                  .then((val) {
+                    if (val != null) fetchedAsset = val;
+                  })
+                  .catchError((_) {}),
+            );
+          }
+          if (needSource) {
+            futures.add(
+              service
+                  .getSourceData(fileHash)
+                  .then((val) {
+                    if (val != null) fetchedSource = val;
+                  })
+                  .catchError((_) {}),
+            );
+          }
+          if (needImage) {
+            futures.add(
+              service
+                  .getImageAsset(fileHash)
+                  .then((val) {
+                    if (val != null) fetchedImageAsset = val;
+                  })
+                  .catchError((_) {}),
+            );
+          }
+          if (futures.isNotEmpty) {
+            await Future.wait(futures);
+          }
         }
       }
 
@@ -795,6 +930,10 @@ class _AudioInspectorContentState extends State<AudioInspectorContent> {
   Future<void> _selectVersion(Audio version) async {
     if (_selectedAudio?.pcmHash == version.pcmHash) return;
 
+    final callId = ++_selectVersionCallId;
+    ++_fetchDetailsCallId;
+    final currentTrackId = _track?.id;
+
     setState(() {
       _selectedAudio = version;
       _isLoading = true;
@@ -803,24 +942,40 @@ class _AudioInspectorContentState extends State<AudioInspectorContent> {
 
     final service = widget.musicService;
     String? fileHash;
-    if (version.assets.isNotEmpty) {
-      fileHash = version.assets.first.fileHash;
-    } else if (version.parentHash.isNotEmpty) {
-      fileHash = version.parentHash;
-    }
-
     Asset? asset = version.assets.isNotEmpty ? version.assets.first : null;
     SourceData? sourceData;
 
-    if (service != null && fileHash != null && fileHash.isNotEmpty) {
+    if (asset != null) {
+      fileHash = asset.fileHash;
+    } else if (version.parentHash.isNotEmpty && service != null) {
       try {
-        final fetchedAsset = await service.getAsset(fileHash);
-        if (fetchedAsset != null) asset = fetchedAsset;
-        sourceData = await service.getSourceData(fileHash);
+        final parentAudio = await service.getAudioDetails(version.parentHash);
+        if (parentAudio != null && parentAudio.assets.isNotEmpty) {
+          asset = parentAudio.assets.first;
+          fileHash = asset.fileHash;
+        }
       } catch (_) {}
     }
 
-    if (!mounted) return;
+    if (service != null && fileHash != null && fileHash.isNotEmpty) {
+      try {
+        final results = await Future.wait([
+          if (asset != null)
+            Future.value(asset)
+          else
+            service.getAsset(fileHash).catchError((_) => null),
+          service.getSourceData(fileHash).catchError((_) => null),
+        ]);
+        if (results[0] != null) asset = results[0] as Asset;
+        sourceData = results[1] as SourceData?;
+      } catch (_) {}
+    }
+
+    if (!mounted ||
+        callId != _selectVersionCallId ||
+        _track?.id != currentTrackId) {
+      return;
+    }
 
     setState(() {
       _resolvedAsset = asset;
@@ -1020,6 +1175,13 @@ class _AudioInspectorContentState extends State<AudioInspectorContent> {
       );
     }
 
+    final showAudioVersions = _audioVersions.isNotEmpty;
+    final hasAudioEntity =
+        (_track != null && _track!.pcmHash.isNotEmpty) ||
+        _currentActivePcmHash.isNotEmpty;
+    final showAudioVersionsSkeleton =
+        hasAudioEntity && !isImageAsset && _audioVersions.isEmpty && _isLoading;
+
     return SingleChildScrollView(
       padding: widget.padding,
       child: Column(
@@ -1034,11 +1196,32 @@ class _AudioInspectorContentState extends State<AudioInspectorContent> {
             _buildSectionDivider(tokens),
           ],
 
-          // Audio Version Selector (Star Topology)
-          if (_audioVersions.isNotEmpty) ...[
-            _buildAudioVersionSection(tokens),
-            _buildSectionDivider(tokens),
-          ],
+          // Audio Version Selector (Star Topology) with loading stability & smooth geometric transition
+          AnimatedSize(
+            key: const Key('audio_versions_animated_size'),
+            duration: LyraAnimation.fast,
+            curve: Curves.easeInOutCubic,
+            alignment: Alignment.topCenter,
+            child: showAudioVersions
+                ? Column(
+                    key: const Key('audio_versions_column'),
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      _buildAudioVersionSection(tokens),
+                      _buildSectionDivider(tokens),
+                    ],
+                  )
+                : showAudioVersionsSkeleton
+                ? Column(
+                    key: const Key('audio_versions_skeleton_column'),
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      _buildAudioVersionSkeleton(tokens),
+                      _buildSectionDivider(tokens),
+                    ],
+                  )
+                : const SizedBox.shrink(),
+          ),
 
           // Section 1: Audio Specifications (Audio - Tier 3)
           _buildAcousticSpecificationsSection(tokens),
@@ -1583,11 +1766,45 @@ class _AudioInspectorContentState extends State<AudioInspectorContent> {
     return const SizedBox.shrink();
   }
 
+  Widget _buildAudioVersionSkeleton(LyraThemeTokens tokens) {
+    return Column(
+      key: const Key('audio_versions_skeleton'),
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.only(bottom: LyraSpacing.sm),
+          child: Row(
+            children: [
+              LyraSkeleton(
+                width: 15.0,
+                height: 15.0,
+                borderRadius: LyraRadius.smRadius,
+              ),
+              const SizedBox(width: LyraSpacing.xs),
+              LyraSkeleton(
+                width: 100.0,
+                height: 13.0,
+                borderRadius: LyraRadius.smRadius,
+              ),
+            ],
+          ),
+        ),
+        LyraSkeleton(
+          key: const Key('audio_version_card_skeleton'),
+          width: double.infinity,
+          height: 48.0,
+          borderRadius: LyraRadius.smRadius,
+        ),
+      ],
+    );
+  }
+
   Widget _buildAudioVersionSection(LyraThemeTokens tokens) {
     final activePcmHash = _currentActivePcmHash;
     final isInspectingActive = _selectedAudio?.pcmHash == activePcmHash;
 
     return Column(
+      key: const Key('audio_versions_section'),
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         _buildSectionHeader(
@@ -1666,7 +1883,7 @@ class _AudioInspectorContentState extends State<AudioInspectorContent> {
                                           .copyWith(
                                             fontSize: 10.5,
                                             fontWeight: FontWeight.w600,
-                                            color: tokens.textMuted,
+                                            color: tokens.secondaryForeground,
                                           ),
                                     ),
                                   ),
@@ -2055,7 +2272,7 @@ class _AudioInspectorContentState extends State<AudioInspectorContent> {
         _buildPropertyRow(
           label: 'Timestamp',
           value: createdAt != null
-              ? '${createdAt.toIso8601String().replaceAll('T', ' ').substring(0, 19)} UTC'
+              ? '${createdAt.toUtc().toIso8601String().replaceAll('T', ' ').substring(0, 19)} UTC'
               : '—',
           isMono: createdAt != null,
           tokens: tokens,
