@@ -1910,11 +1910,11 @@ void main() {
         isTrue,
       );
 
-      // 3. State preservation: drawer is offstage, not cold unmounted
+      // 3. Lazy mounting: drawer is not mounted initially until first opened
       expect(find.byType(AudioInspectorDrawer), findsNothing);
       expect(
         find.byType(AudioInspectorDrawer, skipOffstage: false),
-        findsOneWidget,
+        findsNothing,
       );
       expect(tester.widget<Visibility>(visibilityFinder).maintainState, isTrue);
 
@@ -3138,5 +3138,141 @@ void main() {
         },
       );
     });
+
+    testWidgets(
+      'AppShell updates _inspectedTrack synchronously when active audio changes in inspector drawer',
+      (tester) async {
+        tester.view.physicalSize = const Size(1280, 800);
+        tester.view.devicePixelRatio = 1.0;
+        addTearDown(tester.view.resetPhysicalSize);
+
+        final service = MockMusicService();
+        final tracks = await service.getTracks();
+        final track = tracks.firstWhere((t) => t.id == 'trk-001');
+        final versions = await service.getAudioVersions(track.pcmHash);
+        final alternateVersion = versions.firstWhere(
+          (v) => v.pcmHash != track.pcmHash,
+        );
+
+        await tester.pumpWidget(_buildAppShellTest(service: service));
+        await tester.pumpAndSettle();
+
+        // Select track trk-001
+        await tester.tap(find.text(track.title!).first);
+        await tester.pumpAndSettle();
+
+        // Open inspector (Meta+I)
+        await tester.sendKeyDownEvent(LogicalKeyboardKey.meta);
+        await tester.sendKeyEvent(LogicalKeyboardKey.keyI);
+        await tester.sendKeyUpEvent(LogicalKeyboardKey.meta);
+        await tester.pumpAndSettle();
+
+        // Find the alternate version card and tap it
+        await tester.tap(
+          find.textContaining(alternateVersion.shortPcmHash).first,
+        );
+        await tester.pumpAndSettle();
+
+        // Tap 'Set as Active Audio'
+        final setActiveBtn = find.widgetWithText(
+          LyraButton,
+          'Set as Active Audio',
+        );
+        expect(setActiveBtn, findsOneWidget);
+        await tester.tap(setActiveBtn);
+        await tester.pumpAndSettle();
+
+        // Verify the inspector drawer's track now has the alternate pcmHash
+        final drawerFinder = find.byType(AudioInspectorDrawer);
+        expect(drawerFinder, findsOneWidget);
+        final drawerWidget = tester.widget<AudioInspectorDrawer>(drawerFinder);
+        expect(drawerWidget.track?.pcmHash, equals(alternateVersion.pcmHash));
+      },
+    );
+
+    testWidgets(
+      'AppShell AnimatedContainer draws left border on outer container when visible and drawer showLeftBorder is false',
+      (tester) async {
+        tester.view.physicalSize = const Size(1280, 800);
+        tester.view.devicePixelRatio = 1.0;
+        addTearDown(tester.view.resetPhysicalSize);
+
+        await tester.pumpWidget(_buildAppShellTest());
+        await tester.pumpAndSettle();
+
+        final animContainerFinder = find.byKey(
+          const ValueKey('inspector_animated_container'),
+        );
+        expect(animContainerFinder, findsOneWidget);
+
+        // Initially closed -> decoration is null
+        final closedContainer = tester.widget<AnimatedContainer>(
+          animContainerFinder,
+        );
+        expect(closedContainer.decoration, isNull);
+
+        // Open inspector (Meta+I)
+        await tester.sendKeyDownEvent(LogicalKeyboardKey.meta);
+        await tester.sendKeyEvent(LogicalKeyboardKey.keyI);
+        await tester.sendKeyUpEvent(LogicalKeyboardKey.meta);
+        await tester.pumpAndSettle();
+
+        // When visible -> AnimatedContainer decoration has left border
+        final openContainer = tester.widget<AnimatedContainer>(
+          animContainerFinder,
+        );
+        expect(openContainer.decoration, isNotNull);
+        final boxDec = openContainer.decoration as BoxDecoration;
+        final border = boxDec.border as Border?;
+        expect(border?.left, isNotNull);
+        expect(border!.left.width, equals(1.0));
+
+        // Inner AudioInspectorDrawer has showLeftBorder = false
+        final drawer = tester.widget<AudioInspectorDrawer>(
+          find.byType(AudioInspectorDrawer),
+        );
+        expect(drawer.showLeftBorder, isFalse);
+      },
+    );
+
+    testWidgets(
+      'AppShell does not mount AudioInspectorDrawer until inspector has been opened at least once',
+      (tester) async {
+        tester.view.physicalSize = const Size(1280, 800);
+        tester.view.devicePixelRatio = 1.0;
+        addTearDown(tester.view.resetPhysicalSize);
+
+        await tester.pumpWidget(_buildAppShellTest());
+        await tester.pumpAndSettle();
+
+        // 1. Initially on app launch, drawer is NOT mounted at all (even offstage)
+        expect(
+          find.byType(AudioInspectorDrawer, skipOffstage: false),
+          findsNothing,
+        );
+
+        // 2. Open inspector with Meta+I
+        await tester.sendKeyDownEvent(LogicalKeyboardKey.meta);
+        await tester.sendKeyEvent(LogicalKeyboardKey.keyI);
+        await tester.sendKeyUpEvent(LogicalKeyboardKey.meta);
+        await tester.pumpAndSettle();
+
+        // Now it is mounted and visible
+        expect(find.byType(AudioInspectorDrawer), findsOneWidget);
+
+        // 3. Close inspector with Meta+I
+        await tester.sendKeyDownEvent(LogicalKeyboardKey.meta);
+        await tester.sendKeyEvent(LogicalKeyboardKey.keyI);
+        await tester.sendKeyUpEvent(LogicalKeyboardKey.meta);
+        await tester.pumpAndSettle();
+
+        // Now that it has been opened once, state is preserved offstage
+        expect(find.byType(AudioInspectorDrawer), findsNothing);
+        expect(
+          find.byType(AudioInspectorDrawer, skipOffstage: false),
+          findsOneWidget,
+        );
+      },
+    );
   });
 }

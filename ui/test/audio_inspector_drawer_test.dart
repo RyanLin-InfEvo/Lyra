@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Tzu-Ting Lin
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shadcn_ui/shadcn_ui.dart';
@@ -8,12 +9,15 @@ import 'package:shadcn_ui/shadcn_ui.dart';
 import 'package:ui/design_system/factory/lyra_design_system_scope.dart';
 import 'package:ui/design_system/factory/shadcn_factory.dart';
 import 'package:ui/design_system/tokens/lyra_tokens.dart';
+import 'package:ui/design_system/widgets/lyra_badge.dart';
 import 'package:ui/design_system/widgets/lyra_button.dart';
 import 'package:ui/design_system/widgets/lyra_copy_button.dart';
 import 'package:ui/design_system/widgets/lyra_input.dart';
+import 'package:ui/design_system/widgets/lyra_skeleton.dart';
 import 'package:ui/features/inspector/audio_inspector_drawer.dart';
 import 'package:ui/features/models/asset.dart';
 import 'package:ui/features/models/audio.dart';
+import 'package:ui/features/models/source_data.dart';
 import 'package:ui/features/models/track.dart';
 import 'package:ui/features/player/controllers/playback_queue_controller.dart';
 import 'package:ui/features/player/views/components/waveform_scrubber.dart';
@@ -1190,4 +1194,739 @@ void main() {
       },
     );
   });
+
+  group('Audio Versions Loading Stability and Skeleton Placeholder', () {
+    testWidgets(
+      'Skeleton placeholder is rendered while loading audio versions, maintaining reserved geometry',
+      (tester) async {
+        tester.view.physicalSize = const Size(1280, 800);
+        tester.view.devicePixelRatio = 1.0;
+        addTearDown(tester.view.resetPhysicalSize);
+
+        final versionsCompleter = Completer<List<Audio>>();
+        final delayedService = _DelayedAudioVersionsMusicService(
+          versionsCompleter,
+        );
+        final tracks = await delayedService.getTracks();
+        final track = tracks.firstWhere((t) => t.id == 'trk-001');
+
+        await tester.pumpWidget(
+          _buildAudioInspectorTestWidget(
+            track: track,
+            musicService: delayedService,
+          ),
+        );
+        // Pump one frame while versions fetch is pending in background
+        await tester.pump();
+
+        // 1. Verify skeleton placeholder is rendered
+        final skeletonFinder = find.byKey(const Key('audio_versions_skeleton'));
+        final skeletonCardFinder = find.byKey(
+          const Key('audio_version_card_skeleton'),
+        );
+        expect(skeletonFinder, findsOneWidget);
+        expect(skeletonCardFinder, findsWidgets);
+        expect(find.byType(LyraSkeleton), findsWidgets);
+
+        // 2. Verify skeleton card reserves ~48px height
+        final skeletonCardSize = tester.getSize(skeletonCardFinder.first);
+        expect(skeletonCardSize.height, equals(48.0));
+
+        // 3. Verify downstream section ("Audio Specifications") is positioned below skeleton
+        final specFinder = find.text('Audio Specifications');
+        expect(specFinder, findsOneWidget);
+        final specTop = tester.getTopLeft(specFinder).dy;
+        final skeletonTop = tester.getTopLeft(skeletonFinder).dy;
+        expect(specTop, greaterThan(skeletonTop + 48.0));
+
+        // 4. Complete versions future and settle
+        final versions = [
+          Audio(
+            pcmHash: track.pcmHash,
+            parentHash: '',
+            qualityScore: 99,
+            bitDepth: 24,
+            sampleRate: 96000,
+            channels: 2,
+            durationMs: 432000.0,
+            assets: [
+              Asset(
+                fileHash: 'file-001',
+                mimeType: 'audio/flac',
+                assetType: 'audio',
+                fileSize: 10000000,
+                createdAt: DateTime(2026, 1, 1),
+                verified: true,
+              ),
+            ],
+          ),
+        ];
+        versionsCompleter.complete(versions);
+        await tester.pump();
+        await tester.pumpAndSettle();
+
+        // 5. Verify resolved audio versions replaces the skeleton seamlessly
+        expect(find.byKey(const Key('audio_versions_skeleton')), findsNothing);
+        expect(find.byKey(const Key('audio_versions_section')), findsOneWidget);
+        expect(find.text('Audio Versions'), findsOneWidget);
+        expect(find.text('Active'), findsOneWidget);
+        expect(find.text('Master'), findsOneWidget);
+      },
+    );
+
+    testWidgets(
+      'Pure image asset does not display audio version skeleton or version section while loading or settled',
+      (tester) async {
+        tester.view.physicalSize = const Size(1280, 800);
+        tester.view.devicePixelRatio = 1.0;
+        addTearDown(tester.view.resetPhysicalSize);
+
+        final versionsCompleter = Completer<List<Audio>>();
+        final delayedService = _DelayedAudioVersionsMusicService(
+          versionsCompleter,
+        );
+        final imageAsset = Asset(
+          fileHash: 'img-hash-001',
+          mimeType: 'image/jpeg',
+          fileSize: 4 * 1024 * 1024,
+          createdAt: DateTime(2026, 1, 15, 10, 30),
+        );
+
+        await tester.pumpWidget(
+          _buildAudioInspectorTestWidget(
+            asset: imageAsset,
+            musicService: delayedService,
+          ),
+        );
+        // Pump frame during loading
+        await tester.pump();
+
+        // Skeleton must NOT appear for image asset
+        expect(find.byKey(const Key('audio_versions_skeleton')), findsNothing);
+        expect(
+          find.byKey(const Key('audio_version_card_skeleton')),
+          findsNothing,
+        );
+        expect(find.text('Audio Versions'), findsNothing);
+
+        await tester.pumpAndSettle();
+
+        expect(find.byKey(const Key('audio_versions_skeleton')), findsNothing);
+        expect(find.byKey(const Key('audio_versions_section')), findsNothing);
+        expect(find.text('Audio Versions'), findsNothing);
+      },
+    );
+
+    testWidgets(
+      'Non-audio non-image asset does not display audio version skeleton',
+      (tester) async {
+        tester.view.physicalSize = const Size(1280, 800);
+        tester.view.devicePixelRatio = 1.0;
+        addTearDown(tester.view.resetPhysicalSize);
+
+        final service = MockMusicService();
+        final textAsset = Asset(
+          fileHash: 'txt-hash-001',
+          mimeType: 'text/plain',
+          fileSize: 1024,
+          createdAt: DateTime(2026, 1, 15, 10, 30),
+        );
+
+        await tester.pumpWidget(
+          _buildAudioInspectorTestWidget(
+            asset: textAsset,
+            musicService: service,
+          ),
+        );
+        await tester.pump();
+
+        expect(find.byKey(const Key('audio_versions_skeleton')), findsNothing);
+        expect(
+          find.byKey(const Key('audio_version_card_skeleton')),
+          findsNothing,
+        );
+
+        await tester.pumpAndSettle();
+
+        expect(find.byKey(const Key('audio_versions_skeleton')), findsNothing);
+        expect(find.byKey(const Key('audio_versions_section')), findsNothing);
+        expect(find.text('Audio Versions'), findsNothing);
+      },
+    );
+
+    testWidgets(
+      'Audio versions section is wrapped in AnimatedSize with fast duration and easeInOutCubic curve',
+      (tester) async {
+        tester.view.physicalSize = const Size(1280, 800);
+        tester.view.devicePixelRatio = 1.0;
+        addTearDown(tester.view.resetPhysicalSize);
+
+        final service = MockMusicService();
+        final tracks = await service.getTracks();
+        final track = tracks.firstWhere((t) => t.id == 'trk-001');
+
+        await tester.pumpWidget(
+          _buildAudioInspectorTestWidget(track: track, musicService: service),
+        );
+        await tester.pumpAndSettle();
+
+        final animatedSizeFinder = find.byKey(
+          const Key('audio_versions_animated_size'),
+        );
+        expect(animatedSizeFinder, findsOneWidget);
+        final animatedSize = tester.widget<AnimatedSize>(animatedSizeFinder);
+        expect(animatedSize.duration, equals(LyraAnimation.fast));
+        expect(animatedSize.curve, equals(Curves.easeInOutCubic));
+      },
+    );
+
+    testWidgets(
+      'State caching retains audio versions without clearing when track updates without changing ID',
+      (tester) async {
+        tester.view.physicalSize = const Size(1280, 800);
+        tester.view.devicePixelRatio = 1.0;
+        addTearDown(tester.view.resetPhysicalSize);
+
+        final service = MockMusicService();
+        final tracks = await service.getTracks();
+        final track = tracks.firstWhere((t) => t.id == 'trk-001');
+
+        await tester.pumpWidget(
+          _buildAudioInspectorTestWidget(track: track, musicService: service),
+        );
+        await tester.pumpAndSettle();
+
+        expect(find.text('Audio Versions'), findsOneWidget);
+        expect(find.byKey(const Key('audio_versions_section')), findsOneWidget);
+
+        // Update track metadata (same ID)
+        final updatedTrack = track.copyWith(
+          title: 'Hotel California (Updated Title)',
+        );
+        await tester.pumpWidget(
+          _buildAudioInspectorTestWidget(
+            track: updatedTrack,
+            musicService: service,
+          ),
+        );
+        await tester.pump();
+
+        // Versions should remain without flashing back to skeleton
+        expect(find.byKey(const Key('audio_versions_skeleton')), findsNothing);
+        expect(find.byKey(const Key('audio_versions_section')), findsOneWidget);
+        expect(find.text('Audio Versions'), findsOneWidget);
+      },
+    );
+
+    testWidgets(
+      'AudioInspectorDrawer._saveEditing() aborts save when track changes while confirmation dialog is pending',
+      (tester) async {
+        tester.view.physicalSize = const Size(1280, 800);
+        tester.view.devicePixelRatio = 1.0;
+        addTearDown(tester.view.resetPhysicalSize);
+
+        final service = MockMusicService();
+        final tracks = await service.getTracks();
+        final track1 = tracks.firstWhere((t) => t.id == 'trk-001');
+        final track2 = tracks.firstWhere((t) => t.id == 'trk-002');
+
+        Track? updatedCallbackTrack;
+
+        await tester.pumpWidget(
+          _buildAudioInspectorTestWidget(
+            track: track1,
+            musicService: service,
+            onTrackUpdated: (updated) {
+              updatedCallbackTrack = updated;
+            },
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        // Enter edit mode
+        await tester.tap(find.widgetWithText(LyraButton, 'Edit'));
+        await tester.pumpAndSettle();
+
+        // Modify title
+        await tester.enterText(
+          find.byKey(const Key('inspector_edit_title_input')).first,
+          'Mutated Title From Track 1',
+        );
+        await tester.pumpAndSettle();
+
+        // Click Save -> Dialog opens
+        await tester.tap(find.widgetWithText(LyraButton, 'Save'));
+        await tester.pumpAndSettle();
+        expect(find.text('Confirm Metadata Changes'), findsOneWidget);
+
+        // While dialog is open, the parent changes track to track2
+        await tester.pumpWidget(
+          _buildAudioInspectorTestWidget(
+            track: track2,
+            musicService: service,
+            onTrackUpdated: (updated) {
+              updatedCallbackTrack = updated;
+            },
+          ),
+        );
+        await tester.pump();
+
+        // Now confirm the dialog
+        await tester.tap(find.widgetWithText(LyraButton, 'Confirm & Save'));
+        await tester.pumpAndSettle();
+
+        // Since track changed during dialog, _saveEditing must abort:
+        expect(updatedCallbackTrack, isNull);
+        final track2InService = (await service.getTracks()).firstWhere(
+          (t) => t.id == 'trk-002',
+        );
+        expect(
+          track2InService.title,
+          isNot(equals('Mutated Title From Track 1')),
+        );
+      },
+    );
+
+    testWidgets(
+      'AudioInspectorDrawer._selectVersion() ignores stale in-flight results when newer version is selected',
+      (tester) async {
+        tester.view.physicalSize = const Size(1280, 800);
+        tester.view.devicePixelRatio = 1.0;
+        addTearDown(tester.view.resetPhysicalSize);
+
+        final v1Completer = Completer<SourceData?>();
+        final v2Completer = Completer<SourceData?>();
+
+        final v1 = Audio(
+          pcmHash: 'pcm-v1',
+          parentHash: '',
+          qualityScore: 90,
+          bitDepth: 24,
+          sampleRate: 96000,
+          channels: 2,
+          durationMs: 200000.0,
+          assets: [
+            Asset(
+              fileHash: 'file-v1',
+              mimeType: 'audio/flac',
+              fileSize: 1000,
+              createdAt: DateTime(2026, 1, 1),
+            ),
+          ],
+        );
+
+        final v2 = Audio(
+          pcmHash: 'pcm-v2',
+          parentHash: 'pcm-v1',
+          qualityScore: 80,
+          bitDepth: 16,
+          sampleRate: 44100,
+          channels: 2,
+          durationMs: 200000.0,
+          assets: [
+            Asset(
+              fileHash: 'file-v2',
+              mimeType: 'audio/mp3',
+              fileSize: 500,
+              createdAt: DateTime(2026, 1, 2),
+            ),
+          ],
+        );
+
+        final service = _ControllableVersionMusicService([v1, v2]);
+        service.sourceCompleters['file-v1'] = v1Completer;
+        service.sourceCompleters['file-v2'] = v2Completer;
+
+        final track = Track(
+          id: 'trk-versions-race',
+          pcmHash: 'pcm-v1',
+          title: 'Race Test',
+          artistName: 'Test Artist',
+        );
+
+        await tester.pumpWidget(
+          _buildAudioInspectorTestWidget(track: track, musicService: service),
+        );
+        // Initial load resolves v1 as active, wait for microtask then AnimatedSize to settle
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 300));
+
+        // Now select v2
+        final v2Finder = find.textContaining(v2.shortPcmHash);
+        expect(v2Finder, findsOneWidget);
+        await tester.ensureVisible(v2Finder);
+        await tester.tap(v2Finder);
+        await tester.pump();
+
+        // Complete v2 source data first
+        v2Completer.complete(
+          SourceData(
+            id: 'sd-v2',
+            fileHash: 'file-v2',
+            sourceType: 'digital_download',
+            originalPath: '/music/v2.mp3',
+            createdAt: DateTime(2026, 1, 1),
+          ),
+        );
+        await tester.pumpAndSettle();
+        expect(find.text('Digital Download'), findsOneWidget);
+
+        // Now complete the stale v1 source data with CD-Rip
+        v1Completer.complete(
+          SourceData(
+            id: 'sd-v1',
+            fileHash: 'file-v1',
+            sourceType: 'cd_rip',
+            originalPath: '/music/v1.flac',
+            createdAt: DateTime(2026, 1, 1),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        // Verify stale v1 result did NOT overwrite v2's source data
+        expect(find.text('Digital Download'), findsOneWidget);
+        expect(find.text('CD-Rip'), findsNothing);
+      },
+    );
+
+    testWidgets(
+      'AudioInspectorDrawer._selectVersion() ignores stale results when track entity changes in-flight',
+      (tester) async {
+        tester.view.physicalSize = const Size(1280, 800);
+        tester.view.devicePixelRatio = 1.0;
+        addTearDown(tester.view.resetPhysicalSize);
+
+        final v2Completer = Completer<SourceData?>();
+
+        final v1 = Audio(
+          pcmHash: 'pcm-v1',
+          parentHash: '',
+          qualityScore: 90,
+          bitDepth: 24,
+          sampleRate: 96000,
+          channels: 2,
+          durationMs: 200000.0,
+          assets: [
+            Asset(
+              fileHash: 'file-v1',
+              mimeType: 'audio/flac',
+              fileSize: 1000,
+              createdAt: DateTime(2026, 1, 1),
+            ),
+          ],
+        );
+
+        final v2 = Audio(
+          pcmHash: 'pcm-v2',
+          parentHash: 'pcm-v1',
+          qualityScore: 80,
+          bitDepth: 16,
+          sampleRate: 44100,
+          channels: 2,
+          durationMs: 200000.0,
+          assets: [
+            Asset(
+              fileHash: 'file-v2',
+              mimeType: 'audio/mp3',
+              fileSize: 500,
+              createdAt: DateTime(2026, 1, 2),
+            ),
+          ],
+        );
+
+        final service = _ControllableVersionMusicService([v1, v2]);
+        service.sourceCompleters['file-v2'] = v2Completer;
+
+        final track1 = Track(
+          id: 'trk-race-1',
+          pcmHash: 'pcm-v1',
+          title: 'Track 1',
+          artistName: 'Artist 1',
+        );
+
+        final track2 = Track(
+          id: 'trk-race-2',
+          pcmHash: 'pcm-other',
+          title: 'Track 2',
+          artistName: 'Artist 2',
+        );
+
+        await tester.pumpWidget(
+          _buildAudioInspectorTestWidget(track: track1, musicService: service),
+        );
+        await tester.pumpAndSettle();
+
+        // Tap v2 to start _selectVersion
+        await tester.tap(find.textContaining(v2.shortPcmHash));
+        await tester.pump();
+
+        // While v2 is in flight, parent switches to track2
+        await tester.pumpWidget(
+          _buildAudioInspectorTestWidget(track: track2, musicService: service),
+        );
+        await tester.pumpAndSettle();
+
+        // Now v2 completes
+        v2Completer.complete(
+          SourceData(
+            id: 'sd-v2-race',
+            fileHash: 'file-v2',
+            sourceType: 'vinyl_rip',
+            originalPath: '/music/v2.mp3',
+            createdAt: DateTime(2026, 1, 1),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        // Since track changed to track2, v2's source data must NOT be shown
+        expect(find.text('Vinyl Rip'), findsNothing);
+      },
+    );
+
+    testWidgets(
+      'Selecting derived audio version without assets queries parent audio details instead of querying CAS asset with PCM hash',
+      (tester) async {
+        tester.view.physicalSize = const Size(1280, 800);
+        tester.view.devicePixelRatio = 1.0;
+        addTearDown(tester.view.resetPhysicalSize);
+
+        final queriedAssetHashes = <String>[];
+        final queriedAudioDetailsHashes = <String>[];
+
+        const masterPcmHash = 'pcm-master-001';
+        const derivedPcmHash = 'pcm-derived-002';
+        const masterFileHash = 'file-master-real-cas-hash';
+
+        final masterAudio = Audio(
+          pcmHash: masterPcmHash,
+          parentHash: '',
+          qualityScore: 95,
+          bitDepth: 24,
+          sampleRate: 96000,
+          channels: 2,
+          durationMs: 240000.0,
+          assets: [
+            Asset(
+              fileHash: masterFileHash,
+              mimeType: 'audio/flac',
+              assetType: 'audio',
+              fileSize: 20000000,
+              createdAt: DateTime(2026, 1, 1),
+              verified: true,
+            ),
+          ],
+        );
+
+        final derivedAudio = Audio(
+          pcmHash: derivedPcmHash,
+          parentHash: masterPcmHash,
+          qualityScore: 85,
+          bitDepth: 16,
+          sampleRate: 44100,
+          channels: 2,
+          durationMs: 240000.0,
+          assets: [], // Empty assets, points to parentHash
+        );
+
+        final testService = _DomainTopologyMockMusicService(
+          versions: [masterAudio, derivedAudio],
+          onGetAsset: (hash) => queriedAssetHashes.add(hash),
+          onGetAudioDetails: (hash) => queriedAudioDetailsHashes.add(hash),
+          masterAudio: masterAudio,
+        );
+
+        final track = Track(
+          id: 'trk-topo-001',
+          pcmHash: masterPcmHash,
+          title: 'Topology Test Track',
+          artistName: 'Test Artist',
+        );
+
+        await tester.pumpWidget(
+          _buildAudioInspectorTestWidget(
+            track: track,
+            musicService: testService,
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        // Tap on derived version card
+        final derivedCard = find.textContaining(derivedAudio.shortPcmHash);
+        expect(derivedCard, findsOneWidget);
+        await tester.tap(derivedCard);
+        await tester.pumpAndSettle();
+
+        // CRITICAL DOMAIN TOPOLOGY ASSERTION:
+        // 1. parentHash (pcm-master-001) MUST NOT be queried as a fileHash in getAsset!
+        expect(queriedAssetHashes, isNot(contains(masterPcmHash)));
+        // 2. parentHash MUST be passed to getAudioDetails to resolve the parent's audio entity
+        expect(queriedAudioDetailsHashes, contains(masterPcmHash));
+        // 3. The parent's real fileHash (file-master-real-cas-hash) MUST be queried in getAsset
+        expect(queriedAssetHashes, contains(masterFileHash));
+      },
+    );
+
+    testWidgets(
+      'Track with empty pcmHash does not show audio versions skeleton while loading',
+      (tester) async {
+        tester.view.physicalSize = const Size(1280, 800);
+        tester.view.devicePixelRatio = 1.0;
+        addTearDown(tester.view.resetPhysicalSize);
+
+        final service = _ControllableVersionMusicService([]);
+        final pendingSourceCompleter = Completer<SourceData?>();
+        service.sourceCompleters['file-load-pending'] = pendingSourceCompleter;
+
+        final trackNoPcm = Track(
+          id: 'trk-no-pcm',
+          pcmHash: '',
+          title: 'No Audio Entity Track',
+          artistName: 'Draft Artist',
+        );
+
+        final pendingAsset = Asset(
+          fileHash: 'file-load-pending',
+          mimeType: 'audio/flac',
+          fileSize: 1000,
+          createdAt: DateTime(2026, 1, 1),
+        );
+
+        await tester.pumpWidget(
+          _buildAudioInspectorTestWidget(
+            track: trackNoPcm,
+            asset: pendingAsset,
+            musicService: service,
+          ),
+        );
+        await tester.pump();
+
+        // Skeleton MUST NOT be shown because track has empty pcmHash
+        expect(find.byKey(const Key('audio_versions_skeleton')), findsNothing);
+        expect(
+          find.byKey(const Key('audio_version_card_skeleton')),
+          findsNothing,
+        );
+      },
+    );
+
+    testWidgets('Digital provenance formats timestamp converted to UTC', (
+      tester,
+    ) async {
+      tester.view.physicalSize = const Size(1280, 800);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+
+      final localTime = DateTime(2026, 1, 15, 10, 30);
+      final utcExpected =
+          '${localTime.toUtc().toIso8601String().replaceAll('T', ' ').substring(0, 19)} UTC';
+
+      final asset = Asset(
+        fileHash: 'test-hash-utc',
+        mimeType: 'audio/flac',
+        fileSize: 1024,
+        createdAt: localTime,
+      );
+
+      await tester.pumpWidget(_buildAudioInspectorTestWidget(asset: asset));
+      await tester.pumpAndSettle();
+
+      expect(find.text(utcExpected), findsOneWidget);
+    });
+
+    testWidgets(
+      'Master version secondary badge uses secondaryForeground token for WCAG contrast',
+      (tester) async {
+        tester.view.physicalSize = const Size(1280, 800);
+        tester.view.devicePixelRatio = 1.0;
+        addTearDown(tester.view.resetPhysicalSize);
+
+        final service = MockMusicService();
+        final tracks = await service.getTracks();
+        final track = tracks.firstWhere((t) => t.id == 'trk-001');
+
+        await tester.pumpWidget(
+          _buildAudioInspectorTestWidget(track: track, musicService: service),
+        );
+        await tester.pumpAndSettle();
+
+        final masterTextFinder = find.descendant(
+          of: find.byType(LyraBadge),
+          matching: find.text('Master'),
+        );
+        expect(masterTextFinder, findsOneWidget);
+
+        final textWidget = tester.widget<Text>(masterTextFinder);
+        final tokens = LyraThemeTokens.dark();
+        expect(textWidget.style?.color, equals(tokens.secondaryForeground));
+        expect(textWidget.style?.color, isNot(equals(tokens.textMuted)));
+      },
+    );
+  });
+}
+
+class _DelayedAudioVersionsMusicService extends MockMusicService {
+  final Completer<List<Audio>> versionsCompleter;
+
+  _DelayedAudioVersionsMusicService(this.versionsCompleter);
+
+  @override
+  Future<List<Audio>> getAudioVersions(String pcmHash) =>
+      versionsCompleter.future;
+}
+
+class _ControllableVersionMusicService extends MockMusicService {
+  final List<Audio> versions;
+  final Map<String, Completer<SourceData?>> sourceCompleters = {};
+
+  _ControllableVersionMusicService(this.versions);
+
+  @override
+  Future<List<Audio>> getAudioVersions(String pcmHash) async => versions;
+
+  @override
+  Future<SourceData?> getSourceData(String fileHash) {
+    if (sourceCompleters.containsKey(fileHash)) {
+      return sourceCompleters[fileHash]!.future;
+    }
+    return super.getSourceData(fileHash);
+  }
+}
+
+class _DomainTopologyMockMusicService extends MockMusicService {
+  final List<Audio> versions;
+  final void Function(String hash) onGetAsset;
+  final void Function(String hash) onGetAudioDetails;
+  final Audio masterAudio;
+
+  _DomainTopologyMockMusicService({
+    required this.versions,
+    required this.onGetAsset,
+    required this.onGetAudioDetails,
+    required this.masterAudio,
+  });
+
+  @override
+  Future<List<Audio>> getAudioVersions(String pcmHash) async => versions;
+
+  @override
+  Future<Audio?> getAudioDetails(String pcmHash) async {
+    onGetAudioDetails(pcmHash);
+    if (pcmHash == masterAudio.pcmHash) {
+      return masterAudio;
+    }
+    for (final v in versions) {
+      if (v.pcmHash == pcmHash) return v;
+    }
+    return null;
+  }
+
+  @override
+  Future<Asset?> getAsset(String fileHash) async {
+    onGetAsset(fileHash);
+    if (masterAudio.assets.isNotEmpty &&
+        masterAudio.assets.first.fileHash == fileHash) {
+      return masterAudio.assets.first;
+    }
+    return super.getAsset(fileHash);
+  }
 }
