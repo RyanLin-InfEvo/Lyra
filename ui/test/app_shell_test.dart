@@ -2723,7 +2723,8 @@ void main() {
 
         // Click Save
         await tester.tap(find.widgetWithText(LyraButton, 'Save'));
-        await tester.pumpAndSettle();
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 300));
 
         // Confirm & Save in diff dialog
         final confirmBtn = find.widgetWithText(LyraButton, 'Confirm & Save');

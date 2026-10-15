@@ -14,6 +14,7 @@ import 'package:ui/design_system/widgets/lyra_button.dart';
 import 'package:ui/design_system/widgets/lyra_copy_button.dart';
 import 'package:ui/design_system/widgets/lyra_input.dart';
 import 'package:ui/design_system/widgets/lyra_skeleton.dart';
+import 'package:ui/design_system/widgets/lyra_spinner.dart';
 import 'package:ui/features/inspector/audio_inspector_drawer.dart';
 import 'package:ui/features/models/asset.dart';
 import 'package:ui/features/models/audio.dart';
@@ -437,7 +438,8 @@ void main() {
 
         // Tap Save button to open diff confirmation dialog
         await tester.tap(find.widgetWithText(LyraButton, 'Save'));
-        await tester.pumpAndSettle();
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 300));
 
         // Verify Diff confirmation dialog appeared
         expect(find.byKey(const Key('metadata_diff_dialog')), findsOneWidget);
@@ -798,7 +800,8 @@ void main() {
 
         // 4. Tap Save again
         await tester.tap(find.widgetWithText(LyraButton, 'Save'));
-        await tester.pumpAndSettle();
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 300));
 
         // 5. Diff confirmation dialog opens now that validation passes
         expect(find.byKey(const Key('metadata_diff_dialog')), findsOneWidget);
@@ -838,7 +841,8 @@ void main() {
 
         // Tap Save
         await tester.tap(find.widgetWithText(LyraButton, 'Save'));
-        await tester.pumpAndSettle();
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 300));
 
         // Verify Diff confirmation dialog
         expect(find.byKey(const Key('metadata_diff_dialog')), findsOneWidget);
@@ -912,6 +916,348 @@ void main() {
         // Step 4: Verify Track B is displayed and not hanging
         expect(find.text(trackB.displayTitle), findsOneWidget);
         expect(find.text('Edit Metadata'), findsNothing);
+      },
+    );
+
+    testWidgets(
+      'Inspector edit mode is wrapped in AnimatedSize and AnimatedSwitcher with normal duration and easeInOutCubic curve',
+      (tester) async {
+        tester.view.physicalSize = const Size(1280, 800);
+        tester.view.devicePixelRatio = 1.0;
+        addTearDown(tester.view.resetPhysicalSize);
+
+        final service = MockMusicService();
+        final tracks = await service.getTracks();
+        final track = tracks.firstWhere((t) => t.id == 'trk-001');
+
+        await tester.pumpWidget(
+          _buildAudioInspectorTestWidget(track: track, musicService: service),
+        );
+        await tester.pumpAndSettle();
+
+        // 1. Verify AnimatedSize configuration
+        final animatedSizeFinder = find.byKey(
+          const Key('inspector_edit_mode_animated_size'),
+        );
+        expect(animatedSizeFinder, findsOneWidget);
+        final animatedSize = tester.widget<AnimatedSize>(animatedSizeFinder);
+        expect(animatedSize.duration, equals(LyraAnimation.normal));
+        expect(animatedSize.curve, equals(Curves.easeInOutCubic));
+        expect(animatedSize.clipBehavior, equals(Clip.hardEdge));
+        expect(animatedSize.alignment, equals(Alignment.topCenter));
+
+        // 2. Verify AnimatedSwitcher configuration
+        final switcherFinder = find.byKey(
+          const Key('inspector_edit_mode_animated_switcher'),
+        );
+        expect(switcherFinder, findsOneWidget);
+        final switcher = tester.widget<AnimatedSwitcher>(switcherFinder);
+        expect(switcher.duration, equals(LyraAnimation.normal));
+        expect(switcher.switchInCurve, equals(Curves.easeInOutCubic));
+        expect(switcher.switchOutCurve, equals(Curves.easeInOutCubic));
+      },
+    );
+
+    testWidgets(
+      'Toggling edit mode initiates smooth in-flight transition with fade and slide without layout breaks',
+      (tester) async {
+        tester.view.physicalSize = const Size(1280, 800);
+        tester.view.devicePixelRatio = 1.0;
+        addTearDown(tester.view.resetPhysicalSize);
+
+        final service = MockMusicService();
+        final tracks = await service.getTracks();
+        final track = tracks.firstWhere((t) => t.id == 'trk-001');
+
+        await tester.pumpWidget(
+          _buildAudioInspectorTestWidget(track: track, musicService: service),
+        );
+        await tester.pumpAndSettle();
+
+        // Initially in summary view
+        expect(find.widgetWithText(LyraButton, 'Edit'), findsOneWidget);
+        expect(find.text('Edit Metadata'), findsNothing);
+
+        // Tap Edit to initiate enter transition
+        await tester.tap(find.widgetWithText(LyraButton, 'Edit'));
+        await tester.pump();
+
+        // Mid-flight: advance by 100ms (less than 250ms duration)
+        await tester.pump(const Duration(milliseconds: 100));
+
+        // Both outgoing summary and incoming form should coexist during cross-fade transition
+        expect(
+          find.byKey(const Key('inspector_edit_mode_animated_switcher')),
+          findsOneWidget,
+        );
+        expect(find.text('Edit Metadata'), findsOneWidget);
+        expect(find.text(track.displayTitle), findsWidgets);
+
+        // Complete animation
+        await tester.pumpAndSettle();
+
+        // Settled: only edit form is present
+        expect(find.text('Edit Metadata'), findsOneWidget);
+        expect(find.widgetWithText(LyraButton, 'Edit'), findsNothing);
+        expect(find.widgetWithText(LyraButton, 'Cancel'), findsOneWidget);
+        expect(find.widgetWithText(LyraButton, 'Save'), findsOneWidget);
+
+        // Tap Cancel to initiate exit transition
+        await tester.tap(find.widgetWithText(LyraButton, 'Cancel'));
+        await tester.pump();
+
+        // Mid-flight exit: advance by 100ms
+        await tester.pump(const Duration(milliseconds: 100));
+
+        // Verify transition handles reverse smoothly without exceptions
+        expect(tester.takeException(), isNull);
+
+        // Complete animation
+        await tester.pumpAndSettle();
+
+        // Settled: only summary is present
+        expect(find.text('Edit Metadata'), findsNothing);
+        expect(find.widgetWithText(LyraButton, 'Edit'), findsOneWidget);
+        expect(find.widgetWithText(LyraButton, 'Cancel'), findsNothing);
+        expect(find.widgetWithText(LyraButton, 'Save'), findsNothing);
+      },
+    );
+
+    testWidgets(
+      'AnimatedSwitcher layoutBuilder uses Clip.none and guards against null currentChild',
+      (tester) async {
+        tester.view.physicalSize = const Size(1280, 800);
+        tester.view.devicePixelRatio = 1.0;
+        addTearDown(tester.view.resetPhysicalSize);
+
+        final service = MockMusicService();
+        final tracks = await service.getTracks();
+        final track = tracks.firstWhere((t) => t.id == 'trk-001');
+
+        await tester.pumpWidget(
+          _buildAudioInspectorTestWidget(track: track, musicService: service),
+        );
+        await tester.pumpAndSettle();
+
+        // Verify live Stack clipBehavior is Clip.none to let parent AnimatedSize govern clipping
+        final stackFinder = find.descendant(
+          of: find.byKey(const Key('inspector_edit_mode_animated_switcher')),
+          matching: find.byType(Stack),
+        );
+        expect(stackFinder, findsOneWidget);
+        final stack = tester.widget<Stack>(stackFinder);
+        expect(stack.clipBehavior, equals(Clip.none));
+
+        // Verify layoutBuilder safely supplies non-positioned anchor child when currentChild is null
+        final switcher = tester.widget<AnimatedSwitcher>(
+          find.byKey(const Key('inspector_edit_mode_animated_switcher')),
+        );
+        final renderedStack = switcher.layoutBuilder(null, <Widget>[]) as Stack;
+        expect(renderedStack.clipBehavior, equals(Clip.none));
+        expect(
+          renderedStack.children.any((w) => w is SizedBox && w is! Positioned),
+          isTrue,
+        );
+      },
+    );
+
+    testWidgets(
+      'Clicking Save immediately disables Save button before dialog settles preventing double-click stacking',
+      (tester) async {
+        tester.view.physicalSize = const Size(1280, 800);
+        tester.view.devicePixelRatio = 1.0;
+        addTearDown(tester.view.resetPhysicalSize);
+
+        final service = MockMusicService();
+        final tracks = await service.getTracks();
+        final track = tracks.firstWhere((t) => t.id == 'trk-001');
+
+        await tester.pumpWidget(
+          _buildAudioInspectorTestWidget(track: track, musicService: service),
+        );
+        await tester.pumpAndSettle();
+
+        // Enter edit mode
+        await tester.tap(find.widgetWithText(LyraButton, 'Edit'));
+        await tester.pumpAndSettle();
+
+        // Enter new title to create a diff
+        await tester.enterText(
+          find.byKey(const Key('inspector_edit_title_input')).first,
+          'Hotel California (Re-entrancy Test)',
+        );
+        await tester.pumpAndSettle();
+
+        // Tap Save twice in rapid succession (simulating double click before route transitions)
+        await tester.tap(find.byKey(const Key('inspector_save_button')).first);
+        await tester.tap(
+          find.byKey(const Key('inspector_save_button')).first,
+          warnIfMissed: false,
+        );
+        // Pump 1 frame to trigger immediate submission state without settling dialog
+        await tester.pump();
+
+        // Save button must be disabled immediately to prevent double-click re-entrancy and display LyraSpinner
+        final saveButton = tester.widget<LyraButton>(
+          find.byKey(const Key('inspector_save_button')).first,
+        );
+        expect(saveButton.onPressed, isNull);
+
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 300));
+
+        // Exactly one confirmation dialog must be present
+        expect(find.byKey(const Key('metadata_diff_dialog')), findsOneWidget);
+      },
+    );
+
+    testWidgets(
+      'Navigating to new track while not editing synchronizes controller text',
+      (tester) async {
+        tester.view.physicalSize = const Size(1280, 800);
+        tester.view.devicePixelRatio = 1.0;
+        addTearDown(tester.view.resetPhysicalSize);
+
+        final service = MockMusicService();
+        final tracks = await service.getTracks();
+        final track1 = tracks.firstWhere((t) => t.id == 'trk-001');
+        final track2 = tracks.firstWhere((t) => t.id == 'trk-002');
+
+        await tester.pumpWidget(
+          _buildAudioInspectorTestWidget(track: track1, musicService: service),
+        );
+        await tester.pumpAndSettle();
+
+        // Enter edit mode on track1 to inspect controller instance
+        await tester.tap(find.widgetWithText(LyraButton, 'Edit'));
+        await tester.pumpAndSettle();
+
+        final titleInput = tester.widget<LyraInput>(
+          find.byKey(const Key('inspector_edit_title_input')).first,
+        );
+        final titleController = titleInput.controller!;
+        expect(titleController.text, equals(track1.title));
+
+        // Cancel edit mode
+        await tester.tap(find.widgetWithText(LyraButton, 'Cancel'));
+        await tester.pumpAndSettle();
+
+        // Navigate to track2 while not editing
+        await tester.pumpWidget(
+          _buildAudioInspectorTestWidget(track: track2, musicService: service),
+        );
+        await tester.pump();
+
+        // Controllers must be synchronized to track2
+        expect(titleController.text, equals(track2.title));
+      },
+    );
+
+    testWidgets(
+      'Cancelling edit mode unfocuses active input cleanly via FocusScope',
+      (tester) async {
+        tester.view.physicalSize = const Size(1280, 800);
+        tester.view.devicePixelRatio = 1.0;
+        addTearDown(tester.view.resetPhysicalSize);
+
+        final service = MockMusicService();
+        final tracks = await service.getTracks();
+        final track = tracks.firstWhere((t) => t.id == 'trk-001');
+
+        await tester.pumpWidget(
+          _buildAudioInspectorTestWidget(track: track, musicService: service),
+        );
+        await tester.pumpAndSettle();
+
+        // Enter edit mode
+        await tester.tap(find.widgetWithText(LyraButton, 'Edit'));
+        await tester.pumpAndSettle();
+
+        // Focus title input field
+        final titleEditable = find.byType(EditableText).first;
+        await tester.tap(titleEditable);
+        await tester.pumpAndSettle();
+
+        expect(
+          tester.widget<EditableText>(titleEditable).focusNode.hasFocus,
+          isTrue,
+        );
+
+        // Tap Cancel
+        await tester.tap(find.widgetWithText(LyraButton, 'Cancel'));
+        await tester.pump(); // Frame 1 of exit transition
+
+        // Keyboard focus must be released from text input fields immediately
+        expect(
+          tester.widget<EditableText>(titleEditable).focusNode.hasFocus,
+          isFalse,
+        );
+        expect(
+          FocusManager.instance.primaryFocus?.context
+              ?.findAncestorWidgetOfExactType<EditableText>(),
+          isNull,
+        );
+      },
+    );
+
+    testWidgets(
+      'Saving metadata preserves fresh live track attributes updated during dialog confirmation',
+      (tester) async {
+        tester.view.physicalSize = const Size(1280, 800);
+        tester.view.devicePixelRatio = 1.0;
+        addTearDown(tester.view.resetPhysicalSize);
+
+        final service = MockMusicService();
+        final tracks = await service.getTracks();
+        final initialTrack = tracks.firstWhere((t) => t.id == 'trk-001');
+
+        Track? savedResultTrack;
+        await tester.pumpWidget(
+          _buildAudioInspectorTestWidget(
+            track: initialTrack,
+            musicService: service,
+            onTrackUpdated: (saved) {
+              savedResultTrack = saved;
+            },
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        // Enter edit mode
+        await tester.tap(find.widgetWithText(LyraButton, 'Edit'));
+        await tester.pumpAndSettle();
+
+        // Tap Save to open diff dialog
+        await tester.tap(find.widgetWithText(LyraButton, 'Save'));
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 300));
+        expect(find.byKey(const Key('metadata_diff_dialog')), findsOneWidget);
+
+        // While dialog is open, track receives fresh attributes (updated non-PCM metadata: duration and recording location)
+        final liveTrack = initialTrack.copyWith(
+          durationMs: 315000,
+          recordingLocation: 'Live Soundstage',
+        );
+        await tester.pumpWidget(
+          _buildAudioInspectorTestWidget(
+            track: liveTrack,
+            musicService: service,
+            onTrackUpdated: (saved) {
+              savedResultTrack = saved;
+            },
+          ),
+        );
+        await tester.pump();
+
+        // Confirm save
+        await tester.tap(find.widgetWithText(LyraButton, 'Confirm & Save'));
+        await tester.pumpAndSettle();
+
+        // Fresh live track attributes must be preserved rather than overwritten by stale initial snapshot
+        expect(savedResultTrack, isNotNull);
+        expect(savedResultTrack!.pcmHash, equals(initialTrack.pcmHash));
+        expect(savedResultTrack!.durationMs, equals(315000));
+        expect(savedResultTrack!.recordingLocation, equals('Live Soundstage'));
       },
     );
 
@@ -1456,7 +1802,8 @@ void main() {
 
         // Click Save -> Dialog opens
         await tester.tap(find.widgetWithText(LyraButton, 'Save'));
-        await tester.pumpAndSettle();
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 300));
         expect(find.text('Confirm Metadata Changes'), findsOneWidget);
 
         // While dialog is open, the parent changes track to track2
@@ -1861,7 +2208,1256 @@ void main() {
         expect(textWidget.style?.color, isNot(equals(tokens.textMuted)));
       },
     );
+
+    testWidgets(
+      'LyraSpinner is rendered during Save and Version Switch loading states',
+      (tester) async {
+        tester.view.physicalSize = const Size(1280, 800);
+        tester.view.devicePixelRatio = 1.0;
+        addTearDown(tester.view.resetPhysicalSize);
+
+        final service = _ControllableInspectorLoadingMusicService();
+        service.updateTrackCompleter = Completer<Track>();
+        final tracks = await service.getTracks();
+        final track = tracks.firstWhere((t) => t.id == 'trk-001');
+
+        await tester.pumpWidget(
+          _buildAudioInspectorTestWidget(track: track, musicService: service),
+        );
+        await tester.pumpAndSettle();
+
+        // 1. Verify LyraSpinner during Save button loading
+        await tester.tap(find.widgetWithText(LyraButton, 'Edit'));
+        await tester.pumpAndSettle();
+
+        // Verify Save button has no checkmark icon in idle state
+        final saveButtonFinder = find.byKey(const Key('inspector_save_button'));
+        final idleSaveBtn = tester.widget<LyraButton>(saveButtonFinder.first);
+        expect(idleSaveBtn.leading, isNull);
+        expect(
+          find.descendant(
+            of: saveButtonFinder,
+            matching: find.byIcon(LucideIcons.check),
+          ),
+          findsNothing,
+        );
+
+        await tester.enterText(
+          find.byKey(const Key('inspector_edit_title_input')).first,
+          'Title Diff for Spinner Test',
+        );
+        await tester.pumpAndSettle();
+
+        // Tap Save button -> opens confirmation dialog
+        await tester.tap(find.byKey(const Key('inspector_save_button')).first);
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 300));
+        expect(find.byKey(const Key('metadata_diff_dialog')), findsOneWidget);
+
+        // Verify "Confirm & Save" dialog button has no checkmark icon
+        final confirmBtnFinder = find.widgetWithText(
+          LyraButton,
+          'Confirm & Save',
+        );
+        final confirmBtn = tester.widget<LyraButton>(confirmBtnFinder);
+        expect(confirmBtn.leading, isNull);
+        expect(
+          find.descendant(
+            of: confirmBtnFinder,
+            matching: find.byIcon(LucideIcons.check),
+          ),
+          findsNothing,
+        );
+
+        // Tap Confirm & Save in dialog
+        await tester.tap(confirmBtnFinder);
+        // Dialog pops; updateTrack is now in flight
+        await tester.pump();
+
+        final saveSpinnerFinder = find.descendant(
+          of: find.byKey(const Key('inspector_save_button')),
+          matching: find.byType(LyraSpinner),
+        );
+        expect(saveSpinnerFinder, findsOneWidget);
+        expect(find.text('Saving...'), findsOneWidget);
+        expect(
+          find.descendant(
+            of: find.byKey(const Key('inspector_save_button')),
+            matching: find.byIcon(LucideIcons.check),
+          ),
+          findsNothing,
+        );
+
+        // Complete save
+        service.updateTrackCompleter!.complete(
+          track.copyWith(title: 'Title Diff for Spinner Test'),
+        );
+        await tester.pumpAndSettle();
+
+        expect(find.byType(LyraSpinner), findsNothing);
+        expect(find.widgetWithText(LyraButton, 'Edit'), findsOneWidget);
+
+        // 2. Verify LyraSpinner during Version Switch button loading
+        final cdVersion = find.text('WAV (Lossless) · 16-bit/44.1kHz');
+        await tester.tap(cdVersion);
+        await tester.pumpAndSettle();
+
+        final setActiveBtn = find.text('Set as Active Audio');
+        expect(setActiveBtn, findsOneWidget);
+
+        // Verify "Set as Active Audio" button has no checkmark icon when idle
+        final setActiveBtnFinder = find.widgetWithText(
+          LyraButton,
+          'Set as Active Audio',
+        );
+        final setActiveWidget = tester.widget<LyraButton>(setActiveBtnFinder);
+        expect(setActiveWidget.leading, isNull);
+        expect(
+          find.descendant(
+            of: setActiveBtnFinder,
+            matching: find.byIcon(LucideIcons.check),
+          ),
+          findsNothing,
+        );
+
+        service.switchAudioCompleter = Completer<void>();
+
+        await tester.tap(setActiveBtn);
+        await tester.pump(); // Enter _isSwitchingActive state
+
+        final switchSpinnerFinder = find.descendant(
+          of: find.widgetWithText(LyraButton, 'Switching Audio...'),
+          matching: find.byType(LyraSpinner),
+        );
+        expect(switchSpinnerFinder, findsOneWidget);
+        expect(
+          find.descendant(
+            of: find.widgetWithText(LyraButton, 'Switching Audio...'),
+            matching: find.byIcon(LucideIcons.check),
+          ),
+          findsNothing,
+        );
+
+        service.switchAudioCompleter!.complete();
+        await tester.pumpAndSettle();
+
+        expect(find.byType(LyraSpinner), findsNothing);
+        expect(find.text('Set as Active Audio'), findsNothing);
+      },
+    );
+
+    testWidgets(
+      'Anti-false-positive: Save failure retains edit mode and form input without calling onTrackUpdated',
+      (tester) async {
+        tester.view.physicalSize = const Size(1280, 800);
+        tester.view.devicePixelRatio = 1.0;
+        addTearDown(tester.view.resetPhysicalSize);
+
+        final service = _ControllableInspectorLoadingMusicService();
+        service.failUpdateTrack = true;
+        final tracks = await service.getTracks();
+        final track = tracks.firstWhere((t) => t.id == 'trk-001');
+
+        bool onTrackUpdatedCalled = false;
+        await tester.pumpWidget(
+          _buildAudioInspectorTestWidget(
+            track: track,
+            musicService: service,
+            onTrackUpdated: (_) {
+              onTrackUpdatedCalled = true;
+            },
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        // Enter edit mode
+        await tester.tap(find.widgetWithText(LyraButton, 'Edit'));
+        await tester.pumpAndSettle();
+
+        // Change title
+        final titleField = find
+            .byKey(const Key('inspector_edit_title_input'))
+            .first;
+        await tester.enterText(titleField, 'Failed Title Save Attempt');
+        await tester.pumpAndSettle();
+
+        // Tap Save
+        await tester.tap(find.byKey(const Key('inspector_save_button')).first);
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 300));
+
+        // Confirm save dialog
+        await tester.tap(find.widgetWithText(LyraButton, 'Confirm & Save'));
+        await tester.pumpAndSettle();
+
+        // Must NOT pretend update succeeded:
+        expect(onTrackUpdatedCalled, isFalse);
+        // Form must remain open in edit mode so user input is not lost
+        expect(
+          find.byKey(const Key('inspector_edit_title_input')).first,
+          findsOneWidget,
+        );
+        expect(find.text('Failed Title Save Attempt'), findsOneWidget);
+        expect(find.widgetWithText(LyraButton, 'Edit'), findsNothing);
+        // Loading state must be reset
+        expect(find.widgetWithText(LyraButton, 'Saving...'), findsNothing);
+        expect(find.widgetWithText(LyraButton, 'Save'), findsOneWidget);
+      },
+    );
+
+    testWidgets(
+      'Save loading state resets in finally even if onTrackUpdated throws',
+      (tester) async {
+        tester.view.physicalSize = const Size(1280, 800);
+        tester.view.devicePixelRatio = 1.0;
+        addTearDown(tester.view.resetPhysicalSize);
+
+        final service = MockMusicService();
+        final tracks = await service.getTracks();
+        final track = tracks.firstWhere((t) => t.id == 'trk-001');
+
+        await tester.pumpWidget(
+          _buildAudioInspectorTestWidget(
+            track: track,
+            musicService: service,
+            onTrackUpdated: (_) {
+              throw Exception('Callback failure during track update');
+            },
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        // Enter edit mode
+        await tester.tap(find.widgetWithText(LyraButton, 'Edit'));
+        await tester.pumpAndSettle();
+
+        await tester.enterText(
+          find.byKey(const Key('inspector_edit_title_input')).first,
+          'Callback Throw Title',
+        );
+        await tester.pumpAndSettle();
+
+        await tester.tap(find.byKey(const Key('inspector_save_button')).first);
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 300));
+
+        await tester.tap(find.widgetWithText(LyraButton, 'Confirm & Save'));
+        await tester.pumpAndSettle();
+
+        // Loading spinner must not be stuck; _isSaving must be false
+        expect(find.widgetWithText(LyraButton, 'Saving...'), findsNothing);
+      },
+    );
+
+    testWidgets(
+      'Audio Specifications section header spinner uses textMuted token for contrast while loading',
+      (tester) async {
+        tester.view.physicalSize = const Size(1280, 800);
+        tester.view.devicePixelRatio = 1.0;
+        addTearDown(tester.view.resetPhysicalSize);
+
+        final service = _DelayedAudioVersionsMusicService(
+          Completer<List<Audio>>(),
+        );
+        final track = Track(
+          id: 'trk-001',
+          pcmHash: 'pcm-loading-001',
+          title: 'Section Spinner Contrast Track',
+        );
+
+        await tester.pumpWidget(
+          _buildAudioInspectorTestWidget(track: track, musicService: service),
+        );
+        await tester.pump(); // Start loading, do not settle
+
+        final headerSpinnerFinder = find.descendant(
+          of: find.byType(AudioInspectorDrawer),
+          matching: find.byType(LyraSpinner),
+        );
+        expect(headerSpinnerFinder, findsOneWidget);
+
+        final spinner = tester.widget<LyraSpinner>(headerSpinnerFinder);
+        final tokens = LyraThemeTokens.dark();
+        expect(spinner.color, equals(tokens.textMuted));
+      },
+    );
+
+    testWidgets(
+      'Saving metadata cleanly unfocuses active text input via FocusScope.of(context).unfocus()',
+      (tester) async {
+        tester.view.physicalSize = const Size(1280, 800);
+        tester.view.devicePixelRatio = 1.0;
+        addTearDown(tester.view.resetPhysicalSize);
+
+        final service = MockMusicService();
+        final tracks = await service.getTracks();
+        final track = tracks.firstWhere((t) => t.id == 'trk-001');
+
+        await tester.pumpWidget(
+          _buildAudioInspectorTestWidget(track: track, musicService: service),
+        );
+        await tester.pumpAndSettle();
+
+        // Enter edit mode
+        await tester.tap(find.widgetWithText(LyraButton, 'Edit'));
+        await tester.pumpAndSettle();
+
+        // Focus title input field (managed by generic FocusScope, not artist/album focus nodes)
+        final titleEditable = find.byType(EditableText).first;
+        await tester.tap(titleEditable);
+        await tester.pumpAndSettle();
+
+        expect(
+          tester.widget<EditableText>(titleEditable).focusNode.hasFocus,
+          isTrue,
+        );
+
+        // Tap Save
+        await tester.tap(find.widgetWithText(LyraButton, 'Save'));
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 300));
+
+        // Confirm save
+        await tester.tap(find.widgetWithText(LyraButton, 'Confirm & Save'));
+        await tester.pump();
+
+        // Focus must be completely unfocused from text fields
+        expect(
+          FocusManager.instance.primaryFocus?.context
+              ?.findAncestorWidgetOfExactType<EditableText>(),
+          isNull,
+        );
+        await tester.pumpAndSettle();
+      },
+    );
+
+    testWidgets(
+      'Switching active audio prevents re-entrant invocation when already in flight',
+      (tester) async {
+        tester.view.physicalSize = const Size(1280, 800);
+        tester.view.devicePixelRatio = 1.0;
+        addTearDown(tester.view.resetPhysicalSize);
+
+        final service = _ControllableInspectorLoadingMusicService();
+        service.switchAudioCompleter = Completer<void>();
+        final tracks = await service.getTracks();
+        final track = tracks.firstWhere((t) => t.id == 'trk-001');
+
+        await tester.pumpWidget(
+          _buildAudioInspectorTestWidget(track: track, musicService: service),
+        );
+        await tester.pumpAndSettle();
+
+        // Select non-active version
+        final cdVersion = find.text('WAV (Lossless) · 16-bit/44.1kHz');
+        await tester.tap(cdVersion);
+        await tester.pumpAndSettle();
+
+        final setActiveBtnFinder = find.widgetWithText(
+          LyraButton,
+          'Set as Active Audio',
+        );
+        expect(setActiveBtnFinder, findsOneWidget);
+
+        final btnWidget = tester.widget<LyraButton>(setActiveBtnFinder);
+        expect(btnWidget.onPressed, isNotNull);
+
+        // First click triggers switch
+        btnWidget.onPressed!();
+        // Immediate second click (before rebuild or during async operation)
+        btnWidget.onPressed!();
+
+        // Must be guarded: switchTrackAudio must only be invoked once
+        expect(service.switchAudioCallCount, equals(1));
+
+        service.switchAudioCompleter!.complete();
+        await tester.pumpAndSettle();
+      },
+    );
+
+    testWidgets(
+      'Rapid double clicking Confirm & Save in _MetadataDiffDialog guards against double popping underlying route',
+      (tester) async {
+        tester.view.physicalSize = const Size(1280, 800);
+        tester.view.devicePixelRatio = 1.0;
+        addTearDown(tester.view.resetPhysicalSize);
+
+        final service = MockMusicService();
+        final tracks = await service.getTracks();
+        final track = tracks.firstWhere((t) => t.id == 'trk-001');
+
+        final navKey = GlobalKey<NavigatorState>();
+        final themeNotifier = ValueNotifier<ThemeMode>(ThemeMode.dark);
+        await tester.pumpWidget(
+          ShadApp(
+            navigatorKey: navKey,
+            theme: ShadThemeData(
+              brightness: Brightness.dark,
+              colorScheme: const ShadZincColorScheme.dark(),
+            ),
+            home: LyraDesignSystemScope(
+              factory: const ShadcnFactory(),
+              tokens: LyraThemeTokens.dark(),
+              themeModeNotifier: themeNotifier,
+              child: const Scaffold(body: Text('Base Root Route')),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        // Push inspector route onto navigator
+        navKey.currentState!.push(
+          MaterialPageRoute(
+            builder: (ctx) => LyraDesignSystemScope(
+              factory: const ShadcnFactory(),
+              tokens: LyraThemeTokens.dark(),
+              themeModeNotifier: themeNotifier,
+              child: Scaffold(
+                body: AudioInspectorDrawer(
+                  track: track,
+                  musicService: service,
+                  onClose: () {},
+                ),
+              ),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        expect(find.byType(AudioInspectorDrawer), findsOneWidget);
+
+        // Enter edit mode
+        await tester.tap(find.widgetWithText(LyraButton, 'Edit'));
+        await tester.pumpAndSettle();
+
+        // Change title
+        await tester.enterText(
+          find.byKey(const Key('inspector_edit_title_input')).first,
+          'New Title For Double Pop',
+        );
+        await tester.pumpAndSettle();
+
+        // Click Save -> diff dialog opens
+        await tester.tap(find.byKey(const Key('inspector_save_button')).first);
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 300));
+
+        expect(find.byKey(const Key('metadata_diff_dialog')), findsOneWidget);
+
+        final confirmFinder = find.widgetWithText(LyraButton, 'Confirm & Save');
+        final confirmBtn = tester.widget<LyraButton>(confirmFinder);
+        expect(confirmBtn.onPressed, isNotNull);
+
+        // Simulate rapid double tap: two invocations of onPressed before the route animation finishes
+        confirmBtn.onPressed!();
+        confirmBtn.onPressed!();
+        await tester.pumpAndSettle();
+
+        // The inspector drawer must NOT have been popped off the navigator
+        expect(find.byType(AudioInspectorDrawer), findsOneWidget);
+        expect(find.text('Base Root Route'), findsNothing);
+      },
+    );
+
+    testWidgets(
+      'Audio version selection is disabled while switching active audio (_isSwitchingActive is true)',
+      (tester) async {
+        tester.view.physicalSize = const Size(1280, 800);
+        tester.view.devicePixelRatio = 1.0;
+        addTearDown(tester.view.resetPhysicalSize);
+
+        final service = _ControllableInspectorLoadingMusicService();
+        service.switchAudioCompleter = Completer<void>();
+        final tracks = await service.getTracks();
+        final track = tracks.firstWhere((t) => t.id == 'trk-001');
+
+        await tester.pumpWidget(
+          _buildAudioInspectorTestWidget(track: track, musicService: service),
+        );
+        await tester.pumpAndSettle();
+
+        // Find another version to inspect first
+        final cdVersion = find.text('WAV (Lossless) · 16-bit/44.1kHz');
+        await tester.tap(cdVersion);
+        await tester.pumpAndSettle();
+
+        // Trigger switch active audio
+        final setActiveBtn = find.widgetWithText(
+          LyraButton,
+          'Set as Active Audio',
+        );
+        await tester.tap(setActiveBtn);
+        await tester.pump(); // Start switch, _isSwitchingActive is now true
+
+        // Verify version items in audio_versions_section have onTap == null
+        final gestures = tester.widgetList<GestureDetector>(
+          find.descendant(
+            of: find.byKey(const Key('audio_versions_section')),
+            matching: find.byType(GestureDetector),
+          ),
+        );
+        expect(gestures, isNotEmpty);
+        for (final gesture in gestures) {
+          expect(gesture.onTap, isNull);
+        }
+
+        service.switchAudioCompleter!.complete();
+        await tester.pumpAndSettle();
+      },
+    );
+
+    testWidgets(
+      'Validates that title is not empty and displays validation error preventing save',
+      (tester) async {
+        tester.view.physicalSize = const Size(1280, 800);
+        tester.view.devicePixelRatio = 1.0;
+        addTearDown(tester.view.resetPhysicalSize);
+
+        final service = MockMusicService();
+        final tracks = await service.getTracks();
+        final track = tracks.firstWhere((t) => t.id == 'trk-001');
+
+        await tester.pumpWidget(
+          _buildAudioInspectorTestWidget(track: track, musicService: service),
+        );
+        await tester.pumpAndSettle();
+
+        // Enter edit mode
+        await tester.tap(find.widgetWithText(LyraButton, 'Edit'));
+        await tester.pumpAndSettle();
+
+        // Clear title field (set to whitespace)
+        final titleInput = find
+            .byKey(const Key('inspector_edit_title_input'))
+            .first;
+        await tester.enterText(titleInput, '   ');
+        await tester.pumpAndSettle();
+
+        // Tap Save
+        await tester.tap(find.byKey(const Key('inspector_save_button')).first);
+        await tester.pumpAndSettle();
+
+        // Dialog must NOT appear
+        expect(find.byKey(const Key('metadata_diff_dialog')), findsNothing);
+
+        // Validation error must appear
+        expect(
+          find.byKey(const Key('inspector_edit_title_error')),
+          findsOneWidget,
+        );
+        expect(find.text('Title cannot be empty'), findsOneWidget);
+      },
+    );
+
+    testWidgets(
+      'Normalizes empty or whitespace metadata strings to null in updated track',
+      (tester) async {
+        tester.view.physicalSize = const Size(1280, 800);
+        tester.view.devicePixelRatio = 1.0;
+        addTearDown(tester.view.resetPhysicalSize);
+
+        final service = MockMusicService();
+        final tracks = await service.getTracks();
+        final track = tracks.firstWhere((t) => t.id == 'trk-001');
+
+        Track? savedTrack;
+        await tester.pumpWidget(
+          _buildAudioInspectorTestWidget(
+            track: track,
+            musicService: service,
+            onTrackUpdated: (updated) {
+              savedTrack = updated;
+            },
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        // Enter edit mode
+        await tester.tap(find.widgetWithText(LyraButton, 'Edit'));
+        await tester.pumpAndSettle();
+
+        // Clear artist and album fields to empty / whitespace
+        await tester.enterText(
+          find.byKey(const Key('inspector_edit_artist_input')).first,
+          '   ',
+        );
+        await tester.enterText(
+          find.byKey(const Key('inspector_edit_album_input')).first,
+          '',
+        );
+        await tester.pumpAndSettle();
+
+        // Tap Save
+        await tester.tap(find.byKey(const Key('inspector_save_button')).first);
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 300));
+
+        // Confirm save
+        await tester.tap(find.widgetWithText(LyraButton, 'Confirm & Save'));
+        await tester.pumpAndSettle();
+
+        expect(savedTrack, isNotNull);
+        expect(savedTrack!.artistName, isNull);
+        expect(savedTrack!.albumTitle, isNull);
+      },
+    );
+
+    testWidgets(
+      'Displays error banner in edit form when save fails instead of silent failure',
+      (tester) async {
+        tester.view.physicalSize = const Size(1280, 800);
+        tester.view.devicePixelRatio = 1.0;
+        addTearDown(tester.view.resetPhysicalSize);
+
+        final service = _ControllableInspectorLoadingMusicService();
+        service.failUpdateTrack = true;
+        final tracks = await service.getTracks();
+        final track = tracks.firstWhere((t) => t.id == 'trk-001');
+
+        await tester.pumpWidget(
+          _buildAudioInspectorTestWidget(track: track, musicService: service),
+        );
+        await tester.pumpAndSettle();
+
+        // Enter edit mode
+        await tester.tap(find.widgetWithText(LyraButton, 'Edit'));
+        await tester.pumpAndSettle();
+
+        // Modify title
+        await tester.enterText(
+          find.byKey(const Key('inspector_edit_title_input')).first,
+          'Title To Cause Error',
+        );
+        await tester.pumpAndSettle();
+
+        // Tap Save
+        await tester.tap(find.byKey(const Key('inspector_save_button')).first);
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 300));
+
+        // Confirm in dialog
+        await tester.tap(find.widgetWithText(LyraButton, 'Confirm & Save'));
+        await tester.pumpAndSettle();
+
+        // Error banner must be visible
+        expect(
+          find.byKey(const Key('inspector_save_error_banner')),
+          findsOneWidget,
+        );
+        expect(find.textContaining('Database update failed'), findsOneWidget);
+      },
+    );
+
+    testWidgets(
+      'Save button displays LyraSpinner and Saving... for a perceptible feedback duration when saving with standard MockMusicService',
+      (tester) async {
+        tester.view.physicalSize = const Size(1280, 800);
+        tester.view.devicePixelRatio = 1.0;
+        addTearDown(tester.view.resetPhysicalSize);
+
+        final service = MockMusicService();
+        final tracks = await service.getTracks();
+        final track = tracks.firstWhere((t) => t.id == 'trk-001');
+
+        await tester.pumpWidget(
+          _buildAudioInspectorTestWidget(track: track, musicService: service),
+        );
+        await tester.pumpAndSettle();
+
+        // 1. Enter edit mode
+        await tester.tap(find.widgetWithText(LyraButton, 'Edit'));
+        await tester.pumpAndSettle();
+
+        // 2. Modify title to generate metadata diff
+        await tester.enterText(
+          find.byKey(const Key('inspector_edit_title_input')).first,
+          'Perceptible Duration Title',
+        );
+        await tester.pumpAndSettle();
+
+        // 3. Click Save button -> opens confirmation dialog
+        await tester.tap(find.byKey(const Key('inspector_save_button')).first);
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 300));
+
+        expect(find.byKey(const Key('metadata_diff_dialog')), findsOneWidget);
+
+        // 4. Confirm in dialog
+        final confirmBtnFinder = find.widgetWithText(
+          LyraButton,
+          'Confirm & Save',
+        );
+        await tester.tap(confirmBtnFinder);
+        // Pump 1 frame for dialog pop & initiating save
+        await tester.pump();
+
+        final saveSpinnerFinder = find.descendant(
+          of: find.byKey(const Key('inspector_save_button')),
+          matching: find.byType(LyraSpinner),
+        );
+
+        // Spinner and "Saving..." must be visible during the minimum perceptible duration
+        expect(saveSpinnerFinder, findsOneWidget);
+        expect(find.text('Saving...'), findsOneWidget);
+
+        // Advance 200ms (within the 350ms perceptible feedback period)
+        await tester.pump(const Duration(milliseconds: 200));
+
+        // Spinner and "Saving..." must still be visible and edit form still active
+        expect(saveSpinnerFinder, findsOneWidget);
+        expect(find.text('Saving...'), findsOneWidget);
+        expect(find.widgetWithText(LyraButton, 'Edit'), findsNothing);
+
+        // Advance another 200ms (400ms total, exceeding the 350ms duration) and settle
+        await tester.pump(const Duration(milliseconds: 200));
+        await tester.pumpAndSettle();
+
+        // After the perceptible period elapses, save finishes and edit mode exits
+        expect(find.byType(LyraSpinner), findsNothing);
+        expect(find.text('Saving...'), findsNothing);
+        expect(find.widgetWithText(LyraButton, 'Edit'), findsOneWidget);
+        expect(find.text('Perceptible Duration Title'), findsWidgets);
+      },
+    );
+
+    testWidgets(
+      'When saving Track A fails while in-flight and inspected track changes to Track B before failure completes, Track B does not display save error banner',
+      (tester) async {
+        tester.view.physicalSize = const Size(1280, 800);
+        tester.view.devicePixelRatio = 1.0;
+        addTearDown(tester.view.resetPhysicalSize);
+
+        final service = _ControllableInspectorLoadingMusicService();
+        service.updateTrackCompleter = Completer<Track>();
+        final tracks = await service.getTracks();
+        final trackA = tracks.firstWhere((t) => t.id == 'trk-001');
+        final trackB = tracks.firstWhere((t) => t.id == 'trk-002');
+
+        // 1. Render inspector with Track A
+        await tester.pumpWidget(
+          _buildAudioInspectorTestWidget(track: trackA, musicService: service),
+        );
+        await tester.pumpAndSettle();
+
+        // 2. Enter edit mode on Track A
+        await tester.tap(find.widgetWithText(LyraButton, 'Edit'));
+        await tester.pumpAndSettle();
+
+        // 3. Modify title on Track A
+        await tester.enterText(
+          find.byKey(const Key('inspector_edit_title_input')).first,
+          'Track A Pending Title',
+        );
+        await tester.pumpAndSettle();
+
+        // 4. Click Save button -> opens confirmation dialog
+        await tester.tap(find.byKey(const Key('inspector_save_button')).first);
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 300));
+
+        // 5. Confirm in dialog -> initiates updateTrack (waiting on updateTrackCompleter)
+        await tester.tap(find.widgetWithText(LyraButton, 'Confirm & Save'));
+        await tester.pump();
+
+        // Verify save is in flight for Track A
+        expect(find.text('Saving...'), findsOneWidget);
+
+        // 6. While save is in flight, the user switches inspection to Track B
+        await tester.pumpWidget(
+          _buildAudioInspectorTestWidget(track: trackB, musicService: service),
+        );
+        await tester.pumpAndSettle();
+
+        // Enter edit mode on Track B
+        await tester.tap(find.widgetWithText(LyraButton, 'Edit'));
+        await tester.pumpAndSettle();
+
+        // 7. Now Track A's async save operation completes with an error
+        service.updateTrackCompleter!.completeError(
+          Exception('Database write failed for Track A'),
+        );
+        await tester.pumpAndSettle();
+
+        // 8. Verify Track B does NOT display Track A's save error banner
+        expect(
+          find.byKey(const Key('inspector_save_error_banner')),
+          findsNothing,
+        );
+        expect(
+          find.textContaining('Database write failed for Track A'),
+          findsNothing,
+        );
+      },
+    );
+
+    testWidgets(
+      'When switching active audio on Track A is in-flight and inspected track changes to Track B before switch completes, Track B is not overwritten and onActiveAudioChanged is not invoked',
+      (tester) async {
+        tester.view.physicalSize = const Size(1280, 800);
+        tester.view.devicePixelRatio = 1.0;
+        addTearDown(tester.view.resetPhysicalSize);
+
+        final service = _ControllableInspectorLoadingMusicService();
+        service.switchAudioCompleter = Completer<void>();
+        final tracks = await service.getTracks();
+        final trackA = tracks.firstWhere((t) => t.id == 'trk-001');
+        final trackB = tracks.firstWhere((t) => t.id == 'trk-002');
+
+        final trackBVersion2 = Audio(
+          pcmHash:
+              'e3b0c44200000000000000000000000000000000000000000000000000009624',
+          parentHash: trackB.pcmHash,
+          qualityScore: 95,
+          bitDepth: 24,
+          sampleRate: 96000,
+          channels: 2,
+          durationMs: 562000.0,
+          integratedLoudness: -19.0,
+          truePeak: -1.0,
+          assets: [
+            Asset(
+              fileHash: 'track-b-v2-file',
+              mimeType: 'audio/flac',
+              assetType: 'audio',
+              fileSize: 190000000,
+              createdAt: DateTime(2026, 1, 16, 14, 20),
+              verified: true,
+            ),
+          ],
+        );
+
+        final masterB = Audio(
+          pcmHash: trackB.pcmHash,
+          parentHash: '',
+          qualityScore: 98,
+          bitDepth: 24,
+          sampleRate: 192000,
+          channels: 2,
+          durationMs: 562000.0,
+          integratedLoudness: -18.5,
+          truePeak: -1.2,
+          assets: [
+            Asset(
+              fileHash: trackB.pcmHash,
+              mimeType: 'audio/flac',
+              assetType: 'audio',
+              fileSize: 382910400,
+              createdAt: DateTime(2026, 1, 16, 14, 20),
+              verified: true,
+            ),
+          ],
+        );
+
+        service.customAudioVersions[trackB.pcmHash] = [masterB, trackBVersion2];
+        service.customAudioDetails[trackBVersion2.pcmHash] = trackBVersion2;
+        service.customAudioDetails[masterB.pcmHash] = masterB;
+
+        String? switchedHash;
+
+        // 1. Render inspector with Track A
+        await tester.pumpWidget(
+          _buildAudioInspectorTestWidget(
+            track: trackA,
+            musicService: service,
+            onActiveAudioChanged: (newHash) {
+              switchedHash = newHash;
+            },
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        // 2. In Track A, select non-active audio version (16-bit/44.1kHz CD WAV)
+        final cdVersion = find.text('WAV (Lossless) · 16-bit/44.1kHz');
+        expect(cdVersion, findsOneWidget);
+        await tester.tap(cdVersion);
+        await tester.pumpAndSettle();
+
+        // 3. Tap "Set as Active Audio" on Track A -> initiates switchTrackAudio
+        final setActiveBtn = find.widgetWithText(
+          LyraButton,
+          'Set as Active Audio',
+        );
+        expect(setActiveBtn, findsOneWidget);
+        await tester.tap(setActiveBtn);
+        await tester.pump();
+
+        // 4. While switch is in-flight on Track A, change inspected track to Track B
+        await tester.pumpWidget(
+          _buildAudioInspectorTestWidget(
+            track: trackB,
+            musicService: service,
+            onActiveAudioChanged: (newHash) {
+              switchedHash = newHash;
+            },
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        // 5. Complete Track A's audio switch operation
+        service.switchAudioCompleter!.complete();
+        await tester.pumpAndSettle();
+
+        // 6. Verify onActiveAudioChanged was NOT invoked for the wrong track
+        expect(switchedHash, isNull);
+
+        // 7. Verify Track B's specs were not overwritten with Track A's switched version (44.1 kHz / 16-bit)
+        expect(find.text('192 kHz'), findsWidgets);
+        expect(find.text('44.1 kHz'), findsNothing);
+
+        // 8. Assert Track B does NOT show 'Switching Audio...'
+        expect(find.text('Switching Audio...'), findsNothing);
+
+        // 9. Assert Track B's version cards have onTap != null (interactive and not locked)
+        final versionDetectors = tester.widgetList<GestureDetector>(
+          find.descendant(
+            of: find.byKey(const Key('audio_versions_section')),
+            matching: find.byType(GestureDetector),
+          ),
+        );
+        expect(versionDetectors.length, greaterThanOrEqualTo(2));
+        for (final detector in versionDetectors) {
+          expect(detector.onTap, isNotNull);
+        }
+
+        // 10. Clicking another version on Track B and activating switch works cleanly
+        service.switchAudioCompleter = null;
+        final trackBAltVersionFinder = find.text(
+          'FLAC (Lossless) · 24-bit/96kHz',
+        );
+        expect(trackBAltVersionFinder, findsOneWidget);
+        await tester.tap(trackBAltVersionFinder);
+        await tester.pumpAndSettle();
+
+        final trackBSetActiveBtn = find.widgetWithText(
+          LyraButton,
+          'Set as Active Audio',
+        );
+        expect(trackBSetActiveBtn, findsOneWidget);
+        await tester.tap(trackBSetActiveBtn);
+        await tester.pumpAndSettle();
+
+        expect(switchedHash, equals(trackBVersion2.pcmHash));
+        expect(service.switchAudioCallCount, equals(2));
+      },
+    );
+
+    testWidgets(
+      'When Track B initiates a save while Track A slower save finishes in the background, Track B _isSaving is not prematurely extinguished by Track A finally block',
+      (tester) async {
+        tester.view.physicalSize = const Size(1280, 800);
+        tester.view.devicePixelRatio = 1.0;
+        addTearDown(tester.view.resetPhysicalSize);
+
+        final service = _ControllableInspectorLoadingMusicService();
+        final tracks = await service.getTracks();
+        final trackA = tracks.firstWhere((t) => t.id == 'trk-001');
+        final trackB = tracks.firstWhere((t) => t.id == 'trk-002');
+
+        final trackACompleter = Completer<Track>();
+        final trackBCompleter = Completer<Track>();
+        service.updateTrackCompleters[trackA.id] = trackACompleter;
+        service.updateTrackCompleters[trackB.id] = trackBCompleter;
+
+        Track? updatedCallbackTrack;
+
+        // 1. Render inspector with Track A
+        await tester.pumpWidget(
+          _buildAudioInspectorTestWidget(
+            track: trackA,
+            musicService: service,
+            onTrackUpdated: (updated) {
+              updatedCallbackTrack = updated;
+            },
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        // 2. Enter edit mode on Track A, change title, and initiate save
+        await tester.tap(find.widgetWithText(LyraButton, 'Edit'));
+        await tester.pumpAndSettle();
+
+        await tester.enterText(
+          find.byKey(const Key('inspector_edit_title_input')).first,
+          'Track A Renamed',
+        );
+        await tester.pumpAndSettle();
+
+        await tester.tap(find.widgetWithText(LyraButton, 'Save'));
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 300));
+
+        await tester.tap(find.widgetWithText(LyraButton, 'Confirm & Save'));
+        await tester.pump(); // initiates Track A save in background
+
+        // 3. Switch to Track B while Track A save is in flight
+        await tester.pumpWidget(
+          _buildAudioInspectorTestWidget(
+            track: trackB,
+            musicService: service,
+            onTrackUpdated: (updated) {
+              updatedCallbackTrack = updated;
+            },
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        // 4. Enter edit mode on Track B, change title, and initiate save
+        await tester.tap(find.widgetWithText(LyraButton, 'Edit'));
+        await tester.pumpAndSettle();
+
+        await tester.enterText(
+          find.byKey(const Key('inspector_edit_title_input')).first,
+          'Track B Renamed',
+        );
+        await tester.pumpAndSettle();
+
+        await tester.tap(find.widgetWithText(LyraButton, 'Save'));
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 300));
+
+        await tester.tap(find.widgetWithText(LyraButton, 'Confirm & Save'));
+        await tester.pump(); // initiates Track B save in background
+
+        // Verify Track B is currently in saving state
+        expect(find.text('Saving...'), findsOneWidget);
+        expect(find.widgetWithText(LyraButton, 'Save'), findsNothing);
+
+        // 5. Complete Track A slower save in the background
+        trackACompleter.complete(trackA.copyWith(title: 'Track A Renamed'));
+        // Pump enough for Track A's Future.wait minFeedbackDuration (350ms) to elapse,
+        // but DO NOT complete trackBCompleter.
+        await tester.pump(const Duration(milliseconds: 400));
+
+        // 6. Assert Track B's _isSaving was NOT extinguished by Track A's finally block
+        expect(find.text('Saving...'), findsOneWidget);
+        expect(find.widgetWithText(LyraButton, 'Save'), findsNothing);
+
+        // 7. Complete Track B's save
+        trackBCompleter.complete(trackB.copyWith(title: 'Track B Renamed'));
+        await tester.pump(const Duration(milliseconds: 400));
+        await tester.pumpAndSettle();
+
+        // 8. Track B exits saving and edit mode cleanly
+        expect(find.text('Saving...'), findsNothing);
+        expect(find.widgetWithText(LyraButton, 'Edit'), findsOneWidget);
+        expect(updatedCallbackTrack?.title, equals('Track B Renamed'));
+      },
+    );
+
+    testWidgets(
+      'Save button immediately displays LyraSpinner and Saving... in confirmation state, reverts on cancel, and preserves spinner continuously through confirm save',
+      (tester) async {
+        tester.view.physicalSize = const Size(1280, 800);
+        tester.view.devicePixelRatio = 1.0;
+        addTearDown(tester.view.resetPhysicalSize);
+
+        final service = _ControllableInspectorLoadingMusicService();
+        service.updateTrackCompleter = Completer<Track>();
+        final tracks = await service.getTracks();
+        final track = tracks.first;
+
+        await tester.pumpWidget(
+          _buildAudioInspectorTestWidget(track: track, musicService: service),
+        );
+        await tester.pumpAndSettle();
+
+        // 1. Enter edit mode
+        await tester.tap(find.widgetWithText(LyraButton, 'Edit'));
+        await tester.pumpAndSettle();
+
+        final saveBtnFinder = find.byWidgetPredicate(
+          (w) => w is LyraButton && w.key == const Key('inspector_save_button'),
+        );
+        expect(saveBtnFinder, findsOneWidget);
+
+        // Initial state before tapping Save: leading is null, text is 'Save'
+        final initialSaveBtn = tester.widget<LyraButton>(saveBtnFinder);
+        expect(initialSaveBtn.leading, isNull);
+        expect(
+          find.descendant(of: saveBtnFinder, matching: find.text('Save')),
+          findsOneWidget,
+        );
+        expect(initialSaveBtn.onPressed, isNotNull);
+
+        // Edit title to generate diff
+        await tester.enterText(
+          find.byKey(const Key('inspector_edit_title_input')).first,
+          'Testing Spinner on Confirm',
+        );
+        await tester.pumpAndSettle();
+
+        // 2. Tap Save button -> confirmation state (_isConfirming = true)
+        await tester.tap(saveBtnFinder);
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 300));
+
+        // Diff dialog must be displayed
+        expect(find.byKey(const Key('metadata_diff_dialog')), findsOneWidget);
+
+        // Requirement: Save button on screen IMMEDIATELY displays [LyraSpinner(size: 14.0)] Saving... and onPressed is null
+        final confirmingSaveBtn = tester.widget<LyraButton>(saveBtnFinder);
+        expect(confirmingSaveBtn.onPressed, isNull);
+        expect(
+          find.descendant(
+            of: saveBtnFinder,
+            matching: find.byType(LyraSpinner),
+          ),
+          findsOneWidget,
+        );
+        expect(
+          find.descendant(of: saveBtnFinder, matching: find.text('Saving...')),
+          findsOneWidget,
+        );
+        expect(
+          find.descendant(of: saveBtnFinder, matching: find.text('Save')),
+          findsNothing,
+        );
+
+        // 3. Cancel the confirmation dialog
+        await tester.tap(
+          find.byKey(const Key('diff_dialog_cancel_button')).first,
+        );
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 300));
+        await tester.pumpAndSettle();
+
+        // Confirmation dialog dismissed
+        expect(find.byKey(const Key('metadata_diff_dialog')), findsNothing);
+
+        // Requirement: Reverts to [Save] with leading: null and enabled onPressed
+        final revertedSaveBtn = tester.widget<LyraButton>(saveBtnFinder);
+        expect(revertedSaveBtn.onPressed, isNotNull);
+        expect(revertedSaveBtn.leading, isNull);
+        expect(
+          find.descendant(
+            of: saveBtnFinder,
+            matching: find.byType(LyraSpinner),
+          ),
+          findsNothing,
+        );
+        expect(
+          find.descendant(of: saveBtnFinder, matching: find.text('Save')),
+          findsOneWidget,
+        );
+
+        // 4. Tap Save again to open confirmation dialog
+        await tester.tap(saveBtnFinder);
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 300));
+
+        expect(find.byKey(const Key('metadata_diff_dialog')), findsOneWidget);
+        expect(
+          find.descendant(
+            of: saveBtnFinder,
+            matching: find.byType(LyraSpinner),
+          ),
+          findsOneWidget,
+        );
+        expect(
+          find.descendant(of: saveBtnFinder, matching: find.text('Saving...')),
+          findsOneWidget,
+        );
+
+        // 5. Confirm dialog
+        final confirmBtnFinder = find
+            .byKey(const Key('diff_dialog_confirm_button'))
+            .first;
+        expect(confirmBtnFinder, findsOneWidget);
+        await tester.tap(confirmBtnFinder);
+
+        // Advance 1 frame for dialog pop & start save
+        await tester.pump();
+
+        // Requirement: _isConfirming resets, _isSaving = true is set, preserving [LyraSpinner] Saving... continuously
+        expect(
+          find.descendant(
+            of: saveBtnFinder,
+            matching: find.byType(LyraSpinner),
+          ),
+          findsOneWidget,
+        );
+        expect(
+          find.descendant(of: saveBtnFinder, matching: find.text('Saving...')),
+          findsOneWidget,
+        );
+
+        // Advance 200ms (within minFeedbackDuration of 350ms)
+        await tester.pump(const Duration(milliseconds: 200));
+        expect(
+          find.descendant(
+            of: saveBtnFinder,
+            matching: find.byType(LyraSpinner),
+          ),
+          findsOneWidget,
+        );
+        expect(
+          find.descendant(of: saveBtnFinder, matching: find.text('Saving...')),
+          findsOneWidget,
+        );
+
+        // 6. Complete save and let minFeedbackDuration pass
+        service.updateTrackCompleter!.complete(
+          track.copyWith(title: 'Testing Spinner on Confirm'),
+        );
+        await tester.pump(const Duration(milliseconds: 200));
+        await tester.pumpAndSettle();
+
+        // Save finishes and edit mode cleanly closes
+        expect(find.byType(LyraSpinner), findsNothing);
+        expect(find.text('Saving...'), findsNothing);
+        expect(find.widgetWithText(LyraButton, 'Edit'), findsOneWidget);
+      },
+    );
   });
+}
+
+class _ControllableInspectorLoadingMusicService extends MockMusicService {
+  Completer<Track>? updateTrackCompleter;
+  Completer<void>? switchAudioCompleter;
+  int switchAudioCallCount = 0;
+  bool failUpdateTrack = false;
+  final Map<String, Completer<Track>> updateTrackCompleters = {};
+  final Map<String, List<Audio>> customAudioVersions = {};
+  final Map<String, Audio> customAudioDetails = {};
+
+  @override
+  Future<Audio?> getAudioDetails(String pcmHash) async {
+    if (customAudioDetails.containsKey(pcmHash)) {
+      return customAudioDetails[pcmHash];
+    }
+    return super.getAudioDetails(pcmHash);
+  }
+
+  @override
+  Future<List<Audio>> getAudioVersions(String pcmHash) async {
+    if (customAudioVersions.containsKey(pcmHash)) {
+      return customAudioVersions[pcmHash]!;
+    }
+    return super.getAudioVersions(pcmHash);
+  }
+
+  @override
+  Future<Track> updateTrack(Track track) async {
+    if (failUpdateTrack) {
+      throw Exception('Database update failed');
+    }
+    if (updateTrackCompleters.containsKey(track.id)) {
+      return updateTrackCompleters[track.id]!.future;
+    }
+    if (updateTrackCompleter != null) {
+      return updateTrackCompleter!.future;
+    }
+    return super.updateTrack(track);
+  }
+
+  @override
+  Future<void> switchTrackAudio(String trackId, String newPcmHash) async {
+    switchAudioCallCount++;
+    if (switchAudioCompleter != null) {
+      await switchAudioCompleter!.future;
+    }
+    return super.switchTrackAudio(trackId, newPcmHash);
+  }
 }
 
 class _DelayedAudioVersionsMusicService extends MockMusicService {

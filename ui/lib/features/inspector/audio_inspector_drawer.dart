@@ -29,6 +29,7 @@ import '../../design_system/widgets/lyra_copy_button.dart';
 import '../../design_system/widgets/lyra_dialog.dart';
 import '../../design_system/widgets/lyra_input.dart';
 import '../../design_system/widgets/lyra_skeleton.dart';
+import '../../design_system/widgets/lyra_spinner.dart';
 import '../../design_system/widgets/lyra_tooltip.dart';
 import '../models/asset.dart';
 import '../models/audio.dart';
@@ -229,6 +230,8 @@ class _AudioInspectorContentState extends State<AudioInspectorContent> {
   // Metadata Edit Mode State
   bool _isEditing = false;
   bool _isSaving = false;
+  bool _isConfirming = false;
+  String? _saveErrorMessage;
 
   late final TextEditingController _titleController;
   late final TextEditingController _artistController;
@@ -355,6 +358,9 @@ class _AudioInspectorContentState extends State<AudioInspectorContent> {
         if (_albumFocusNode.hasFocus) _albumFocusNode.unfocus();
         _isEditing = false;
         _isSaving = false;
+        _isSwitchingActive = false;
+        _isConfirming = false;
+        _saveErrorMessage = null;
         _validationErrors.clear();
       }
       // State Caching / Continuity:
@@ -367,14 +373,16 @@ class _AudioInspectorContentState extends State<AudioInspectorContent> {
       _sourceData = widget.initialSourceData;
       _resolvedAsset = widget.asset;
       _resolvedImageAsset = null;
-      if (!_isEditing && !trackChanged) {
+      if (!_isEditing) {
         _syncControllersFromTrack(_track);
       }
       _fetchDetails();
       _loadWaveform();
-    } else if (trackDataChanged && !_isEditing) {
+    } else if (trackDataChanged) {
       _track = widget.track;
-      _syncControllersFromTrack(_track);
+      if (!_isEditing) {
+        _syncControllersFromTrack(_track);
+      }
     }
   }
 
@@ -486,17 +494,21 @@ class _AudioInspectorContentState extends State<AudioInspectorContent> {
     _fetchAutocompleteSuggestions();
     setState(() {
       _validationErrors.clear();
+      _saveErrorMessage = null;
       _isEditing = true;
     });
   }
 
   void _cancelEditing() {
+    FocusScope.of(context).unfocus();
     if (_artistFocusNode.hasFocus) _artistFocusNode.unfocus();
     if (_albumFocusNode.hasFocus) _albumFocusNode.unfocus();
     setState(() {
       _validationErrors.clear();
+      _saveErrorMessage = null;
       _isEditing = false;
       _isSaving = false;
+      _isConfirming = false;
     });
   }
 
@@ -510,6 +522,11 @@ class _AudioInspectorContentState extends State<AudioInspectorContent> {
 
   bool _validateFields() {
     final errors = <String, String>{};
+
+    final title = _titleController.text.trim();
+    if (title.isEmpty) {
+      errors['title'] = 'Title cannot be empty';
+    }
 
     final iswc = _iswcController.text.trim();
     if (iswc.isNotEmpty && !_iswcRegex.hasMatch(iswc)) {
@@ -594,6 +611,8 @@ class _AudioInspectorContentState extends State<AudioInspectorContent> {
   }
 
   Future<void> _saveEditing() async {
+    if (_isSaving || _isConfirming) return;
+
     final targetTrack = _track;
     if (targetTrack == null) return;
 
@@ -603,23 +622,63 @@ class _AudioInspectorContentState extends State<AudioInspectorContent> {
 
     final diffs = _computeFieldDiffs();
 
-    final confirmed = await showDialog<bool>(
-      context: context,
-      barrierDismissible: true,
-      barrierLabel: 'Dismiss',
-      builder: (dialogCtx) => LyraDesignSystemScope(
-        factory: LyraDesignSystemScope.of(context).factory,
-        tokens: LyraDesignSystemScope.of(context).tokens,
-        themeModeNotifier: LyraDesignSystemScope.of(context).themeModeNotifier,
-        child: _MetadataDiffDialog(
-          diffs: diffs,
-          onConfirm: () => Navigator.of(dialogCtx).pop(true),
-          onCancel: () => Navigator.of(dialogCtx).pop(false),
-        ),
-      ),
-    );
+    FocusScope.of(context).unfocus();
+    if (_artistFocusNode.hasFocus) _artistFocusNode.unfocus();
+    if (_albumFocusNode.hasFocus) _albumFocusNode.unfocus();
 
-    if (confirmed != true || !mounted || _track?.id != targetTrack.id) return;
+    setState(() {
+      _isConfirming = true;
+      _saveErrorMessage = null;
+    });
+
+    bool? confirmed;
+    try {
+      bool popped = false;
+      confirmed = await showDialog<bool>(
+        context: context,
+        barrierDismissible: true,
+        barrierLabel: 'Dismiss',
+        builder: (dialogCtx) => LyraDesignSystemScope(
+          factory: LyraDesignSystemScope.of(context).factory,
+          tokens: LyraDesignSystemScope.of(context).tokens,
+          themeModeNotifier: LyraDesignSystemScope.of(
+            context,
+          ).themeModeNotifier,
+          child: _MetadataDiffDialog(
+            diffs: diffs,
+            onConfirm: () {
+              if (popped) return;
+              popped = true;
+              Navigator.of(dialogCtx).pop(true);
+            },
+            onCancel: () {
+              if (popped) return;
+              popped = true;
+              Navigator.of(dialogCtx).pop(false);
+            },
+          ),
+        ),
+      );
+    } catch (_) {
+      confirmed = false;
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isConfirming = false;
+          if (confirmed == true && _track?.id == targetTrack.id) {
+            _isSaving = true;
+          }
+        });
+      }
+    }
+
+    if (confirmed != true || !mounted || _track?.id != targetTrack.id) {
+      return;
+    }
+
+    final liveTrack =
+        (widget.track?.id == targetTrack.id ? widget.track : _track) ??
+        targetTrack;
 
     final yearText = _yearController.text.trim();
     final trackNumberText = _trackNumberController.text.trim();
@@ -628,65 +687,88 @@ class _AudioInspectorContentState extends State<AudioInspectorContent> {
         ? int.tryParse(trackNumberText)
         : null;
 
+    String? normalize(String s) => s.trim().isEmpty ? null : s.trim();
+
     final updatedTrack = Track(
-      id: targetTrack.id,
-      pcmHash: targetTrack.pcmHash,
-      workId: targetTrack.workId,
-      workTitle: targetTrack.workTitle,
+      id: liveTrack.id,
+      pcmHash: liveTrack.pcmHash,
+      workId: liveTrack.workId,
+      workTitle: liveTrack.workTitle,
       title: _titleController.text.trim(),
       recordingYear: parsedYear,
-      recordingMonth: targetTrack.recordingMonth,
-      recordingDay: targetTrack.recordingDay,
-      recordingLocation: targetTrack.recordingLocation,
-      durationMs: targetTrack.durationMs,
-      isrc: _isrcController.text.trim().isNotEmpty
-          ? _isrcController.text.trim()
-          : null,
-      iswc: _iswcController.text.trim().isNotEmpty
-          ? _iswcController.text.trim()
-          : null,
-      musicbrainzId: targetTrack.musicbrainzId,
-      spotifyId: targetTrack.spotifyId,
-      ytmId: targetTrack.ytmId,
-      artistName: _artistController.text.trim(),
-      albumTitle: _albumController.text.trim(),
-      format: targetTrack.format,
-      sampleRate: targetTrack.sampleRate,
-      bitDepth: targetTrack.bitDepth,
-      verified: targetTrack.verified,
-      genre: _genreController.text.trim().isNotEmpty
-          ? _genreController.text.trim()
-          : null,
+      recordingMonth: liveTrack.recordingMonth,
+      recordingDay: liveTrack.recordingDay,
+      recordingLocation: liveTrack.recordingLocation,
+      durationMs: liveTrack.durationMs,
+      isrc: normalize(_isrcController.text),
+      iswc: normalize(_iswcController.text),
+      musicbrainzId: liveTrack.musicbrainzId,
+      spotifyId: liveTrack.spotifyId,
+      ytmId: liveTrack.ytmId,
+      artistName: normalize(_artistController.text),
+      albumTitle: normalize(_albumController.text),
+      format: liveTrack.format,
+      sampleRate: liveTrack.sampleRate,
+      bitDepth: liveTrack.bitDepth,
+      verified: liveTrack.verified,
+      genre: normalize(_genreController.text),
       trackNumber: parsedTrackNumber,
-      discNumber: targetTrack.discNumber,
+      discNumber: liveTrack.discNumber,
     );
 
     setState(() {
       _isSaving = true;
+      _saveErrorMessage = null;
     });
 
-    Track savedTrack = updatedTrack;
-    if (widget.musicService != null) {
-      try {
-        savedTrack = await widget.musicService!.updateTrack(updatedTrack);
-      } catch (_) {
-        savedTrack = updatedTrack;
-      }
-    }
-
-    if (!mounted || _track?.id != targetTrack.id) return;
-
-    widget.onTrackUpdated?.call(savedTrack);
-
+    FocusScope.of(context).unfocus();
     if (_artistFocusNode.hasFocus) _artistFocusNode.unfocus();
     if (_albumFocusNode.hasFocus) _albumFocusNode.unfocus();
 
-    setState(() {
-      _track = savedTrack;
-      _validationErrors.clear();
-      _isEditing = false;
-      _isSaving = false;
-    });
+    try {
+      Track savedTrack = updatedTrack;
+      const minFeedbackDuration = Duration(milliseconds: 350);
+      if (widget.musicService != null) {
+        final results = await Future.wait([
+          widget.musicService!.updateTrack(updatedTrack),
+          Future.delayed(minFeedbackDuration),
+        ]);
+        savedTrack = results.first as Track;
+      } else {
+        await Future.delayed(minFeedbackDuration);
+      }
+
+      if (!mounted || _track?.id != targetTrack.id) {
+        return;
+      }
+
+      widget.onTrackUpdated?.call(savedTrack);
+
+      FocusScope.of(context).unfocus();
+      if (_artistFocusNode.hasFocus) _artistFocusNode.unfocus();
+      if (_albumFocusNode.hasFocus) _albumFocusNode.unfocus();
+
+      setState(() {
+        _track = savedTrack;
+        _validationErrors.clear();
+        _saveErrorMessage = null;
+        _isEditing = false;
+      });
+    } catch (e) {
+      // If updating track or listener notification fails, do NOT pretend it succeeded.
+      // Do NOT set _isEditing = false so user does not lose unsaved input.
+      if (mounted && _track?.id == targetTrack.id) {
+        setState(() {
+          _saveErrorMessage = e.toString();
+        });
+      }
+    } finally {
+      if (mounted && _track?.id == targetTrack.id) {
+        setState(() {
+          _isSaving = false;
+        });
+      }
+    }
   }
 
   String get _currentActivePcmHash =>
@@ -985,6 +1067,7 @@ class _AudioInspectorContentState extends State<AudioInspectorContent> {
   }
 
   Future<void> _handleSetActiveAudio() async {
+    if (_isSwitchingActive) return;
     if (_track == null || _selectedAudio == null) return;
     final trackId = _track!.id;
     final newPcmHash = _selectedAudio!.pcmHash;
@@ -995,9 +1078,8 @@ class _AudioInspectorContentState extends State<AudioInspectorContent> {
 
     try {
       await widget.musicService?.switchTrackAudio(trackId, newPcmHash);
+      if (!mounted || _track?.id != trackId) return;
       widget.onActiveAudioChanged?.call(newPcmHash);
-
-      if (!mounted) return;
 
       setState(() {
         _track = _track!.copyWith(
@@ -1005,13 +1087,14 @@ class _AudioInspectorContentState extends State<AudioInspectorContent> {
           bitDepth: _selectedAudio!.bitDepth,
           sampleRate: _selectedAudio!.sampleRate,
         );
-        _isSwitchingActive = false;
       });
     } catch (_) {
-      if (!mounted) return;
-      setState(() {
-        _isSwitchingActive = false;
-      });
+    } finally {
+      if (mounted && _track?.id == trackId) {
+        setState(() {
+          _isSwitchingActive = false;
+        });
+      }
     }
   }
 
@@ -1187,12 +1270,71 @@ class _AudioInspectorContentState extends State<AudioInspectorContent> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Entity Overview (Track / Asset Summary) or Edit Form
-          if (_isEditing && _track != null) ...[
-            _buildEditMetadataForm(tokens),
-            _buildSectionDivider(tokens),
-          ] else if (hasEntitySummary) ...[
-            _buildEntitySummarySection(tokens),
+          // Entity Overview (Track / Asset Summary) or Edit Form with smooth geometric & opacity transition
+          if ((_isEditing && _track != null) || hasEntitySummary) ...[
+            SizedBox(
+              width: double.infinity,
+              child: AnimatedSize(
+                key: const Key('inspector_edit_mode_animated_size'),
+                duration: LyraAnimation.normal,
+                curve: Curves.easeInOutCubic,
+                alignment: Alignment.topCenter,
+                clipBehavior: Clip.hardEdge,
+                child: AnimatedSwitcher(
+                  key: const Key('inspector_edit_mode_animated_switcher'),
+                  duration: LyraAnimation.normal,
+                  switchInCurve: Curves.easeInOutCubic,
+                  switchOutCurve: Curves.easeInOutCubic,
+                  layoutBuilder:
+                      (Widget? currentChild, List<Widget> previousChildren) {
+                        return Stack(
+                          alignment: Alignment.topCenter,
+                          clipBehavior: Clip.none,
+                          children: <Widget>[
+                            ...previousChildren.map(
+                              (w) => Positioned(
+                                top: 0,
+                                left: 0,
+                                right: 0,
+                                child: IgnorePointer(child: w),
+                              ),
+                            ),
+                            currentChild ?? const SizedBox.shrink(),
+                          ],
+                        );
+                      },
+                  transitionBuilder:
+                      (Widget child, Animation<double> animation) {
+                        return FadeTransition(
+                          opacity: animation,
+                          child: SlideTransition(
+                            position: Tween<Offset>(
+                              begin: const Offset(0.0, 0.02),
+                              end: Offset.zero,
+                            ).animate(animation),
+                            child: child,
+                          ),
+                        );
+                      },
+                  child: (_isEditing && _track != null)
+                      ? KeyedSubtree(
+                          key: const ValueKey<String>(
+                            'inspector_edit_metadata_form',
+                          ),
+                          child: FocusScope(
+                            canRequestFocus: !_isSaving,
+                            child: _buildEditMetadataForm(tokens),
+                          ),
+                        )
+                      : KeyedSubtree(
+                          key: const ValueKey<String>(
+                            'inspector_entity_summary_section',
+                          ),
+                          child: _buildEntitySummarySection(tokens),
+                        ),
+                ),
+              ),
+            ),
             _buildSectionDivider(tokens),
           ],
 
@@ -1288,6 +1430,44 @@ class _AudioInspectorContentState extends State<AudioInspectorContent> {
           title: 'Edit Metadata',
           tokens: tokens,
         ),
+        if (_saveErrorMessage != null) ...[
+          const SizedBox(height: LyraSpacing.xs),
+          Container(
+            key: const Key('inspector_save_error_banner'),
+            padding: const EdgeInsets.symmetric(
+              horizontal: LyraSpacing.sm,
+              vertical: LyraSpacing.xs + 2.0,
+            ),
+            decoration: BoxDecoration(
+              color: tokens.destructive.withValues(alpha: 0.1),
+              borderRadius: LyraRadius.smRadius,
+              border: Border.all(
+                color: tokens.destructive.withValues(alpha: 0.3),
+                width: 1.0,
+              ),
+            ),
+            child: Row(
+              children: [
+                Icon(
+                  LucideIcons.alertCircle,
+                  size: 15.0,
+                  color: tokens.destructive,
+                ),
+                const SizedBox(width: LyraSpacing.xs),
+                Expanded(
+                  child: Text(
+                    _saveErrorMessage!,
+                    style: LyraTypography.small(tokens).copyWith(
+                      color: tokens.destructive,
+                      fontWeight: FontWeight.w500,
+                      fontSize: 11.0,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
         const SizedBox(height: LyraSpacing.xs),
         Text(
           'TITLE',
@@ -1298,11 +1478,32 @@ class _AudioInspectorContentState extends State<AudioInspectorContent> {
           ),
         ),
         const SizedBox(height: 4.0),
-        LyraInput(
-          key: const Key('inspector_edit_title_input'),
-          controller: _titleController,
-          placeholder: 'Track Title',
+        Container(
+          decoration: _validationErrors.containsKey('title')
+              ? BoxDecoration(
+                  borderRadius: LyraRadius.smRadius,
+                  border: Border.all(color: tokens.destructive, width: 1.5),
+                )
+              : null,
+          child: LyraInput(
+            key: const Key('inspector_edit_title_input'),
+            controller: _titleController,
+            placeholder: 'Track Title',
+            onChanged: (_) => _clearFieldError('title'),
+          ),
         ),
+        if (_validationErrors.containsKey('title')) ...[
+          const SizedBox(height: 4.0),
+          Text(
+            _validationErrors['title']!,
+            key: const Key('inspector_edit_title_error'),
+            style: LyraTypography.small(tokens).copyWith(
+              color: tokens.destructive,
+              fontSize: 11.0,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+        ],
         const SizedBox(height: LyraSpacing.sm),
         Text(
           'ARTIST',
@@ -1557,7 +1758,7 @@ class _AudioInspectorContentState extends State<AudioInspectorContent> {
               child: LyraButton.outline(
                 key: const Key('inspector_cancel_button'),
                 size: LyraButtonSize.sm,
-                onPressed: _isSaving ? null : _cancelEditing,
+                onPressed: (_isSaving || _isConfirming) ? null : _cancelEditing,
                 child: const Text('Cancel'),
               ),
             ),
@@ -1566,17 +1767,13 @@ class _AudioInspectorContentState extends State<AudioInspectorContent> {
               child: LyraButton.primary(
                 key: const Key('inspector_save_button'),
                 size: LyraButtonSize.sm,
-                onPressed: _isSaving ? null : _saveEditing,
-                leading: _isSaving
-                    ? const SizedBox(
-                        width: 14.0,
-                        height: 14.0,
-                        child: Center(
-                          child: Icon(LucideIcons.loader2, size: 14.0),
-                        ),
-                      )
-                    : const Icon(LucideIcons.check, size: 14.0),
-                child: Text(_isSaving ? 'Saving...' : 'Save'),
+                onPressed: (_isSaving || _isConfirming) ? null : _saveEditing,
+                leading: (_isSaving || _isConfirming)
+                    ? LyraSpinner(size: 14.0)
+                    : null,
+                child: Text(
+                  (_isSaving || _isConfirming) ? 'Saving...' : 'Save',
+                ),
               ),
             ),
           ],
@@ -1822,10 +2019,12 @@ class _AudioInspectorContentState extends State<AudioInspectorContent> {
           return Padding(
             padding: const EdgeInsets.only(bottom: LyraSpacing.xs),
             child: MouseRegion(
-              cursor: SystemMouseCursors.click,
+              cursor: _isSwitchingActive
+                  ? SystemMouseCursors.basic
+                  : SystemMouseCursors.click,
               child: GestureDetector(
                 behavior: HitTestBehavior.opaque,
-                onTap: () => _selectVersion(v),
+                onTap: _isSwitchingActive ? null : () => _selectVersion(v),
                 child: Container(
                   padding: const EdgeInsets.symmetric(
                     horizontal: LyraSpacing.sm,
@@ -1947,9 +2146,7 @@ class _AudioInspectorContentState extends State<AudioInspectorContent> {
             child: LyraButton(
               size: LyraButtonSize.sm,
               onPressed: _isSwitchingActive ? null : _handleSetActiveAudio,
-              leading: _isSwitchingActive
-                  ? const Icon(LucideIcons.loader2, size: 14.0)
-                  : const Icon(LucideIcons.check, size: 14.0),
+              leading: _isSwitchingActive ? LyraSpinner(size: 14.0) : null,
               child: Text(
                 _isSwitchingActive
                     ? 'Switching Audio...'
@@ -1991,11 +2188,7 @@ class _AudioInspectorContentState extends State<AudioInspectorContent> {
           icon: LucideIcons.activity,
           title: 'Audio Specifications',
           trailing: _isLoading
-              ? const SizedBox(
-                  width: 14.0,
-                  height: 14.0,
-                  child: Center(child: Icon(LucideIcons.loader2, size: 14.0)),
-                )
+              ? LyraSpinner(size: 14.0, color: tokens.textMuted)
               : null,
           tokens: tokens,
         ),
@@ -2502,7 +2695,7 @@ class _FieldDiff {
   }
 }
 
-class _MetadataDiffDialog extends StatelessWidget {
+class _MetadataDiffDialog extends StatefulWidget {
   final List<_FieldDiff> diffs;
   final VoidCallback onConfirm;
   final VoidCallback onCancel;
@@ -2514,6 +2707,29 @@ class _MetadataDiffDialog extends StatelessWidget {
   });
 
   @override
+  State<_MetadataDiffDialog> createState() => _MetadataDiffDialogState();
+}
+
+class _MetadataDiffDialogState extends State<_MetadataDiffDialog> {
+  bool _popped = false;
+
+  void _handleConfirm() {
+    if (_popped) return;
+    setState(() {
+      _popped = true;
+    });
+    widget.onConfirm();
+  }
+
+  void _handleCancel() {
+    if (_popped) return;
+    setState(() {
+      _popped = true;
+    });
+    widget.onCancel();
+  }
+
+  @override
   Widget build(BuildContext context) {
     final tokens = LyraDesignSystemScope.of(context).tokens;
 
@@ -2522,7 +2738,7 @@ class _MetadataDiffDialog extends StatelessWidget {
       child: ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: 540.0),
         child: LyraDialog(
-          onClose: onCancel,
+          onClose: _handleCancel,
           title: Row(
             children: [
               Container(
@@ -2545,23 +2761,23 @@ class _MetadataDiffDialog extends StatelessWidget {
             ],
           ),
           description: Text(
-            diffs.isEmpty
+            widget.diffs.isEmpty
                 ? 'No fields have been modified.'
-                : 'Review the ${diffs.length} modified ${diffs.length == 1 ? "field" : "fields"} before applying changes to the database.',
+                : 'Review the ${widget.diffs.length} modified ${widget.diffs.length == 1 ? "field" : "fields"} before applying changes to the database.',
             style: LyraTypography.muted(tokens),
           ),
           actions: [
             LyraButton.outline(
               key: const Key('diff_dialog_cancel_button'),
               size: LyraButtonSize.sm,
-              onPressed: onCancel,
+              onPressed: _popped ? null : _handleCancel,
               child: const Text('Cancel'),
             ),
             LyraButton.primary(
               key: const Key('diff_dialog_confirm_button'),
               size: LyraButtonSize.sm,
-              onPressed: onConfirm,
-              leading: const Icon(LucideIcons.check, size: 14.0),
+              onPressed: _popped ? null : _handleConfirm,
+              leading: _popped ? LyraSpinner(size: 14.0) : null,
               child: const Text('Confirm & Save'),
             ),
           ],
@@ -2569,7 +2785,7 @@ class _MetadataDiffDialog extends StatelessWidget {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              if (diffs.isEmpty)
+              if (widget.diffs.isEmpty)
                 Padding(
                   padding: const EdgeInsets.symmetric(vertical: LyraSpacing.lg),
                   child: Center(
@@ -2621,7 +2837,7 @@ class _MetadataDiffDialog extends StatelessWidget {
                   child: SingleChildScrollView(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: diffs.map((diff) {
+                      children: widget.diffs.map((diff) {
                         return Padding(
                           padding: const EdgeInsets.only(
                             bottom: LyraSpacing.sm,
