@@ -10,6 +10,7 @@ import 'package:ui/design_system/factory/lyra_design_system_scope.dart';
 import 'package:ui/design_system/factory/shadcn_factory.dart';
 import 'package:ui/design_system/tokens/lyra_tokens.dart';
 import 'package:ui/design_system/widgets/lyra_button.dart';
+import 'package:ui/design_system/widgets/lyra_dialog.dart';
 import 'package:ui/design_system/widgets/lyra_input.dart';
 import 'package:ui/features/albums/albums_view.dart';
 import 'package:ui/features/artists/artists_view.dart';
@@ -32,6 +33,18 @@ import 'package:ui/features/shell/sidebar.dart';
 import 'package:ui/features/tags/tags_view.dart';
 import 'package:ui/features/tracks/tracks_view.dart';
 import 'package:ui/features/works/works_view.dart';
+import 'package:ui/main.dart';
+
+class _TrackingPlaylistMusicService extends MockMusicService {
+  final List<String> addedTrackIds = [];
+
+  @override
+  Future<void> addTrackToPlaylist(String playlistId, String trackId) async {
+    addedTrackIds.add(trackId);
+    await Future<void>.delayed(const Duration(milliseconds: 50));
+    await super.addTrackToPlaylist(playlistId, trackId);
+  }
+}
 
 Widget _buildAppShellTest({
   MockMusicService? service,
@@ -1624,10 +1637,24 @@ void main() {
       await gesture.up();
       await tester.pumpAndSettle();
 
+      expect(
+        find.descendant(
+          of: worksHeader,
+          matching: find.text('Composition Year / Date'),
+        ),
+        findsOneWidget,
+      );
+
       await tester.tap(find.byKey(const Key('work_col_menu_date')));
       await tester.pumpAndSettle();
 
-      expect(find.text('COMPOSITION YEAR / DATE'), findsNothing);
+      expect(
+        find.descendant(
+          of: worksHeader,
+          matching: find.text('Composition Year / Date'),
+        ),
+        findsNothing,
+      );
 
       // Switch back to Tracks tab
       await tester.tap(find.text('Tracks'));
@@ -1646,8 +1673,15 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.byType(WorksView), findsOneWidget);
 
-      // Verify COMPOSITION YEAR / DATE is still hidden (session persistence)
-      expect(find.text('COMPOSITION YEAR / DATE'), findsNothing);
+      final worksHeaderAgain = find.byKey(const Key('works_table_header'));
+      // Verify Composition Year / Date is still hidden (session persistence)
+      expect(
+        find.descendant(
+          of: worksHeaderAgain,
+          matching: find.text('Composition Year / Date'),
+        ),
+        findsNothing,
+      );
     },
   );
 
@@ -1709,14 +1743,27 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.byType(WorksView), findsOneWidget);
 
-    // In WorksView, verify # is to the left of MUSICBRAINZ ID
+    // In WorksView, verify # is to the left of MusicBrainz ID
     final worksHeader = find.byKey(const Key('works_table_header'));
     expect(
-      tester.getTopLeft(find.text('#')).dx,
-      lessThan(tester.getTopLeft(find.text('MUSICBRAINZ ID')).dx),
+      tester
+          .getTopLeft(
+            find.descendant(of: worksHeader, matching: find.text('#')),
+          )
+          .dx,
+      lessThan(
+        tester
+            .getTopLeft(
+              find.descendant(
+                of: worksHeader,
+                matching: find.text('MusicBrainz ID'),
+              ),
+            )
+            .dx,
+      ),
     );
 
-    // Right-click Works header to reorder MUSICBRAINZ ID to the front
+    // Right-click Works header to reorder MusicBrainz ID to the front
     await gesture.down(tester.getCenter(worksHeader));
     await gesture.up();
     await tester.pumpAndSettle();
@@ -1733,8 +1780,21 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(
-      tester.getTopLeft(find.text('MUSICBRAINZ ID')).dx,
-      lessThan(tester.getTopLeft(find.text('#')).dx),
+      tester
+          .getTopLeft(
+            find.descendant(
+              of: worksHeader,
+              matching: find.text('MusicBrainz ID'),
+            ),
+          )
+          .dx,
+      lessThan(
+        tester
+            .getTopLeft(
+              find.descendant(of: worksHeader, matching: find.text('#')),
+            )
+            .dx,
+      ),
     );
 
     // 3. Switch back to Tracks tab
@@ -1770,10 +1830,27 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.byType(WorksView), findsOneWidget);
 
-    // Verify MUSICBRAINZ ID is STILL to the left of # (column order preserved across tabs)
+    final worksHeaderRevisited = find.byKey(const Key('works_table_header'));
+    // Verify MusicBrainz ID is STILL to the left of # (column order preserved across tabs)
     expect(
-      tester.getTopLeft(find.text('MUSICBRAINZ ID')).dx,
-      lessThan(tester.getTopLeft(find.text('#')).dx),
+      tester
+          .getTopLeft(
+            find.descendant(
+              of: worksHeaderRevisited,
+              matching: find.text('MusicBrainz ID'),
+            ),
+          )
+          .dx,
+      lessThan(
+        tester
+            .getTopLeft(
+              find.descendant(
+                of: worksHeaderRevisited,
+                matching: find.text('#'),
+              ),
+            )
+            .dx,
+      ),
     );
   });
 
@@ -3273,6 +3350,156 @@ void main() {
           find.byType(AudioInspectorDrawer, skipOffstage: false),
           findsOneWidget,
         );
+      },
+    );
+
+    testWidgets(
+      '[CRITICAL-1] Batch playlist deletion persists to musicService and does not resurrect on catalog reload',
+      (tester) async {
+        tester.view.physicalSize = const Size(1280, 800);
+        tester.view.devicePixelRatio = 1.0;
+        addTearDown(tester.view.resetPhysicalSize);
+
+        final service = MockMusicService();
+        await tester.pumpWidget(_buildAppShellTest(service: service));
+        await tester.pumpAndSettle();
+
+        // Switch to Playlists tab
+        await tester.tap(find.text('Playlists'));
+        await tester.pumpAndSettle();
+        expect(find.byType(PlaylistsView), findsOneWidget);
+
+        // Select all playlists via Ctrl+A
+        await tester.sendKeyDownEvent(LogicalKeyboardKey.controlLeft);
+        await tester.sendKeyEvent(LogicalKeyboardKey.keyA);
+        await tester.sendKeyUpEvent(LogicalKeyboardKey.controlLeft);
+        await tester.pumpAndSettle();
+
+        expect(find.byKey(const Key('batch_delete_button')), findsOneWidget);
+        await tester.tap(find.byKey(const Key('batch_delete_button')));
+        await tester.pumpAndSettle();
+
+        // Verify musicService no longer contains the deleted playlists
+        final remaining = await service.getPlaylists();
+        expect(remaining, isEmpty);
+
+        // Trigger a catalog reload via search input and verify they do not resurrect
+        final searchInput = find.byType(EditableText).first;
+        await tester.enterText(searchInput, 'Jazz');
+        await tester.pumpAndSettle();
+        await tester.enterText(searchInput, '');
+        await tester.pumpAndSettle();
+
+        expect(find.text('No playlists created yet'), findsOneWidget);
+      },
+    );
+
+    testWidgets(
+      '[CRITICAL-2] _AddToPlaylistDialog awaits service persistence and filters out tracks already in playlist',
+      (tester) async {
+        tester.view.physicalSize = const Size(1280, 800);
+        tester.view.devicePixelRatio = 1.0;
+        addTearDown(tester.view.resetPhysicalSize);
+
+        final service = _TrackingPlaylistMusicService();
+        await tester.pumpWidget(_buildAppShellTest(service: service));
+        await tester.pumpAndSettle();
+
+        // Select all tracks in TracksView (includes trk-001 which is already in pl-001, and trk-004 which is not)
+        await tester.sendKeyDownEvent(LogicalKeyboardKey.controlLeft);
+        await tester.sendKeyEvent(LogicalKeyboardKey.keyA);
+        await tester.sendKeyUpEvent(LogicalKeyboardKey.controlLeft);
+        await tester.pumpAndSettle();
+
+        await tester.tap(find.byKey(const Key('batch_add_to_playlist_button')));
+        await tester.pumpAndSettle();
+
+        // Tap 'Audiophile Reference Master' (pl-001, which already has trk-001, trk-002, trk-003, trk-006)
+        await tester.tap(
+          find.descendant(
+            of: find.byType(LyraDialog),
+            matching: find.text('Audiophile Reference Master'),
+          ),
+        );
+        await tester.pump(const Duration(milliseconds: 300));
+        await tester.pumpAndSettle();
+
+        // Must NOT have called addTrackToPlaylist for tracks already present in pl-001
+        expect(service.addedTrackIds, isNot(contains('trk-001')));
+        expect(service.addedTrackIds, isNot(contains('trk-002')));
+        expect(service.addedTrackIds, contains('trk-004'));
+
+        // And the AppShell state must have all 8 tracks in pl-001 after awaited persistence
+        await tester.tap(find.text('Audiophile Reference Master').first);
+        await tester.pumpAndSettle();
+        expect(find.byType(PlaylistDetailView), findsOneWidget);
+        final detailView = tester.widget<PlaylistDetailView>(
+          find.byType(PlaylistDetailView),
+        );
+        expect(detailView.tracks.length, equals(8));
+      },
+    );
+
+    testWidgets(
+      '[CRITICAL-3] Searching does not corrupt tag track counts in TagsView',
+      (tester) async {
+        tester.view.physicalSize = const Size(1280, 800);
+        tester.view.devicePixelRatio = 1.0;
+        addTearDown(tester.view.resetPhysicalSize);
+
+        await tester.pumpWidget(_buildAppShellTest());
+        await tester.pumpAndSettle();
+
+        // Enter a search query that matches 0 tracks
+        final searchInput = find.byType(EditableText).first;
+        await tester.enterText(searchInput, 'NonExistentSearchQueryXYZ');
+        await tester.pumpAndSettle();
+
+        // Navigate to TagsView
+        await tester.tap(find.text('Tags').first);
+        await tester.pumpAndSettle();
+        expect(find.byType(TagsView), findsOneWidget);
+
+        final tagsView = tester.widget<TagsView>(find.byType(TagsView));
+        // 'Audiophile' (tag-001) matches all 8 verified tracks in full catalog, must NOT be 0!
+        expect(tagsView.tagTrackCounts['tag-001'], equals(8));
+      },
+    );
+
+    testWidgets(
+      '[HIGH-1] LyraApp resolves ThemeMode.system against platformBrightness and syncs toggleTheme with PreferencesService',
+      (tester) async {
+        tester.view.physicalSize = const Size(1280, 800);
+        tester.view.devicePixelRatio = 1.0;
+        tester.platformDispatcher.platformBrightnessTestValue = Brightness.dark;
+        addTearDown(() {
+          tester.view.resetPhysicalSize();
+          tester.platformDispatcher.clearPlatformBrightnessTestValue();
+        });
+
+        final prefs = InMemoryPreferencesService(themeMode: ThemeMode.system);
+        await tester.pumpWidget(LyraApp(preferencesService: prefs));
+        await tester.pumpAndSettle();
+
+        final shellContext = tester.element(find.byType(AppShell));
+        expect(
+          LyraDesignSystemScope.of(shellContext).tokens.isDark,
+          isTrue,
+          reason:
+              'When ThemeMode.system and platformBrightness is dark, tokens must resolve to dark',
+        );
+
+        // Toggle theme via LyraHeaderBar sun button -> should switch to light and update prefs
+        final sunBtn = find.descendant(
+          of: find.byType(LyraHeaderBar),
+          matching: find.byIcon(LucideIcons.sun),
+        );
+        expect(sunBtn, findsOneWidget);
+        await tester.tap(sunBtn);
+        await tester.pumpAndSettle();
+
+        expect(prefs.themeMode, equals(ThemeMode.light));
+        expect(LyraDesignSystemScope.of(shellContext).tokens.isDark, isFalse);
       },
     );
   });

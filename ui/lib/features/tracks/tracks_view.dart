@@ -1707,12 +1707,10 @@ class _TrackRowState extends State<_TrackRow> {
     Color? rowBackgroundColor;
     if (isSelected) {
       rowBackgroundColor = tokens.isDark
-          ? (_isHovered ? const Color(0xFF52525B) : const Color(0xFF3F3F46))
-          : (_isHovered ? const Color(0xFFE4E4E7) : const Color(0xFFF4F4F5));
+          ? (_isHovered ? LyraColors.zinc600 : tokens.surfaceElevated)
+          : (_isHovered ? LyraColors.zinc200 : tokens.surfaceElevated);
     } else if (widget.isCurrent) {
-      rowBackgroundColor = tokens.isDark
-          ? const Color(0xFF27272A)
-          : const Color(0xFFE4E4E7);
+      rowBackgroundColor = tokens.surfaceSecondary;
     } else if (isHoverOrMenu) {
       rowBackgroundColor = tokens.secondary.withValues(alpha: 0.5);
     }

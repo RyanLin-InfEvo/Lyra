@@ -243,12 +243,6 @@ class _LyricsTabState extends State<LyricsTab> {
               ).copyWith(fontWeight: FontWeight.w600, color: tokens.text),
               textAlign: TextAlign.center,
             ),
-            const SizedBox(height: LyraSpacing.xs),
-            Text(
-              '暫無歌詞',
-              style: LyraTypography.muted(tokens),
-              textAlign: TextAlign.center,
-            ),
             if (widget.onReloadLyrics != null) ...[
               const SizedBox(height: LyraSpacing.lg),
               LyraButton.outline(

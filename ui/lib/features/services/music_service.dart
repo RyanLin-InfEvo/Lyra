@@ -46,6 +46,9 @@ abstract class MusicService {
     List<String> trackIds = const [],
   });
 
+  /// Delete a playlist by ID.
+  Future<void> deletePlaylist(String playlistId);
+
   /// Fetch low-level CAS storage objects.
   Future<List<CasObject>> getCasObjects();
 

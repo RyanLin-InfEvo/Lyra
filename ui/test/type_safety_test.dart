@@ -104,6 +104,9 @@ class EmptyMusicService implements MusicService {
   }
 
   @override
+  Future<void> deletePlaylist(String playlistId) async {}
+
+  @override
   Future<List<CasObject>> getCasObjects() async => [];
 
   @override

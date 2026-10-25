@@ -222,7 +222,10 @@ class _LyraAppState extends State<LyraApp> {
   }
 
   void _onThemeModeChanged() {
-    widget.preferencesService?.setThemeMode(_themeModeNotifier.value);
+    if (widget.preferencesService != null &&
+        widget.preferencesService!.themeMode != _themeModeNotifier.value) {
+      widget.preferencesService!.setThemeMode(_themeModeNotifier.value);
+    }
   }
 
   @override
@@ -255,7 +258,13 @@ class _LyraAppState extends State<LyraApp> {
       home: ValueListenableBuilder<ThemeMode>(
         valueListenable: _themeModeNotifier,
         builder: (context, themeMode, _) {
-          final isDark = themeMode == ThemeMode.dark;
+          final platformBrightness =
+              MediaQuery.maybePlatformBrightnessOf(context) ??
+              WidgetsBinding.instance.platformDispatcher.platformBrightness;
+          final isDark =
+              themeMode == ThemeMode.dark ||
+              (themeMode == ThemeMode.system &&
+                  platformBrightness == Brightness.dark);
           final accentColor = widget.preferencesService?.accentColor ?? 'zinc';
           final tokens = deriveLyraThemeTokens(accentColor, isDark);
           final colorScheme = deriveShadColorScheme(

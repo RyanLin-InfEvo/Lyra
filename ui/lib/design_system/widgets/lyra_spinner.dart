@@ -17,7 +17,11 @@ class LyraSpinner extends StatefulWidget {
     this.color,
     this.duration = const Duration(milliseconds: 1000),
     this.semanticsLabel = 'Loading',
-  }) : assert(duration > Duration.zero, 'duration must be greater than zero');
+  }) : assert(
+         identical(duration, const Duration(milliseconds: 1000)) ||
+             duration > Duration.zero,
+         'duration must be greater than zero',
+       );
 
   @override
   State<LyraSpinner> createState() => _LyraSpinnerState();
@@ -30,8 +34,13 @@ class _LyraSpinnerState extends State<LyraSpinner>
   @override
   void initState() {
     super.initState();
-    _controller = AnimationController(vsync: this, duration: widget.duration)
-      ..repeat();
+    _controller = AnimationController(vsync: this, duration: widget.duration);
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _updateAnimationState();
   }
 
   @override
@@ -39,7 +48,24 @@ class _LyraSpinnerState extends State<LyraSpinner>
     super.didUpdateWidget(oldWidget);
     if (widget.duration != oldWidget.duration) {
       _controller.duration = widget.duration;
+      final disableAnimations =
+          MediaQuery.maybeDisableAnimationsOf(context) ?? false;
+      if (!disableAnimations && _controller.isAnimating) {
+        _controller.repeat();
+      }
+    }
+  }
+
+  void _updateAnimationState() {
+    final disableAnimations =
+        MediaQuery.maybeDisableAnimationsOf(context) ?? false;
+    if (disableAnimations) {
       if (_controller.isAnimating) {
+        _controller.stop();
+      }
+      _controller.value = 0.0;
+    } else {
+      if (!_controller.isAnimating) {
         _controller.repeat();
       }
     }

@@ -123,6 +123,10 @@ class _CasStorageTabState extends State<CasStorageTab> {
           : 0;
     }
 
+    final textScale = MediaQuery.textScalerOf(
+      context,
+    ).scale(1.0).clamp(1.0, 1.5);
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -387,7 +391,7 @@ class _CasStorageTabState extends State<CasStorageTab> {
                   controller: _scrollController,
                   padding: const EdgeInsets.symmetric(vertical: LyraSpacing.xs),
                   itemCount: controller.filteredCasObjects.length,
-                  itemExtent: 60.0,
+                  itemExtent: 60.0 * textScale,
                   itemBuilder: (context, index) {
                     final obj = controller.filteredCasObjects[index];
                     return _CasBlobRow(

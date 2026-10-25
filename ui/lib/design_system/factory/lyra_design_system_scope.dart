@@ -38,8 +38,12 @@ class LyraDesignSystemScope extends InheritedWidget {
   void toggleTheme() {
     if (themeModeNotifier.value == ThemeMode.dark) {
       themeModeNotifier.value = ThemeMode.light;
-    } else {
+    } else if (themeModeNotifier.value == ThemeMode.light) {
       themeModeNotifier.value = ThemeMode.dark;
+    } else {
+      themeModeNotifier.value = tokens.isDark
+          ? ThemeMode.light
+          : ThemeMode.dark;
     }
   }
 

@@ -185,5 +185,32 @@ void main() {
         expect(rotationFinder, findsOneWidget);
       },
     );
+
+    testWidgets(
+      '[HIGH-3] respects MediaQueryData(disableAnimations: true) without spinning infinitely',
+      (tester) async {
+        await tester.pumpWidget(
+          MediaQuery(
+            data: const MediaQueryData(disableAnimations: true),
+            child: _buildTestApp(
+              child: LyraSpinner(duration: const Duration(milliseconds: 1000)),
+            ),
+          ),
+        );
+        await tester.pump();
+
+        final rotationFinder = find.descendant(
+          of: find.byType(LyraSpinner),
+          matching: find.byType(RotationTransition),
+        );
+        expect(rotationFinder, findsOneWidget);
+
+        // Even after pumping 500ms, turns should remain at 0.0 and pumpAndSettle must not time out
+        await tester.pump(const Duration(milliseconds: 500));
+        final transition = tester.widget<RotationTransition>(rotationFinder);
+        expect(transition.turns.value, equals(0.0));
+        await tester.pumpAndSettle();
+      },
+    );
   });
 }

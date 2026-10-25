@@ -254,7 +254,6 @@ Final closing verse
 
       expect(find.byIcon(LucideIcons.mic), findsOneWidget);
       expect(find.text('No lyrics available'), findsOneWidget);
-      expect(find.text('暫無歌詞'), findsOneWidget);
     });
 
     testWidgets('shows empty state when lyrics lines is empty', (tester) async {
@@ -271,7 +270,6 @@ Final closing verse
 
       expect(find.byIcon(LucideIcons.mic), findsOneWidget);
       expect(find.text('No lyrics available'), findsOneWidget);
-      expect(find.text('暫無歌詞'), findsOneWidget);
     });
 
     testWidgets(
@@ -594,7 +592,6 @@ Unsynced line 3
 
       expect(find.byType(LyricsTab), findsOneWidget);
       expect(find.text('No lyrics available'), findsOneWidget);
-      expect(find.text('暫無歌詞'), findsOneWidget);
     });
   });
 }

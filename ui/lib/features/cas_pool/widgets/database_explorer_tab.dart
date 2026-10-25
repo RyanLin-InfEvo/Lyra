@@ -21,6 +21,7 @@ import '../../../design_system/widgets/lyra_button.dart';
 import '../../../design_system/widgets/lyra_card.dart';
 import '../../../design_system/widgets/lyra_dialog.dart';
 import '../../../design_system/widgets/lyra_input.dart';
+import '../../../design_system/widgets/lyra_spinner.dart';
 import '../controllers/database_explorer_controller.dart';
 import '../models/database_stats.dart';
 
@@ -372,7 +373,7 @@ class _DatabaseExplorerTabState extends State<DatabaseExplorerTab> {
       return Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(LucideIcons.loader2, size: 14.0, color: tokens.textMuted),
+          LyraSpinner(size: 14.0, color: tokens.textMuted),
           const SizedBox(width: LyraSpacing.sm),
           Text(
             'Checkpointing WAL frames...',
@@ -386,7 +387,7 @@ class _DatabaseExplorerTabState extends State<DatabaseExplorerTab> {
       return Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(LucideIcons.loader2, size: 14.0, color: tokens.textMuted),
+          LyraSpinner(size: 14.0, color: tokens.textMuted),
           const SizedBox(width: LyraSpacing.sm),
           Text(
             'Vacuuming database and defragmenting pages...',
@@ -400,7 +401,7 @@ class _DatabaseExplorerTabState extends State<DatabaseExplorerTab> {
       return Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(LucideIcons.loader2, size: 14.0, color: tokens.textMuted),
+          LyraSpinner(size: 14.0, color: tokens.textMuted),
           const SizedBox(width: LyraSpacing.sm),
           Text(
             'Verifying database integrity...',
@@ -644,8 +645,11 @@ class _DatabaseExplorerTabState extends State<DatabaseExplorerTab> {
     return LayoutBuilder(
       builder: (context, constraints) {
         final gridWidth = math.max(constraints.maxWidth, totalColumnsWidth);
+        final textScale = MediaQuery.textScalerOf(
+          context,
+        ).scale(1.0).clamp(1.0, 1.5);
         const headerHeight = 38.0;
-        const itemExtent = 44.0;
+        final itemExtent = 44.0 * textScale;
 
         if (rows.isEmpty) {
           return Container(

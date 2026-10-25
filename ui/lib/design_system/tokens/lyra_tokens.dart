@@ -290,6 +290,16 @@ class LyraThemeTokens {
     return itemHoverTransparent;
   }
 
+  /// Elevated surface background color for selected list rows and cards.
+  Color get surfaceElevated => isDark ? LyraColors.zinc700 : LyraColors.zinc100;
+
+  /// Secondary surface background color for active / current playing indicators.
+  Color get surfaceSecondary =>
+      isDark ? LyraColors.zinc800 : LyraColors.zinc200;
+
+  /// Subtle semi-transparent border color.
+  Color get borderSubtle => border.withValues(alpha: 0.5);
+
   /// Focused ring border with [ring] color.
   Border focusedRingBorder({double width = 1.5}) =>
       Border.all(color: ring, width: width);

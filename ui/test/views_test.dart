@@ -129,11 +129,11 @@ void main() {
 
         // Initial visible headers
         expect(find.text('#'), findsOneWidget);
-        expect(find.text('COMPOSITION TITLE'), findsOneWidget);
-        expect(find.text('COMPOSER'), findsOneWidget);
-        expect(find.text('COMPOSITION YEAR / DATE'), findsOneWidget);
+        expect(find.text('Composition Title'), findsOneWidget);
+        expect(find.text('Composer'), findsOneWidget);
+        expect(find.text('Composition Year / Date'), findsOneWidget);
         expect(find.text('ISWC'), findsOneWidget);
-        expect(find.text('MUSICBRAINZ ID'), findsOneWidget);
+        expect(find.text('MusicBrainz ID'), findsOneWidget);
 
         // Initial rows
         expect(find.text('1804–1808'), findsOneWidget);
@@ -155,7 +155,13 @@ void main() {
         // Verify context menu displays each column label
         expect(find.text('Track Number / Index'), findsOneWidget);
         expect(find.text('Title'), findsOneWidget);
-        expect(find.text('Composer'), findsOneWidget);
+        expect(
+          find.descendant(
+            of: find.byKey(const Key('work_col_menu_composer')),
+            matching: find.text('Composer'),
+          ),
+          findsOneWidget,
+        );
         expect(find.text('Lyricist'), findsOneWidget);
         expect(find.text('Movement'), findsOneWidget);
         expect(find.text('Year / Date'), findsOneWidget);
@@ -166,7 +172,13 @@ void main() {
           ),
           findsOneWidget,
         );
-        expect(find.text('MusicBrainz ID'), findsOneWidget);
+        expect(
+          find.descendant(
+            of: find.byKey(const Key('work_col_menu_musicbrainzId')),
+            matching: find.text('MusicBrainz ID'),
+          ),
+          findsOneWidget,
+        );
 
         // 1. Toggle off Year / Date
         final dateCheckboxFinder = find.byKey(
@@ -178,7 +190,7 @@ void main() {
         await tester.tap(find.byKey(const Key('work_col_menu_date')));
         await tester.pumpAndSettle();
 
-        expect(find.text('COMPOSITION YEAR / DATE'), findsNothing);
+        expect(find.text('Composition Year / Date'), findsNothing);
         expect(find.text('1804–1808'), findsNothing);
         expect(tester.widget<ShadCheckbox>(dateCheckboxFinder).value, isFalse);
         expect(changedColumns?.contains(WorkColumn.date), isFalse);
@@ -206,7 +218,7 @@ void main() {
         await tester.tap(find.byKey(const Key('work_col_menu_title')));
         await tester.pumpAndSettle();
 
-        expect(find.text('COMPOSITION TITLE'), findsOneWidget);
+        expect(find.text('Composition Title'), findsOneWidget);
         expect(find.text('Symphony No. 5 in C Minor'), findsOneWidget);
         final titleCheckboxFinder = find.byKey(
           const Key('work_col_checkbox_title'),
@@ -217,7 +229,7 @@ void main() {
         await tester.tap(find.byKey(const Key('work_col_menu_date')));
         await tester.pumpAndSettle();
 
-        expect(find.text('COMPOSITION YEAR / DATE'), findsOneWidget);
+        expect(find.text('Composition Year / Date'), findsOneWidget);
         expect(find.text('1804–1808'), findsOneWidget);
         expect(tester.widget<ShadCheckbox>(dateCheckboxFinder).value, isTrue);
         expect(changedColumns?.contains(WorkColumn.date), isTrue);
@@ -263,7 +275,7 @@ void main() {
         expect(tester.widget<ShadCheckbox>(dateCheckboxFinder).value, isFalse);
 
         await tester.pumpAndSettle();
-        expect(find.text('COMPOSITION YEAR / DATE'), findsNothing);
+        expect(find.text('Composition Year / Date'), findsNothing);
       },
     );
 
@@ -323,9 +335,9 @@ void main() {
         );
         await tester.pumpAndSettle();
 
-        // Initially: # is first column, MUSICBRAINZ ID is last column
+        // Initially: # is first column, MusicBrainz ID is last column
         final headerHashFinder = find.text('#');
-        final headerMbFinder = find.text('MUSICBRAINZ ID');
+        final headerMbFinder = find.text('MusicBrainz ID');
         expect(
           tester.getTopLeft(headerHashFinder).dx,
           lessThan(tester.getTopLeft(headerMbFinder).dx),
@@ -358,8 +370,12 @@ void main() {
         expect(newColumnOrder, isNotNull);
         expect(newColumnOrder!.first, equals(WorkColumn.musicbrainzId));
 
-        // In table header, MUSICBRAINZ ID is now to the left of #
-        final newMbLeft = tester.getTopLeft(find.text('MUSICBRAINZ ID')).dx;
+        // In table header, MusicBrainz ID is now to the left of #
+        final headerMbInTable = find.descendant(
+          of: find.byKey(const Key('works_table_header')),
+          matching: find.text('MusicBrainz ID'),
+        );
+        final newMbLeft = tester.getTopLeft(headerMbInTable).dx;
         final newHashLeft = tester.getTopLeft(find.text('#')).dx;
         expect(newMbLeft, lessThan(newHashLeft));
 
@@ -374,9 +390,11 @@ void main() {
 
         expect(newColumnOrder, equals(WorkColumn.values));
         final restoredHashLeft = tester.getTopLeft(find.text('#')).dx;
-        final restoredMbLeft = tester
-            .getTopLeft(find.text('MUSICBRAINZ ID'))
-            .dx;
+        final restoredMbHeader = find.descendant(
+          of: find.byKey(const Key('works_table_header')),
+          matching: find.text('MusicBrainz ID'),
+        );
+        final restoredMbLeft = tester.getTopLeft(restoredMbHeader).dx;
         expect(restoredHashLeft, lessThan(restoredMbLeft));
       },
     );
@@ -402,8 +420,8 @@ void main() {
 
         // Should safely fallback to default columns without throwing
         expect(find.text('#'), findsOneWidget);
-        expect(find.text('COMPOSITION TITLE'), findsOneWidget);
-        expect(find.text('MUSICBRAINZ ID'), findsOneWidget);
+        expect(find.text('Composition Title'), findsOneWidget);
+        expect(find.text('MusicBrainz ID'), findsOneWidget);
 
         // 2. Test partial columnOrder (e.g. only musicbrainzId specified)
         await tester.pumpWidget(
@@ -417,10 +435,10 @@ void main() {
         await tester.pumpAndSettle();
 
         // musicbrainzId should be first, and remaining columns appended safely
-        final mbLeft = tester.getTopLeft(find.text('MUSICBRAINZ ID')).dx;
+        final mbLeft = tester.getTopLeft(find.text('MusicBrainz ID')).dx;
         final hashLeft = tester.getTopLeft(find.text('#')).dx;
         expect(mbLeft, lessThan(hashLeft));
-        expect(find.text('COMPOSITION TITLE'), findsOneWidget);
+        expect(find.text('Composition Title'), findsOneWidget);
       },
     );
 
@@ -465,12 +483,12 @@ void main() {
         await tester.pumpAndSettle();
 
         // Composer is in defaultVisible
-        expect(find.text('COMPOSER'), findsOneWidget);
+        expect(find.text('Composer'), findsOneWidget);
         expect(find.text('Ludwig van Beethoven'), findsOneWidget);
 
         // Lyricist and Movement are initially hidden
-        expect(find.text('LYRICIST'), findsNothing);
-        expect(find.text('MOVEMENT'), findsNothing);
+        expect(find.text('Lyricist'), findsNothing);
+        expect(find.text('Movement'), findsNothing);
 
         // Right click header
         final header = find.byKey(const Key('works_table_header'));
@@ -488,8 +506,20 @@ void main() {
         await tester.tap(find.byKey(const Key('work_col_menu_movement')));
         await tester.pumpAndSettle();
 
-        expect(find.text('LYRICIST'), findsOneWidget);
-        expect(find.text('MOVEMENT'), findsOneWidget);
+        expect(
+          find.descendant(
+            of: find.byKey(const Key('works_table_header')),
+            matching: find.text('Lyricist'),
+          ),
+          findsOneWidget,
+        );
+        expect(
+          find.descendant(
+            of: find.byKey(const Key('works_table_header')),
+            matching: find.text('Movement'),
+          ),
+          findsOneWidget,
+        );
         expect(find.text('Friedrich Schiller'), findsOneWidget);
         expect(find.text('Ode to Joy'), findsOneWidget);
       },

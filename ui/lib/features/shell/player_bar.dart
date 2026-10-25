@@ -18,7 +18,7 @@ import '../models/track.dart';
 import '../player/controllers/playback_queue_controller.dart' show RepeatMode;
 
 /// Fixed bottom audio player bar with playback controls, progress slider, and audiophile badges.
-class LyraPlayerBar extends StatelessWidget {
+class LyraPlayerBar extends StatefulWidget {
   final Track? currentTrack;
   final bool isPlaying;
   final Duration currentPosition;
@@ -41,11 +41,6 @@ class LyraPlayerBar extends StatelessWidget {
   final VoidCallback? onCycleRepeat;
   final VoidCallback? onAddToPlaylist;
   final AudioDeviceController? audioDeviceController;
-
-  static AudioDeviceController? _fallbackDeviceController;
-  AudioDeviceController get _effectiveAudioDeviceController =>
-      audioDeviceController ??
-      (_fallbackDeviceController ??= AudioDeviceController(autoLoad: false));
 
   const LyraPlayerBar({
     super.key,
@@ -77,6 +72,46 @@ class LyraPlayerBar extends StatelessWidget {
   final Duration? _position;
   Duration get effectivePosition => _position ?? currentPosition;
   Duration get position => effectivePosition;
+
+  @override
+  State<LyraPlayerBar> createState() => _LyraPlayerBarState();
+}
+
+class _LyraPlayerBarState extends State<LyraPlayerBar> {
+  AudioDeviceController? _internalDeviceController;
+
+  AudioDeviceController get _effectiveAudioDeviceController =>
+      widget.audioDeviceController ??
+      (_internalDeviceController ??= AudioDeviceController(autoLoad: false));
+
+  @override
+  void dispose() {
+    _internalDeviceController?.dispose();
+    super.dispose();
+  }
+
+  Track? get currentTrack => widget.currentTrack;
+  bool get isPlaying => widget.isPlaying;
+  Duration get currentPosition => widget.currentPosition;
+  Duration get effectivePosition => widget.effectivePosition;
+  ValueListenable<Duration>? get positionNotifier => widget.positionNotifier;
+  double get volume => widget.volume;
+  ValueListenable<double>? get volumeNotifier => widget.volumeNotifier;
+  VoidCallback get onTogglePlay => widget.onTogglePlay;
+  VoidCallback get onNext => widget.onNext;
+  VoidCallback get onPrevious => widget.onPrevious;
+  ValueChanged<Duration> get onSeek => widget.onSeek;
+  ValueChanged<double> get onVolumeChanged => widget.onVolumeChanged;
+  VoidCallback? get onInspectTrack => widget.onInspectTrack;
+  VoidCallback? get onInspectAudio => widget.onInspectAudio;
+  bool get isInspectorOpen => widget.isInspectorOpen;
+  bool get isNowPlayingExpanded => widget.isNowPlayingExpanded;
+  VoidCallback? get onExpandNowPlaying => widget.onExpandNowPlaying;
+  bool get isShuffle => widget.isShuffle;
+  VoidCallback? get onToggleShuffle => widget.onToggleShuffle;
+  RepeatMode get repeatMode => widget.repeatMode;
+  VoidCallback? get onCycleRepeat => widget.onCycleRepeat;
+  VoidCallback? get onAddToPlaylist => widget.onAddToPlaylist;
 
   String _formatDuration(Duration d) {
     final minutes = d.inMinutes;

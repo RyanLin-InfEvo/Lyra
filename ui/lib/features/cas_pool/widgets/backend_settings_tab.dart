@@ -2,11 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import 'package:flutter/material.dart'
-    show
-        CircularProgressIndicator,
-        LinearProgressIndicator,
-        SelectableText,
-        showDialog;
+    show LinearProgressIndicator, SelectableText, showDialog;
 import 'package:flutter/services.dart' show FilteringTextInputFormatter;
 import 'package:flutter/widgets.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
@@ -21,6 +17,7 @@ import '../../../design_system/widgets/lyra_checkbox.dart';
 import '../../../design_system/widgets/lyra_copy_button.dart';
 import '../../../design_system/widgets/lyra_input.dart';
 import '../../../design_system/widgets/lyra_settings_layout.dart';
+import '../../../design_system/widgets/lyra_spinner.dart';
 import '../../../design_system/widgets/lyra_switch.dart';
 import '../controllers/backend_settings_controller.dart';
 import '../controllers/cas_controller.dart';
@@ -1212,15 +1209,9 @@ class _BackendSettingsTabState extends State<BackendSettingsTab> {
                       ? Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            SizedBox(
-                              width: 14.0,
-                              height: 14.0,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2.0,
-                                valueColor: AlwaysStoppedAnimation<Color>(
-                                  tokens.primaryForeground,
-                                ),
-                              ),
+                            LyraSpinner(
+                              size: 14.0,
+                              color: tokens.primaryForeground,
                             ),
                             const SizedBox(width: LyraSpacing.xs),
                             const Text('Saving...'),

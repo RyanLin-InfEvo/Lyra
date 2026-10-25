@@ -11,6 +11,7 @@ import '../../design_system/tokens/lyra_tokens.dart';
 import '../../design_system/widgets/lyra_button.dart';
 import '../../design_system/widgets/lyra_dialog.dart';
 import '../../design_system/widgets/lyra_input.dart';
+import '../../design_system/widgets/lyra_spinner.dart';
 import '../models/track.dart';
 
 /// Modal dialog for importing and hashing audio files into CAS storage.
@@ -155,7 +156,7 @@ class _ImportAudioModalState extends State<ImportAudioModal> {
               size: LyraButtonSize.sm,
               onPressed: _isIngesting ? null : _handleIngest,
               leading: _isIngesting
-                  ? const Icon(LucideIcons.loader2, size: 14.0)
+                  ? const LyraSpinner(size: 14.0)
                   : const Icon(LucideIcons.check, size: 14.0),
               child: Text(_isIngesting ? 'Ingesting...' : 'Ingest & Verify'),
             ),
@@ -168,7 +169,7 @@ class _ImportAudioModalState extends State<ImportAudioModal> {
 
               // Title input
               Text(
-                'TRACK TITLE',
+                'Track Title',
                 style: LyraTypography.small(tokens).copyWith(
                   fontWeight: FontWeight.bold,
                   color: tokens.textMuted,
@@ -190,7 +191,7 @@ class _ImportAudioModalState extends State<ImportAudioModal> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          'ARTIST',
+                          'Artist',
                           style: LyraTypography.small(tokens).copyWith(
                             fontWeight: FontWeight.bold,
                             color: tokens.textMuted,
@@ -210,7 +211,7 @@ class _ImportAudioModalState extends State<ImportAudioModal> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          'ALBUM',
+                          'Album',
                           style: LyraTypography.small(tokens).copyWith(
                             fontWeight: FontWeight.bold,
                             color: tokens.textMuted,
@@ -238,7 +239,7 @@ class _ImportAudioModalState extends State<ImportAudioModal> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          'FORMAT',
+                          'Format',
                           style: LyraTypography.small(tokens).copyWith(
                             fontWeight: FontWeight.bold,
                             color: tokens.textMuted,
@@ -269,7 +270,7 @@ class _ImportAudioModalState extends State<ImportAudioModal> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          'RESOLUTION',
+                          'Resolution',
                           style: LyraTypography.small(tokens).copyWith(
                             fontWeight: FontWeight.bold,
                             color: tokens.textMuted,
@@ -320,13 +321,13 @@ class _ImportAudioModalState extends State<ImportAudioModal> {
                   ),
                   child: Row(
                     children: [
-                      Icon(
-                        _isVerified
-                            ? LucideIcons.shieldCheck
-                            : LucideIcons.loader2,
-                        size: 18.0,
-                        color: _isVerified ? tokens.success : tokens.primary,
-                      ),
+                      _isVerified
+                          ? Icon(
+                              LucideIcons.shieldCheck,
+                              size: 18.0,
+                              color: tokens.success,
+                            )
+                          : LyraSpinner(size: 18.0, color: tokens.primary),
                       const SizedBox(width: LyraSpacing.sm),
                       Expanded(
                         child: Text(

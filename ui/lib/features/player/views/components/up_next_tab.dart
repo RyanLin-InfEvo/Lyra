@@ -74,6 +74,9 @@ class _UpNextTabState extends State<UpNextTab> {
   @override
   Widget build(BuildContext context) {
     final tokens = LyraDesignSystemScope.of(context).tokens;
+    final textScale = MediaQuery.textScalerOf(
+      context,
+    ).scale(1.0).clamp(1.0, 1.5);
     final queue = widget.playbackController.queue;
     final currentIndex = widget.playbackController.currentIndex;
 
@@ -206,7 +209,7 @@ class _UpNextTabState extends State<UpNextTab> {
                     child: ReorderableListView.builder(
                       scrollController: _scrollController,
                       itemCount: queue.length,
-                      itemExtent: 64.0,
+                      itemExtent: 64.0 * textScale,
                       buildDefaultDragHandles: false,
                       proxyDecorator: (child, index, animation) =>
                           _proxyDecorator(child, index, animation, tokens),

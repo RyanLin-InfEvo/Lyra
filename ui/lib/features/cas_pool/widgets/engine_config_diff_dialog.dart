@@ -531,7 +531,7 @@ class EngineConfigDiffDialog extends StatelessWidget {
   }
 
   Widget _buildAfterCell(String newValue, LyraThemeTokens tokens) {
-    const emeraldColor = Color(0xFF10B981);
+    final emeraldColor = tokens.success;
 
     return Container(
       padding: const EdgeInsets.symmetric(
@@ -555,7 +555,7 @@ class EngineConfigDiffDialog extends StatelessWidget {
               color: emeraldColor.withValues(alpha: 0.15),
               borderRadius: BorderRadius.circular(3.0),
             ),
-            child: const Text(
+            child: Text(
               '+',
               style: TextStyle(
                 color: emeraldColor,

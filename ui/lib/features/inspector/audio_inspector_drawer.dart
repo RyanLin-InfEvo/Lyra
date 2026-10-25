@@ -2935,7 +2935,7 @@ class _MetadataDiffDialogState extends State<_MetadataDiffDialog> {
   Widget _buildAfterCell(_FieldDiff diff, LyraThemeTokens tokens) {
     final newText = diff.newValue?.trim();
     final isCleared = newText == null || newText.isEmpty;
-    const emeraldColor = Color(0xFF10B981);
+    final emeraldColor = tokens.success;
 
     return Container(
       padding: const EdgeInsets.symmetric(

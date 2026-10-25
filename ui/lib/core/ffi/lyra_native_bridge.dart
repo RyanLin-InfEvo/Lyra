@@ -381,7 +381,8 @@ void _isolateWorkerEntry(_IsolateInitConfig config) {
         final dynamic decoded = jsonDecode(jsonResponseStr);
 
         if (decoded is Map<String, dynamic>) {
-          final code = decoded['code'] as int?;
+          final rawCode = decoded['code'];
+          final code = rawCode is num ? rawCode.toInt() : null;
           if (code != null && code >= 400) {
             final errorMap = decoded['error'];
             final errorMsg = errorMap is Map

@@ -48,7 +48,7 @@ class WorkColumn {
 
   static const WorkColumn title = WorkColumn._(
     name: 'title',
-    headerLabel: 'COMPOSITION TITLE',
+    headerLabel: 'Composition Title',
     label: 'Title',
     flex: 5,
     isMandatory: true,
@@ -56,14 +56,14 @@ class WorkColumn {
 
   static const WorkColumn composer = WorkColumn._(
     name: 'composer',
-    headerLabel: 'COMPOSER',
+    headerLabel: 'Composer',
     label: 'Composer',
     flex: 4,
   );
 
   static const WorkColumn lyricist = WorkColumn._(
     name: 'lyricist',
-    headerLabel: 'LYRICIST',
+    headerLabel: 'Lyricist',
     label: 'Lyricist',
     flex: 3,
     defaultVisible: false,
@@ -71,7 +71,7 @@ class WorkColumn {
 
   static const WorkColumn movement = WorkColumn._(
     name: 'movement',
-    headerLabel: 'MOVEMENT',
+    headerLabel: 'Movement',
     label: 'Movement',
     flex: 3,
     defaultVisible: false,
@@ -79,7 +79,7 @@ class WorkColumn {
 
   static const WorkColumn date = WorkColumn._(
     name: 'date',
-    headerLabel: 'COMPOSITION YEAR / DATE',
+    headerLabel: 'Composition Year / Date',
     label: 'Year / Date',
     flex: 3,
   );
@@ -93,7 +93,7 @@ class WorkColumn {
 
   static const WorkColumn musicbrainzId = WorkColumn._(
     name: 'musicbrainzId',
-    headerLabel: 'MUSICBRAINZ ID',
+    headerLabel: 'MusicBrainz ID',
     label: 'MusicBrainz ID',
     flex: 3,
   );
@@ -365,6 +365,10 @@ class _WorksViewState extends State<WorksView> {
       );
     }
 
+    final textScale = MediaQuery.textScalerOf(
+      context,
+    ).scale(1.0).clamp(1.0, 1.5);
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -454,7 +458,7 @@ class _WorksViewState extends State<WorksView> {
               ),
             ),
             itemCount: widget.works.length,
-            itemExtent: 60.0,
+            itemExtent: 60.0 * textScale,
             itemBuilder: (context, index) {
               final work = widget.works[index];
               return _WorkRow(

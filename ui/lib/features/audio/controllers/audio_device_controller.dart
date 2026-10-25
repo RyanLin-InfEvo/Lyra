@@ -44,6 +44,7 @@ class AudioDeviceController extends ChangeNotifier {
   String _currentDeviceId;
   bool _isLoading = false;
   String? _errorMessage;
+  bool _disposed = false;
 
   AudioDeviceController({
     LyraBridge? bridge,
@@ -80,11 +81,23 @@ class AudioDeviceController extends ChangeNotifier {
   /// Error message from the last operation, if any.
   String? get errorMessage => _errorMessage;
 
+  @override
+  void dispose() {
+    _disposed = true;
+    super.dispose();
+  }
+
+  void _safeNotifyListeners() {
+    if (!_disposed) {
+      notifyListeners();
+    }
+  }
+
   /// Enumerate output devices from the backend audio engine.
   Future<void> loadDevices() async {
     _isLoading = true;
     _errorMessage = null;
-    notifyListeners();
+    _safeNotifyListeners();
 
     try {
       final response = await _bridge.listAudioDevices();
@@ -93,8 +106,8 @@ class AudioDeviceController extends ChangeNotifier {
         final rawDevices = data['devices'];
         if (rawDevices is List) {
           _devices = rawDevices
-              .whereType<Map<String, dynamic>>()
-              .map(AudioDevice.fromJson)
+              .whereType<Map>()
+              .map((d) => AudioDevice.fromJson(Map<String, dynamic>.from(d)))
               .toList();
         }
         final currentId = data['current_device_id'] as String?;
@@ -103,11 +116,11 @@ class AudioDeviceController extends ChangeNotifier {
         }
       }
       _isLoading = false;
-      notifyListeners();
+      _safeNotifyListeners();
     } catch (e) {
       _isLoading = false;
       _errorMessage = e.toString();
-      notifyListeners();
+      _safeNotifyListeners();
     }
   }
 
@@ -118,7 +131,7 @@ class AudioDeviceController extends ChangeNotifier {
     final previousId = _currentDeviceId;
     _currentDeviceId = deviceId;
     _errorMessage = null;
-    notifyListeners();
+    _safeNotifyListeners();
 
     try {
       final response = await _bridge.setAudioOutputDevice(deviceId);
@@ -131,14 +144,14 @@ class AudioDeviceController extends ChangeNotifier {
         _currentDeviceId = previousId;
         _errorMessage =
             response['message']?.toString() ?? 'Failed to switch output device';
-        notifyListeners();
+        _safeNotifyListeners();
         return false;
       }
       return true;
     } catch (e) {
       _currentDeviceId = previousId;
       _errorMessage = e.toString();
-      notifyListeners();
+      _safeNotifyListeners();
       return false;
     }
   }

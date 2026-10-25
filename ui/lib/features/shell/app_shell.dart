@@ -14,6 +14,7 @@ import '../../design_system/widgets/lyra_badge.dart';
 import '../../design_system/widgets/lyra_button.dart';
 import '../../design_system/widgets/lyra_dialog.dart';
 import '../../design_system/widgets/lyra_input.dart';
+import '../../design_system/widgets/lyra_spinner.dart';
 import '../albums/albums_view.dart';
 import '../artists/artists_view.dart';
 import '../audio/controllers/audio_device_controller.dart';
@@ -125,6 +126,7 @@ class AppShellState extends State<AppShell> {
   Set<String> _selectedTagIds = {};
   TrackFilter? _activeTrackFilter;
   bool _isLoading = true;
+  int _loadCatalogCallId = 0;
 
   // Table Customization State
   late Set<TrackColumn> _trackVisibleColumns;
@@ -448,6 +450,7 @@ class AppShellState extends State<AppShell> {
   }
 
   Future<void> _loadCatalog({String? query}) async {
+    final callId = ++_loadCatalogCallId;
     final tracks = await widget.musicService.getTracks(query: query);
     final albums = await widget.musicService.getAlbums(query: query);
     final works = await widget.musicService.getWorks(query: query);
@@ -476,13 +479,18 @@ class AppShellState extends State<AppShell> {
       }
     }
 
+    if (!mounted || callId != _loadCatalogCallId) return;
+
+    final effectiveCatalogTracks =
+        (query == null || query.isEmpty || _catalogTracks.isEmpty)
+        ? tracks
+        : _catalogTracks;
+
     final tagTrackCounts = _computeTagTrackCounts(
       tags,
-      tracks,
+      effectiveCatalogTracks,
       _taggedTrackIdsByTag,
     );
-
-    if (!mounted) return;
 
     setState(() {
       _tracks = tracks;
@@ -854,9 +862,12 @@ class AppShellState extends State<AppShell> {
                 () => <String>{},
               );
               set.addAll(tracks.map((t) => t.id));
+              final effectiveCatalogTracks = _catalogTracks.isNotEmpty
+                  ? _catalogTracks
+                  : _tracks;
               _tagTrackCounts = _computeTagTrackCounts(
                 _tags,
-                _tracks,
+                effectiveCatalogTracks,
                 _taggedTrackIdsByTag,
               );
             });
@@ -944,17 +955,21 @@ class AppShellState extends State<AppShell> {
     return tracks;
   }
 
-  void _handleBatchDeletePlaylists(List<Playlist> playlists) {
-    final idsToDelete = playlists.map((p) => p.id).toSet();
+  Future<void> _handleBatchDeletePlaylists(List<Playlist> playlists) async {
+    final idsToRemove = playlists.map((p) => p.id).toSet();
+    await Future.wait(
+      idsToRemove.map((id) => widget.musicService.deletePlaylist(id)),
+    );
+    if (!mounted) return;
     setState(() {
       _playlists = _playlists
-          .where((p) => !idsToDelete.contains(p.id))
+          .where((p) => !idsToRemove.contains(p.id))
           .toList();
       _sidebarPlaylists = _sidebarPlaylists
-          .where((p) => !idsToDelete.contains(p.id))
+          .where((p) => !idsToRemove.contains(p.id))
           .toList();
       if (_selectedPlaylistId != null &&
-          idsToDelete.contains(_selectedPlaylistId)) {
+          idsToRemove.contains(_selectedPlaylistId)) {
         _selectedPlaylistId = null;
       }
     });
@@ -1190,7 +1205,7 @@ class AppShellState extends State<AppShell> {
 
   Widget _buildMainContent() {
     if (_isLoading) {
-      return const Center(child: CircularProgressIndicator());
+      return const Center(child: LyraSpinner(size: 24.0));
     }
 
     switch (_currentTab) {
@@ -1552,15 +1567,7 @@ class AppShellState extends State<AppShell> {
               _casController.setTab(tab);
             },
             onInspectAsset: (obj) => _openInspectorForAsset(obj),
-            onVerifyAll: () async {
-              ScaffoldMessenger.maybeOf(context)?.showSnackBar(
-                const SnackBar(
-                  content: Text(
-                    'All CAS SHA-256 blocks verified successfully.',
-                  ),
-                ),
-              );
-            },
+            onVerifyAll: () async {},
           ),
         );
       case AppTab.settings:
@@ -2043,6 +2050,12 @@ class _AddToPlaylistDialogState extends State<_AddToPlaylistDialog> {
     super.dispose();
   }
 
+  void _popDialog() {
+    if (mounted) {
+      Navigator.of(context).pop();
+    }
+  }
+
   Future<void> _handleCreatePlaylistWithName(String rawName) async {
     final trimmed = rawName.trim();
     final title = trimmed.isNotEmpty
@@ -2135,7 +2148,7 @@ class _AddToPlaylistDialogState extends State<_AddToPlaylistDialog> {
                         shrinkWrap: true,
                         padding: const EdgeInsets.only(bottom: 48.0),
                         itemCount: widget.playlists.length,
-                        itemBuilder: (context, index) {
+                        itemBuilder: (itemContext, index) {
                           final playlist = widget.playlists[index];
                           return Padding(
                             padding: const EdgeInsets.symmetric(
@@ -2144,29 +2157,29 @@ class _AddToPlaylistDialogState extends State<_AddToPlaylistDialog> {
                             child: _PlaylistModalItem(
                               playlist: playlist,
                               tokens: tokens,
-                              onTap: () {
+                              onTap: () async {
                                 final trackIdsToAdd = widget.tracks
                                     .map((t) => t.id)
                                     .toList();
-                                final updatedTrackIds = List<String>.from(
-                                  playlist.trackIds,
-                                );
-                                for (final tid in trackIdsToAdd) {
-                                  if (!updatedTrackIds.contains(tid)) {
-                                    updatedTrackIds.add(tid);
-                                  }
-                                }
+                                final existingIds = playlist.trackIds.toSet();
+                                final newTrackIds = trackIdsToAdd
+                                    .where((tid) => !existingIds.contains(tid))
+                                    .toList();
+                                final updatedTrackIds = [
+                                  ...playlist.trackIds,
+                                  ...newTrackIds,
+                                ];
                                 final updatedPlaylist = playlist.copyWith(
                                   trackIds: updatedTrackIds,
                                 );
-                                for (final tid in trackIdsToAdd) {
-                                  widget.musicService.addTrackToPlaylist(
-                                    playlist.id,
-                                    tid,
-                                  );
-                                }
+                                await Future.wait(
+                                  newTrackIds.map(
+                                    (tid) => widget.musicService
+                                        .addTrackToPlaylist(playlist.id, tid),
+                                  ),
+                                );
+                                _popDialog();
                                 widget.onPlaylistUpdated(updatedPlaylist);
-                                Navigator.of(context).pop();
                               },
                             ),
                           );

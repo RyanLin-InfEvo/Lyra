@@ -603,6 +603,9 @@ class _PlaylistDetailViewState extends State<PlaylistDetailView> {
   }
 
   Widget _buildTracksList(BuildContext context, LyraThemeTokens tokens) {
+    final textScale = MediaQuery.textScalerOf(
+      context,
+    ).scale(1.0).clamp(1.0, 1.5);
     final itemKeys = <Key>[];
     final countMap = <String, int>{};
     for (var i = 0; i < widget.tracks.length; i++) {
@@ -621,7 +624,7 @@ class _PlaylistDetailViewState extends State<PlaylistDetailView> {
           padding: const EdgeInsets.symmetric(vertical: LyraSpacing.xs),
           buildDefaultDragHandles: false,
           itemCount: widget.tracks.length,
-          itemExtent: 56.0,
+          itemExtent: 56.0 * textScale,
           proxyDecorator: (child, index, animation) =>
               _proxyDecorator(child, index, animation, tokens),
           onReorder: (oldIndex, newIndex) {
@@ -1108,17 +1111,12 @@ class _PlaylistTrackRowState extends State<_PlaylistTrackRow> {
               ),
               decoration: BoxDecoration(
                 color: isCurrent
-                    ? (tokens.isDark
-                          ? const Color(0xFF27272A)
-                          : const Color(0xFFE4E4E7))
+                    ? tokens.surfaceSecondary
                     : tokens.itemBackground(
                         isHovered: _isHovered || _contextMenuController.isOpen,
                       ),
                 border: Border(
-                  bottom: BorderSide(
-                    color: tokens.border.withValues(alpha: 0.5),
-                    width: 0.5,
-                  ),
+                  bottom: BorderSide(color: tokens.borderSubtle, width: 0.5),
                 ),
               ),
               child: Row(

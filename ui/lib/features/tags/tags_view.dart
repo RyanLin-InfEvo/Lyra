@@ -13,6 +13,7 @@ import '../../design_system/widgets/lyra_button.dart';
 import '../../design_system/widgets/lyra_card.dart';
 import '../../design_system/widgets/lyra_dialog.dart';
 import '../../design_system/widgets/lyra_input.dart';
+import '../../design_system/widgets/lyra_spinner.dart';
 import '../models/tag.dart';
 
 /// Callback type for creating a new tag entity.
@@ -566,7 +567,7 @@ class _CreateTagModalState extends State<_CreateTagModal> {
             size: LyraButtonSize.sm,
             onPressed: _isCreating ? null : _handleSubmit,
             leading: _isCreating
-                ? const Icon(LucideIcons.loader2, size: 14.0)
+                ? const LyraSpinner(size: 14.0)
                 : const Icon(LucideIcons.check, size: 14.0),
             child: Text(_isCreating ? 'Creating...' : 'Create Tag'),
           ),

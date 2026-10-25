@@ -686,6 +686,11 @@ class MockMusicService implements MusicService {
     return playlist;
   }
 
+  @override
+  Future<void> deletePlaylist(String playlistId) async {
+    _playlists.removeWhere((p) => p.id == playlistId);
+  }
+
   /// Adds a track ID to a playlist if not already present.
   @override
   Future<void> addTrackToPlaylist(String playlistId, String trackId) async {
