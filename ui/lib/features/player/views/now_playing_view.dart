@@ -14,6 +14,7 @@ import '../../inspector/audio_inspector_drawer.dart';
 import '../../models/track.dart';
 import '../../services/music_service.dart';
 import '../../settings/services/preferences_service.dart';
+import '../../settings/settings_view.dart';
 import '../controllers/playback_queue_controller.dart';
 import '../models/lyrics.dart';
 import 'components/lyrics_tab.dart';
@@ -411,6 +412,10 @@ class _NowPlayingViewState extends State<NowPlayingView> {
   }
 
   Widget _buildWaveformScrubber(LyraThemeTokens tokens) {
+    final pts = widget.preferencesService?.nowPlayingWaveformPoints ?? 140;
+    final pct = pointsToDensityPercent(pts, WaveformTarget.nowPlaying);
+    final desiredSpacing = densityToBarSpacing(pct);
+
     return Container(
       padding: const EdgeInsets.symmetric(
         horizontal: LyraSpacing.md,
@@ -423,6 +428,7 @@ class _NowPlayingViewState extends State<NowPlayingView> {
       ),
       child: WaveformScrubber(
         waveform: _waveform,
+        desiredBarSpacing: desiredSpacing,
         playbackController: widget.playbackController,
         height: 56.0,
         enablePulseAnimation:

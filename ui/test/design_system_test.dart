@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shadcn_ui/shadcn_ui.dart';
 import 'package:ui/design_system/contracts/lyra_contracts.dart';
@@ -541,6 +542,429 @@ void main() {
       expect(shadSwitch.focusNode, equals(focusNode));
       expect(focusNode.hasFocus, isTrue);
     });
+
+    testWidgets(
+      'LyraSwitch accepts GlobalKey without duplicate key collision or crash',
+      (tester) async {
+        final switchKey = GlobalKey();
+        await tester.pumpWidget(
+          _buildTestApp(
+            child: LyraSwitch(key: switchKey, value: false, onChanged: (_) {}),
+          ),
+        );
+        await tester.pumpAndSettle();
+        expect(find.byKey(switchKey), findsOneWidget);
+      },
+    );
+
+    testWidgets(
+      'LyraSwitch with autofocus accepts GlobalKey without duplicate key collision',
+      (tester) async {
+        final switchKey = GlobalKey();
+        await tester.pumpWidget(
+          _buildTestApp(
+            child: LyraSwitch(
+              key: switchKey,
+              value: false,
+              autofocus: true,
+              onChanged: (_) {},
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+        expect(find.byKey(switchKey), findsOneWidget);
+      },
+    );
+
+    testWidgets(
+      'LyraSwitch preserves accessibility semantics (toggled, enabled, tap action)',
+      (tester) async {
+        final handle = tester.ensureSemantics();
+        bool switchVal = false;
+        await tester.pumpWidget(
+          _buildTestApp(
+            child: StatefulBuilder(
+              builder: (context, setState) {
+                return LyraSwitch(
+                  key: const Key('sem_switch'),
+                  value: switchVal,
+                  onChanged: (val) => setState(() => switchVal = val),
+                );
+              },
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        expect(
+          tester.getSemantics(find.byType(SmoothShadSwitch)),
+          matchesSemantics(
+            hasToggledState: true,
+            isToggled: false,
+            isEnabled: true,
+            hasEnabledState: true,
+            hasTapAction: true,
+          ),
+        );
+
+        handle.dispose();
+      },
+    );
+
+    testWidgets(
+      'SmoothShadSwitch has unified semantics without duplicate inner semantic nodes',
+      (tester) async {
+        final handle = tester.ensureSemantics();
+        await tester.pumpWidget(
+          _buildTestApp(child: LyraSwitch(value: false, onChanged: (_) {})),
+        );
+        await tester.pumpAndSettle();
+
+        // The track's GestureDetector must exclude semantics so it does not create a redundant tap node
+        final gestureDetectors = tester.widgetList<GestureDetector>(
+          find.descendant(
+            of: find.byType(SmoothShadSwitch),
+            matching: find.byType(GestureDetector),
+          ),
+        );
+        expect(
+          gestureDetectors.first.excludeFromSemantics,
+          isTrue,
+          reason:
+              'GestureDetector must exclude semantics to prevent duplicate tap node',
+        );
+
+        // Opacity must not force semantics inclusion on hidden child
+        final opacities = tester.widgetList<Opacity>(
+          find.descendant(
+            of: find.byType(SmoothShadSwitch),
+            matching: find.byType(Opacity),
+          ),
+        );
+        final zeroOpacity = opacities.firstWhere((w) => w.opacity == 0.0);
+        expect(
+          zeroOpacity.alwaysIncludeSemantics,
+          isFalse,
+          reason:
+              'Opacity must have alwaysIncludeSemantics: false to avoid duplicate child node',
+        );
+
+        // All semantics must belong to top-level Semantics node without duplicate child nodes
+        final semanticsNode = tester.getSemantics(
+          find.byType(SmoothShadSwitch),
+        );
+        expect(
+          semanticsNode.childrenCount,
+          equals(0),
+          reason:
+              'SmoothShadSwitch must have unified root semantics without child nodes',
+        );
+
+        handle.dispose();
+      },
+    );
+
+    testWidgets(
+      'LyraSwitch draws visible focus ring outline/border on container when focused',
+      (tester) async {
+        final focusNode = FocusNode();
+        addTearDown(focusNode.dispose);
+
+        await tester.pumpWidget(
+          _buildTestApp(
+            child: LyraSwitch(
+              value: false,
+              focusNode: focusNode,
+              onChanged: (_) {},
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        focusNode.requestFocus();
+        await tester.pumpAndSettle();
+        expect(focusNode.hasFocus, isTrue);
+
+        final container = tester.widget<Container>(
+          find
+              .descendant(
+                of: find.byType(SmoothShadSwitch),
+                matching: find.byType(Container),
+              )
+              .first,
+        );
+        final decoration = container.decoration as BoxDecoration?;
+        expect(decoration, isNotNull);
+        expect(decoration!.border, isNotNull);
+        expect(
+          decoration.border!.top.color,
+          isNot(equals(const Color(0x00000000))),
+        );
+      },
+    );
+
+    testWidgets(
+      'SmoothShadSwitch smoothly animates when toggling off (true -> false)',
+      (tester) async {
+        bool switchVal = true;
+        late StateSetter updateState;
+
+        await tester.pumpWidget(
+          _buildTestApp(
+            child: StatefulBuilder(
+              builder: (context, setState) {
+                updateState = setState;
+                return LyraSwitch(
+                  key: const Key('animated_switch'),
+                  value: switchVal,
+                  onChanged: (val) => updateState(() => switchVal = val),
+                );
+              },
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        final switchFinder = find.byType(SmoothShadSwitch);
+        expect(switchFinder, findsOneWidget);
+        final state = tester.state<SmoothShadSwitchState>(switchFinder);
+        expect(state.animationValue, equals(1.0));
+
+        // Toggle OFF (value: true -> false)
+        updateState(() => switchVal = false);
+        await tester.pump(); // Register didUpdateWidget and start animation
+
+        // At 0ms, animation is still near 1.0
+        expect(state.animationValue, equals(1.0));
+
+        // Advance 100ms (half of 200ms duration)
+        await tester.pump(const Duration(milliseconds: 100));
+
+        // Smooth easeInOut animation at 100ms is exactly 0.5
+        expect(state.animationValue, closeTo(0.5, 0.05));
+
+        // Multiple parent rebuilds during transition must not snap or reset the animation
+        updateState(() {});
+        await tester.pump(Duration.zero);
+        expect(state.animationValue, closeTo(0.5, 0.05));
+
+        // Advance remaining 100ms to complete 200ms
+        await tester.pump(const Duration(milliseconds: 100));
+        expect(state.animationValue, equals(0.0));
+
+        await tester.pumpAndSettle();
+        expect(state.animationValue, equals(0.0));
+      },
+    );
+
+    testWidgets(
+      'SmoothShadSwitch begins moving immediately on first frame when tapped or triggered via keyboard',
+      (tester) async {
+        bool switchVal = false;
+        final focusNode = FocusNode();
+        addTearDown(focusNode.dispose);
+
+        await tester.pumpWidget(
+          _buildTestApp(
+            child: StatefulBuilder(
+              builder: (context, setState) {
+                return LyraSwitch(
+                  key: const Key('responsive_switch'),
+                  value: switchVal,
+                  focusNode: focusNode,
+                  onChanged: (val) => setState(() => switchVal = val),
+                );
+              },
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        final switchFinder = find.byType(SmoothShadSwitch);
+        expect(switchFinder, findsOneWidget);
+        final state = tester.state<SmoothShadSwitchState>(switchFinder);
+        expect(state.animationValue, equals(0.0));
+
+        // 1. Pointer tap begins moving immediately on frame 1
+        await tester.tap(switchFinder);
+        await tester.pump(); // Starts ticker
+        // Advance 20ms (first frame of 200ms animation)
+        await tester.pump(const Duration(milliseconds: 20));
+        expect(
+          state.animationValue,
+          greaterThan(0.0),
+          reason:
+              'Switch animation must begin moving immediately on frame 1 without delay',
+        );
+        expect(
+          state.animationValue,
+          lessThan(1.0),
+          reason: 'Switch must be mid-transition on early frame',
+        );
+
+        // Complete tap animation
+        await tester.pumpAndSettle();
+        expect(state.animationValue, equals(1.0));
+        expect(switchVal, isTrue);
+
+        // 2. Keyboard Enter key begins moving immediately on frame 1
+        focusNode.requestFocus();
+        await tester.pumpAndSettle();
+        expect(focusNode.hasFocus, isTrue);
+
+        await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+        await tester.pump(); // Starts ticker
+        // Advance 20ms
+        await tester.pump(const Duration(milliseconds: 20));
+        expect(
+          state.animationValue,
+          lessThan(1.0),
+          reason:
+              'Reverse switch animation must begin moving immediately on Enter keypress',
+        );
+        expect(
+          state.animationValue,
+          greaterThan(0.0),
+          reason: 'Switch must be mid-transition on early frame',
+        );
+
+        // Complete keyboard animation
+        await tester.pumpAndSettle();
+        expect(state.animationValue, equals(0.0));
+        expect(switchVal, isFalse);
+      },
+    );
+
+    testWidgets(
+      'SmoothShadSwitch starts animation on tap immediately without waiting for parent didUpdateWidget',
+      (tester) async {
+        bool callbackFired = false;
+        bool callbackValue = false;
+
+        await tester.pumpWidget(
+          _buildTestApp(
+            child: LyraSwitch(
+              value: false,
+              onChanged: (val) {
+                callbackFired = true;
+                callbackValue = val;
+              },
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        final switchFinder = find.byType(SmoothShadSwitch);
+        final state = tester.state<SmoothShadSwitchState>(switchFinder);
+        expect(state.animationValue, equals(0.0));
+
+        // Tap the switch
+        await tester.tap(switchFinder);
+        await tester.pump(); // Starts ticker
+        await tester.pump(const Duration(milliseconds: 20));
+
+        // Verify that animation starts immediately on tap even though parent widget did not update widget.value
+        expect(callbackFired, isTrue);
+        expect(callbackValue, isTrue);
+        expect(
+          state.animationValue,
+          greaterThan(0.0),
+          reason:
+              'Animation must start immediately on tap rather than passively waiting for didUpdateWidget',
+        );
+      },
+    );
+
+    testWidgets(
+      'SmoothShadSwitch reconciles and stays at 0.0 when parent rejects toggle (controlled widget)',
+      (tester) async {
+        bool parentValue = false;
+        late StateSetter parentSetState;
+
+        await tester.pumpWidget(
+          _buildTestApp(
+            child: StatefulBuilder(
+              builder: (context, setState) {
+                parentSetState = setState;
+                return LyraSwitch(
+                  value: parentValue,
+                  onChanged: (newVal) {
+                    // Parent rejects change: forces parentValue to stay false
+                    parentSetState(() {
+                      parentValue = false;
+                    });
+                  },
+                );
+              },
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        final switchFinder = find.byType(SmoothShadSwitch);
+        final state = tester.state<SmoothShadSwitchState>(switchFinder);
+        expect(state.animationValue, equals(0.0));
+
+        // Tap the switch.
+        await tester.tap(switchFinder);
+        // Synchronous setState inside onChanged rebuilds parent before animation ticks.
+        await tester.pump();
+        await tester.pumpAndSettle();
+
+        // Controller should be reconciled to 0.0, NOT stuck or running forward to 1.0.
+        expect(
+          state.animationValue,
+          equals(0.0),
+          reason:
+              'Switch must reconcile back to 0.0 when parent keeps value false',
+        );
+      },
+    );
+
+    testWidgets(
+      'SmoothShadSwitch reconciles and stays at 1.0 when parent rejects toggle off (controlled widget)',
+      (tester) async {
+        bool parentValue = true;
+        late StateSetter parentSetState;
+
+        await tester.pumpWidget(
+          _buildTestApp(
+            child: StatefulBuilder(
+              builder: (context, setState) {
+                parentSetState = setState;
+                return LyraSwitch(
+                  value: parentValue,
+                  onChanged: (newVal) {
+                    // Parent rejects change: forces parentValue to stay true
+                    parentSetState(() {
+                      parentValue = true;
+                    });
+                  },
+                );
+              },
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        final switchFinder = find.byType(SmoothShadSwitch);
+        final state = tester.state<SmoothShadSwitchState>(switchFinder);
+        expect(state.animationValue, equals(1.0));
+
+        // Tap the switch to attempt turning off.
+        await tester.tap(switchFinder);
+        await tester.pump();
+        await tester.pumpAndSettle();
+
+        // Controller should reconcile back to 1.0, NOT reverse to 0.0.
+        expect(
+          state.animationValue,
+          equals(1.0),
+          reason:
+              'Switch must reconcile back to 1.0 when parent keeps value true',
+        );
+      },
+    );
 
     testWidgets(
       'LyraCheckbox verifies initial value, toggling, and disabled state',

@@ -410,15 +410,15 @@ class ShadcnFactory extends LyraDesignSystemFactory {
         });
       } else {
         return _AutofocusSwitchWrapper(
-          switchKey: key,
+          key: key,
           value: value,
           onChanged: onChanged,
           enabled: enabled,
         );
       }
     }
-    return _SmoothShadSwitch(
-      switchKey: key,
+    return SmoothShadSwitch(
+      key: key,
       value: value,
       onChanged: onChanged,
       enabled: enabled,
@@ -577,13 +577,12 @@ class _ShadSkeletonState extends State<_ShadSkeleton>
 }
 
 class _AutofocusSwitchWrapper extends StatefulWidget {
-  final Key? switchKey;
   final bool value;
   final ValueChanged<bool>? onChanged;
   final bool enabled;
 
   const _AutofocusSwitchWrapper({
-    this.switchKey,
+    super.key,
     required this.value,
     this.onChanged,
     this.enabled = true,
@@ -615,8 +614,7 @@ class _AutofocusSwitchWrapperState extends State<_AutofocusSwitchWrapper> {
 
   @override
   Widget build(BuildContext context) {
-    return _SmoothShadSwitch(
-      switchKey: widget.switchKey,
+    return SmoothShadSwitch(
       value: widget.value,
       onChanged: widget.onChanged,
       enabled: widget.enabled,
@@ -625,20 +623,109 @@ class _AutofocusSwitchWrapperState extends State<_AutofocusSwitchWrapper> {
   }
 }
 
-class _SmoothShadSwitch extends StatelessWidget {
-  final Key? switchKey;
+class SmoothShadSwitch extends StatefulWidget {
   final bool value;
   final ValueChanged<bool>? onChanged;
   final bool enabled;
   final FocusNode? focusNode;
 
-  const _SmoothShadSwitch({
-    this.switchKey,
+  const SmoothShadSwitch({
+    super.key,
     required this.value,
     this.onChanged,
     this.enabled = true,
     this.focusNode,
   });
+
+  @override
+  State<SmoothShadSwitch> createState() => SmoothShadSwitchState();
+}
+
+class SmoothShadSwitchState extends State<SmoothShadSwitch>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller;
+  late final Animation<double> _animation;
+  FocusNode? _internalFocusNode;
+
+  FocusNode get _effectiveFocusNode =>
+      widget.focusNode ?? (_internalFocusNode ??= FocusNode());
+
+  double get animationValue => _animation.value;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 200),
+      value: widget.value ? 1.0 : 0.0,
+    );
+    _animation = CurvedAnimation(
+      parent: _controller,
+      curve: Curves.easeInOut,
+      reverseCurve: Curves.easeInOut,
+    );
+    _effectiveFocusNode.addListener(_handleFocusChanged);
+  }
+
+  void _handleFocusChanged() {
+    if (mounted) {
+      setState(() {});
+    }
+  }
+
+  void _handleTap() {
+    if (!widget.enabled || widget.onChanged == null) return;
+    final nextVal = !widget.value;
+    if (nextVal) {
+      _controller.forward();
+    } else {
+      _controller.reverse();
+    }
+    widget.onChanged!(nextVal);
+  }
+
+  @override
+  void didUpdateWidget(covariant SmoothShadSwitch oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.focusNode != widget.focusNode) {
+      (oldWidget.focusNode ?? _internalFocusNode)?.removeListener(
+        _handleFocusChanged,
+      );
+      _effectiveFocusNode.addListener(_handleFocusChanged);
+    }
+    if (oldWidget.value != widget.value) {
+      if (widget.value) {
+        if (_controller.status != AnimationStatus.forward &&
+            _controller.value != 1.0) {
+          _controller.forward();
+        }
+      } else {
+        if (_controller.status != AnimationStatus.reverse &&
+            _controller.value != 0.0) {
+          _controller.reverse();
+        }
+      }
+    } else {
+      if (widget.value &&
+          (_controller.value != 1.0 ||
+              _controller.status == AnimationStatus.reverse)) {
+        _controller.forward();
+      } else if (!widget.value &&
+          (_controller.value != 0.0 ||
+              _controller.status == AnimationStatus.forward)) {
+        _controller.reverse();
+      }
+    }
+  }
+
+  @override
+  void dispose() {
+    _effectiveFocusNode.removeListener(_handleFocusChanged);
+    _internalFocusNode?.dispose();
+    _controller.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -650,27 +737,96 @@ class _SmoothShadSwitch extends StatelessWidget {
         ? theme.colorScheme.background
         : const Color(0xFFFFFFFF);
 
-    return AnimatedContainer(
-      duration: const Duration(milliseconds: 180),
-      curve: Curves.easeInOutCubic,
-      decoration: BoxDecoration(
-        color: !enabled
-            ? (value
-                  ? checkedColor.withValues(alpha: 0.5)
-                  : uncheckedColor.withValues(alpha: 0.5))
-            : (value ? checkedColor : uncheckedColor),
-        borderRadius: BorderRadius.circular(12.0),
-      ),
-      child: ShadSwitch(
-        key: switchKey,
-        value: value,
-        onChanged: onChanged,
-        enabled: enabled,
-        focusNode: focusNode,
-        duration: const Duration(milliseconds: 180),
-        checkedTrackColor: const Color(0x00000000),
-        uncheckedTrackColor: const Color(0x00000000),
-        thumbColor: thumbColor,
+    final tokens =
+        LyraDesignSystemScope.maybeOf(context)?.tokens ??
+        (isDark ? LyraThemeTokens.dark() : LyraThemeTokens.light());
+    final hasFocus = _effectiveFocusNode.hasFocus;
+
+    return Semantics(
+      toggled: widget.value,
+      enabled: widget.enabled,
+      onTap: widget.enabled && widget.onChanged != null ? _handleTap : null,
+      child: AnimatedBuilder(
+        animation: _animation,
+        builder: (context, child) {
+          final animValue = _animation.value;
+          final baseColor = Color.lerp(
+            uncheckedColor,
+            checkedColor,
+            animValue,
+          )!;
+          final trackColor = widget.enabled
+              ? baseColor
+              : baseColor.withValues(alpha: 0.5);
+
+          // Alignment runs from -1.0 (left/off) to 1.0 (right/on)
+          final thumbAlignment = Alignment(-1.0 + 2.0 * animValue, 0.0);
+
+          return SizedBox(
+            width: 44.0,
+            height: 24.0,
+            child: Stack(
+              alignment: Alignment.center,
+              children: [
+                // Custom smooth track and gliding thumb
+                GestureDetector(
+                  excludeFromSemantics: true,
+                  behavior: HitTestBehavior.opaque,
+                  onTap: widget.enabled && widget.onChanged != null
+                      ? _handleTap
+                      : null,
+                  child: Container(
+                    width: 44.0,
+                    height: 24.0,
+                    padding: const EdgeInsets.all(2.0),
+                    decoration: BoxDecoration(
+                      color: trackColor,
+                      borderRadius: BorderRadius.circular(12.0),
+                      border: hasFocus
+                          ? tokens.focusedRingBorder(width: 2.0)
+                          : tokens.unfocusedRingBorder(width: 2.0),
+                    ),
+                    child: Align(
+                      alignment: thumbAlignment,
+                      child: Container(
+                        width: 20.0,
+                        height: 20.0,
+                        decoration: BoxDecoration(
+                          color: thumbColor,
+                          shape: BoxShape.circle,
+                          boxShadow: const [
+                            BoxShadow(
+                              color: Color(0x1A000000),
+                              blurRadius: 2.0,
+                              offset: Offset(0, 1),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+                // Underlying ShadSwitch for focus, shortcuts and test accessibility
+                Opacity(
+                  opacity: 0.0,
+                  alwaysIncludeSemantics: false,
+                  child: child,
+                ),
+              ],
+            ),
+          );
+        },
+        child: ShadSwitch(
+          value: widget.value,
+          onChanged: widget.enabled && widget.onChanged != null
+              ? (_) => _handleTap()
+              : null,
+          enabled: widget.enabled,
+          focusNode: _effectiveFocusNode,
+          checkedTrackColor: const Color(0x00000000),
+          uncheckedTrackColor: const Color(0x00000000),
+          thumbColor: const Color(0x00000000),
+        ),
       ),
     );
   }

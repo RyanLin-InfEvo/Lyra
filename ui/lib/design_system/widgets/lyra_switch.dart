@@ -6,6 +6,7 @@ import '../factory/lyra_design_system_scope.dart';
 
 /// Swappable design system switch widget.
 class LyraSwitch extends StatelessWidget {
+  final Key? _targetKey;
   final bool value;
   final ValueChanged<bool>? onChanged;
   final bool enabled;
@@ -13,18 +14,19 @@ class LyraSwitch extends StatelessWidget {
   final bool autofocus;
 
   const LyraSwitch({
-    super.key,
+    Key? key,
     required this.value,
     this.onChanged,
     this.enabled = true,
     this.focusNode,
     this.autofocus = false,
-  });
+  }) : _targetKey = key,
+       super(key: null);
 
   @override
   Widget build(BuildContext context) {
     return LyraDesignSystemScope.of(context).factory.createSwitch(
-      key: key,
+      key: _targetKey,
       value: value,
       onChanged: onChanged,
       enabled: enabled,

@@ -44,6 +44,9 @@ class WaveformScrubber extends StatefulWidget {
   /// Whether user interaction (tapping, dragging, hover guide) is enabled.
   final bool isInteractive;
 
+  /// Explicit playing state (overrides [playbackController] isPlaying if provided).
+  final bool? isPlaying;
+
   /// Whether to enable looping shimmer / pulse animations.
   /// Defaults to false during widget tests to avoid pumpAndSettle timeouts.
   final bool? enableAnimation;
@@ -53,6 +56,12 @@ class WaveformScrubber extends StatefulWidget {
 
   /// Whether to show the hover guide line and floating timestamp tooltip.
   final bool enableHoverTimeGuide;
+
+  /// Desired horizontal spacing between waveform bars in logical pixels.
+  /// When provided and > 0, dynamically resamples [waveform] based on the
+  /// container width to maintain consistent physical visual density across
+  /// any viewport or drawer width.
+  final double? desiredBarSpacing;
 
   const WaveformScrubber({
     super.key,
@@ -64,9 +73,11 @@ class WaveformScrubber extends StatefulWidget {
     this.height = 64.0,
     this.showTimeLabels = true,
     this.isInteractive = true,
+    this.isPlaying,
     this.enableAnimation,
     this.enablePulseAnimation = true,
     this.enableHoverTimeGuide = true,
+    this.desiredBarSpacing,
   });
 
   @override
@@ -74,8 +85,12 @@ class WaveformScrubber extends StatefulWidget {
 }
 
 class _WaveformScrubberState extends State<WaveformScrubber>
-    with SingleTickerProviderStateMixin {
+    with TickerProviderStateMixin {
   late final AnimationController _animController;
+  late final AnimationController _seekAnimController;
+  late final CurvedAnimation _seekCurvedAnimation;
+  Animation<double>? _seekAnimation;
+  double? _animatedFraction;
   final ValueNotifier<double?> _hoverXNotifier = ValueNotifier<double?>(null);
 
   bool _isDragging = false;
@@ -100,6 +115,14 @@ class _WaveformScrubberState extends State<WaveformScrubber>
       duration: const Duration(milliseconds: 1800),
       value: 0.5,
     );
+    _seekAnimController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 150),
+    );
+    _seekCurvedAnimation = CurvedAnimation(
+      parent: _seekAnimController,
+      curve: Curves.easeOutCubic,
+    );
     if (_shouldAnimate) {
       _animController.repeat(reverse: true);
     }
@@ -111,6 +134,11 @@ class _WaveformScrubberState extends State<WaveformScrubber>
   @override
   void didUpdateWidget(WaveformScrubber oldWidget) {
     super.didUpdateWidget(oldWidget);
+    if (_animatedFraction != null && !_seekAnimController.isAnimating) {
+      if (widget.position != oldWidget.position) {
+        _animatedFraction = null;
+      }
+    }
     if (!widget.isInteractive && oldWidget.isInteractive) {
       _hoverXNotifier.value = null;
       _isHovered = false;
@@ -121,7 +149,8 @@ class _WaveformScrubberState extends State<WaveformScrubber>
         _dragFraction = null;
       }
     }
-    if (widget.enableAnimation != oldWidget.enableAnimation) {
+    if (widget.enableAnimation != oldWidget.enableAnimation ||
+        widget.isPlaying != oldWidget.isPlaying) {
       if (_shouldAnimate && !_animController.isAnimating) {
         _animController.repeat(reverse: true);
       } else if (!_shouldAnimate && _animController.isAnimating) {
@@ -143,12 +172,39 @@ class _WaveformScrubberState extends State<WaveformScrubber>
     widget.playbackController?.positionNotifier.removeListener(_onStateChanged);
     widget.playbackController?.removeListener(_onStateChanged);
     _hoverXNotifier.dispose();
+    _seekAnimController.removeListener(_handleSeekAnimationTick);
+    _seekCurvedAnimation.dispose();
+    _seekAnimController.dispose();
     _animController.dispose();
     super.dispose();
   }
 
+  void _handleSeekAnimationTick() {
+    if (mounted) {
+      setState(() {
+        _animatedFraction = _seekAnimation?.value;
+      });
+      if (_seekAnimController.isCompleted) {
+        _seekAnimController.removeListener(_handleSeekAnimationTick);
+        final currentPosFrac = _effectiveDuration.inMilliseconds > 0
+            ? (_effectivePosition.inMilliseconds /
+                  _effectiveDuration.inMilliseconds)
+            : 0.0;
+        if ((currentPosFrac - (_seekAnimation?.value ?? currentPosFrac)).abs() <
+            0.01) {
+          _animatedFraction = null;
+        } else {
+          _animatedFraction = _seekAnimation?.value;
+        }
+      }
+    }
+  }
+
   void _onStateChanged() {
     if (mounted) {
+      if (_animatedFraction != null && !_seekAnimController.isAnimating) {
+        _animatedFraction = null;
+      }
       setState(() {});
     }
   }
@@ -170,6 +226,7 @@ class _WaveformScrubberState extends State<WaveformScrubber>
   }
 
   bool get _isPlaying {
+    if (widget.isPlaying != null) return widget.isPlaying!;
     if (widget.playbackController != null) {
       return widget.playbackController!.isPlaying;
     }
@@ -177,8 +234,14 @@ class _WaveformScrubberState extends State<WaveformScrubber>
   }
 
   double _getFraction(Duration pos, Duration total) {
+    if (total <= Duration.zero) {
+      return 0.0;
+    }
     if (_isDragging && _dragFraction != null) {
       return _dragFraction!;
+    }
+    if (_animatedFraction != null) {
+      return _animatedFraction!;
     }
     final totalMs = total.inMilliseconds;
     if (totalMs <= 0) return 0.0;
@@ -186,7 +249,11 @@ class _WaveformScrubberState extends State<WaveformScrubber>
   }
 
   void _handleSeek(double localX, double width) {
-    if (!widget.isInteractive || width <= 0) return;
+    if (!widget.isInteractive ||
+        width <= 0 ||
+        _effectiveDuration <= Duration.zero) {
+      return;
+    }
     final fraction = (localX / width).clamp(0.0, 1.0);
     final total = _effectiveDuration;
     final targetMs = (total.inMilliseconds * fraction).round();
@@ -200,21 +267,32 @@ class _WaveformScrubberState extends State<WaveformScrubber>
   }
 
   void _handleTapDown(TapDownDetails details, double maxWidth) {
-    if (!widget.isInteractive) return;
+    if (!widget.isInteractive || _effectiveDuration <= Duration.zero) return;
     final clampedX = maxWidth > 0
         ? details.localPosition.dx.clamp(0.0, maxWidth)
         : 0.0;
-    final frac = maxWidth > 0 ? (clampedX / maxWidth).clamp(0.0, 1.0) : 0.0;
+    final targetFrac = maxWidth > 0
+        ? (clampedX / maxWidth).clamp(0.0, 1.0)
+        : 0.0;
     _lastDragPosition = details.localPosition;
     if (details.kind == PointerDeviceKind.mouse) {
       _isMouseDevice = true;
       _isHovered = true;
     }
     _hoverXNotifier.value = clampedX;
-    setState(() {
-      _isDragging = true;
-      _dragFraction = frac;
-    });
+
+    final currentFrac =
+        _animatedFraction ??
+        _getFraction(_effectivePosition, _effectiveDuration);
+    _seekAnimController.removeListener(_handleSeekAnimationTick);
+    _seekAnimController.stop();
+    _seekAnimController.reset();
+    _seekAnimation = Tween<double>(
+      begin: currentFrac,
+      end: targetFrac,
+    ).animate(_seekCurvedAnimation);
+    _seekAnimController.addListener(_handleSeekAnimationTick);
+    _seekAnimController.forward();
     _handleSeek(clampedX, maxWidth);
   }
 
@@ -256,7 +334,11 @@ class _WaveformScrubberState extends State<WaveformScrubber>
   }
 
   void _handleDragStart(DragStartDetails details, double maxWidth) {
-    if (!widget.isInteractive) return;
+    if (!widget.isInteractive || _effectiveDuration <= Duration.zero) return;
+    _seekAnimController.removeListener(_handleSeekAnimationTick);
+    _seekAnimController.stop();
+    _animatedFraction = null;
+
     final clampedX = maxWidth > 0
         ? details.localPosition.dx.clamp(0.0, maxWidth)
         : 0.0;
@@ -276,6 +358,10 @@ class _WaveformScrubberState extends State<WaveformScrubber>
 
   void _handleDragUpdate(DragUpdateDetails details, double maxWidth) {
     if (!widget.isInteractive) return;
+    _seekAnimController.removeListener(_handleSeekAnimationTick);
+    _seekAnimController.stop();
+    _animatedFraction = null;
+
     final clampedX = maxWidth > 0
         ? details.localPosition.dx.clamp(0.0, maxWidth)
         : 0.0;
@@ -353,6 +439,11 @@ class _WaveformScrubberState extends State<WaveformScrubber>
             milliseconds: (totalDuration.inMilliseconds * _dragFraction!)
                 .round(),
           )
+        : (_animatedFraction != null && _seekAnimController.isAnimating)
+        ? Duration(
+            milliseconds: (totalDuration.inMilliseconds * _animatedFraction!)
+                .round(),
+          )
         : currentPos;
 
     final double waveformHeight = widget.showTimeLabels
@@ -368,6 +459,21 @@ class _WaveformScrubberState extends State<WaveformScrubber>
           child: LayoutBuilder(
             builder: (context, constraints) {
               final maxWidth = constraints.maxWidth;
+              WaveformData? effectiveWaveform = widget.waveform;
+              if (widget.desiredBarSpacing != null &&
+                  widget.desiredBarSpacing! > 0 &&
+                  maxWidth > 0 &&
+                  maxWidth.isFinite) {
+                final targetPoints = math.max(
+                  10,
+                  (maxWidth / widget.desiredBarSpacing!).round(),
+                );
+                if (widget.waveform != null &&
+                    widget.waveform!.points.isNotEmpty &&
+                    widget.waveform!.points.length != targetPoints) {
+                  effectiveWaveform = widget.waveform!.resample(targetPoints);
+                }
+              }
 
               return MouseRegion(
                 cursor: widget.isInteractive
@@ -422,7 +528,7 @@ class _WaveformScrubberState extends State<WaveformScrubber>
                                 builder: (context, hoverX, _) {
                                   return CustomPaint(
                                     painter: _WaveformPainter(
-                                      waveform: widget.waveform,
+                                      waveform: effectiveWaveform,
                                       progress: fraction,
                                       hoverX: hoverX,
                                       tokens: tokens,
@@ -583,7 +689,12 @@ class _WaveformPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    if (size.width <= 0 || size.height <= 0) return;
+    if (size.width <= 0 ||
+        size.height <= 0 ||
+        !size.width.isFinite ||
+        !size.height.isFinite) {
+      return;
+    }
 
     final centerY = size.height / 2.0;
     final maxHalfHeight = (size.height / 2.0) * 0.92;
@@ -594,7 +705,7 @@ class _WaveformPainter extends CustomPainter {
       final points = waveform!.points;
       final count = points.length;
       final step = size.width / count;
-      final barWidth = (step * 0.68).clamp(1.5, 6.0);
+      final barWidth = math.min(step * 0.85, (step * 0.68).clamp(1.2, 6.0));
       final radius = Radius.circular(barWidth / 2.0);
 
       final playedPaint = Paint()

@@ -165,6 +165,200 @@ void main() {
     expect(updatedVolume, isNotNull);
   });
 
+  testWidgets(
+    'LyraPlayerBar progress slider smoothly animates factor on tap down',
+    (tester) async {
+      Duration? seekedDuration;
+
+      await tester.pumpWidget(
+        _buildPlayerBarTest(
+          currentTrack: testTrack,
+          currentPosition: const Duration(seconds: 0),
+          onSeek: (pos) => seekedDuration = pos,
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final progressFinder = find.byType(GestureDetector).first;
+      final topLeft = tester.getTopLeft(progressFinder);
+      final size = tester.getSize(progressFinder);
+
+      // Tap 80% across the progress bar
+      final tapTarget = Offset(
+        topLeft.dx + size.width * 0.8,
+        topLeft.dy + size.height * 0.5,
+      );
+      await tester.tapAt(tapTarget);
+
+      // Audio engine seek callback fires immediately on tap down
+      expect(seekedDuration, isNotNull);
+      expect(seekedDuration!.inSeconds, greaterThan(150));
+
+      // Visual animation begins: at 0ms, progress widthFactor is near 0
+      await tester.pump();
+      final sizedBox0 = tester.widget<FractionallySizedBox>(
+        find
+            .descendant(
+              of: progressFinder,
+              matching: find.byType(FractionallySizedBox),
+            )
+            .first,
+      );
+      expect(sizedBox0.widthFactor, closeTo(0.0, 0.05));
+
+      // At 80ms (halfway through 160ms easeOutCubic animation), progress has smoothly advanced
+      await tester.pump(const Duration(milliseconds: 80));
+      final sizedBoxHalf = tester.widget<FractionallySizedBox>(
+        find
+            .descendant(
+              of: progressFinder,
+              matching: find.byType(FractionallySizedBox),
+            )
+            .first,
+      );
+      expect(sizedBoxHalf.widthFactor!, greaterThan(0.4));
+      expect(sizedBoxHalf.widthFactor!, lessThan(0.85));
+
+      // Settle animation
+      await tester.pumpAndSettle();
+    },
+  );
+
+  testWidgets(
+    'LyraPlayerBar progress slider retains seeked position on completion without rubberbanding',
+    (tester) async {
+      Duration? seekedDuration;
+
+      await tester.pumpWidget(
+        _buildPlayerBarTest(
+          currentTrack: testTrack,
+          currentPosition: const Duration(seconds: 0),
+          onSeek: (pos) => seekedDuration = pos,
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final progressFinder = find.byType(GestureDetector).first;
+      final topLeft = tester.getTopLeft(progressFinder);
+      final size = tester.getSize(progressFinder);
+
+      // Tap at 80% width
+      await tester.tapAt(
+        Offset(topLeft.dx + size.width * 0.8, topLeft.dy + size.height * 0.5),
+      );
+      expect(seekedDuration, isNotNull);
+      await tester.pump();
+
+      // Wait for seek animation to finish (160ms animation, pump 165ms)
+      await tester.pump(const Duration(milliseconds: 165));
+
+      // Audio engine hasn't caught up yet (currentPosition is still 0s),
+      // but progress slider should NOT rubberband back to 0.0!
+      final fractionBox = tester.widget<FractionallySizedBox>(
+        find
+            .descendant(
+              of: progressFinder,
+              matching: find.byType(FractionallySizedBox),
+            )
+            .first,
+      );
+      expect(fractionBox.widthFactor!, greaterThan(0.75));
+    },
+  );
+
+  testWidgets(
+    'LyraPlayerBar progress slider with zero total duration does not animate or fill track on tap',
+    (tester) async {
+      await tester.pumpWidget(
+        _buildPlayerBarTest(
+          currentTrack: const Track(
+            id: 't-zero',
+            title: 'Zero',
+            artistName: 'Artist',
+            albumTitle: 'Album',
+            durationMs: 0,
+          ),
+          currentPosition: Duration.zero,
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final progressFinder = find.byType(GestureDetector).first;
+      final topLeft = tester.getTopLeft(progressFinder);
+      final size = tester.getSize(progressFinder);
+
+      // Tap at 80% width
+      await tester.tapAt(
+        Offset(topLeft.dx + size.width * 0.8, topLeft.dy + size.height * 0.5),
+      );
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 80));
+
+      // Verify widthFactor remains 0.0 and no seek animation runs
+      final fractionBox = tester.widget<FractionallySizedBox>(
+        find
+            .descendant(
+              of: progressFinder,
+              matching: find.byType(FractionallySizedBox),
+            )
+            .first,
+      );
+      expect(fractionBox.widthFactor, 0.0);
+
+      await tester.pumpAndSettle();
+    },
+  );
+
+  testWidgets(
+    'LyraPlayerBar volume slider smoothly animates factor on tap down',
+    (tester) async {
+      double? updatedVolume;
+
+      await tester.pumpWidget(
+        _buildPlayerBarTest(
+          currentTrack: testTrack,
+          volume: 0.1,
+          onVolumeChanged: (vol) => updatedVolume = vol,
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final volumeGestureFinder = find.byType(GestureDetector).last;
+      final topLeft = tester.getTopLeft(volumeGestureFinder);
+      final size = tester.getSize(volumeGestureFinder);
+
+      // Tap at 80% width
+      final tapTarget = Offset(
+        topLeft.dx + size.width * 0.8,
+        topLeft.dy + size.height * 0.5,
+      );
+      await tester.tapAt(tapTarget);
+
+      // Volume changed callback fires immediately
+      expect(updatedVolume, isNotNull);
+      expect(updatedVolume!, closeTo(0.8, 0.05));
+
+      // Visual animation begins: at 0ms, volume factor is near 0.1
+      await tester.pump();
+
+      // At 75ms (halfway through 150ms easeOutCubic animation), volume has smoothly advanced
+      await tester.pump(const Duration(milliseconds: 75));
+      final sizedBoxHalf = tester.widget<FractionallySizedBox>(
+        find
+            .descendant(
+              of: volumeGestureFinder,
+              matching: find.byType(FractionallySizedBox),
+            )
+            .first,
+      );
+      expect(sizedBoxHalf.widthFactor!, greaterThan(0.4));
+      expect(sizedBoxHalf.widthFactor!, lessThan(0.85));
+
+      // Settle animation
+      await tester.pumpAndSettle();
+    },
+  );
+
   testWidgets('LyraPlayerBar sliders respond to mouse hover events', (
     tester,
   ) async {

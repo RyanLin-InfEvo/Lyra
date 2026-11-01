@@ -1510,7 +1510,7 @@ void main() {
         // Sampling Density input & slider
         expect(find.byType(ShadSlider), findsOneWidget);
         expect(find.byType(ShadInput), findsOneWidget);
-        expect(find.text('pts'), findsOneWidget);
+        expect(find.text('%'), findsOneWidget);
 
         // 5. Accessibility - MergeSemantics exists on setting rows
         expect(find.byType(MergeSemantics), findsWidgets);

@@ -762,6 +762,38 @@ void main() {
         expect(service.inspectorWaveformHoverTimeGuide, isFalse);
       },
     );
+    test(
+      'waveform points clamp bounds to [10, 1200] and [10, 300] in InMemory and SharedPreferences',
+      () async {
+        final inMem = InMemoryPreferencesService(
+          nowPlayingWaveformPoints: 5,
+          inspectorWaveformPoints: 5,
+        );
+        expect(inMem.nowPlayingWaveformPoints, 10);
+        expect(inMem.inspectorWaveformPoints, 10);
+
+        await inMem.setNowPlayingWaveformPoints(1500);
+        expect(inMem.nowPlayingWaveformPoints, 1200);
+
+        await inMem.setInspectorWaveformPoints(500);
+        expect(inMem.inspectorWaveformPoints, 300);
+
+        SharedPreferences.setMockInitialValues({
+          SharedPreferencesService.keyNowPlayingWaveformPoints: 2,
+          SharedPreferencesService.keyInspectorWaveformPoints: 1,
+        });
+        final prefs = await SharedPreferences.getInstance();
+        final shared = SharedPreferencesService(prefs);
+        expect(shared.nowPlayingWaveformPoints, 10);
+        expect(shared.inspectorWaveformPoints, 10);
+
+        await shared.setNowPlayingWaveformPoints(2000);
+        expect(shared.nowPlayingWaveformPoints, 1200);
+
+        await shared.setInspectorWaveformPoints(999);
+        expect(shared.inspectorWaveformPoints, 300);
+      },
+    );
   });
 }
 

@@ -3,6 +3,7 @@
 
 import 'dart:async';
 import 'dart:math' as math;
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
@@ -264,13 +265,36 @@ class AppShellState extends State<AppShell> {
     if (_sidebarWidthNotifier.value != prefs.sidebarWidth) {
       _sidebarWidthNotifier.value = prefs.sidebarWidth;
     }
-    if (_isSidebarCollapsed != prefs.isSidebarCollapsed) {
-      setState(() {
-        _isSidebarCollapsed = prefs.isSidebarCollapsed;
-      });
+    final clampedInspectorWidth = prefs.inspectorWidth.clamp(300.0, 1000.0);
+    if (_inspectorWidthNotifier.value != clampedInspectorWidth) {
+      _inspectorWidthNotifier.value = clampedInspectorWidth;
     }
+    if ((_volumeNotifier.value - prefs.volume).abs() > 0.001) {
+      _volumeNotifier.value = prefs.volume;
+    }
+    bool needsRebuild = false;
+    if (_isSidebarCollapsed != prefs.isSidebarCollapsed) {
+      _isSidebarCollapsed = prefs.isSidebarCollapsed;
+      needsRebuild = true;
+    }
+    final oldTrackOrder = _trackColumnOrder;
+    final oldTrackVisible = _trackVisibleColumns;
+    final oldWorkOrder = _workColumnOrder;
+    final oldWorkVisible = _workVisibleColumns;
+    final oldPlaylistOrder = _playlistColumnOrder;
+    final oldPlaylistVisible = _playlistVisibleColumns;
     _initColumns();
-    setState(() {});
+    if (!listEquals(oldTrackOrder, _trackColumnOrder) ||
+        !setEquals(oldTrackVisible, _trackVisibleColumns) ||
+        !listEquals(oldWorkOrder, _workColumnOrder) ||
+        !setEquals(oldWorkVisible, _workVisibleColumns) ||
+        !listEquals(oldPlaylistOrder, _playlistColumnOrder) ||
+        !setEquals(oldPlaylistVisible, _playlistVisibleColumns)) {
+      needsRebuild = true;
+    }
+    if (needsRebuild) {
+      setState(() {});
+    }
   }
 
   void _onVolumeNotifierChanged() {
@@ -592,6 +616,8 @@ class AppShellState extends State<AppShell> {
   set isNowPlayingExpanded(bool value) => _isNowPlayingExpanded = value;
 
   bool get isSidebarCollapsed => _isSidebarCollapsed;
+  ValueNotifier<double> get sidebarWidthNotifier => _sidebarWidthNotifier;
+  ValueNotifier<double> get inspectorWidthNotifier => _inspectorWidthNotifier;
   ValueNotifier<double> get volumeNotifier => _volumeNotifier;
   List<TrackColumn> get trackColumnOrder => _trackColumnOrder;
   Set<TrackColumn> get trackVisibleColumns => _trackVisibleColumns;

@@ -592,16 +592,68 @@ class _ProgressSlider extends StatefulWidget {
   State<_ProgressSlider> createState() => _ProgressSliderState();
 }
 
-class _ProgressSliderState extends State<_ProgressSlider> {
+class _ProgressSliderState extends State<_ProgressSlider>
+    with SingleTickerProviderStateMixin {
   bool _isHovered = false;
   bool _isDragging = false;
   final ValueNotifier<double?> _hoverXNotifier = ValueNotifier<double?>(null);
   double? _dragFactor;
+  late final AnimationController _seekAnimController;
+  late final CurvedAnimation _seekCurvedAnimation;
+  Animation<double>? _seekAnimation;
+  double? _animatedFactor;
+
+  @override
+  void initState() {
+    super.initState();
+    _seekAnimController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 160),
+    );
+    _seekCurvedAnimation = CurvedAnimation(
+      parent: _seekAnimController,
+      curve: Curves.easeOutCubic,
+    );
+  }
+
+  @override
+  void didUpdateWidget(covariant _ProgressSlider oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (_animatedFactor != null && !_seekAnimController.isAnimating) {
+      if (widget.position != oldWidget.position) {
+        _animatedFactor = null;
+      }
+    }
+  }
 
   @override
   void dispose() {
+    _seekAnimController.removeListener(_handleSeekAnimationTick);
+    _seekCurvedAnimation.dispose();
+    _seekAnimController.dispose();
     _hoverXNotifier.dispose();
     super.dispose();
+  }
+
+  void _handleSeekAnimationTick() {
+    if (mounted) {
+      setState(() {
+        _animatedFactor = _seekAnimation?.value;
+      });
+      if (_seekAnimController.isCompleted) {
+        _seekAnimController.removeListener(_handleSeekAnimationTick);
+        final currentPosFactor = widget.total.inMilliseconds > 0
+            ? (widget.position.inMilliseconds / widget.total.inMilliseconds)
+            : 0.0;
+        if ((currentPosFactor - (_seekAnimation?.value ?? currentPosFactor))
+                .abs() <
+            0.01) {
+          _animatedFactor = null;
+        } else {
+          _animatedFactor = _seekAnimation?.value;
+        }
+      }
+    }
   }
 
   String _formatDuration(Duration d) {
@@ -620,13 +672,18 @@ class _ProgressSliderState extends State<_ProgressSlider> {
 
   @override
   Widget build(BuildContext context) {
-    final factor = _isDragging && _dragFactor != null
-        ? _dragFactor!
-        : (widget.total.inMilliseconds > 0
-              ? (widget.position.inMilliseconds / widget.total.inMilliseconds)
-                    .clamp(0.0, 1.0)
-              : 0.0);
-    final isActive = _isHovered || _isDragging;
+    final factor = widget.total <= Duration.zero
+        ? 0.0
+        : (_isDragging && _dragFactor != null
+              ? _dragFactor!
+              : (_animatedFactor ??
+                    (widget.total.inMilliseconds > 0
+                        ? (widget.position.inMilliseconds /
+                                  widget.total.inMilliseconds)
+                              .clamp(0.0, 1.0)
+                        : 0.0)));
+    final isActive =
+        _isHovered || _isDragging || _seekAnimController.isAnimating;
 
     return RepaintBoundary(
       child: MouseRegion(
@@ -655,6 +712,10 @@ class _ProgressSliderState extends State<_ProgressSlider> {
             return GestureDetector(
               behavior: HitTestBehavior.opaque,
               onHorizontalDragStart: (details) {
+                if (widget.total <= Duration.zero) return;
+                _seekAnimController.removeListener(_handleSeekAnimationTick);
+                _seekAnimController.stop();
+                _animatedFactor = null;
                 _hoverXNotifier.value = details.localPosition.dx;
                 setState(() {
                   _isDragging = true;
@@ -667,6 +728,10 @@ class _ProgressSliderState extends State<_ProgressSlider> {
                 _handleSeek(details.localPosition.dx, constraints.maxWidth);
               },
               onHorizontalDragUpdate: (details) {
+                if (widget.total <= Duration.zero) return;
+                _seekAnimController.removeListener(_handleSeekAnimationTick);
+                _seekAnimController.stop();
+                _animatedFactor = null;
                 _hoverXNotifier.value = details.localPosition.dx;
                 setState(() {
                   _dragFactor =
@@ -690,29 +755,36 @@ class _ProgressSliderState extends State<_ProgressSlider> {
                 });
               },
               onTapDown: (details) {
+                if (widget.total <= Duration.zero) return;
                 _hoverXNotifier.value = details.localPosition.dx;
-                setState(() {
-                  _isDragging = true;
-                  _dragFactor =
-                      (details.localPosition.dx / constraints.maxWidth).clamp(
+                final targetFactor = constraints.maxWidth > 0
+                    ? (details.localPosition.dx / constraints.maxWidth).clamp(
                         0.0,
                         1.0,
-                      );
-                });
+                      )
+                    : 0.0;
+                final currentFactor =
+                    _animatedFactor ??
+                    (_dragFactor ??
+                        (widget.total.inMilliseconds > 0
+                            ? (widget.position.inMilliseconds /
+                                      widget.total.inMilliseconds)
+                                  .clamp(0.0, 1.0)
+                            : 0.0));
+
+                _seekAnimController.removeListener(_handleSeekAnimationTick);
+                _seekAnimController.stop();
+                _seekAnimController.reset();
+                _seekAnimation = Tween<double>(
+                  begin: currentFactor,
+                  end: targetFactor,
+                ).animate(_seekCurvedAnimation);
+                _seekAnimController.addListener(_handleSeekAnimationTick);
+                _seekAnimController.forward();
                 _handleSeek(details.localPosition.dx, constraints.maxWidth);
               },
-              onTapUp: (_) {
-                setState(() {
-                  _isDragging = false;
-                  _dragFactor = null;
-                });
-              },
-              onTapCancel: () {
-                setState(() {
-                  _isDragging = false;
-                  _dragFactor = null;
-                });
-              },
+              onTapUp: (_) {},
+              onTapCancel: () {},
               child: Container(
                 height: widget.isTopScrubber ? 14.0 : 16.0,
                 alignment: Alignment.center,
@@ -721,7 +793,9 @@ class _ProgressSliderState extends State<_ProgressSlider> {
                   alignment: Alignment.centerLeft,
                   children: [
                     // Background Track
-                    Container(
+                    AnimatedContainer(
+                      duration: const Duration(milliseconds: 150),
+                      curve: Curves.easeOutCubic,
                       height: widget.isTopScrubber
                           ? (isActive ? 4.0 : 2.0)
                           : (isActive ? 6.0 : 4.0),
@@ -736,7 +810,9 @@ class _ProgressSliderState extends State<_ProgressSlider> {
                     // Active Progress Track
                     FractionallySizedBox(
                       widthFactor: factor,
-                      child: Container(
+                      child: AnimatedContainer(
+                        duration: const Duration(milliseconds: 150),
+                        curve: Curves.easeOutCubic,
                         height: widget.isTopScrubber
                             ? (isActive ? 4.0 : 2.0)
                             : (isActive ? 6.0 : 4.0),
@@ -1004,10 +1080,63 @@ class _VolumeSlider extends StatefulWidget {
   State<_VolumeSlider> createState() => _VolumeSliderState();
 }
 
-class _VolumeSliderState extends State<_VolumeSlider> {
+class _VolumeSliderState extends State<_VolumeSlider>
+    with SingleTickerProviderStateMixin {
   bool _isHovered = false;
   bool _isDragging = false;
   double? _dragVolume;
+  late final AnimationController _animController;
+  late final CurvedAnimation _curvedAnimation;
+  Animation<double>? _volumeAnimation;
+  double? _animatedVolume;
+
+  @override
+  void initState() {
+    super.initState();
+    _animController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 150),
+    );
+    _curvedAnimation = CurvedAnimation(
+      parent: _animController,
+      curve: Curves.easeOutCubic,
+    );
+  }
+
+  @override
+  void didUpdateWidget(covariant _VolumeSlider oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (_animatedVolume != null && !_animController.isAnimating) {
+      if (widget.volume != oldWidget.volume) {
+        _animatedVolume = null;
+      }
+    }
+  }
+
+  @override
+  void dispose() {
+    _animController.removeListener(_handleVolumeAnimationTick);
+    _curvedAnimation.dispose();
+    _animController.dispose();
+    super.dispose();
+  }
+
+  void _handleVolumeAnimationTick() {
+    if (mounted) {
+      setState(() {
+        _animatedVolume = _volumeAnimation?.value;
+      });
+      if (_animController.isCompleted) {
+        _animController.removeListener(_handleVolumeAnimationTick);
+        if ((widget.volume - (_volumeAnimation?.value ?? widget.volume)).abs() <
+            0.01) {
+          _animatedVolume = null;
+        } else {
+          _animatedVolume = _volumeAnimation?.value;
+        }
+      }
+    }
+  }
 
   void _handleVolume(double localX, double maxWidth) {
     if (maxWidth <= 0) return;
@@ -1021,8 +1150,11 @@ class _VolumeSliderState extends State<_VolumeSlider> {
 
   @override
   Widget build(BuildContext context) {
-    final factor = (_dragVolume ?? widget.volume).clamp(0.0, 1.0);
-    final isActive = _isHovered || _isDragging;
+    final factor = (_animatedVolume ?? _dragVolume ?? widget.volume).clamp(
+      0.0,
+      1.0,
+    );
+    final isActive = _isHovered || _isDragging || _animController.isAnimating;
     final animDuration = _isDragging
         ? Duration.zero
         : const Duration(milliseconds: 150);
@@ -1037,10 +1169,16 @@ class _VolumeSliderState extends State<_VolumeSlider> {
             return GestureDetector(
               behavior: HitTestBehavior.opaque,
               onHorizontalDragStart: (details) {
+                _animController.removeListener(_handleVolumeAnimationTick);
+                _animController.stop();
+                _animatedVolume = null;
                 setState(() => _isDragging = true);
                 _handleVolume(details.localPosition.dx, constraints.maxWidth);
               },
               onHorizontalDragUpdate: (details) {
+                _animController.removeListener(_handleVolumeAnimationTick);
+                _animController.stop();
+                _animatedVolume = null;
                 _handleVolume(details.localPosition.dx, constraints.maxWidth);
               },
               onHorizontalDragEnd: (_) {
@@ -1056,21 +1194,28 @@ class _VolumeSliderState extends State<_VolumeSlider> {
                 });
               },
               onTapDown: (details) {
-                setState(() => _isDragging = true);
-                _handleVolume(details.localPosition.dx, constraints.maxWidth);
+                final clampedX = constraints.maxWidth > 0
+                    ? details.localPosition.dx.clamp(0.0, constraints.maxWidth)
+                    : 0.0;
+                final targetVol = constraints.maxWidth > 0
+                    ? (clampedX / constraints.maxWidth).clamp(0.0, 1.0)
+                    : 0.0;
+                final currentVol =
+                    _animatedVolume ?? _dragVolume ?? widget.volume;
+
+                _animController.removeListener(_handleVolumeAnimationTick);
+                _animController.stop();
+                _animController.reset();
+                _volumeAnimation = Tween<double>(
+                  begin: currentVol,
+                  end: targetVol,
+                ).animate(_curvedAnimation);
+                _animController.addListener(_handleVolumeAnimationTick);
+                _animController.forward();
+                widget.onChanged(targetVol);
               },
-              onTapUp: (_) {
-                setState(() {
-                  _isDragging = false;
-                  _dragVolume = null;
-                });
-              },
-              onTapCancel: () {
-                setState(() {
-                  _isDragging = false;
-                  _dragVolume = null;
-                });
-              },
+              onTapUp: (_) {},
+              onTapCancel: () {},
               child: Container(
                 height: 16.0,
                 alignment: Alignment.center,

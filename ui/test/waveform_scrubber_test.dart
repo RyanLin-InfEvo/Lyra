@@ -25,6 +25,11 @@ Widget _buildScrubberTest({
   double height = 64.0,
   bool showTimeLabels = true,
   bool isInteractive = true,
+  bool? isPlaying,
+  bool? enableAnimation,
+  bool enablePulseAnimation = true,
+  double? desiredBarSpacing,
+  double width = 400.0,
 }) {
   final themeModeNotifier = ValueNotifier<ThemeMode>(ThemeMode.dark);
   const factory = ShadcnFactory();
@@ -68,9 +73,10 @@ Widget _buildScrubberTest({
           child: Scaffold(
             body: Center(
               child: SizedBox(
-                width: 400.0,
+                width: width,
                 child: WaveformScrubber(
                   waveform: waveform,
+                  desiredBarSpacing: desiredBarSpacing,
                   playbackController: playbackController,
                   position: position,
                   duration: duration,
@@ -78,6 +84,9 @@ Widget _buildScrubberTest({
                   height: height,
                   showTimeLabels: showTimeLabels,
                   isInteractive: isInteractive,
+                  isPlaying: isPlaying,
+                  enableAnimation: enableAnimation,
+                  enablePulseAnimation: enablePulseAnimation,
                 ),
               ),
             ),
@@ -245,6 +254,80 @@ void main() {
 
       controller.dispose();
     });
+
+    testWidgets(
+      'tapping on waveform scrubber smoothly animates playhead progress',
+      (tester) async {
+        Duration? seekTarget;
+        final wf = WaveformData.mock(pcmHash: 'anim-hash', points: 60);
+
+        await tester.pumpWidget(
+          _buildScrubberTest(
+            waveform: wf,
+            position: Duration.zero,
+            duration: const Duration(seconds: 100),
+            onSeek: (pos) => seekTarget = pos,
+          ),
+        );
+        await tester.pump();
+
+        final gestureFinder = find.byType(GestureDetector);
+        final topLeft = tester.getTopLeft(gestureFinder);
+        final size = tester.getSize(gestureFinder);
+
+        // Tap at 80% of width (80s target)
+        await tester.tapAt(
+          Offset(topLeft.dx + size.width * 0.8, topLeft.dy + size.height * 0.5),
+        );
+
+        // Seek callback fires immediately
+        expect(seekTarget, isNotNull);
+        expect(seekTarget!.inSeconds, closeTo(80, 2));
+
+        // Visual animation begins at t = 0ms
+        await tester.pump();
+
+        // Advance 75ms (halfway through 150ms easeOutCubic transition)
+        await tester.pump(const Duration(milliseconds: 75));
+
+        // Settle animation
+        await tester.pumpAndSettle();
+      },
+    );
+
+    testWidgets(
+      'WaveformScrubber displayedElapsed updates dynamically during tap animation',
+      (tester) async {
+        final wf = WaveformData.mock(pcmHash: 'anim-time-hash', points: 60);
+        await tester.pumpWidget(
+          _buildScrubberTest(
+            waveform: wf,
+            position: Duration.zero,
+            duration: const Duration(seconds: 100),
+            showTimeLabels: true,
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        final gestureFinder = find.byType(GestureDetector);
+        final topLeft = tester.getTopLeft(gestureFinder);
+        final size = tester.getSize(gestureFinder);
+
+        // Tap at 80% (80 seconds)
+        await tester.tapAt(
+          Offset(topLeft.dx + size.width * 0.8, topLeft.dy + size.height * 0.5),
+        );
+        await tester.pump(); // Start animation
+
+        // Halfway through animation (75ms of 150ms)
+        await tester.pump(const Duration(milliseconds: 75));
+
+        // Time label should NOT be frozen at '0:00', should have animated past 30 seconds
+        expect(find.text('0:00'), findsNothing);
+
+        await tester.pumpAndSettle();
+      },
+    );
 
     testWidgets('hides time labels when showTimeLabels is false', (
       tester,
@@ -654,6 +737,115 @@ void main() {
         // Clean up gesture
         await gesture.moveTo(Offset(topLeft.dx - 100, topLeft.dy - 100));
         await tester.pump();
+      },
+    );
+  });
+
+  group('WaveformScrubber Dynamic Resampling via desiredBarSpacing', () {
+    testWidgets(
+      'resamples waveform dynamically to match desiredBarSpacing across different container widths',
+      (tester) async {
+        tester.view.physicalSize = const Size(1920, 1080);
+        tester.view.devicePixelRatio = 1.0;
+        addTearDown(tester.view.resetPhysicalSize);
+
+        final sourceWf = WaveformData.mock(
+          pcmHash: 'resample-test',
+          points: 500,
+        );
+        const testSpacing = 8.0;
+
+        for (final w in [300.0, 580.0, 780.0, 1060.0]) {
+          await tester.pumpWidget(
+            _buildScrubberTest(
+              waveform: sourceWf,
+              desiredBarSpacing: testSpacing,
+              width: w,
+              duration: const Duration(seconds: 100),
+              position: Duration.zero,
+            ),
+          );
+          await tester.pump();
+
+          final customPaints = tester.widgetList<CustomPaint>(
+            find.descendant(
+              of: find.byType(WaveformScrubber),
+              matching: find.byType(CustomPaint),
+            ),
+          );
+          final waveformPainterCustomPaint = customPaints.firstWhere(
+            (cp) => cp.painter?.runtimeType.toString() == '_WaveformPainter',
+          );
+          final dynamic painter = waveformPainterCustomPaint.painter;
+          final WaveformData effectiveWaveform = painter.waveform;
+
+          final expectedPoints = (w / testSpacing).round().clamp(10, 10000);
+          expect(effectiveWaveform.points.length, expectedPoints);
+
+          // Bar spacing on screen is w / points.length, which matches testSpacing within subpixel tolerance (< 0.15px)
+          final actualSpacing = w / effectiveWaveform.points.length;
+          expect(actualSpacing, closeTo(testSpacing, 0.15));
+        }
+      },
+    );
+
+    testWidgets('passes waveform un-resampled when desiredBarSpacing is null', (
+      tester,
+    ) async {
+      final sourceWf = WaveformData.mock(pcmHash: 'unresampled', points: 77);
+      await tester.pumpWidget(
+        _buildScrubberTest(
+          waveform: sourceWf,
+          desiredBarSpacing: null,
+          width: 500.0,
+          duration: const Duration(seconds: 100),
+          position: Duration.zero,
+        ),
+      );
+      await tester.pump();
+
+      final customPaints = tester.widgetList<CustomPaint>(
+        find.descendant(
+          of: find.byType(WaveformScrubber),
+          matching: find.byType(CustomPaint),
+        ),
+      );
+      final waveformPainterCustomPaint = customPaints.firstWhere(
+        (cp) => cp.painter?.runtimeType.toString() == '_WaveformPainter',
+      );
+      final dynamic painter = waveformPainterCustomPaint.painter;
+      final WaveformData effectiveWaveform = painter.waveform;
+
+      expect(effectiveWaveform.points.length, 77);
+    });
+
+    testWidgets(
+      'passing isPlaying: true enables pulse shimmer rendering even without playbackController',
+      (tester) async {
+        final wf = WaveformData.mock(pcmHash: 'test-shimmer', points: 60);
+        await tester.pumpWidget(
+          _buildScrubberTest(
+            waveform: wf,
+            isPlaying: true,
+            enablePulseAnimation: true,
+            duration: const Duration(seconds: 100),
+            position: const Duration(seconds: 50),
+          ),
+        );
+        await tester.pump();
+
+        final customPaints = tester.widgetList<CustomPaint>(
+          find.descendant(
+            of: find.byType(WaveformScrubber),
+            matching: find.byType(CustomPaint),
+          ),
+        );
+        final waveformPainterCustomPaint = customPaints.firstWhere(
+          (cp) => cp.painter?.runtimeType.toString() == '_WaveformPainter',
+        );
+        final dynamic painter = waveformPainterCustomPaint.painter;
+
+        expect(painter.isPlaying, isTrue);
       },
     );
   });

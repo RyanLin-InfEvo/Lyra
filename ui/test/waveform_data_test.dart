@@ -161,17 +161,20 @@ void main() {
       final bridge = MockLyraBridge();
       final repo = AudioRepository(bridge);
 
+      int? lastRequestedBackendPoints;
+
       // Register mock response for audio.get_waveform
       bridge.registerMockHandler('audio.get_waveform', (params) async {
         final pcmHash = params['pcm_hash'] ?? params['track_id'];
         final pts = params['points'] ?? 120;
+        lastRequestedBackendPoints = pts as int;
         return {
           'code': 200,
           'status': 'success',
           'data': {
             'pcm_hash': pcmHash,
             'points': pts,
-            'peaks': List.generate(pts as int, (_) => [-0.5, 0.5]),
+            'peaks': List.generate(pts, (_) => [-0.5, 0.5]),
             'rms': List.generate(pts, (_) => 0.35),
           },
         };
@@ -181,6 +184,7 @@ void main() {
       final wfTrack = await repo.getWaveform('trk-100', points: 80);
       expect(wfTrack.pcmHash, 'trk-100');
       expect(wfTrack.points.length, 80);
+      expect(lastRequestedBackendPoints, 80);
 
       // 2. Query with 64-char hex PCM hash
       const hexHash =
@@ -188,6 +192,29 @@ void main() {
       final wfHash = await repo.getWaveform(hexHash, points: 50);
       expect(wfHash.pcmHash, hexHash);
       expect(wfHash.points.length, 50);
+      expect(lastRequestedBackendPoints, 50);
+
+      // 3. Query with points < 30 (e.g. 20 pts) clamps to 30 for backend and resamples to 20
+      final wfSparse = await repo.getWaveform('trk-sparse', points: 20);
+      expect(wfSparse.points.length, 20);
+      expect(lastRequestedBackendPoints, 30);
+
+      // 4. Query with points > 1200 (e.g. 1500 pts) clamps to 1200 for backend and resamples to 1500
+      final wfDense = await repo.getWaveform('trk-dense', points: 1500);
+      expect(wfDense.points.length, 1500);
+      expect(lastRequestedBackendPoints, 1200);
+
+      // 5. Query with non-positive points (<= 0) returns empty waveform immediately without calling bridge
+      lastRequestedBackendPoints = null;
+      final wfZero = await repo.getWaveform('trk-zero', points: 0);
+      expect(wfZero.pcmHash, 'trk-zero');
+      expect(wfZero.points, isEmpty);
+      expect(lastRequestedBackendPoints, isNull);
+
+      final wfNeg = await repo.getWaveform('trk-neg', points: -10);
+      expect(wfNeg.pcmHash, 'trk-neg');
+      expect(wfNeg.points, isEmpty);
+      expect(lastRequestedBackendPoints, isNull);
     });
   });
 }

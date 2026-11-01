@@ -239,6 +239,52 @@ class WaveformData {
     );
   }
 
+  /// Resamples the waveform points to [targetCount] using peak-preserving min/max aggregation
+  /// and RMS energy averaging.
+  WaveformData resample(int targetCount) {
+    if (targetCount <= 0 || points.isEmpty) {
+      return copyWith(points: const []);
+    }
+    if (targetCount == points.length) {
+      return this;
+    }
+
+    final newPoints = <WaveformPoint>[];
+    final double srcLen = points.length.toDouble();
+
+    for (int i = 0; i < targetCount; i++) {
+      final double startFraction = i / targetCount;
+      final double endFraction = (i + 1) / targetCount;
+
+      final int startIndex = (startFraction * srcLen).floor().clamp(
+        0,
+        points.length - 1,
+      );
+      final int endIndex = (endFraction * srcLen).ceil().clamp(
+        startIndex + 1,
+        points.length,
+      );
+
+      double minVal = points[startIndex].min;
+      double maxVal = points[startIndex].max;
+      double rmsSum = 0.0;
+      int count = 0;
+
+      for (int j = startIndex; j < endIndex; j++) {
+        final pt = points[j];
+        if (pt.min < minVal) minVal = pt.min;
+        if (pt.max > maxVal) maxVal = pt.max;
+        rmsSum += pt.rms * pt.rms;
+        count++;
+      }
+
+      final double avgRms = count > 0 ? math.sqrt(rmsSum / count) : 0.0;
+      newPoints.add(WaveformPoint(min: minVal, max: maxVal, rms: avgRms));
+    }
+
+    return copyWith(points: List.unmodifiable(newPoints));
+  }
+
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||

@@ -61,14 +61,22 @@ class AudioRepository extends BaseRepository implements IAudioRepository {
     String trackIdOrPcmHash, {
     int points = 120,
   }) async {
+    if (points <= 0) {
+      return WaveformData(pcmHash: trackIdOrPcmHash, points: const []);
+    }
     final bool isPcmHash =
         trackIdOrPcmHash.startsWith('pcm') ||
         RegExp(r'^[a-fA-F0-9]{64}$').hasMatch(trackIdOrPcmHash);
+    final clampedPoints = points.clamp(30, 1200);
     final response = await bridge.executeCommand('audio.get_waveform', {
       isPcmHash ? 'pcm_hash' : 'track_id': trackIdOrPcmHash,
-      'points': points,
+      'points': clampedPoints,
     });
     final data = unpackMap(response);
-    return WaveformData.fromJson(data);
+    final wf = WaveformData.fromJson(data);
+    if (wf.points.length != points && points > 0) {
+      return wf.resample(points);
+    }
+    return wf;
   }
 }

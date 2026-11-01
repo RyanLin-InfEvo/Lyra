@@ -40,6 +40,7 @@ import '../player/controllers/playback_queue_controller.dart';
 import '../player/views/components/waveform_scrubber.dart';
 import '../services/music_service.dart';
 import '../settings/services/preferences_service.dart';
+import '../settings/settings_view.dart';
 
 /// Audio entity-centric property inspector drawer displaying deep acoustic specifications,
 /// Single-Level Star Topology audio versions, CAS storage properties, and digital provenance.
@@ -2255,6 +2256,12 @@ class _AudioInspectorContentState extends State<AudioInspectorContent> {
             ),
             child: WaveformScrubber(
               waveform: _waveform,
+              desiredBarSpacing: densityToBarSpacing(
+                pointsToDensityPercent(
+                  widget.preferencesService?.inspectorWaveformPoints ?? 100,
+                  WaveformTarget.inspector,
+                ),
+              ),
               playbackController: isPlayingThis
                   ? widget.playbackController
                   : null,

@@ -477,10 +477,10 @@ class SharedPreferencesService extends PreferencesService {
   int get nowPlayingWaveformPoints {
     try {
       final val = _prefs.get(keyNowPlayingWaveformPoints);
-      if (val is num) return val.toInt().clamp(30, 1200);
+      if (val is num) return val.toInt().clamp(10, 1200);
       if (val is String) {
         final parsed = int.tryParse(val);
-        if (parsed != null) return parsed.clamp(30, 1200);
+        if (parsed != null) return parsed.clamp(10, 1200);
       }
       return 140;
     } catch (_) {
@@ -490,7 +490,7 @@ class SharedPreferencesService extends PreferencesService {
 
   @override
   Future<void> setNowPlayingWaveformPoints(int points) async {
-    final clamped = points.clamp(30, 1200);
+    final clamped = points.clamp(10, 1200);
     try {
       await _prefs.setInt(keyNowPlayingWaveformPoints, clamped);
     } catch (_) {}
@@ -501,10 +501,10 @@ class SharedPreferencesService extends PreferencesService {
   int get inspectorWaveformPoints {
     try {
       final val = _prefs.get(keyInspectorWaveformPoints);
-      if (val is num) return val.toInt().clamp(30, 300);
+      if (val is num) return val.toInt().clamp(10, 300);
       if (val is String) {
         final parsed = int.tryParse(val);
-        if (parsed != null) return parsed.clamp(30, 300);
+        if (parsed != null) return parsed.clamp(10, 300);
       }
       return 100;
     } catch (_) {
@@ -514,7 +514,7 @@ class SharedPreferencesService extends PreferencesService {
 
   @override
   Future<void> setInspectorWaveformPoints(int points) async {
-    final clamped = points.clamp(30, 300);
+    final clamped = points.clamp(10, 300);
     try {
       await _prefs.setInt(keyInspectorWaveformPoints, clamped);
     } catch (_) {}
@@ -811,8 +811,8 @@ class InMemoryPreferencesService extends PreferencesService {
            : null,
        _showNowPlayingWaveform = showNowPlayingWaveform,
        _showInspectorWaveform = showInspectorWaveform,
-       _nowPlayingWaveformPoints = nowPlayingWaveformPoints.clamp(30, 1200),
-       _inspectorWaveformPoints = inspectorWaveformPoints.clamp(30, 300),
+       _nowPlayingWaveformPoints = nowPlayingWaveformPoints.clamp(10, 1200),
+       _inspectorWaveformPoints = inspectorWaveformPoints.clamp(10, 300),
        _nowPlayingWaveformPulseAnimation =
            nowPlayingWaveformPulseAnimation ?? waveformPulseAnimation,
        _inspectorWaveformPulseAnimation =
@@ -994,7 +994,7 @@ class InMemoryPreferencesService extends PreferencesService {
 
   @override
   Future<void> setNowPlayingWaveformPoints(int points) async {
-    _nowPlayingWaveformPoints = points.clamp(30, 1200);
+    _nowPlayingWaveformPoints = points.clamp(10, 1200);
     notifyListeners();
   }
 
@@ -1003,7 +1003,7 @@ class InMemoryPreferencesService extends PreferencesService {
 
   @override
   Future<void> setInspectorWaveformPoints(int points) async {
-    _inspectorWaveformPoints = points.clamp(30, 300);
+    _inspectorWaveformPoints = points.clamp(10, 300);
     notifyListeners();
   }
 

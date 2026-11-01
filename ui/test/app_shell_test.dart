@@ -2575,6 +2575,37 @@ void main() {
     );
 
     testWidgets(
+      'External updates to PreferencesService (inspectorWidth and volume) update AppShell notifiers',
+      (tester) async {
+        tester.view.physicalSize = const Size(1280, 800);
+        tester.view.devicePixelRatio = 1.0;
+        addTearDown(tester.view.resetPhysicalSize);
+
+        final prefs = InMemoryPreferencesService(
+          inspectorWidth: 420.0,
+          volume: 0.85,
+        );
+
+        await tester.pumpWidget(_buildAppShellTest(preferencesService: prefs));
+        await tester.pumpAndSettle();
+
+        final shellState = tester.state<AppShellState>(find.byType(AppShell));
+        expect(shellState.inspectorWidthNotifier.value, 420.0);
+        expect(shellState.volumeNotifier.value, 0.85);
+
+        // Update inspector width externally in PreferencesService
+        await prefs.setInspectorWidth(550.0);
+        await tester.pumpAndSettle();
+        expect(shellState.inspectorWidthNotifier.value, 550.0);
+
+        // Update volume externally in PreferencesService
+        await prefs.setVolume(0.30);
+        await tester.pumpAndSettle();
+        expect(shellState.volumeNotifier.value, closeTo(0.30, 0.001));
+      },
+    );
+
+    testWidgets(
       'TracksView context menu Go to Album and Go to Artist filter tracks and update view',
       (tester) async {
         tester.view.physicalSize = const Size(1280, 800);
@@ -3500,6 +3531,43 @@ void main() {
 
         expect(prefs.themeMode, equals(ThemeMode.light));
         expect(LyraDesignSystemScope.of(shellContext).tokens.isDark, isFalse);
+      },
+    );
+
+    testWidgets(
+      'AppShell does not mark itself dirty on non-structural preference changes',
+      (tester) async {
+        final prefs = InMemoryPreferencesService();
+        await tester.pumpWidget(_buildAppShellTest(preferencesService: prefs));
+        await tester.pumpAndSettle();
+
+        final shellElement = tester.element(find.byType(AppShell));
+        expect(shellElement.dirty, isFalse);
+
+        // Mutating a non-structural preference (e.g. showNowPlayingWaveform, nowPlayingWaveformPulseAnimation, nowPlayingWaveformHoverTimeGuide)
+        prefs.setShowNowPlayingWaveform(false);
+        // Before pumping frames, if setState(() {}) was called, shellElement.dirty is true!
+        // We assert that it does NOT mark AppShell dirty:
+        expect(
+          shellElement.dirty,
+          isFalse,
+          reason:
+              'Non-structural preference changes must not mark AppShell dirty or trigger full window rebuilds',
+        );
+
+        prefs.setNowPlayingWaveformPulseAnimation(false);
+        expect(
+          shellElement.dirty,
+          isFalse,
+          reason: 'Pulse shimmer change must not mark AppShell dirty',
+        );
+
+        prefs.setNowPlayingWaveformHoverTimeGuide(false);
+        expect(
+          shellElement.dirty,
+          isFalse,
+          reason: 'Hover timecode guide change must not mark AppShell dirty',
+        );
       },
     );
   });
