@@ -430,6 +430,133 @@ void main() {
       },
     );
 
+    testWidgets(
+      'Dragging Sampling Density slider updates preferences on change end',
+      (tester) async {
+        tester.view.physicalSize = const Size(1280, 900);
+        tester.view.devicePixelRatio = 1.0;
+        addTearDown(tester.view.resetPhysicalSize);
+
+        await tester.pumpWidget(_buildSettingsTestApp(prefs));
+        await tester.pumpAndSettle();
+
+        // Switch to Waveform section
+        await tester.tap(find.text('Waveform Visualization'));
+        await tester.pumpAndSettle();
+
+        // 1. Now Playing target: drag/change slider
+        final slider = tester.widget<ShadSlider>(find.byType(ShadSlider));
+        slider.onChanged?.call(400.0);
+        slider.onChangeEnd?.call(400.0);
+        await tester.pumpAndSettle();
+
+        expect(prefs.nowPlayingWaveformPoints, 400);
+
+        // 2. Audio Inspector target: switch target and drag slider
+        await tester.tap(find.text('Now Playing Bar'));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('Audio Inspector Drawer').last);
+        await tester.pumpAndSettle();
+
+        final inspectorSlider = tester.widget<ShadSlider>(
+          find.byType(ShadSlider),
+        );
+        inspectorSlider.onChanged?.call(180.0);
+        inspectorSlider.onChangeEnd?.call(180.0);
+        await tester.pumpAndSettle();
+
+        expect(prefs.inspectorWaveformPoints, 180);
+      },
+    );
+
+    testWidgets(
+      'Slider track taps and keyboard adjustments immediately update preferences without onChangeEnd',
+      (tester) async {
+        tester.view.physicalSize = const Size(1280, 900);
+        tester.view.devicePixelRatio = 1.0;
+        addTearDown(tester.view.resetPhysicalSize);
+
+        await tester.pumpWidget(_buildSettingsTestApp(prefs));
+        await tester.pumpAndSettle();
+
+        // Switch to Waveform section
+        await tester.tap(find.text('Waveform Visualization'));
+        await tester.pumpAndSettle();
+
+        expect(prefs.nowPlayingWaveformPoints, 140);
+
+        final slider = tester.widget<ShadSlider>(find.byType(ShadSlider));
+        // Simulate track tap or arrow key which triggers onChanged directly while _isDragging == false
+        slider.onChanged?.call(500.0);
+        await tester.pumpAndSettle();
+
+        expect(prefs.nowPlayingWaveformPoints, 500);
+      },
+    );
+
+    testWidgets(
+      'Typing invalid text into density input and unfocusing restores the text to current points',
+      (tester) async {
+        tester.view.physicalSize = const Size(1280, 900);
+        tester.view.devicePixelRatio = 1.0;
+        addTearDown(tester.view.resetPhysicalSize);
+
+        await tester.pumpWidget(_buildSettingsTestApp(prefs));
+        await tester.pumpAndSettle();
+
+        // Switch to Waveform section
+        await tester.tap(find.text('Waveform Visualization'));
+        await tester.pumpAndSettle();
+
+        expect(prefs.nowPlayingWaveformPoints, 140);
+        final densityInput = find.byType(ShadInput);
+        expect(densityInput, findsOneWidget);
+
+        // 1. Enter empty text
+        await tester.enterText(densityInput, '');
+        await tester.pump();
+
+        // Unfocus
+        FocusManager.instance.primaryFocus?.unfocus();
+        await tester.pumpAndSettle();
+
+        // Should restore to current points (140)
+        expect(
+          find.descendant(of: densityInput, matching: find.text('140')),
+          findsOneWidget,
+        );
+        expect(prefs.nowPlayingWaveformPoints, 140);
+
+        // 2. Enter out-of-range text (e.g. 5, min is 30)
+        await tester.enterText(densityInput, '5');
+        await tester.pump();
+
+        FocusManager.instance.primaryFocus?.unfocus();
+        await tester.pumpAndSettle();
+
+        // Should restore to current points (140)
+        expect(
+          find.descendant(of: densityInput, matching: find.text('140')),
+          findsOneWidget,
+        );
+        expect(prefs.nowPlayingWaveformPoints, 140);
+
+        // 3. Enter out-of-range text exceeding max (e.g. 9999, max is 1200)
+        await tester.enterText(densityInput, '9999');
+        await tester.pump();
+
+        FocusManager.instance.primaryFocus?.unfocus();
+        await tester.pumpAndSettle();
+
+        // Should restore to current points (140)
+        expect(
+          find.descendant(of: densityInput, matching: find.text('140')),
+          findsOneWidget,
+        );
+        expect(prefs.nowPlayingWaveformPoints, 140);
+      },
+    );
+
     testWidgets('SettingsView eliminated redundant text and description noise', (
       tester,
     ) async {

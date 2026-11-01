@@ -1570,8 +1570,8 @@ json Router::handleAudioGetWaveform(const json &p) {
             return ApiResponse::error({ErrorType::InvalidValue, "points must be an integer"});
         }
         int64_t pts = p["points"].get<int64_t>();
-        if (pts < 50 || pts > 1000) {
-            return ApiResponse::error({ErrorType::OutOfRange, "points must be between 50 and 1000"});
+        if (pts < 30 || pts > 1200) {
+            return ApiResponse::error({ErrorType::OutOfRange, "points must be between 30 and 1200"});
         }
         points = static_cast<uint32_t>(pts);
     }

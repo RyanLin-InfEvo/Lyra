@@ -660,25 +660,25 @@ class TestAudioController(BaseLyraTestCase):
         self.assertEqual(len(data["rms"]), 500)
 
     def test_get_waveform_points_boundary_values(self):
-        """Test audio.get_waveform boundary values for points (50, 1000)"""
+        """Test audio.get_waveform boundary values for points (30, 1200)"""
         wav_path = self._generate_wav_file("boundary_waveform.wav", 1.0)
         res_ingest = self.dispatch("IngestAsset", {"source_path": wav_path})
         self.assertResponseCode(res_ingest, 200)
         pcm_hash = res_ingest["data"]["audio"]["pcm_hash"]
 
-        # Lower boundary (50)
-        res_min = self.dispatch("audio.get_waveform", {"pcm_hash": pcm_hash, "points": 50})
+        # Lower boundary (30)
+        res_min = self.dispatch("audio.get_waveform", {"pcm_hash": pcm_hash, "points": 30})
         self.assertResponseCode(res_min, 200)
-        self.assertEqual(res_min["data"]["points"], 50)
-        self.assertEqual(len(res_min["data"]["peaks"]), 50)
-        self.assertEqual(len(res_min["data"]["rms"]), 50)
+        self.assertEqual(res_min["data"]["points"], 30)
+        self.assertEqual(len(res_min["data"]["peaks"]), 30)
+        self.assertEqual(len(res_min["data"]["rms"]), 30)
 
-        # Upper boundary (1000)
-        res_max = self.dispatch("audio.get_waveform", {"pcm_hash": pcm_hash, "points": 1000})
+        # Upper boundary (1200)
+        res_max = self.dispatch("audio.get_waveform", {"pcm_hash": pcm_hash, "points": 1200})
         self.assertResponseCode(res_max, 200)
-        self.assertEqual(res_max["data"]["points"], 1000)
-        self.assertEqual(len(res_max["data"]["peaks"]), 1000)
-        self.assertEqual(len(res_max["data"]["rms"]), 1000)
+        self.assertEqual(res_max["data"]["points"], 1200)
+        self.assertEqual(len(res_max["data"]["peaks"]), 1200)
+        self.assertEqual(len(res_max["data"]["rms"]), 1200)
 
     def test_get_waveform_cache_acceleration(self):
         """Test waveform cache creation and cache hit performance acceleration"""
@@ -832,13 +832,13 @@ class TestAudioController(BaseLyraTestCase):
         self.assertResponseCode(res, 400)
         self.assertEqual(res["error"]["type"], "InvalidValue")
 
-        # Out of range (points < 50)
-        res = self.dispatch("audio.get_waveform", {"pcm_hash": valid_pcm, "points": 49})
+        # Out of range (points < 30)
+        res = self.dispatch("audio.get_waveform", {"pcm_hash": valid_pcm, "points": 29})
         self.assertResponseCode(res, 400)
         self.assertEqual(res["error"]["type"], "OutOfRange")
 
-        # Out of range (points > 1000)
-        res = self.dispatch("audio.get_waveform", {"pcm_hash": valid_pcm, "points": 1001})
+        # Out of range (points > 1200)
+        res = self.dispatch("audio.get_waveform", {"pcm_hash": valid_pcm, "points": 1201})
         self.assertResponseCode(res, 400)
         self.assertEqual(res["error"]["type"], "OutOfRange")
 

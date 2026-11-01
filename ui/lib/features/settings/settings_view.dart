@@ -75,6 +75,7 @@ class _SettingsViewState extends State<SettingsView> {
       _selectedTarget == WaveformTarget.nowPlaying ? 1200 : 300;
 
   late final TextEditingController _densityController;
+  late final FocusNode _densityFocusNode;
   late final ShadSliderController _sliderController;
   late final ShadPopoverController _colorPopoverController;
 
@@ -82,6 +83,8 @@ class _SettingsViewState extends State<SettingsView> {
   void initState() {
     super.initState();
     _densityController = TextEditingController();
+    _densityFocusNode = FocusNode();
+    _densityFocusNode.addListener(_onDensityFocusChanged);
     _sliderController = ShadSliderController(initialValue: 140.0);
     _colorPopoverController = ShadPopoverController();
     _initPreferences();
@@ -178,10 +181,24 @@ class _SettingsViewState extends State<SettingsView> {
   @override
   void dispose() {
     widget.preferencesService?.removeListener(_onPreferencesChanged);
+    _densityFocusNode.removeListener(_onDensityFocusChanged);
+    _densityFocusNode.dispose();
     _densityController.dispose();
     _sliderController.dispose();
     _colorPopoverController.dispose();
     super.dispose();
+  }
+
+  void _onDensityFocusChanged() {
+    if (!_densityFocusNode.hasFocus) {
+      final currentPts = _selectedTarget == WaveformTarget.nowPlaying
+          ? _nowPlayingWaveformPoints
+          : _inspectorWaveformPoints;
+      final parsed = int.tryParse(_densityController.text.trim());
+      if (parsed == null || parsed < 30 || parsed > _maxDensity) {
+        _densityController.text = '$currentPts';
+      }
+    }
   }
 
   void _onTargetChanged(WaveformTarget target) {
@@ -207,10 +224,8 @@ class _SettingsViewState extends State<SettingsView> {
     if (_densityController.text != '$pts') {
       _densityController.text = '$pts';
     }
-    if (_selectedTarget == WaveformTarget.nowPlaying) {
-      _nowPlayingWaveformPoints = pts;
-    } else {
-      _inspectorWaveformPoints = pts;
+    if (!_isDragging) {
+      _saveDensity(pts);
     }
   }
 
@@ -228,15 +243,11 @@ class _SettingsViewState extends State<SettingsView> {
   void _saveDensity(int pts) {
     final clamped = pts.clamp(30, _maxDensity);
     if (_selectedTarget == WaveformTarget.nowPlaying) {
-      if (_nowPlayingWaveformPoints != clamped) {
-        setState(() => _nowPlayingWaveformPoints = clamped);
-        widget.preferencesService?.setNowPlayingWaveformPoints(clamped);
-      }
+      setState(() => _nowPlayingWaveformPoints = clamped);
+      widget.preferencesService?.setNowPlayingWaveformPoints(clamped);
     } else {
-      if (_inspectorWaveformPoints != clamped) {
-        setState(() => _inspectorWaveformPoints = clamped);
-        widget.preferencesService?.setInspectorWaveformPoints(clamped);
-      }
+      setState(() => _inspectorWaveformPoints = clamped);
+      widget.preferencesService?.setInspectorWaveformPoints(clamped);
     }
   }
 
@@ -572,6 +583,7 @@ class _SettingsViewState extends State<SettingsView> {
                       height: 32.0,
                       child: ShadInput(
                         controller: _densityController,
+                        focusNode: _densityFocusNode,
                         keyboardType: TextInputType.number,
                         textAlign: TextAlign.center,
                         padding: const EdgeInsets.symmetric(

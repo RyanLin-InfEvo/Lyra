@@ -77,6 +77,9 @@ class _NowPlayingViewState extends State<NowPlayingView> {
 
   WaveformData? _waveform;
   String? _lastLoadedTrackKey;
+  int? _lastLoadedPoints;
+  String? _inFlightKey;
+  int? _inFlightPoints;
   int _waveformCallId = 0;
 
   @override
@@ -116,10 +119,14 @@ class _NowPlayingViewState extends State<NowPlayingView> {
     final showWaveform =
         widget.preferencesService?.showNowPlayingWaveform ?? true;
     if (!showWaveform) {
+      ++_waveformCallId;
+      _lastLoadedTrackKey = null;
+      _lastLoadedPoints = null;
+      _inFlightKey = null;
+      _inFlightPoints = null;
       if (_waveform != null) {
         setState(() {
           _waveform = null;
-          _lastLoadedTrackKey = null;
         });
       }
       return;
@@ -127,42 +134,83 @@ class _NowPlayingViewState extends State<NowPlayingView> {
 
     final track = widget.track ?? widget.playbackController.currentTrack;
     if (track == null) {
+      ++_waveformCallId;
+      _lastLoadedTrackKey = null;
+      _lastLoadedPoints = null;
+      _inFlightKey = null;
+      _inFlightPoints = null;
       if (_waveform != null) {
         setState(() {
           _waveform = null;
-          _lastLoadedTrackKey = null;
         });
       }
       return;
     }
 
     final key = track.pcmHash.isNotEmpty ? track.pcmHash : track.id;
-    if (key.isEmpty) return;
-    if (key == _lastLoadedTrackKey && _waveform != null) return;
-
-    _lastLoadedTrackKey = key;
-    final service = widget.musicService;
-    if (service == null) {
-      setState(() {
-        _waveform = null;
-      });
+    if (key.isEmpty) {
+      ++_waveformCallId;
+      _lastLoadedTrackKey = null;
+      _lastLoadedPoints = null;
+      _inFlightKey = null;
+      _inFlightPoints = null;
+      if (_waveform != null) {
+        setState(() {
+          _waveform = null;
+        });
+      }
       return;
     }
 
     final points = widget.preferencesService?.nowPlayingWaveformPoints ?? 140;
+    if (key == _lastLoadedTrackKey &&
+        _lastLoadedPoints == points &&
+        _waveform != null) {
+      return;
+    }
+
+    if (key == _inFlightKey && _inFlightPoints == points) {
+      return;
+    }
+
+    if (key != _lastLoadedTrackKey) {
+      _waveform = null;
+    }
+
+    _lastLoadedTrackKey = key;
+    _lastLoadedPoints = points;
+    _inFlightKey = key;
+    _inFlightPoints = points;
+
+    final service = widget.musicService;
+    if (service == null) {
+      _inFlightKey = null;
+      _inFlightPoints = null;
+      setState(() {
+        _waveform = null;
+        _lastLoadedPoints = null;
+      });
+      return;
+    }
+
     final callId = ++_waveformCallId;
     service
         .getWaveform(key, points: points)
         .then((wf) {
           if (!mounted || callId != _waveformCallId) return;
+          _inFlightKey = null;
+          _inFlightPoints = null;
           setState(() {
             _waveform = wf;
           });
         })
         .catchError((_) {
           if (!mounted || callId != _waveformCallId) return;
+          _inFlightKey = null;
+          _inFlightPoints = null;
           setState(() {
             _waveform = null;
+            _lastLoadedPoints = null;
           });
         });
   }
