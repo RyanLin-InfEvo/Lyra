@@ -60,6 +60,16 @@ typedef struct LyraAudioSink {
 
     // Get count of buffered frames pending playback (optional, may be NULL)
     uint32_t (*get_buffered_frames)(struct LyraAudioSink *sink);
+
+    // Capability-based hardware/sink extensions (optional, may be NULL if unsupported)
+    // Return 0 on success, negative error code on failure
+    int (*set_output_device)(struct LyraAudioSink *sink, const char *device_id);
+    int (*set_buffer_size_frames)(struct LyraAudioSink *sink, uint32_t frames);
+    int (*set_exclusive_mode)(struct LyraAudioSink *sink, int exclusive);
+
+    // Query whether exclusive hardware access is currently active (optional, may be NULL)
+    // Returns 1 if active, 0 otherwise
+    int (*is_exclusive_mode_active)(struct LyraAudioSink *sink);
 } LyraAudioSink;
 
 #ifdef __cplusplus

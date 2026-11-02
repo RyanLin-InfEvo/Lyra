@@ -32,8 +32,10 @@ enum class ErrorType {
     InvalidCommandFormat,
     OutOfRange,
     Conflict,
+    OperationFailed,
     // 500 Series
-    DatabaseError
+    DatabaseError,
+    DeviceUnavailable
 };
 
 struct Error {

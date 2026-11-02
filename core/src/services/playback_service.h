@@ -110,11 +110,12 @@ struct ResolvedPlayback {
  */
 enum class PlaybackErrorCode {
     Success,
-    TargetNotFound,   ///< Target entity (Track, Audio, or Asset) does not exist in the database.
-    NoPlayableAsset,  ///< Track exists but has no linked Audio or playable CAS assets.
-    CasObjectMissing, ///< Referenced CAS storage file is missing from physical disk.
-    EngineError,      ///< Low-level audio engine failed to open or initialize the decoder.
-    InvalidParameter  ///< Client provided invalid or malformed request parameters.
+    TargetNotFound,    ///< Target entity (Track, Audio, or Asset) does not exist in the database.
+    NoPlayableAsset,   ///< Track exists but has no linked Audio or playable CAS assets.
+    CasObjectMissing,  ///< Referenced CAS storage file is missing from physical disk.
+    EngineError,       ///< Low-level audio engine failed to open or initialize the decoder.
+    DeviceUnavailable, ///< Configured audio output device is offline or unavailable.
+    InvalidParameter   ///< Client provided invalid or malformed request parameters.
 };
 
 /**

@@ -4,11 +4,12 @@
 
 #include "services/configuration_service.h"
 #include "services/audio_engine.h"
-#include "services/audio_sinks/local_audio_sink.h"
+#include "services/audio_sinks/audio_sink_factory.h"
 #include "services/database_context.h"
 #include "utils/make_error.h"
 
 #include <SQLiteCpp/SQLiteCpp.h>
+#include <algorithm>
 #include <cmath>
 #include <filesystem>
 #include <fmt/core.h>
@@ -25,8 +26,83 @@ ConfigurationService::ConfigurationService(IDatabaseContext &db_context,
     : m_db_context(db_context),
       m_storage_root(storage_root),
       m_audio_engine(audio_engine) {
+    if (m_audio_engine) {
+        m_audio_engine->set_config_downgrade_callback(
+            [this](const std::string &category, const std::string &key, const nlohmann::json &value) {
+                sync_runtime_downgrade(category, key, value);
+            });
+    }
     seed_defaults();
     load_config();
+    apply_runtime_settings();
+}
+
+ConfigurationService::~ConfigurationService() {
+    if (m_audio_engine) {
+        m_audio_engine->set_config_downgrade_callback(nullptr);
+    }
+}
+
+void ConfigurationService::sync_runtime_downgrade(const std::string &category,
+                                                  const std::string &key,
+                                                  const nlohmann::json &value) {
+    const auto *spec = find_spec(category, key);
+    if (!spec) {
+        return;
+    }
+
+    {
+        std::unique_lock<std::mutex> lock(m_mutex);
+        if (m_is_updating && m_updating_thread_id != std::this_thread::get_id()) {
+            m_cv.wait(lock, [this]() { return !m_is_updating; });
+        }
+    }
+
+    if (m_audio_engine) {
+        if (category == "audio") {
+            if (key == "output_device_id" && value.is_string()) {
+                if (m_audio_engine->get_output_device() != value.get<std::string>()) {
+                    return;
+                }
+            } else if (key == "buffer_size_frames" && value.is_number_integer()) {
+                if (static_cast<int>(m_audio_engine->get_buffer_size_frames()) != value.get<int>()) {
+                    return;
+                }
+            } else if (key == "exclusive_mode" && value.is_boolean()) {
+                if (m_audio_engine->get_exclusive_mode() != value.get<bool>()) {
+                    return;
+                }
+            }
+        }
+    }
+
+    std::unique_lock<std::mutex> lock(m_mutex);
+    if (m_is_updating && m_updating_thread_id != std::this_thread::get_id()) {
+        m_cv.wait(lock, [this]() { return !m_is_updating; });
+    }
+
+    spec->commit_value(value, *this);
+
+    if (spec->is_persisted) {
+        try {
+            m_db_context.with_transaction([&]() {
+                auto &db = m_db_context.get_db();
+                SQLite::Statement stmt(
+                    db,
+                    "INSERT INTO System_Config (key, value, updated_at) "
+                    "VALUES (?, ?, datetime('now')) "
+                    "ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = "
+                    "datetime('now');");
+                stmt.bind(1, spec->full_key);
+                stmt.bind(2, spec->to_db_string(value));
+                if (stmt.exec() == 0) {
+                    throw std::runtime_error("Failed to update config key: " + spec->full_key);
+                }
+                stmt.reset();
+            });
+        } catch (...) {
+        }
+    }
 }
 
 const std::vector<SettingSpec> &ConfigurationService::get_specs() {
@@ -54,8 +130,9 @@ const std::vector<SettingSpec> &ConfigurationService::get_specs() {
             },
             .load_from_string = [](const std::string &str, ConfigurationService &svc) -> bool {
                 try {
-                    int64_t parsed = std::stoll(str);
-                    if (parsed < MIN_CACHE_SIZE_KB || parsed > std::numeric_limits<int>::max()) {
+                    size_t idx = 0;
+                    int64_t parsed = std::stoll(str, &idx);
+                    if (idx != str.size() || parsed < MIN_CACHE_SIZE_KB || parsed > std::numeric_limits<int>::max()) {
                         return false;
                     }
                     svc.m_cache_size_kb = static_cast<int>(parsed);
@@ -97,8 +174,9 @@ const std::vector<SettingSpec> &ConfigurationService::get_specs() {
             },
             .load_from_string = [](const std::string &str, ConfigurationService &svc) -> bool {
                 try {
-                    int64_t parsed = std::stoll(str);
-                    if (parsed < MIN_MMAP_SIZE_BYTES || parsed > MAX_MMAP_SIZE_BYTES) {
+                    size_t idx = 0;
+                    int64_t parsed = std::stoll(str, &idx);
+                    if (idx != str.size() || parsed < MIN_MMAP_SIZE_BYTES || parsed > MAX_MMAP_SIZE_BYTES) {
                         return false;
                     }
                     svc.m_mmap_size_bytes = parsed;
@@ -140,8 +218,9 @@ const std::vector<SettingSpec> &ConfigurationService::get_specs() {
             },
             .load_from_string = [](const std::string &str, ConfigurationService &svc) -> bool {
                 try {
-                    int64_t parsed = std::stoll(str);
-                    if (parsed < MIN_BUSY_TIMEOUT_MS || parsed > std::numeric_limits<int>::max()) {
+                    size_t idx = 0;
+                    int64_t parsed = std::stoll(str, &idx);
+                    if (idx != str.size() || parsed < MIN_BUSY_TIMEOUT_MS || parsed > std::numeric_limits<int>::max()) {
                         return false;
                     }
                     svc.m_busy_timeout_ms = static_cast<int>(parsed);
@@ -185,8 +264,9 @@ const std::vector<SettingSpec> &ConfigurationService::get_specs() {
             },
             .load_from_string = [](const std::string &str, ConfigurationService &svc) -> bool {
                 try {
-                    int64_t parsed = std::stoll(str);
-                    if (parsed < MIN_WAL_AUTOCHECKPOINT || parsed > std::numeric_limits<int>::max()) {
+                    size_t idx = 0;
+                    int64_t parsed = std::stoll(str, &idx);
+                    if (idx != str.size() || parsed < MIN_WAL_AUTOCHECKPOINT || parsed > std::numeric_limits<int>::max()) {
                         return false;
                     }
                     svc.m_wal_autocheckpoint = static_cast<int>(parsed);
@@ -214,20 +294,25 @@ const std::vector<SettingSpec> &ConfigurationService::get_specs() {
             .is_persisted = true,
             .is_read_only = false,
             .default_string = DEFAULT_OUTPUT_DEVICE_ID,
-            .validate = [](const json &val, const ConfigurationService &) -> std::optional<json> {
+            .validate = [](const json &val, const ConfigurationService &svc) -> std::optional<json> {
                 std::string dev = val.get<std::string>();
                 if (dev.empty()) {
                     return ApiResponse::error(
                         {ErrorType::InvalidValue, "audio.output_device_id cannot be empty"});
                 }
-                if (!LocalAudioSinkImpl::is_valid_device_id(dev)) {
+                bool is_custom = (svc.m_audio_engine && svc.m_audio_engine->is_custom_sink_set());
+                if (!is_custom && !is_valid_audio_device_id(dev)) {
                     return ApiResponse::error(
                         {ErrorType::InvalidValue, "audio.output_device_id is unrecognized: " + dev});
+                }
+                if (!svc.m_audio_engine && !is_audio_device_available(dev)) {
+                    return ApiResponse::error(
+                        {ErrorType::InvalidValue, "Failed to set audio output device: " + dev});
                 }
                 return std::nullopt;
             },
             .load_from_string = [](const std::string &str, ConfigurationService &svc) -> bool {
-                if (str.empty() || !LocalAudioSinkImpl::is_valid_device_id(str)) {
+                if (str.empty()) {
                     return false;
                 }
                 svc.m_output_device_id = str;
@@ -245,6 +330,22 @@ const std::vector<SettingSpec> &ConfigurationService::get_specs() {
             },
             .commit_value = [](const json &val, ConfigurationService &svc) { svc.m_output_device_id = val.get<std::string>(); },
             .apply = [](const json &val, ConfigurationService &svc) { svc.apply_output_device(val.get<std::string>()); },
+            .preflight = [](const json &val, ConfigurationService &svc) -> PreflightResult {
+                if (!svc.m_audio_engine) {
+                    return RollbackAction{};
+                }
+                std::string dev = val.get<std::string>();
+                std::string old_dev = svc.m_audio_engine->get_output_device();
+                if (!svc.m_audio_engine->set_output_device(dev)) {
+                    return tl::unexpected(ApiResponse::error(
+                        {ErrorType::InvalidValue, "Failed to set audio output device: " + dev}));
+                }
+                return [engine = svc.m_audio_engine, old_dev]() {
+                    if (!engine->set_output_device(old_dev)) {
+                        engine->restore_output_device(old_dev);
+                    }
+                };
+            },
         },
         // audio.volume
         {
@@ -265,8 +366,9 @@ const std::vector<SettingSpec> &ConfigurationService::get_specs() {
             },
             .load_from_string = [](const std::string &str, ConfigurationService &svc) -> bool {
                 try {
-                    double parsed = std::stod(str);
-                    if (std::isnan(parsed) || !std::isfinite(parsed) || parsed < 0.0 || parsed > 1.0) {
+                    size_t idx = 0;
+                    double parsed = std::stod(str, &idx);
+                    if (idx != str.size() || std::isnan(parsed) || !std::isfinite(parsed) || parsed < 0.0 || parsed > 1.0) {
                         return false;
                     }
                     svc.m_volume = parsed;
@@ -287,6 +389,115 @@ const std::vector<SettingSpec> &ConfigurationService::get_specs() {
             },
             .commit_value = [](const json &val, ConfigurationService &svc) { svc.m_volume = val.get<double>(); },
             .apply = [](const json &val, ConfigurationService &svc) { svc.apply_volume(val.get<double>()); },
+        },
+        // audio.buffer_size_frames
+        {
+            .category = "audio",
+            .key = "buffer_size_frames",
+            .full_key = "audio.buffer_size_frames",
+            .type = SettingType::Int,
+            .is_persisted = true,
+            .is_read_only = false,
+            .default_string = std::to_string(DEFAULT_BUFFER_SIZE_FRAMES),
+            .validate = [](const json &val, const ConfigurationService &) -> std::optional<json> {
+                int64_t v = val.get<int64_t>();
+                if (v < MIN_BUFFER_SIZE_FRAMES || v > MAX_BUFFER_SIZE_FRAMES) {
+                    return ApiResponse::error(
+                        {ErrorType::OutOfRange,
+                         fmt::format("audio.buffer_size_frames must be between {} and {} frames",
+                                     MIN_BUFFER_SIZE_FRAMES, MAX_BUFFER_SIZE_FRAMES)});
+                }
+                return std::nullopt;
+            },
+            .load_from_string = [](const std::string &str, ConfigurationService &svc) -> bool {
+                try {
+                    size_t idx = 0;
+                    int64_t parsed = std::stoll(str, &idx);
+                    if (idx != str.size() || parsed < MIN_BUFFER_SIZE_FRAMES || parsed > MAX_BUFFER_SIZE_FRAMES) {
+                        return false;
+                    }
+                    svc.m_buffer_size_frames = static_cast<int>(parsed);
+                    return true;
+                } catch (...) {
+                    return false;
+                }
+            },
+            .reset_to_default = [](ConfigurationService &svc) { svc.m_buffer_size_frames = DEFAULT_BUFFER_SIZE_FRAMES; },
+            .has_changed = [](const json &val, const ConfigurationService &svc) -> bool {
+                int v = val.get<int>();
+                int cur = svc.m_audio_engine ? static_cast<int>(svc.m_audio_engine->get_buffer_size_frames())
+                                             : svc.m_buffer_size_frames;
+                return v != svc.m_buffer_size_frames || v != cur;
+            },
+            .to_db_string = [](const json &val) -> std::string {
+                return std::to_string(val.get<int>());
+            },
+            .commit_value = [](const json &val, ConfigurationService &svc) { svc.m_buffer_size_frames = val.get<int>(); },
+            .apply = [](const json &val, ConfigurationService &svc) { svc.apply_buffer_size_frames(val.get<int>()); },
+            .preflight = [](const json &val, ConfigurationService &svc) -> PreflightResult {
+                if (!svc.m_audio_engine) {
+                    return RollbackAction{};
+                }
+                int frames = val.get<int>();
+                uint32_t old_buffer_size = svc.m_audio_engine->get_buffer_size_frames();
+                if (!svc.m_audio_engine->set_buffer_size_frames(static_cast<uint32_t>(frames))) {
+                    return tl::unexpected(ApiResponse::error(
+                        {ErrorType::InvalidValue,
+                         "Failed to set audio buffer size frames: " + std::to_string(frames)}));
+                }
+                return [engine = svc.m_audio_engine, old_buffer_size]() {
+                    engine->set_buffer_size_frames(old_buffer_size);
+                };
+            },
+        },
+        // audio.exclusive_mode
+        {
+            .category = "audio",
+            .key = "exclusive_mode",
+            .full_key = "audio.exclusive_mode",
+            .type = SettingType::Bool,
+            .is_persisted = true,
+            .is_read_only = false,
+            .default_string = DEFAULT_EXCLUSIVE_MODE ? "true" : "false",
+            .validate = [](const json &, const ConfigurationService &) -> std::optional<json> {
+                return std::nullopt;
+            },
+            .load_from_string = [](const std::string &str, ConfigurationService &svc) -> bool {
+                if (str == "true") {
+                    svc.m_exclusive_mode = true;
+                    return true;
+                } else if (str == "false") {
+                    svc.m_exclusive_mode = false;
+                    return true;
+                }
+                return false;
+            },
+            .reset_to_default = [](ConfigurationService &svc) { svc.m_exclusive_mode = DEFAULT_EXCLUSIVE_MODE; },
+            .has_changed = [](const json &val, const ConfigurationService &svc) -> bool {
+                bool v = val.get<bool>();
+                bool cur = svc.m_audio_engine ? svc.m_audio_engine->get_exclusive_mode()
+                                              : svc.m_exclusive_mode;
+                return v != svc.m_exclusive_mode || v != cur;
+            },
+            .to_db_string = [](const json &val) -> std::string {
+                return val.get<bool>() ? "true" : "false";
+            },
+            .commit_value = [](const json &val, ConfigurationService &svc) { svc.m_exclusive_mode = val.get<bool>(); },
+            .apply = [](const json &val, ConfigurationService &svc) { svc.apply_exclusive_mode(val.get<bool>()); },
+            .preflight = [](const json &val, ConfigurationService &svc) -> PreflightResult {
+                if (!svc.m_audio_engine) {
+                    return RollbackAction{};
+                }
+                bool exc = val.get<bool>();
+                bool old_exclusive_mode = svc.m_audio_engine->get_exclusive_mode();
+                if (!svc.m_audio_engine->set_exclusive_mode(exc)) {
+                    return tl::unexpected(ApiResponse::error(
+                        {ErrorType::InvalidValue, "Failed to set audio exclusive mode"}));
+                }
+                return [engine = svc.m_audio_engine, old_exclusive_mode]() {
+                    engine->set_exclusive_mode(old_exclusive_mode);
+                };
+            },
         },
         // storage.storage_root
         {
@@ -431,15 +642,59 @@ json ConfigurationService::get_config_json_unlocked() const {
           {"busy_timeout_ms", m_busy_timeout_ms},
           {"wal_autocheckpoint", m_wal_autocheckpoint}}},
         {"audio",
-         {{"output_device_id",
-           m_audio_engine ? m_audio_engine->get_output_device() : m_output_device_id},
-          {"volume",
-           m_audio_engine ? static_cast<double>(m_audio_engine->get_volume()) : m_volume}}}};
+         {{"output_device_id", m_output_device_id},
+          {"volume", m_volume},
+          {"buffer_size_frames", m_buffer_size_frames},
+          {"exclusive_mode", m_exclusive_mode}}}};
 }
 
 json ConfigurationService::get_config_json() const {
-    std::lock_guard<std::mutex> lock(m_mutex);
-    return get_config_json_unlocked();
+    int cache_size_kb;
+    int64_t mmap_size_bytes;
+    int busy_timeout_ms;
+    int wal_autocheckpoint;
+    std::string output_device_id;
+    double volume;
+    int buffer_size_frames;
+    bool exclusive_mode;
+    std::string storage_root;
+    bool updating;
+    AudioEngine *engine;
+
+    {
+        std::lock_guard<std::mutex> lock(m_mutex);
+        cache_size_kb = m_cache_size_kb;
+        mmap_size_bytes = m_mmap_size_bytes;
+        busy_timeout_ms = m_busy_timeout_ms;
+        wal_autocheckpoint = m_wal_autocheckpoint;
+        output_device_id = m_output_device_id;
+        volume = m_volume;
+        buffer_size_frames = m_buffer_size_frames;
+        exclusive_mode = m_exclusive_mode;
+        storage_root = m_storage_root;
+        updating = m_is_updating;
+        engine = m_audio_engine;
+    }
+
+    if (engine && !updating) {
+        output_device_id = engine->get_output_device();
+        volume = static_cast<double>(engine->get_volume());
+        buffer_size_frames = static_cast<int>(engine->get_buffer_size_frames());
+        exclusive_mode = engine->get_exclusive_mode();
+    }
+
+    return json{
+        {"storage", {{"storage_root", storage_root}}},
+        {"database",
+         {{"cache_size_kb", cache_size_kb},
+          {"mmap_size_bytes", mmap_size_bytes},
+          {"busy_timeout_ms", busy_timeout_ms},
+          {"wal_autocheckpoint", wal_autocheckpoint}}},
+        {"audio",
+         {{"output_device_id", output_device_id},
+          {"volume", volume},
+          {"buffer_size_frames", buffer_size_frames},
+          {"exclusive_mode", exclusive_mode}}}};
 }
 
 void ConfigurationService::apply_cache_size(int kb) {
@@ -478,7 +733,31 @@ void ConfigurationService::apply_volume(double vol) {
 
 void ConfigurationService::apply_output_device(const std::string &dev) {
     if (m_audio_engine) {
+        if (m_audio_engine->get_output_device() == dev) {
+            return;
+        }
         m_audio_engine->set_output_device(dev);
+    }
+}
+
+void ConfigurationService::apply_buffer_size_frames(int frames) {
+    if (frames < MIN_BUFFER_SIZE_FRAMES || frames > MAX_BUFFER_SIZE_FRAMES) {
+        return;
+    }
+    if (m_audio_engine) {
+        if (m_audio_engine->get_buffer_size_frames() == static_cast<uint32_t>(frames)) {
+            return;
+        }
+        m_audio_engine->set_buffer_size_frames(static_cast<uint32_t>(frames));
+    }
+}
+
+void ConfigurationService::apply_exclusive_mode(bool exclusive) {
+    if (m_audio_engine) {
+        if (m_audio_engine->get_exclusive_mode() == exclusive) {
+            return;
+        }
+        m_audio_engine->set_exclusive_mode(exclusive);
     }
 }
 
@@ -505,13 +784,21 @@ void ConfigurationService::apply_database_settings() {
 void ConfigurationService::apply_audio_settings() {
     double volume;
     std::string output_device_id;
+    int buffer_size_frames;
+    bool exclusive_mode;
     {
         std::lock_guard<std::mutex> lock(m_mutex);
         volume = m_volume;
         output_device_id = m_output_device_id;
+        buffer_size_frames = m_buffer_size_frames;
+        exclusive_mode = m_exclusive_mode;
     }
     apply_volume(volume);
-    apply_output_device(output_device_id);
+    if (m_audio_engine) {
+        m_audio_engine->restore_output_device(output_device_id);
+    }
+    apply_buffer_size_frames(buffer_size_frames);
+    apply_exclusive_mode(exclusive_mode);
 }
 
 void ConfigurationService::apply_runtime_settings() {
@@ -597,6 +884,10 @@ tl::expected<json, json> ConfigurationService::update_config(const json &params)
                     type_valid = val.is_string();
                     expected_type_name = "a string";
                     break;
+                case SettingType::Bool:
+                    type_valid = val.is_boolean();
+                    expected_type_name = "a boolean";
+                    break;
             }
 
             if (!type_valid) {
@@ -607,6 +898,47 @@ tl::expected<json, json> ConfigurationService::update_config(const json &params)
         }
     }
 
+    std::unique_lock<std::mutex> lock(m_mutex);
+    if (m_is_updating && m_updating_thread_id == std::this_thread::get_id()) {
+        return tl::unexpected(ApiResponse::error(
+            {ErrorType::OperationFailed, "Configuration update already in progress"}));
+    }
+    m_cv.wait(lock, [this]() { return !m_is_updating; });
+
+    m_is_updating = true;
+    m_updating_thread_id = std::this_thread::get_id();
+    struct UpdatingGuard {
+        ConfigurationService &svc;
+        std::unique_lock<std::mutex> &lk;
+        bool active{true};
+        ~UpdatingGuard() {
+            if (active) {
+                if (!lk.owns_lock()) {
+                    lk.lock();
+                }
+                svc.m_is_updating = false;
+                svc.m_updating_thread_id = std::thread::id{};
+                svc.m_cv.notify_all();
+            }
+        }
+        void dismiss() {
+            if (active) {
+                if (!lk.owns_lock()) {
+                    lk.lock();
+                }
+                svc.m_is_updating = false;
+                svc.m_updating_thread_id = std::thread::id{};
+                svc.m_cv.notify_all();
+                active = false;
+            }
+        }
+    } updating_guard{*this, lock};
+
+    // Unlock m_mutex during validate loop to avoid holding m_mutex while calling
+    // m_audio_engine or enumerating hardware devices.
+    // m_is_updating is true, so other update_config calls are safely serialized.
+    lock.unlock();
+
     // Value & boundary validation
     for (auto it = params.begin(); it != params.end(); ++it) {
         const std::string &section = it.key();
@@ -614,97 +946,123 @@ tl::expected<json, json> ConfigurationService::update_config(const json &params)
             const auto *spec = find_spec(section, sec_it.key());
             auto err = spec->validate(sec_it.value(), *this);
             if (err) {
+                lock.lock();
+                updating_guard.dismiss();
                 return tl::unexpected(*err);
             }
         }
     }
 
+    lock.lock();
+
     std::vector<const SettingSpec *> changed_specs;
     std::vector<std::pair<std::string, std::string>> db_updates;
-    bool device_switched = false;
-    std::string old_device_id;
 
-    {
-        std::lock_guard<std::mutex> lock(m_mutex);
-
-        // Check for changes and collect DB updates
-        for (auto it = params.begin(); it != params.end(); ++it) {
-            const std::string &section = it.key();
-            for (auto sec_it = it.value().begin(); sec_it != it.value().end(); ++sec_it) {
-                const auto *spec = find_spec(section, sec_it.key());
-                if (spec && spec->has_changed(sec_it.value(), *this)) {
-                    changed_specs.push_back(spec);
-                    if (spec->is_persisted) {
-                        db_updates.emplace_back(spec->full_key, spec->to_db_string(sec_it.value()));
-                    }
+    // Check for changes and collect DB updates
+    for (auto it = params.begin(); it != params.end(); ++it) {
+        const std::string &section = it.key();
+        for (auto sec_it = it.value().begin(); sec_it != it.value().end(); ++sec_it) {
+            const auto *spec = find_spec(section, sec_it.key());
+            if (spec && spec->has_changed(sec_it.value(), *this)) {
+                changed_specs.push_back(spec);
+                if (spec->is_persisted) {
+                    db_updates.emplace_back(spec->full_key, spec->to_db_string(sec_it.value()));
                 }
             }
         }
+    }
 
-        // If no values changed, return current config without writing to DB or invoking appliers
-        if (changed_specs.empty()) {
-            return get_config_json_unlocked();
-        }
+    // If no values changed, return current config without writing to DB or invoking appliers
+    if (changed_specs.empty()) {
+        updating_guard.dismiss();
+        lock.unlock();
+        return get_config_json();
+    }
 
-        // [F-04] If audio.output_device_id is being updated and m_audio_engine is present:
-        // Attempt switching before committing to SQLite. If it fails, abort with InvalidValue.
+    // Table-driven Pre-flight & LIFO Rollback
+    std::vector<RollbackAction> rollback_stack;
+    bool has_preflight = std::any_of(
+        changed_specs.begin(), changed_specs.end(),
+        [](const SettingSpec *s) { return static_cast<bool>(s->preflight); });
+
+    if (has_preflight) {
+        // Unlock m_mutex before pre-flight hardware reconfigurations to prevent lock-inversion deadlocks
+        lock.unlock();
+
         for (const auto *spec : changed_specs) {
-            if (spec->full_key == "audio.output_device_id") {
-                const auto &dev = params["audio"]["output_device_id"].get<std::string>();
-                if (m_audio_engine) {
-                    old_device_id = m_audio_engine->get_output_device();
-                    if (!m_audio_engine->set_output_device(dev)) {
-                        return tl::unexpected(ApiResponse::error(
-                            {ErrorType::InvalidValue, "Failed to set audio output device: " + dev}));
+            if (spec->preflight) {
+                const auto &val = params[spec->category][spec->key];
+                auto res = spec->preflight(val, *this);
+                if (!res) {
+                    // Pre-flight failed: roll back all previously executed actions in reverse (LIFO) order
+                    for (auto it = rollback_stack.rbegin(); it != rollback_stack.rend(); ++it) {
+                        if (*it) (*it)();
                     }
-                    device_switched = true;
+                    lock.lock();
+                    updating_guard.dismiss();
+                    return tl::unexpected(res.error());
                 }
-                break;
+                if (*res) {
+                    rollback_stack.push_back(std::move(*res));
+                }
             }
         }
 
-        // Persist changed settings to SQLite
-        if (!db_updates.empty()) {
-            try {
-                m_db_context.with_transaction([&]() {
-                    auto &db = m_db_context.get_db();
-                    SQLite::Statement stmt(
-                        db,
-                        "INSERT INTO System_Config (key, value, updated_at) "
-                        "VALUES (?, ?, datetime('now')) "
-                        "ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = "
-                        "datetime('now');");
-                    for (const auto &[key, val] : db_updates) {
-                        stmt.reset();
-                        stmt.bind(1, key);
-                        stmt.bind(2, val);
-                        if (stmt.exec() == 0) {
-                            throw std::runtime_error("Failed to update config key: " + key);
-                        }
-                    }
+        // Pre-flights succeeded: re-lock m_mutex to persist to DB and commit memory values
+        lock.lock();
+    }
+
+    // Persist changed settings to SQLite
+    if (!db_updates.empty()) {
+        try {
+            m_db_context.with_transaction([&]() {
+                auto &db = m_db_context.get_db();
+                SQLite::Statement stmt(
+                    db,
+                    "INSERT INTO System_Config (key, value, updated_at) "
+                    "VALUES (?, ?, datetime('now')) "
+                    "ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = "
+                    "datetime('now');");
+                for (const auto &[key, val] : db_updates) {
                     stmt.reset();
-                });
-            } catch (const std::exception &e) {
-                if (device_switched && m_audio_engine) {
-                    m_audio_engine->set_output_device(old_device_id);
+                    stmt.bind(1, key);
+                    stmt.bind(2, val);
+                    if (stmt.exec() == 0) {
+                        throw std::runtime_error("Failed to update config key: " + key);
+                    }
                 }
-                return tl::unexpected(ApiResponse::error({ErrorType::DatabaseError, e.what()}));
+                stmt.reset();
+            });
+        } catch (const std::exception &e) {
+            if (!rollback_stack.empty()) {
+                lock.unlock();
+                for (auto it = rollback_stack.rbegin(); it != rollback_stack.rend(); ++it) {
+                    if (*it) (*it)();
+                }
+                lock.lock();
             }
-        }
-
-        // Commit changed values into service state under lock
-        for (const auto *spec : changed_specs) {
-            spec->commit_value(params[spec->category][spec->key], *this);
+            updating_guard.dismiss();
+            return tl::unexpected(ApiResponse::error({ErrorType::DatabaseError, e.what()}));
         }
     }
 
-    // Invoke fine-grained appliers only for settings that actually changed, passing new value directly
+    // Commit changed values into service state under lock
     for (const auto *spec : changed_specs) {
-        if (spec->full_key == "audio.output_device_id" && device_switched) {
-            continue;
-        }
-        spec->apply(params[spec->category][spec->key], *this);
+        spec->commit_value(params[spec->category][spec->key], *this);
     }
+
+    lock.unlock();
+
+    // Invoke fine-grained appliers only for settings without preflight (which were already reconfigured)
+    for (const auto *spec : changed_specs) {
+        if (!spec->preflight) {
+            spec->apply(params[spec->category][spec->key], *this);
+        }
+    }
+
+    lock.lock();
+    updating_guard.dismiss();
+    lock.unlock();
 
     return get_config_json();
 }

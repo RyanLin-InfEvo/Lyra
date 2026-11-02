@@ -532,6 +532,46 @@ void test_seamless_promotion_and_preload_reset(const std::string &base_dir) {
     assert(ctx.service->get_output_device() == ctx.service->get_audio_engine().get_output_device());
 }
 
+void test_repeat_one_gapless_preload(const std::string &base_dir) {
+    std::cout << "[Test I] Repeat-one gapless preload does not prematurely promote or clear m_next_resolved..." << std::endl;
+    TestContext ctx(base_dir, "test_i");
+
+    std::string wav_a = (std::filesystem::path(ctx.temp_dir) / "track_repeat.wav").string();
+    write_dummy_wav(wav_a, 2.0, 44100, 2);
+
+    // 1. Play wav_a
+    auto play_res = ctx.service->play(PlaybackTarget::from_file(wav_a));
+    assert(play_res.has_value());
+    assert(ctx.service->get_current_resolved().has_value());
+    assert(ctx.service->get_current_resolved()->file_path == wav_a);
+
+    // 2. Preload wav_a as next track (repeat-one scenario: same file path)
+    auto preload_res = ctx.service->preload_next(PlaybackTarget::from_file(wav_a));
+    assert(preload_res.has_value());
+    assert(ctx.service->get_audio_engine().get_next_file_path() == wav_a);
+
+    // 3. While still playing first iteration and get_next_file_path() is non-empty,
+    // calling get_current_resolved() must NOT prematurely consume or clear m_next_resolved!
+    auto cur = ctx.service->get_current_resolved();
+    assert(cur.has_value());
+    assert(cur->file_path == wav_a);
+    assert(ctx.service->get_audio_engine().get_next_file_path() == wav_a);
+
+    // 4. Simulate audio engine seamless track transition:
+    // In miniaudio pump transition, m_next_file_path is cleared and next stream starts.
+    ctx.service->get_audio_engine().preload_next("");
+    assert(ctx.service->get_audio_engine().get_next_file_path().empty());
+
+    // Calling get_current_resolved() now promotes m_next_resolved to m_current_resolved
+    auto promoted = ctx.service->get_current_resolved();
+    assert(promoted.has_value());
+    assert(promoted->file_path == wav_a);
+
+    // Stop
+    assert(ctx.service->stop() == true);
+    assert(!ctx.service->get_current_resolved().has_value());
+}
+
 int main(int argc, char *argv[]) {
     std::string temp_dir;
     bool created_temp = false;
@@ -539,6 +579,8 @@ int main(int argc, char *argv[]) {
         temp_dir = argv[1];
     } else {
         temp_dir = (std::filesystem::temp_directory_path() / "lyra_playback_service_test").string();
+        std::error_code ec;
+        std::filesystem::remove_all(temp_dir, ec);
         std::filesystem::create_directories(temp_dir);
         created_temp = true;
     }
@@ -552,6 +594,7 @@ int main(int argc, char *argv[]) {
         test_version_comparison(temp_dir);
         test_transport_controls(temp_dir);
         test_seamless_promotion_and_preload_reset(temp_dir);
+        test_repeat_one_gapless_preload(temp_dir);
     } catch (const std::exception &e) {
         std::cerr << "Exception in PlaybackService tests: " << e.what() << std::endl;
         if (created_temp) {

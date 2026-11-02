@@ -17,36 +17,41 @@ NullAudioSinkImpl::~NullAudioSinkImpl() = default;
 
 int NullAudioSinkImpl::open(const LyraAudioSpec *spec) {
     if (!spec) return -1;
-    m_spec = *spec;
-    m_open = true;
-    m_written_frames = 0;
+    {
+        std::lock_guard<std::mutex> lock(m_spec_mutex);
+        m_spec = *spec;
+    }
+    m_sample_rate.store(spec->sample_rate);
+    m_open.store(true);
+    m_written_frames.store(0);
     return 0;
 }
 
 int NullAudioSinkImpl::start() {
-    if (!m_open) return -1;
-    m_playing = true;
+    if (!m_open.load()) return -1;
+    m_playing.store(true);
     return 0;
 }
 
 int NullAudioSinkImpl::stop() {
-    m_playing = false;
+    m_playing.store(false);
     return 0;
 }
 
 int NullAudioSinkImpl::close() {
-    m_open = false;
-    m_playing = false;
+    m_open.store(false);
+    m_playing.store(false);
     return 0;
 }
 
 int NullAudioSinkImpl::write_pcm(const void *pcm_data, uint32_t frame_count) {
     (void)pcm_data;
-    if (!m_open) return -1;
+    if (!m_open.load()) return -1;
     m_written_frames += frame_count;
-    if (m_spec.sample_rate > 0) {
+    uint32_t sr = m_sample_rate.load();
+    if (sr > 0) {
         // Pace at approx 10x real-time speed to simulate asynchronous audio buffer consumption
-        uint64_t micros = (static_cast<uint64_t>(frame_count) * 100000ULL) / m_spec.sample_rate;
+        uint64_t micros = (static_cast<uint64_t>(frame_count) * 100000ULL) / sr;
         if (micros > 0) {
             std::this_thread::sleep_for(std::chrono::microseconds(micros));
         }
@@ -57,7 +62,7 @@ int NullAudioSinkImpl::write_pcm(const void *pcm_data, uint32_t frame_count) {
 int NullAudioSinkImpl::set_volume(float volume) {
     if (volume < 0.0f) volume = 0.0f;
     if (volume > 1.0f) volume = 1.0f;
-    m_volume = volume;
+    m_volume.store(volume);
     return 0;
 }
 
@@ -116,6 +121,10 @@ LyraAudioSink *create_null_audio_sink() {
     sink->set_volume = null_sink_set_volume;
     sink->flush = null_sink_flush;
     sink->get_buffered_frames = null_sink_get_buffered_frames;
+    sink->set_output_device = nullptr;
+    sink->set_buffer_size_frames = nullptr;
+    sink->set_exclusive_mode = nullptr;
+    sink->is_exclusive_mode_active = nullptr;
     return sink;
 }
 

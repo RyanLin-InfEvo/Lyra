@@ -4,12 +4,15 @@
 
 #pragma once
 
+#include "services/audio_device_info.h"
+#include <condition_variable>
 #include <functional>
 #include <memory>
 #include <mutex>
 #include <nlohmann/json.hpp>
 #include <optional>
 #include <string>
+#include <thread>
 #include <tl/expected.hpp>
 #include <vector>
 
@@ -25,8 +28,12 @@ enum class SettingType {
     Int,
     Int64,
     Double,
-    String
+    String,
+    Bool
 };
+
+using RollbackAction = std::function<void()>;
+using PreflightResult = tl::expected<RollbackAction, json>;
 
 struct SettingSpec {
     std::string category;
@@ -44,6 +51,7 @@ struct SettingSpec {
     std::function<std::string(const json &val)> to_db_string;
     std::function<void(const json &val, ConfigurationService &svc)> commit_value;
     std::function<void(const json &val, ConfigurationService &svc)> apply;
+    std::function<PreflightResult(const json &val, ConfigurationService &svc)> preflight{nullptr};
 };
 
 class ConfigurationService {
@@ -64,10 +72,18 @@ class ConfigurationService {
     static constexpr double DEFAULT_VOLUME = 1.0;
     static constexpr const char *DEFAULT_OUTPUT_DEVICE_ID = "default";
 
+    static constexpr int DEFAULT_BUFFER_SIZE_FRAMES = static_cast<int>(lyra::DEFAULT_BUFFER_SIZE_FRAMES);
+    static constexpr int MIN_BUFFER_SIZE_FRAMES = static_cast<int>(lyra::MIN_BUFFER_SIZE_FRAMES);
+    static constexpr int MAX_BUFFER_SIZE_FRAMES = static_cast<int>(lyra::MAX_BUFFER_SIZE_FRAMES);
+
+    static constexpr bool DEFAULT_EXCLUSIVE_MODE = false;
+
     ConfigurationService(IDatabaseContext &db_context,
                          const std::string &storage_root,
                          AudioEngine *audio_engine = nullptr);
-    ~ConfigurationService() = default;
+    ~ConfigurationService();
+
+    void sync_runtime_downgrade(const std::string &category, const std::string &key, const nlohmann::json &value);
 
     json get_config_json() const;
     tl::expected<json, json> update_config(const json &params);
@@ -83,6 +99,8 @@ class ConfigurationService {
     void apply_wal_autocheckpoint(int frames);
     void apply_volume(double vol);
     void apply_output_device(const std::string &dev);
+    void apply_buffer_size_frames(int frames);
+    void apply_exclusive_mode(bool exclusive);
 
     const std::string &get_storage_root() const { return m_storage_root; }
 
@@ -98,12 +116,17 @@ class ConfigurationService {
     AudioEngine *m_audio_engine{nullptr};
 
     mutable std::mutex m_mutex;
+    bool m_is_updating{false};
+    std::thread::id m_updating_thread_id{};
+    std::condition_variable m_cv;
     int m_cache_size_kb{DEFAULT_CACHE_SIZE_KB};
     int64_t m_mmap_size_bytes{DEFAULT_MMAP_SIZE_BYTES};
     int m_busy_timeout_ms{DEFAULT_BUSY_TIMEOUT_MS};
     int m_wal_autocheckpoint{DEFAULT_WAL_AUTOCHECKPOINT};
     std::string m_output_device_id{DEFAULT_OUTPUT_DEVICE_ID};
     double m_volume{DEFAULT_VOLUME};
+    int m_buffer_size_frames{DEFAULT_BUFFER_SIZE_FRAMES};
+    bool m_exclusive_mode{DEFAULT_EXCLUSIVE_MODE};
 
     void seed_defaults();
     void load_config();

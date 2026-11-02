@@ -24,7 +24,10 @@ class TestAudioEngineCpp(BaseLyraTestCase):
 
         # Run the C++ test binary with test_db_dir
         res = subprocess.run(
-            [executable, self.test_db_dir], capture_output=True, text=True
+            [executable, self.test_db_dir],
+            capture_output=True,
+            text=True,
+            errors="replace",
         )
 
         # We expect the return code to be 0 (ALL_TESTS_PASSED)

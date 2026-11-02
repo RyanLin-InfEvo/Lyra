@@ -69,10 +69,14 @@ std::pair<int, std::string> ApiResponse::getErrorMapping(ErrorType type) {
             return {400, "OutOfRange"};
         case ErrorType::Conflict:
             return {409, "Conflict"};
+        case ErrorType::OperationFailed:
+            return {400, "OperationFailed"};
 
         // 500 Series
         case ErrorType::DatabaseError:
             return {500, "DatabaseError"};
+        case ErrorType::DeviceUnavailable:
+            return {503, "DeviceUnavailable"};
     }
     return {500, "UnknownError"};
 }

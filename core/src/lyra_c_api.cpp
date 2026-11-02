@@ -11,6 +11,7 @@
 
 #include "lyra_c_api.h"
 #include "router.h"
+#include "services/audio_sinks/audio_sink_factory.h"
 
 using json = nlohmann::json;
 using namespace lyra;
@@ -54,6 +55,18 @@ int lyra_init(const char *storage_root) {
     }
 }
 
+int lyra_deinit(void) {
+    try {
+        g_event_callback.store(nullptr);
+        g_event_user_data.store(nullptr);
+        g_router.reset();
+        shutdown_local_audio_context();
+        return 0;
+    } catch (...) {
+        return -1;
+    }
+}
+
 char *lyra_dispatch(const char *json_request) {
     try {
         if (json_request == nullptr) {
@@ -91,11 +104,13 @@ char *lyra_dispatch(const char *json_request) {
 
         json error_res;
         error_res["code"] = 400;
+        error_res["error"]["type"] = "InvalidCommandFormat";
         error_res["error"]["message"] = e.what();
         return strdup(error_res.dump().c_str());
     } catch (...) {
         json error_res;
         error_res["code"] = 500;
+        error_res["error"]["type"] = "DatabaseError";
         error_res["error"]["message"] = "UNKNOWN_FATAL_ERROR: An unknown error bypassed all exception handlers.";
         return strdup(error_res.dump().c_str());
     }

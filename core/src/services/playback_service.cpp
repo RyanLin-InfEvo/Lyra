@@ -68,25 +68,43 @@ tl::expected<ResolvedPlayback, PlaybackError> PlaybackService::play(
         return tl::unexpected(resolved_res.error());
     }
 
-    // 2. Decoder initialization OUTSIDE m_mutex:
-    //    AudioEngine::play performs synchronous decoder initialization (FFmpeg/miniaudio pipeline setup)
-    //    and resets engine stream buffers. This involves file I/O and codec parsing.
-    //    Executing outside m_mutex guarantees that UI status and position queries do not hang.
+    // 2. Metadata setup and decoder initialization:
+    //    Right before calling m_audio_engine.play, set m_current_resolved and reset m_next_resolved
+    //    so synchronous events (e.g. audio_state_changed) emitted during play() observe the new track.
+    {
+        std::lock_guard<std::mutex> lock(m_mutex);
+        m_current_resolved = *resolved_res;
+        m_next_resolved.reset();
+    }
+
     bool success = m_audio_engine.play(resolved_res->file_path, options.start_position_seconds);
     if (!success) {
+        {
+            std::lock_guard<std::mutex> lock(m_mutex);
+            if (m_current_resolved.has_value() && m_current_resolved->file_path == resolved_res->file_path) {
+                m_current_resolved.reset();
+            }
+            m_next_resolved.reset();
+        }
+        if (m_audio_engine.get_last_error() == AudioEngineError::DeviceUnavailable) {
+            return tl::unexpected(PlaybackError{
+                PlaybackErrorCode::DeviceUnavailable,
+                "Audio output device is unavailable: " + m_audio_engine.get_output_device()});
+        }
         return tl::unexpected(PlaybackError{
             PlaybackErrorCode::EngineError,
             "Failed to initialize decoder for audio file: " + resolved_res->file_path});
     }
 
-    // 3. Update playback state under m_mutex:
-    //    - m_current_resolved is updated to the newly active stream.
-    //    - m_next_resolved is unconditionally reset because explicit user playback overrides and
-    //      invalidates any previously preloaded transition stream.
+    // 3. Synchronize playback state under m_mutex:
+    //    Check if the engine was concurrently stopped or switched to a different stream.
     {
         std::lock_guard<std::mutex> lock(m_mutex);
-        m_current_resolved = *resolved_res;
-        m_next_resolved.reset();
+        if (m_audio_engine.get_state_enum() == AudioEngineState::STOPPED) {
+            m_current_resolved.reset();
+        } else if (m_audio_engine.get_current_file_path() == resolved_res->file_path) {
+            m_current_resolved = *resolved_res;
+        }
     }
 
     return *resolved_res;
@@ -103,8 +121,17 @@ tl::expected<ResolvedPlayback, PlaybackError> PlaybackService::preload_next(
             std::lock_guard<std::mutex> lock(m_mutex);
             // Timing promotion: If the background engine already transitioned asynchronously into
             // m_next_resolved, promote it to m_current_resolved before resetting m_next_resolved.
-            if (m_next_resolved.has_value() && m_audio_engine.get_current_file_path() == m_next_resolved->file_path) {
-                m_current_resolved = m_next_resolved;
+            if (m_next_resolved.has_value()) {
+                bool has_transitioned = false;
+                if (m_current_resolved.has_value() && m_current_resolved->file_path != m_next_resolved->file_path) {
+                    has_transitioned = (m_audio_engine.get_current_file_path() == m_next_resolved->file_path);
+                } else {
+                    has_transitioned = (m_audio_engine.get_next_file_path().empty() &&
+                                        m_audio_engine.get_current_file_path() == m_next_resolved->file_path);
+                }
+                if (has_transitioned) {
+                    m_current_resolved = m_next_resolved;
+                }
             }
             m_next_resolved.reset();
         }
@@ -132,8 +159,17 @@ tl::expected<ResolvedPlayback, PlaybackError> PlaybackService::preload_next(
     // If so, promote m_next_resolved to m_current_resolved so active track metadata is preserved.
     {
         std::lock_guard<std::mutex> lock(m_mutex);
-        if (m_next_resolved.has_value() && m_audio_engine.get_current_file_path() == m_next_resolved->file_path) {
-            m_current_resolved = m_next_resolved;
+        if (m_next_resolved.has_value()) {
+            bool has_transitioned = false;
+            if (m_current_resolved.has_value() && m_current_resolved->file_path != m_next_resolved->file_path) {
+                has_transitioned = (m_audio_engine.get_current_file_path() == m_next_resolved->file_path);
+            } else {
+                has_transitioned = (m_audio_engine.get_next_file_path().empty() &&
+                                    m_audio_engine.get_current_file_path() == m_next_resolved->file_path);
+            }
+            if (has_transitioned) {
+                m_current_resolved = m_next_resolved;
+            }
         }
         m_next_resolved = *resolved_res;
     }
@@ -147,8 +183,17 @@ bool PlaybackService::clear_preload_next() {
         // Timing promotion check prior to clearing:
         // Ensure that if the preloaded track has already begun playback asynchronously in the engine,
         // its metadata is preserved in m_current_resolved rather than discarded.
-        if (m_next_resolved.has_value() && m_audio_engine.get_current_file_path() == m_next_resolved->file_path) {
-            m_current_resolved = m_next_resolved;
+        if (m_next_resolved.has_value()) {
+            bool has_transitioned = false;
+            if (m_current_resolved.has_value() && m_current_resolved->file_path != m_next_resolved->file_path) {
+                has_transitioned = (m_audio_engine.get_current_file_path() == m_next_resolved->file_path);
+            } else {
+                has_transitioned = (m_audio_engine.get_next_file_path().empty() &&
+                                    m_audio_engine.get_current_file_path() == m_next_resolved->file_path);
+            }
+            if (has_transitioned) {
+                m_current_resolved = m_next_resolved;
+            }
         }
         m_next_resolved.reset();
     }
@@ -313,9 +358,18 @@ std::optional<ResolvedPlayback> PlaybackService::get_current_resolved() const {
     }
 
     std::string current_engine_path = m_audio_engine.get_current_file_path();
-    if (m_next_resolved.has_value() && current_engine_path == m_next_resolved->file_path) {
-        m_current_resolved = m_next_resolved;
-        m_next_resolved.reset();
+    if (m_next_resolved.has_value()) {
+        bool has_transitioned = false;
+        if (m_current_resolved.has_value() && m_current_resolved->file_path != m_next_resolved->file_path) {
+            has_transitioned = (current_engine_path == m_next_resolved->file_path);
+        } else {
+            has_transitioned = (m_audio_engine.get_next_file_path().empty() &&
+                                current_engine_path == m_next_resolved->file_path);
+        }
+        if (has_transitioned) {
+            m_current_resolved = m_next_resolved;
+            m_next_resolved.reset();
+        }
     }
 
     if (m_current_resolved.has_value() && current_engine_path != m_current_resolved->file_path) {

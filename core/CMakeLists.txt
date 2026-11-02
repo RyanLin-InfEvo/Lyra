@@ -13,6 +13,11 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 option(BUILD_TESTING "Build the testing suite" ON)
+option(ENABLE_ASAN "Enable AddressSanitizer and LeakSanitizer" OFF)
+if(ENABLE_ASAN)
+    add_compile_options(-fsanitize=address -fno-omit-frame-pointer)
+    add_link_options(-fsanitize=address)
+endif()
 
 # load FetchContent module
 include(FetchContent)
@@ -163,4 +168,8 @@ if(BUILD_TESTING)
     add_executable(playback_service_test tests/playback_service_test.cpp)
     target_link_libraries(playback_service_test PRIVATE lyra_core nlohmann_json::nlohmann_json fmt::fmt SQLiteCpp)
     target_include_directories(playback_service_test PRIVATE include src)
+
+    add_executable(audio_device_info_test tests/audio_device_info_test.cpp)
+    target_link_libraries(audio_device_info_test PRIVATE lyra_core nlohmann_json::nlohmann_json fmt::fmt)
+    target_include_directories(audio_device_info_test PRIVATE include src)
 endif()

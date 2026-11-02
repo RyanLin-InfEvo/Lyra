@@ -26,6 +26,8 @@ class TestSystemConfig(BaseLyraTestCase):
             "audio": {
                 "output_device_id": "default",
                 "volume": 1.0,
+                "buffer_size_frames": 256,
+                "exclusive_mode": False,
             },
         })
 
@@ -328,7 +330,7 @@ class TestSystemConfig(BaseLyraTestCase):
             ("UPDATE System_Config SET value = '99' WHERE key = 'database.busy_timeout_ms';", ()),
             ("UPDATE System_Config SET value = '1' WHERE key = 'database.wal_autocheckpoint';", ()),
             ("UPDATE System_Config SET value = 'NaN' WHERE key = 'audio.volume';", ()),
-            ("UPDATE System_Config SET value = 'bogus_device_xyz' WHERE key = 'audio.output_device_id';", ()),
+            ("UPDATE System_Config SET value = '' WHERE key = 'audio.output_device_id';", ()),
         ])
 
         # Re-initialize library via lyra_init
@@ -362,26 +364,36 @@ class TestSystemConfig(BaseLyraTestCase):
         self.assertEqual(rows["audio.output_device_id"], "default")
 
     def test_output_device_id_validation_and_offline_persistence(self):
-        """Test valid 64-hex device ID is accepted and retained across re-init even if device is offline."""
+        """Test offline 64-hex device ID is rejected at set time (Layer 1) but retained across re-init if previously persisted."""
         valid_hex_device_id = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
 
-        # a) system.set_config accepts valid 64-hex device ID
+        # a) Layer 1: system.set_config and audio.set_output_device reject offline 64-hex device ID even when STOPPED
         res = self.dispatch("system.set_config", {"audio": {"output_device_id": valid_hex_device_id}})
-        self.assertResponseCode(res, 200)
-        self.assertEqual(res["data"]["audio"]["output_device_id"], valid_hex_device_id)
+        self.assertValidationError(res, expected_type="InvalidValue", expected_message_content="output device")
 
-        # Verify get_config reflects it
+        dev_res = self.dispatch("audio.set_output_device", {"device_id": valid_hex_device_id})
+        self.assertValidationError(dev_res, expected_type="InvalidValue", expected_message_content="output device")
+
+        # Verify get_config remains "default"
         get_res = self.dispatch("system.get_config", {})
         self.assertResponseCode(get_res, 200)
-        self.assertEqual(get_res["data"]["audio"]["output_device_id"], valid_hex_device_id)
+        self.assertEqual(get_res["data"]["audio"]["output_device_id"], "default")
 
-        # b) Re-opening / reinitializing the database preserves this valid device ID and does NOT self-heal to default
+        # b) When a valid 64-hex device ID was previously persisted in System_Config (e.g. DAC saved when online, now unplugged),
+        # reinitializing the database retains the user's saved device preference in get_config and audio.get_state
+        self.execute_raw_sqls([
+            ("UPDATE System_Config SET value = ? WHERE key = 'audio.output_device_id';", (valid_hex_device_id,)),
+        ])
         init_res = self.lib.lyra_init(self.test_db_dir.encode('utf-8'))
         self.assertEqual(init_res, 0)
 
         get_res2 = self.dispatch("system.get_config", {})
         self.assertResponseCode(get_res2, 200)
         self.assertEqual(get_res2["data"]["audio"]["output_device_id"], valid_hex_device_id)
+
+        state_res2 = self.dispatch("audio.get_state", {})
+        self.assertResponseCode(state_res2, 200)
+        self.assertEqual(state_res2["data"]["device_id"], valid_hex_device_id)
 
         db_path = os.path.join(self.test_db_dir, "lyra.db")
         conn = sqlite3.connect(db_path)
@@ -396,9 +408,9 @@ class TestSystemConfig(BaseLyraTestCase):
         bad_res = self.dispatch("system.set_config", {"audio": {"output_device_id": "bogus_device_xyz"}})
         self.assertValidationError(bad_res, expected_type="InvalidValue", expected_message_content="output_device_id")
 
-        # Invalid values in DB are still self-healed to "default" on re-init
+        # Empty/corrupted empty values in DB are still self-healed to "default" on re-init
         self.execute_raw_sqls([
-            ("UPDATE System_Config SET value = 'bogus_device_xyz' WHERE key = 'audio.output_device_id';", ()),
+            ("UPDATE System_Config SET value = '' WHERE key = 'audio.output_device_id';", ()),
         ])
         init_res2 = self.lib.lyra_init(self.test_db_dir.encode('utf-8'))
         self.assertEqual(init_res2, 0)
@@ -504,15 +516,17 @@ class TestSystemConfig(BaseLyraTestCase):
     def test_fine_grained_per_key_isolation(self):
         """Test fine-grained isolation: setting only audio.volume doesn't affect output_device_id and vice-versa."""
         valid_dev = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
-        init_res = self.dispatch("system.set_config", {
-            "audio": {
-                "output_device_id": valid_dev,
-                "volume": 0.45,
-            }
-        })
-        self.assertResponseCode(init_res, 200)
-        self.assertEqual(init_res["data"]["audio"]["output_device_id"], valid_dev)
-        self.assertAlmostEqual(init_res["data"]["audio"]["volume"], 0.45, places=2)
+        self.execute_raw_sqls([
+            ("UPDATE System_Config SET value = ? WHERE key = 'audio.output_device_id';", (valid_dev,)),
+            ("UPDATE System_Config SET value = '0.45' WHERE key = 'audio.volume';", ()),
+        ])
+        init_res = self.lib.lyra_init(self.test_db_dir.encode('utf-8'))
+        self.assertEqual(init_res, 0)
+
+        get_init = self.dispatch("system.get_config", {})
+        self.assertResponseCode(get_init, 200)
+        self.assertEqual(get_init["data"]["audio"]["output_device_id"], valid_dev)
+        self.assertAlmostEqual(get_init["data"]["audio"]["volume"], 0.45, places=2)
 
         # Update ONLY volume - output_device_id must remain valid_dev
         vol_res = self.dispatch("system.set_config", {"audio": {"volume": 0.85}})
@@ -524,8 +538,9 @@ class TestSystemConfig(BaseLyraTestCase):
         state_res = self.dispatch("audio.get_state", {})
         self.assertResponseCode(state_res, 200)
         self.assertAlmostEqual(state_res["data"]["volume"], 0.85, places=2)
+        self.assertEqual(state_res["data"]["device_id"], valid_dev)
 
-        # Update ONLY output_device_id - volume must remain 0.85
+        # Update ONLY output_device_id to "default" - volume must remain 0.85
         dev_res = self.dispatch("system.set_config", {"audio": {"output_device_id": "default"}})
         self.assertResponseCode(dev_res, 200)
         self.assertEqual(dev_res["data"]["audio"]["output_device_id"], "default")
@@ -628,5 +643,111 @@ class TestSystemConfig(BaseLyraTestCase):
 
         res2 = self.dispatch("system.set_config", {"storage": {"storage_root": ["/path"]}})
         self.assertValidationError(res2, expected_type="InvalidValue")
+
+    def test_multi_setting_table_driven_preflight_lifo_rollback_on_hardware_failure(self):
+        """Test that when multi-setting configuration fails during preflight, previously executed preflights are rolled back in LIFO order."""
+        non_existent_hex = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+        payload = {
+            "audio": {
+                "buffer_size_frames": 512,
+                "exclusive_mode": True,
+                "output_device_id": non_existent_hex,
+            }
+        }
+        res = self.dispatch("system.set_config", payload)
+        self.assertValidationError(res, expected_type="InvalidValue", expected_message_content="output device")
+
+        # Verify state in AudioEngine (hardware) remains default/rolled-back
+        state_res = self.dispatch("audio.get_state", {})
+        self.assertResponseCode(state_res, 200)
+        self.assertEqual(state_res["data"]["buffer_size_frames"], 256)
+        self.assertIs(state_res["data"]["exclusive_mode"], False)
+        self.assertEqual(state_res["data"]["device_id"], "default")
+
+        # Verify ConfigurationService memory state
+        cfg_res = self.dispatch("system.get_config", {})
+        self.assertResponseCode(cfg_res, 200)
+        self.assertEqual(cfg_res["data"]["audio"]["buffer_size_frames"], 256)
+        self.assertIs(cfg_res["data"]["audio"]["exclusive_mode"], False)
+        self.assertEqual(cfg_res["data"]["audio"]["output_device_id"], "default")
+
+        # Verify SQLite DB System_Config
+        db_path = os.path.join(self.test_db_dir, "lyra.db")
+        conn = sqlite3.connect(db_path)
+        cursor = conn.cursor()
+        cursor.execute("SELECT key, value FROM System_Config WHERE key LIKE 'audio.%'")
+        rows = dict(cursor.fetchall())
+        conn.close()
+        self.assertEqual(rows.get("audio.buffer_size_frames", "256"), "256")
+        self.assertEqual(rows.get("audio.exclusive_mode", "false"), "false")
+        self.assertEqual(rows.get("audio.output_device_id", "default"), "default")
+
+    def test_table_driven_preflight_lifo_rollback_on_database_failure(self):
+        """Test that when preflight succeeds on hardware but SQLite commit fails, all preflights are rolled back in LIFO order."""
+        db_path = os.path.join(self.test_db_dir, "lyra.db")
+        conn = sqlite3.connect(db_path)
+        cursor = conn.cursor()
+        # Create triggers to force SQLite transaction failure upon System_Config insert or update
+        cursor.execute("CREATE TRIGGER fail_system_config_insert BEFORE INSERT ON System_Config BEGIN SELECT RAISE(ABORT, 'Simulated DB failure'); END;")
+        cursor.execute("CREATE TRIGGER fail_system_config_update BEFORE UPDATE ON System_Config BEGIN SELECT RAISE(ABORT, 'Simulated DB failure'); END;")
+        conn.commit()
+        conn.close()
+
+        try:
+            payload = {
+                "audio": {
+                    "buffer_size_frames": 512,
+                    "exclusive_mode": True,
+                }
+            }
+            res = self.dispatch("system.set_config", payload)
+            # Response should indicate error due to DB transaction failure
+            self.assertResponseCode(res, 500)
+            self.assertEqual(res["error"]["type"], "DatabaseError")
+
+            # Assert hardware state was cleanly rolled back via rollback_stack in LIFO order
+            state_res = self.dispatch("audio.get_state", {})
+            self.assertResponseCode(state_res, 200)
+            self.assertEqual(state_res["data"]["buffer_size_frames"], 256)
+            self.assertIs(state_res["data"]["exclusive_mode"], False)
+
+            # Assert memory state remains 256 and False
+            cfg_res = self.dispatch("system.get_config", {})
+            self.assertResponseCode(cfg_res, 200)
+            self.assertEqual(cfg_res["data"]["audio"]["buffer_size_frames"], 256)
+            self.assertIs(cfg_res["data"]["audio"]["exclusive_mode"], False)
+
+        finally:
+            conn = sqlite3.connect(db_path)
+            cursor = conn.cursor()
+            cursor.execute("DROP TRIGGER IF EXISTS fail_system_config_insert;")
+            cursor.execute("DROP TRIGGER IF EXISTS fail_system_config_update;")
+            conn.commit()
+            conn.close()
+
+    def test_lyra_deinit_and_reinit_lifecycle(self):
+        """Test lyra_deinit cleans up state, returns typed 400 error on dispatch, is idempotent, and reinit succeeds."""
+        # 1. lyra_deinit returns 0
+        deinit_res = self.lib.lyra_deinit()
+        self.assertEqual(deinit_res, 0)
+
+        # 2. Dispatching while deinitialized returns code == 400 with error.type present
+        res = self.dispatch("system.get_config", {})
+        self.assertResponseCode(res, 400)
+        self.assertIn("error", res)
+        self.assertIn("type", res["error"])
+        self.assertEqual(res["error"]["type"], "InvalidCommandFormat")
+
+        # 3. Calling lyra_deinit a second time is idempotent and returns 0
+        deinit_res2 = self.lib.lyra_deinit()
+        self.assertEqual(deinit_res2, 0)
+
+        # 4. Re-initialize library to restore environment for subsequent tests
+        init_res = self.lib.lyra_init(self.test_db_dir.encode('utf-8'))
+        self.assertEqual(init_res, 0)
+
+        # Verify router is restored
+        cfg_res = self.dispatch("system.get_config", {})
+        self.assertResponseCode(cfg_res, 200)
 
 

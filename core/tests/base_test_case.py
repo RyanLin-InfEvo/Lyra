@@ -23,6 +23,9 @@ class BaseLyraTestCase(unittest.TestCase):
         cls.lib.lyra_init.argtypes = [ctypes.c_char_p]
         cls.lib.lyra_init.restype = ctypes.c_int
         
+        cls.lib.lyra_deinit.argtypes = []
+        cls.lib.lyra_deinit.restype = ctypes.c_int
+
         cls.lib.lyra_dispatch.argtypes = [ctypes.c_char_p]
         cls.lib.lyra_dispatch.restype = ctypes.c_void_p
         

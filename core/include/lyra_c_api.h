@@ -15,6 +15,9 @@ extern "C" {
 // Initialize database
 __attribute__((visibility("default"))) int lyra_init(const char *storage_root);
 
+// Deinitialize Lyra core, tearing down router and releasing subsystem resources
+__attribute__((visibility("default"))) int lyra_deinit(void);
+
 // Dispatch JSON request to Lyra, return JSON response
 __attribute__((visibility("default"))) char *
 lyra_dispatch(const char *json_request);

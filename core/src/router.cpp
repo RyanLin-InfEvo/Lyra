@@ -2,6 +2,7 @@
 //
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+#include <cmath>
 #include <filesystem>
 #include <functional>
 #include <nlohmann/json.hpp>
@@ -71,6 +72,9 @@ using Type = JsonFieldType;
  *    an unprocessable media resource to the client.
  */
 static json api_error_from_playback_error(const PlaybackError &err, PlaybackTargetType type) {
+    if (err.code == PlaybackErrorCode::DeviceUnavailable) {
+        return ApiResponse::error(Error{ErrorType::DeviceUnavailable, err.message});
+    }
     if (err.code == PlaybackErrorCode::InvalidParameter) {
         return ApiResponse::error(Error{ErrorType::InvalidValue, err.message});
     }
@@ -170,7 +174,6 @@ Router::Router(const std::string &db_path) {
 
     m_configuration_service = std::make_unique<ConfigurationService>(
         *m_db_context, m_storage_root, m_audio_engine.get());
-    m_configuration_service->apply_runtime_settings();
 
     init_handlers();
 }
@@ -1346,32 +1349,78 @@ json Router::handleAudioPlay(const json &p) {
 
 json Router::handleAudioPause(const json &p) {
     (void)p;
-    m_playback_service->pause();
+    if (!m_playback_service) {
+        return ApiResponse::error(Error{ErrorType::DatabaseError, "Playback service not available"});
+    }
+    if (!m_playback_service->pause()) {
+        return ApiResponse::error(Error{
+            ErrorType::InvalidValue,
+            "Cannot pause playback: audio is not playing"});
+    }
     return ApiResponse::success(m_playback_service->get_state_json());
 }
 
 json Router::handleAudioResume(const json &p) {
     (void)p;
-    m_playback_service->resume();
+    if (!m_playback_service) {
+        return ApiResponse::error(Error{ErrorType::DatabaseError, "Playback service not available"});
+    }
+    if (!m_playback_service->resume()) {
+        if (m_audio_engine && m_audio_engine->get_last_error() == AudioEngineError::DeviceUnavailable) {
+            return ApiResponse::error(Error{
+                ErrorType::DeviceUnavailable,
+                "Audio output device is unavailable: " + m_audio_engine->get_output_device()});
+        }
+        return ApiResponse::error(Error{
+            ErrorType::InvalidValue,
+            "Cannot resume playback: audio is not paused"});
+    }
     return ApiResponse::success(m_playback_service->get_state_json());
 }
 
 json Router::handleAudioSeek(const json &p) {
+    if (!m_playback_service) {
+        return ApiResponse::error(Error{ErrorType::DatabaseError, "Playback service not available"});
+    }
+
     double pos = 0.0;
-    if (p.contains("position") && p["position"].is_number()) {
+    if (p.contains("position")) {
+        if (p["position"].is_null()) {
+            return ApiResponse::error(Error{ErrorType::MissingParameter, "Missing required parameter: position"});
+        }
+        if (!p["position"].is_number()) {
+            return ApiResponse::error(Error{ErrorType::InvalidValue, "'position' must be a number"});
+        }
         pos = p["position"].get<double>();
-    } else if (p.contains("position_seconds") && p["position_seconds"].is_number()) {
+    } else if (p.contains("position_seconds")) {
+        if (p["position_seconds"].is_null()) {
+            return ApiResponse::error(Error{ErrorType::MissingParameter, "Missing required parameter: position_seconds"});
+        }
+        if (!p["position_seconds"].is_number()) {
+            return ApiResponse::error(Error{ErrorType::InvalidValue, "'position_seconds' must be a number"});
+        }
         pos = p["position_seconds"].get<double>();
     } else {
-        return ApiResponse::error(Error{ErrorType::MissingParameter, "Missing or invalid 'position' or 'position_seconds' parameter"});
+        return ApiResponse::error(Error{ErrorType::MissingParameter, "Missing required parameter: 'position' or 'position_seconds'"});
+    }
+
+    if (std::isnan(pos) || !std::isfinite(pos)) {
+        return ApiResponse::error(Error{ErrorType::InvalidValue, "'position' must be a finite number"});
     }
 
     bool relative = false;
-    if (p.contains("relative") && p["relative"].is_boolean()) {
+    if (p.contains("relative") && !p["relative"].is_null()) {
+        if (!p["relative"].is_boolean()) {
+            return ApiResponse::error(Error{ErrorType::InvalidValue, "'relative' parameter must be a boolean"});
+        }
         relative = p["relative"].get<bool>();
     }
 
-    m_playback_service->seek(pos, relative);
+    if (!m_playback_service->seek(pos, relative)) {
+        return ApiResponse::error(Error{
+            ErrorType::InvalidValue,
+            "Cannot seek playback: no active audio stream"});
+    }
     return ApiResponse::success(m_playback_service->get_state_json());
 }
 
@@ -1382,11 +1431,28 @@ json Router::handleAudioStop(const json &p) {
 }
 
 json Router::handleAudioSetVolume(const json &p) {
-    if (!p.contains("volume") || !p["volume"].is_number()) {
-        return ApiResponse::error(Error{ErrorType::MissingParameter, "Missing or invalid 'volume' parameter"});
+    if (!p.contains("volume") || p["volume"].is_null()) {
+        return ApiResponse::error(Error{ErrorType::MissingParameter, "Missing required parameter: volume"});
     }
-    float vol = p["volume"].get<float>();
-    m_playback_service->set_volume(vol);
+    if (!p["volume"].is_number()) {
+        return ApiResponse::error(Error{ErrorType::InvalidValue, "Invalid type for parameter 'volume': expected number"});
+    }
+    double vol = p["volume"].get<double>();
+    if (m_configuration_service) {
+        auto res = m_configuration_service->update_config(
+            json{{"audio", {{"volume", vol}}}});
+        if (!res) {
+            return res.error();
+        }
+    } else {
+        if (std::isnan(vol) || !std::isfinite(vol) || vol < 0.0 || vol > 1.0) {
+            return ApiResponse::error(
+                {ErrorType::OutOfRange, "audio.volume must be between 0.0 and 1.0"});
+        }
+        if (m_playback_service) {
+            m_playback_service->set_volume(static_cast<float>(vol));
+        }
+    }
     return ApiResponse::success(m_playback_service->get_state_json());
 }
 
@@ -1632,11 +1698,14 @@ json Router::handleAudioSetOutputDevice(const json &params) {
     if (err) return *err;
 
     std::string device_id = params["device_id"].get<std::string>();
-    if (device_id.empty()) {
-        return ApiResponse::error({ErrorType::MissingParameter, "device_id cannot be empty"});
-    }
 
-    if (!m_playback_service->set_output_device(device_id)) {
+    if (m_configuration_service) {
+        auto res = m_configuration_service->update_config(
+            json{{"audio", {{"output_device_id", device_id}}}});
+        if (!res) {
+            return res.error();
+        }
+    } else if (!m_playback_service->set_output_device(device_id)) {
         return ApiResponse::error({ErrorType::InvalidValue, "Failed to set audio output device: " + device_id});
     }
 

@@ -1,0 +1,41 @@
+# SPDX-FileCopyrightText: 2026 Tzu-Ting Lin
+#
+# SPDX-License-Identifier: AGPL-3.0-or-later
+#
+# ==============================================================================
+# LeakSanitizer (LSan) Suppression Rules & Test Architecture Division
+# ==============================================================================
+#
+# Division of Responsibility between audio_engine_test.cpp and lsan.supp:
+#
+# 1. audio_engine_test.cpp (Lyra Application & Subsystem Verification):
+#    - Responsible for verifying all Lyra memory management, thread-safety,
+#      and context lifecycle correctness.
+#    - Test 31 validates active hardware device tracking (g_active_device_count),
+#      preventing context destruction while devices are playing.
+#    - Test 31 validates safe on-demand re-initialization and 8-thread concurrent
+#      enumeration stress without data races.
+#    - Test 31 and main() invoke shutdown_local_audio_context() to ensure Lyra
+#      explicitly releases all application-allocated audio subsystem resources.
+#    - Under ASan/LSan, zero bytes may leak from any Lyra code or miniaudio device/
+#      context state.
+#
+# 2. lsan.supp (External Host OS Audio Daemon Singleton Filter):
+#    - When miniaudio selects the JACK backend on Linux (connecting to PipeWire-JACK),
+#      the client shared libraries (libjack.so -> libpipewire-0.3.so) initialize
+#      process-wide daemon singletons (pw_context, D-Bus connection, RTKit worker,
+#      and module loaders) upon jack_client_open().
+#    - By design, PipeWire keeps these singletons resident until the process exits.
+#    - In addition, Lyra intentionally suppresses dlclose() on Linux audio backends
+#      to prevent SIGSEGV crashes caused by PipeWire daemon background threads
+#      waking up after memory is unmapped.
+#    - These system-level singletons do NOT represent leaks in Lyra's audio engine.
+#    - This suppression file instructs LeakSanitizer to ignore allocations originated
+#      inside PipeWire and JACK client shared objects, allowing LSan to strictly
+#      detect and fail on any real leaks originating from Lyra.
+# ==============================================================================
+
+leak:libpipewire
+leak:libjack
+leak:pw_
+leak:jack_

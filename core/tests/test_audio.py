@@ -884,9 +884,12 @@ class TestAudioController(BaseLyraTestCase):
         res = self.dispatch("audio.set_output_device", {"device_id": 12345})
         self.assertValidationError(res, expected_type="InvalidValue")
 
-        # Empty string
+        # Empty string: verify symmetry between audio.set_output_device and system.set_config
         res = self.dispatch("audio.set_output_device", {"device_id": ""})
-        self.assertValidationError(res, expected_type="InvalidValue")
+        self.assertValidationError(res, expected_type="InvalidValue", expected_message_content="empty")
+
+        cfg_res = self.dispatch("system.set_config", {"audio": {"output_device_id": ""}})
+        self.assertValidationError(cfg_res, expected_type="InvalidValue", expected_message_content="cannot be empty")
 
         # Non-hex non-default device id
         res = self.dispatch("audio.set_output_device", {"device_id": "invalid-device-id"})

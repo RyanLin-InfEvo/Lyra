@@ -7,6 +7,7 @@ import ctypes
 import json
 import os
 import random
+import sqlite3
 import struct
 import subprocess
 import threading
@@ -370,4 +371,174 @@ class TestAudioEngine(BaseLyraTestCase):
             res_stop = self.dispatch("audio.stop", {})
             self.assertResponseCode(res_stop, 200)
             self.assertEqual(res_stop["data"]["state"], "STOPPED")
+
+    def test_audio_set_volume_persistence_and_boundary_defense(self):
+        """
+        Verify that audio.set_volume persists the volume to SQLite System_Config
+        and strictly rejects out-of-range volumes with OutOfRange error.
+        """
+        # 1. Update volume via audio.set_volume
+        res = self.dispatch("audio.set_volume", {"volume": 0.85})
+        self.assertResponseCode(res, 200)
+        self.assertAlmostEqual(res["data"]["volume"], 0.85, places=2)
+
+        # 2. Verify SQLite System_Config persistence directly
+        db_path = os.path.join(self.test_db_dir, "lyra.db")
+        conn = sqlite3.connect(db_path)
+        cursor = conn.cursor()
+        cursor.execute("SELECT value FROM System_Config WHERE key = 'audio.volume';")
+        row = cursor.fetchone()
+        conn.close()
+        self.assertIsNotNone(row, "System_Config row for 'audio.volume' must exist")
+        self.assertAlmostEqual(float(row[0]), 0.85, places=2)
+
+        # 3. Verify system.get_config reflects the persisted value
+        cfg_res = self.dispatch("system.get_config", {})
+        self.assertResponseCode(cfg_res, 200)
+        self.assertAlmostEqual(cfg_res["data"]["audio"]["volume"], 0.85, places=2)
+
+        # 4. Negative boundary defense: volume < 0.0 and volume > 1.0 fail with 400 OutOfRange
+        res_low = self.dispatch("audio.set_volume", {"volume": -0.5})
+        self.assertValidationError(res_low, expected_type="OutOfRange")
+
+        res_high = self.dispatch("audio.set_volume", {"volume": 1.5})
+        self.assertValidationError(res_high, expected_type="OutOfRange")
+
+    def test_custom_sink_device_id_persistence_across_restart(self):
+        """
+        Verify custom sink device IDs (e.g. 'alsa:hw:1,0') are not clobbered/healed
+        back to 'default' in SQLite upon application restart / re-initialization.
+        """
+        db_path = os.path.join(self.test_db_dir, "lyra.db")
+        conn = sqlite3.connect(db_path)
+        cursor = conn.cursor()
+        cursor.execute(
+            "UPDATE System_Config SET value = 'alsa:hw:1,0' WHERE key = 'audio.output_device_id';"
+        )
+        conn.commit()
+        conn.close()
+
+        # Re-initialize library using lyra_init
+        init_res = self.lib.lyra_init(self.test_db_dir.encode('utf-8'))
+        self.assertEqual(init_res, 0)
+
+        try:
+            # Query SQLite directly to ensure it was not overwritten with "default"
+            conn = sqlite3.connect(db_path)
+            cursor = conn.cursor()
+            cursor.execute("SELECT value FROM System_Config WHERE key = 'audio.output_device_id';")
+            row = cursor.fetchone()
+            conn.close()
+            self.assertIsNotNone(row)
+            self.assertEqual(row[0], "alsa:hw:1,0")
+
+            # Confirm via system.get_config API
+            cfg_res = self.dispatch("system.get_config", {})
+            self.assertResponseCode(cfg_res, 200)
+            self.assertEqual(cfg_res["data"]["audio"]["output_device_id"], "alsa:hw:1,0")
+        finally:
+            # Clean up and restore default output device so subsequent tests run on default sink
+            conn = sqlite3.connect(db_path)
+            cursor = conn.cursor()
+            cursor.execute(
+                "UPDATE System_Config SET value = 'default' WHERE key = 'audio.output_device_id';"
+            )
+            conn.commit()
+            conn.close()
+            self.lib.lyra_init(self.test_db_dir.encode('utf-8'))
+
+    def test_audio_resume_non_paused_fails(self):
+        """
+        Verify that audio.resume fails fast with HTTP 400 InvalidValue when
+        audio is in STOPPED or PLAYING state, and succeeds when PAUSED.
+        """
+        # 1. When audio is in default STOPPED state, audio.resume must fail with 400 InvalidValue
+        state_res = self.dispatch("audio.get_state", {})
+        self.assertResponseCode(state_res, 200)
+        self.assertEqual(state_res["data"]["state"], "STOPPED")
+
+        res_stopped = self.dispatch("audio.resume", {})
+        self.assertValidationError(
+            res_stopped,
+            expected_type="InvalidValue",
+            expected_message_content="Cannot resume playback: audio is not paused"
+        )
+
+        # 2. When audio is PLAYING, audio.resume must also fail with 400 InvalidValue
+        res_play = self.dispatch("audio.play", {"file_path": self.sample_wav_path})
+        self.assertResponseCode(res_play, 200)
+        self.assertEqual(res_play["data"]["state"], "PLAYING")
+
+        res_playing = self.dispatch("audio.resume", {})
+        self.assertValidationError(
+            res_playing,
+            expected_type="InvalidValue",
+            expected_message_content="Cannot resume playback: audio is not paused"
+        )
+
+        # 3. When audio is PAUSED, audio.resume must succeed with HTTP 200 and transition to PLAYING
+        res_pause = self.dispatch("audio.pause", {})
+        self.assertResponseCode(res_pause, 200)
+        self.assertEqual(res_pause["data"]["state"], "PAUSED")
+
+        res_resume = self.dispatch("audio.resume", {})
+        self.assertResponseCode(res_resume, 200)
+        self.assertEqual(res_resume["data"]["state"], "PLAYING")
+
+        # Clean up: stop playback
+        res_stop = self.dispatch("audio.stop", {})
+        self.assertResponseCode(res_stop, 200)
+        self.assertEqual(res_stop["data"]["state"], "STOPPED")
+
+    def test_audio_pause_and_seek_when_stopped_fail_fast(self):
+        """
+        Verify audio.pause and audio.seek fail fast when audio engine is STOPPED,
+        verify non-boolean relative fails fast, and audio.set_volume validates inputs.
+        """
+        # Ensure stopped state
+        self.dispatch("audio.stop", {})
+        state_res = self.dispatch("audio.get_state", {})
+        self.assertResponseCode(state_res, 200)
+        self.assertEqual(state_res["data"]["state"], "STOPPED")
+
+        # 1. audio.pause when STOPPED returns 400 InvalidValue
+        res_pause = self.dispatch("audio.pause", {})
+        self.assertValidationError(
+            res_pause,
+            expected_type="InvalidValue",
+            expected_message_content="Cannot pause playback: audio is not playing"
+        )
+
+        # 2. audio.seek when STOPPED returns 400 InvalidValue
+        res_seek = self.dispatch("audio.seek", {"position": 1.0})
+        self.assertValidationError(
+            res_seek,
+            expected_type="InvalidValue",
+            expected_message_content="Cannot seek playback: no active audio stream"
+        )
+
+        # 3. audio.seek with non-boolean "relative": "yes" returns 400 InvalidValue
+        res_seek_rel = self.dispatch("audio.seek", {"position": 1.0, "relative": "yes"})
+        self.assertValidationError(
+            res_seek_rel,
+            expected_type="InvalidValue",
+            expected_message_content="'relative' parameter must be a boolean"
+        )
+
+        # 4. audio.set_volume with "volume": "invalid" returns 400 InvalidValue
+        res_vol_invalid = self.dispatch("audio.set_volume", {"volume": "invalid"})
+        self.assertValidationError(
+            res_vol_invalid,
+            expected_type="InvalidValue",
+            expected_message_content="Invalid type for parameter 'volume': expected number"
+        )
+
+        # 5. audio.set_volume with missing "volume" returns 400 MissingParameter
+        res_vol_missing = self.dispatch("audio.set_volume", {})
+        self.assertValidationError(
+            res_vol_missing,
+            expected_type="MissingParameter",
+            expected_message_content="Missing required parameter: volume"
+        )
+
 

@@ -88,6 +88,40 @@ bool test_api_response_error_mapping() {
         }
     }
 
+    // Test 5: DeviceUnavailable (503)
+    {
+        json res = ApiResponse::error({ErrorType::DeviceUnavailable, "Audio output device is unavailable"});
+        if (res["code"] != 503) {
+            std::cerr << "Test DeviceUnavailable failed: code is not 503" << std::endl;
+            return false;
+        }
+        if (res["error"]["type"] != "DeviceUnavailable") {
+            std::cerr << "Test DeviceUnavailable failed: type is not 'DeviceUnavailable'" << std::endl;
+            return false;
+        }
+        if (res["error"]["message"] != "Audio output device is unavailable") {
+            std::cerr << "Test DeviceUnavailable failed: message is incorrect" << std::endl;
+            return false;
+        }
+    }
+
+    // Test 6: OperationFailed (400 series)
+    {
+        json res = ApiResponse::error({ErrorType::OperationFailed, "Operation failed"});
+        if (res["code"] != 400) {
+            std::cerr << "Test OperationFailed failed: code is not 400" << std::endl;
+            return false;
+        }
+        if (res["error"]["type"] != "OperationFailed") {
+            std::cerr << "Test OperationFailed failed: type is not 'OperationFailed'" << std::endl;
+            return false;
+        }
+        if (res["error"]["message"] != "Operation failed") {
+            std::cerr << "Test OperationFailed failed: message is incorrect" << std::endl;
+            return false;
+        }
+    }
+
     return true;
 }
 
