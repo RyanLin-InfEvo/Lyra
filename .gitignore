@@ -21,6 +21,8 @@ ui/.dart_tool/
 ui/.flutter-plugins
 ui/.flutter-plugins-dependencies
 
+ui/devtools_options.yaml
+
 # IDE Settings 
 # .vscode/
 docs/

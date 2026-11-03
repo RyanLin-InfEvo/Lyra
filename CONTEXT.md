@@ -26,11 +26,19 @@ The codebase is strictly separated into three layers to isolate business logic f
 
 ```
 Lyra/
-├── .agents/                 # Workspace customizations & agent rules
+├── .agents/                 # Workspace customizations & technical standards (AGENTS.md)
 ├── .worktrees/              # Isolated feature branch worktrees
-├── docs/                    # Design documentation & SQL schema diagrams
-│   ├── Lyra_Design_Document.md    # The original, highly detailed design draft (43KB)
-│   └── Lyra_Design_Document_AI.md # Summarized, AI-optimized design overview
+├── docs/                    # Design documentation, ADRs, API specs & SQL schema diagrams
+│   ├── README.md                  # Documentation hub & index
+│   ├── 00_overview/               # System overview & core philosophy
+│   │   └── Lyra_Design_Document.md
+│   ├── adr/                       # Architecture Decision Records (ADRs)
+│   ├── api/                       # Core FFI JSON API reference (core_api_reference.md)
+│   ├── database/                  # SQLite/MySQL schema definitions & diagrams
+│   ├── features/                  # Feature specifications & implementation plans
+│   ├── guidelines/                # Refactoring lessons & engineering guides
+│   └── archive/drafts/            # Historical drafts & AI-summarized overview
+│       └── Lyra_Design_Document_AI.md
 ├── core/                    # Core C++ Backend & Tests
 │   ├── include/             # Stable public interface (C API)
 │   │   └── lyra_c_api.h
@@ -43,18 +51,23 @@ Lyra/
 │   │   ├── utils/           # Utilities: JSON validation, SHA-256, UUIDs
 │   │   └── router.cpp       # JSON command dispatcher & central router
 │   └── tests/               # C++ unit tests & Python integration tests
-├── build.sh                 # Root-level build helper script (Nix-shell wrapper)
-├── test.sh                  # Root-level test helper script (Nix-shell wrapper)
-├── GEMINI.md                # Personal interaction preferences & rules
+├── ui/                      # Flutter Desktop & Mobile UI
+│   ├── lib/                 # Modular design system, themes, semantic tokens, views & FFI bridge
+│   └── test/                # Flutter widget, contract & responsive layout test suite
+├── build.sh                 # Root-level C++ build helper script (Nix-shell wrapper)
+├── test.sh                  # Root-level C++/Python test helper script (Nix-shell wrapper)
+├── flutter.sh               # Root-level Flutter UI helper script (Nix-shell wrapper)
+├── GEMINI.md                # Interaction & orchestrator meta-rules
 └── README.md                # System build and setup documentation
 ```
 
 ### Components Summary
-1.  **FFI C Boundary ([lyra_c_api.h](file:///home/ryan/Documents/Lyra/core/include/lyra_c_api.h)):** Exposes stable `extern "C"` functions. Inputs/outputs are exchanged as raw JSON strings to minimize ABI mismatches and memory leak risks across languages (C++ to Python/Rust/Flutter).
-2.  **Central Dispatcher ([router.cpp](file:///home/ryan/Documents/Lyra/core/src/router.cpp)):** Dispatches all FFI requests to corresponding Controller methods based on the JSON `action` field.
-3.  **Controllers (`core/src/controllers/`):** Translate JSON payloads, handle business flow, validate inputs using `json_validator`, and communicate with Repositories.
-4.  **Repositories (`core/src/services/repositories/`):** SQLite database access logic (DAOs) using the `SQLiteCpp` library wrapper.
-5.  **Database Context (`core/src/services/database_context.cpp`):** Manages connection lifetime, WAL mode, and thread-local nested transactions.
+1.  **Flutter Presentation Layer (`ui/`):** Cross-platform desktop and mobile interface built with a modular design system (facade contracts, semantic design tokens, dark/light themes, and Apple HIG alignment) communicating with the core engine via Dart FFI.
+2.  **FFI C Boundary ([lyra_c_api.h](file:///home/ryan/Documents/Lyra/core/include/lyra_c_api.h)):** Exposes stable `extern "C"` functions. Inputs/outputs are exchanged as raw JSON strings to minimize ABI mismatches and memory leak risks across languages (C++ to Python/Rust/Flutter).
+3.  **Central Dispatcher ([router.cpp](file:///home/ryan/Documents/Lyra/core/src/router.cpp)):** Dispatches all FFI requests to corresponding Controller methods based on the JSON `action` field.
+4.  **Controllers (`core/src/controllers/`):** Translate JSON payloads, handle business flow, validate inputs using `json_validator`, and communicate with Repositories.
+5.  **Repositories (`core/src/services/repositories/`):** SQLite database access logic (DAOs) using the `SQLiteCpp` library wrapper.
+6.  **Database Context (`core/src/services/database_context.cpp`):** Manages connection lifetime, WAL mode, and thread-local nested transactions.
 
 ---
 
@@ -66,8 +79,8 @@ The database schema consists of the following primary tables:
 *   **Entity:** Base table mapping UUIDs to entity types. Provides polymorphism/single-inheritance structure (e.g. Artist, Album, Track inherit from Entity).
 *   **Artist:** Stores artist details (`id`, `name`, etc.).
 *   **Album:** Stores album details (`id`, `title`, etc.).
-*   **Track:** Represents the logical track entity (`id`, `title`, `duration`, etc.), referencing its primary file hash.
-*   **Asset / Audio:** Represents physical audio files stored in CAS, mapping file hashes to paths, size, formats, and channels.
+*   **Track:** Represents the logical track entity (`id`, `title`, `duration`, `master_track_id`, etc.), referencing its primary file hash. Audio versioning follows a **Single-Level Star Topology** where derived versions point directly to the root track via `master_track_id` (preventing multi-hop chains).
+*   **Asset / Audio:** Represents physical audio files stored in CAS, mapping container file hashes and decoded audio stream hashes (`pcm_hash`) to paths, size, formats, and channels for content-addressable audio deduplication.
 *   **Playlist:** Groups tracks ordered by index.
 *   **Relation / Junction Tables:** Maps relationships (e.g., Track-Artist, Album-Track, etc.).
 
@@ -103,5 +116,6 @@ The core CLI (`lyra-cli`) supports two interfaces:
 
 ## 📖 5. Design Documentation & Reference
 
-*   **[Lyra_Design_Document.md](file:///home/ryan/Documents/Lyra/docs/Lyra_Design_Document.md)**: The original, comprehensive, and highly detailed design draft. It contains detailed philosophy discussions, early implementation ideas, and complete background details of the Lyra asset management model. Agents should refer to this file when looking for deep context on original design intents.
-*   **[Lyra_Design_Document_AI.md](file:///home/ryan/Documents/Lyra/docs/Lyra_Design_Document_AI.md)**: A condensed, AI-oriented summary of core design decisions and database columns.
+*   **[Lyra_Design_Document.md](file:///home/ryan/Documents/Lyra/docs/00_overview/Lyra_Design_Document.md)**: The original, comprehensive, and highly detailed design draft. It contains detailed philosophy discussions, early implementation ideas, and complete background details of the Lyra asset management model. Agents should refer to this file when looking for deep context on original design intents.
+*   **[core_api_reference.md](file:///home/ryan/Documents/Lyra/docs/api/core_api_reference.md)**: The authoritative reference for Core FFI JSON actions, request parameters, response payloads, and semantic error codes.
+*   **[Lyra_Design_Document_AI.md](file:///home/ryan/Documents/Lyra/docs/archive/drafts/Lyra_Design_Document_AI.md)**: A condensed, AI-oriented summary of core design decisions and database columns.

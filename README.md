@@ -4,11 +4,42 @@ SPDX-FileCopyrightText: 2026 Tzu-Ting Lin
 SPDX-License-Identifier: AGPL-3.0-or-later
 -->
 
-# Lyra
+<div id="top"></div>
 
-> Local-first music library manager and audio player with a C++20 core, immutable file storage, and an extensible plugin system.
+<h1 align="center">Lyra</h1>
+
+<p align="center">
+  <strong>Local-first music library manager and audio player with a C++20 core, immutable file storage, and an extensible plugin system.</strong>
+</p>
+
+<div align="center">
+
+[![License: AGPL-3.0](https://img.shields.io/badge/License-AGPL--3.0--or--later-blue.svg)](LICENSE)
+[![C++20](https://img.shields.io/badge/C%2B%2B-20-00599C?logo=c%2B%2B)](core/)
+[![Flutter](https://img.shields.io/badge/Flutter-Desktop%20%7C%20Mobile-02569B?logo=flutter)](ui/)
+[![Platform](https://img.shields.io/badge/Platform-Linux%20%7C%20macOS-lightgrey)](#getting-started--development)
+
+</div>
 
 ---
+
+## Table of Contents
+- [Overview](#overview)
+- [Why Lyra?](#why-lyra)
+  - [1. Group Covers, Remixes, and Re-Releases Under One Work](#1-group-covers-remixes-and-re-releases-under-one-work)
+  - [2. Stop Duplicating Files and Corrupting Tags](#2-stop-duplicating-files-and-corrupting-tags)
+  - [3. Extensible Plugin System](#3-a-plugin-system-for-search-streaming-and-audio-processing)
+- [Architecture at a Glance](#architecture-at-a-glance)
+- [Roadmap](#roadmap)
+  - [Core Foundation (Completed)](#core-foundation-completed)
+  - [Core & Mobile (Planned)](#core--mobile-planned)
+  - [Official Plugins (Planned)](#official-plugins-planned)
+- [Getting Started & Development](#getting-started--development)
+- [License](#license)
+
+---
+
+## Overview
 
 Lyra is a music library manager and audio player built for people who maintain their own music collections. Most players treat a library as a flat folder of files with fragile metadata tags, which falls apart once you collect multiple masters, remixes, covers, and soundtrack editions of the same composition. Lyra separates compositions from recordings and physical files, keeps your original audio untouched on disk, and uses a modular plugin system for semantic audio search, streaming integrations, and lossless network playback.
 
