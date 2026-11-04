@@ -100,6 +100,7 @@ class AppShellState extends State<AppShell> {
   final ValueNotifier<int> _nowPlayingTabNotifier = ValueNotifier<int>(0);
   late final ValueNotifier<double> _volumeNotifier;
   Timer? _volumeDebounceTimer;
+  Timer? _searchDebounceTimer;
 
   // Inspector Drawer State (Phase 4.3)
   bool _isInspectorOpen = false;
@@ -449,6 +450,7 @@ class AppShellState extends State<AppShell> {
 
   @override
   void dispose() {
+    _searchDebounceTimer?.cancel();
     widget.preferencesService?.removeListener(_onPreferencesChanged);
     if (_volumeDebounceTimer?.isActive ?? false) {
       _volumeDebounceTimer?.cancel();
@@ -563,10 +565,20 @@ class AppShellState extends State<AppShell> {
       _selectedTagId = null;
       _selectedTagIds = {};
     }
-    _loadCatalog(query: query);
+    _searchDebounceTimer?.cancel();
+    if (query.isEmpty) {
+      _loadCatalog(query: '');
+      return;
+    }
+    _searchDebounceTimer = Timer(const Duration(milliseconds: 250), () {
+      if (mounted) {
+        _loadCatalog(query: query);
+      }
+    });
   }
 
   void _onSearchSubmitted(String query) {
+    _searchDebounceTimer?.cancel();
     if (query.isNotEmpty) {
       _activeTrackFilter = null;
       _selectedTagId = null;
@@ -658,6 +670,16 @@ class AppShellState extends State<AppShell> {
 
   void _collapseNowPlaying() {
     _isNowPlayingExpanded = false;
+  }
+
+  void _navigateToSettings() {
+    _collapseNowPlaying();
+    setState(() {
+      _selectedPlaylistId = null;
+      _selectedTagId = null;
+      _selectedTagIds = {};
+      _currentTab = AppTab.settings;
+    });
   }
 
   void _navigateToAlbum(String albumTitle) {
@@ -769,6 +791,11 @@ class AppShellState extends State<AppShell> {
 
     if (isMetaOrCtrl && event.logicalKey == LogicalKeyboardKey.keyI) {
       _toggleAudioInspector();
+      return true;
+    }
+
+    if (isMetaOrCtrl && event.logicalKey == LogicalKeyboardKey.comma) {
+      _navigateToSettings();
       return true;
     }
 
@@ -1782,15 +1809,7 @@ class AppShellState extends State<AppShell> {
                             _currentTab = tab;
                           });
                         },
-                        onSettingsPressed: () {
-                          _isNowPlayingExpanded = false;
-                          setState(() {
-                            _selectedPlaylistId = null;
-                            _selectedTagId = null;
-                            _selectedTagIds = {};
-                            _currentTab = AppTab.settings;
-                          });
-                        },
+                        onSettingsPressed: _navigateToSettings,
                         onToggleCollapse: _toggleSidebar,
                         onResizeDelta: (delta) {
                           _sidebarWidthNotifier.value =

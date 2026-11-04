@@ -1041,6 +1041,7 @@ class _SettingsViewState extends State<SettingsView>
             items: const [
               ('Cmd / Ctrl + F', 'Focus search input'),
               ('Cmd / Ctrl + I', 'Toggle Audio Inspector drawer'),
+              ('Cmd / Ctrl + ,', 'Open Preferences / Settings'),
             ],
           ),
         ],

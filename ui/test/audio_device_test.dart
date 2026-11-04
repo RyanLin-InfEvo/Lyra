@@ -386,5 +386,50 @@ void main() {
         expect(specFinder, findsOneWidget);
       },
     );
+
+    testWidgets(
+      'constrains popover device list to maxHeight 280px within a SingleChildScrollView',
+      (tester) async {
+        final fakeBridge = FakeAudioBridge();
+        for (var i = 1; i <= 10; i++) {
+          fakeBridge.devices.add({
+            'id': 'device-$i',
+            'name': 'Virtual Output Device #$i',
+            'is_default': false,
+            'min_channels': 2,
+            'max_channels': 2,
+            'min_sample_rate': 44100,
+            'max_sample_rate': 48000,
+          });
+        }
+        final controller = AudioDeviceController(
+          bridge: fakeBridge,
+          autoLoad: false,
+        );
+        addTearDown(controller.dispose);
+
+        await tester.pumpWidget(_buildDeviceButtonTest(controller: controller));
+        await tester.pumpAndSettle();
+
+        // Tap to open popover
+        await tester.tap(find.byType(AudioDeviceButton));
+        await tester.pumpAndSettle();
+
+        // Verify ConstrainedBox with maxHeight 280 exists
+        final constrainedBoxFinder = find.byWidgetPredicate(
+          (w) =>
+              w is ConstrainedBox &&
+              w.constraints.maxHeight == 280.0,
+        );
+        expect(constrainedBoxFinder, findsOneWidget);
+
+        // Verify SingleChildScrollView exists inside ConstrainedBox
+        final scrollFinder = find.descendant(
+          of: constrainedBoxFinder,
+          matching: find.byType(SingleChildScrollView),
+        );
+        expect(scrollFinder, findsOneWidget);
+      },
+    );
   });
 }

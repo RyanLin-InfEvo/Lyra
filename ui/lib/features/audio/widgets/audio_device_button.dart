@@ -178,22 +178,31 @@ class _AudioDeviceButtonState extends State<AudioDeviceButton> {
               ),
             )
           else
-            ...devices.map((device) {
-              final isSelected = device.id == currentId;
-              return Padding(
-                padding: const EdgeInsets.only(bottom: 4.0),
-                child: _DeviceItem(
-                  device: device,
-                  isSelected: isSelected,
-                  tokens: tokens,
-                  icon: _iconForDevice(device),
-                  onTap: () {
-                    widget.controller.selectDevice(device.id);
-                    _popoverController.hide();
-                  },
+            ConstrainedBox(
+              constraints: const BoxConstraints(maxHeight: 280.0),
+              child: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: devices.map((device) {
+                    final isSelected = device.id == currentId;
+                    return Padding(
+                      padding: const EdgeInsets.only(bottom: 4.0),
+                      child: _DeviceItem(
+                        device: device,
+                        isSelected: isSelected,
+                        tokens: tokens,
+                        icon: _iconForDevice(device),
+                        onTap: () {
+                          widget.controller.selectDevice(device.id);
+                          _popoverController.hide();
+                        },
+                      ),
+                    );
+                  }).toList(),
                 ),
-              );
-            }),
+              ),
+            ),
         ],
       ),
     );

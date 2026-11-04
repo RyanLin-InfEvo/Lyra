@@ -223,6 +223,7 @@ void main() {
     // Enter search query
     final searchInput = find.byType(EditableText).first;
     await tester.enterText(searchInput, 'Daft Punk');
+    await tester.pump(const Duration(milliseconds: 250));
     await tester.pumpAndSettle();
 
     // Should find Giorgio by Moroder in TracksView but not Hotel California
@@ -739,6 +740,7 @@ void main() {
       // Type search in top search bar that only matches 'Daft Punk' (trk-003)
       final searchInput = find.byType(EditableText).first;
       await tester.enterText(searchInput, 'Daft Punk');
+      await tester.pump(const Duration(milliseconds: 250));
       await tester.pumpAndSettle();
 
       // Go to Playlists tab
@@ -951,6 +953,7 @@ void main() {
       // Perform a search query that matches a track but NO playlist
       final searchInput = find.byType(EditableText).first;
       await tester.enterText(searchInput, 'Daft Punk');
+      await tester.pump(const Duration(milliseconds: 250));
       await tester.pumpAndSettle();
 
       // Main content filtered
@@ -3484,6 +3487,7 @@ void main() {
         // Enter a search query that matches 0 tracks
         final searchInput = find.byType(EditableText).first;
         await tester.enterText(searchInput, 'NonExistentSearchQueryXYZ');
+        await tester.pump(const Duration(milliseconds: 250));
         await tester.pumpAndSettle();
 
         // Navigate to TagsView
@@ -3568,6 +3572,86 @@ void main() {
           isFalse,
           reason: 'Hover timecode guide change must not mark AppShell dirty',
         );
+      },
+    );
+
+    testWidgets(
+      'AppShell search bar debounces query by 250ms and Enter submits immediately',
+      (tester) async {
+        tester.view.physicalSize = const Size(1280, 800);
+        tester.view.devicePixelRatio = 1.0;
+        addTearDown(tester.view.resetPhysicalSize);
+
+        await tester.pumpWidget(_buildAppShellTest());
+        await tester.pumpAndSettle();
+
+        final searchInput = find.byType(EditableText).first;
+
+        // Enter search query
+        await tester.enterText(searchInput, 'Daft Punk');
+        // Advance clock by 100ms (< 250ms debounce threshold)
+        await tester.pump(const Duration(milliseconds: 100));
+
+        // Prior to 250ms elapsed, tracks should not be filtered yet
+        expect(
+          find.descendant(
+            of: find.byType(TracksView),
+            matching: find.text('Hotel California (Live on MTV 1994)'),
+          ),
+          findsOneWidget,
+        );
+
+        // Advance by 200ms more (> 250ms elapsed)
+        await tester.pump(const Duration(milliseconds: 200));
+        await tester.pumpAndSettle();
+
+        // Now filtered!
+        expect(
+          find.descendant(
+            of: find.byType(TracksView),
+            matching: find.text('Giorgio by Moroder'),
+          ),
+          findsOneWidget,
+        );
+        expect(
+          find.descendant(
+            of: find.byType(TracksView),
+            matching: find.text('Hotel California (Live on MTV 1994)'),
+          ),
+          findsNothing,
+        );
+      },
+    );
+
+    testWidgets(
+      'AppShell Cmd+, or Ctrl+, opens SettingsView even when text editing is active',
+      (tester) async {
+        tester.view.physicalSize = const Size(1280, 800);
+        tester.view.devicePixelRatio = 1.0;
+        addTearDown(tester.view.resetPhysicalSize);
+
+        await tester.pumpWidget(_buildAppShellTest());
+        await tester.pumpAndSettle();
+
+        expect(find.byType(SettingsView), findsNothing);
+
+        // Focus search bar (active text editing)
+        final searchInput = find.byType(EditableText).first;
+        await tester.tap(searchInput);
+        await tester.pumpAndSettle();
+        expect(
+          tester.widget<EditableText>(searchInput).focusNode.hasFocus,
+          isTrue,
+        );
+
+        // Press Meta+,
+        await tester.sendKeyDownEvent(LogicalKeyboardKey.meta);
+        await tester.sendKeyEvent(LogicalKeyboardKey.comma);
+        await tester.sendKeyUpEvent(LogicalKeyboardKey.meta);
+        await tester.pumpAndSettle();
+
+        // Navigated to SettingsView
+        expect(find.byType(SettingsView), findsOneWidget);
       },
     );
   });

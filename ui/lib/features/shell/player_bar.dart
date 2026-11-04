@@ -3,6 +3,7 @@
 
 import 'dart:math';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/widgets.dart' hide RepeatMode;
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
@@ -1015,6 +1016,16 @@ class _VolumeControlState extends State<_VolumeControl> {
     }
   }
 
+  void _handlePointerSignal(PointerSignalEvent event) {
+    if (event is PointerScrollEvent) {
+      final dy = event.scrollDelta.dy;
+      if (dy != 0) {
+        final step = dy.isNegative ? 0.02 : -0.02;
+        _handleVolumeChanged((_currentVolume + step).clamp(0.0, 1.0));
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final IconData volumeIcon = _currentVolume == 0
@@ -1024,42 +1035,45 @@ class _VolumeControlState extends State<_VolumeControl> {
         : LucideIcons.volume2;
     final String tooltip = _currentVolume == 0 ? 'Unmute' : 'Mute';
 
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        LyraTooltip(
-          message: tooltip,
-          child: MouseRegion(
-            cursor: SystemMouseCursors.click,
-            child: GestureDetector(
-              behavior: HitTestBehavior.opaque,
-              onTap: _toggleMute,
-              child: SizedBox(
-                width: 24.0,
-                height: 24.0,
-                child: Center(
-                  child: Icon(
-                    volumeIcon,
-                    size: 18.0,
-                    color: widget.tokens.textMuted,
+    return Listener(
+      onPointerSignal: _handlePointerSignal,
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          LyraTooltip(
+            message: tooltip,
+            child: MouseRegion(
+              cursor: SystemMouseCursors.click,
+              child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: _toggleMute,
+                child: SizedBox(
+                  width: 24.0,
+                  height: 24.0,
+                  child: Center(
+                    child: Icon(
+                      volumeIcon,
+                      size: 18.0,
+                      color: widget.tokens.textMuted,
+                    ),
                   ),
                 ),
               ),
             ),
           ),
-        ),
-        const SizedBox(width: LyraSpacing.xs),
-        Flexible(
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 90.0, minWidth: 30.0),
-            child: _VolumeSlider(
-              volume: _currentVolume,
-              onChanged: _handleVolumeChanged,
-              tokens: widget.tokens,
+          const SizedBox(width: LyraSpacing.xs),
+          Flexible(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 90.0, minWidth: 30.0),
+              child: _VolumeSlider(
+                volume: _currentVolume,
+                onChanged: _handleVolumeChanged,
+                tokens: widget.tokens,
+              ),
             ),
           ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 }

@@ -667,4 +667,80 @@ void main() {
       expect(deco.color, equals(const Color(0x00000000)));
     },
   );
+
+  testWidgets(
+    'LyraPlayerBar volume mouse scroll wheel adjusts volume by fixed ±2% step and clamps',
+    (tester) async {
+      double currentVol = 0.50;
+      final volumeNotifier = ValueNotifier<double>(0.50);
+
+      await tester.pumpWidget(
+        _buildPlayerBarTest(
+          volume: currentVol,
+          volumeNotifier: volumeNotifier,
+          onVolumeChanged: (v) {
+            currentVol = v;
+            volumeNotifier.value = v;
+          },
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final volumeIconFinder = find.byIcon(LucideIcons.volume2);
+      expect(volumeIconFinder, findsOneWidget);
+      final iconCenter = tester.getCenter(volumeIconFinder);
+
+      final gesture = await tester.createGesture(kind: PointerDeviceKind.mouse);
+      await gesture.addPointer(location: iconCenter);
+      addTearDown(gesture.removePointer);
+
+      // Scroll up (negative dy) -> volume increases by exactly 0.02
+      await tester.sendEventToBinding(
+        PointerScrollEvent(
+          position: iconCenter,
+          scrollDelta: const Offset(0, -60),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(currentVol, closeTo(0.52, 0.0001));
+
+      // Scroll down (positive dy) -> volume decreases by exactly 0.02
+      await tester.sendEventToBinding(
+        PointerScrollEvent(
+          position: iconCenter,
+          scrollDelta: const Offset(0, 100),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(currentVol, closeTo(0.50, 0.0001));
+
+      // Test upper clamp boundary at 1.0
+      volumeNotifier.value = 0.99;
+      currentVol = 0.99;
+      await tester.pumpAndSettle();
+
+      await tester.sendEventToBinding(
+        PointerScrollEvent(
+          position: iconCenter,
+          scrollDelta: const Offset(0, -50),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(currentVol, closeTo(1.0, 0.0001));
+
+      // Test lower clamp boundary at 0.0
+      volumeNotifier.value = 0.01;
+      currentVol = 0.01;
+      await tester.pumpAndSettle();
+
+      await tester.sendEventToBinding(
+        PointerScrollEvent(
+          position: iconCenter,
+          scrollDelta: const Offset(0, 50),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(currentVol, closeTo(0.0, 0.0001));
+    },
+  );
 }
