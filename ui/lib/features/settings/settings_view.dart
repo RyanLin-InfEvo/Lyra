@@ -84,12 +84,12 @@ const List<AccentColorOption> kAccentColorOptions = [
 ];
 
 /// Sub-navigation section identifiers.
-enum SettingsNavSection { appearance, waveform }
+enum SettingsNavSection { appearance, waveform, interaction, shortcuts }
 
 /// Waveform settings target view.
 enum WaveformTarget { nowPlaying, inspector }
 
-/// Settings view providing Master-Detail sub-navigation for Appearance and Waveform Visualization.
+/// Settings view providing Master-Detail sub-navigation for Appearance, Waveform, Interaction, and Shortcuts.
 class SettingsView extends StatefulWidget {
   final PreferencesService? preferencesService;
 
@@ -114,6 +114,7 @@ class _SettingsViewState extends State<SettingsView>
   late bool _inspectorWaveformHoverTimeGuide;
   late String _accentColor;
   late ThemeMode _themeMode;
+  late TrackActivationMode _trackActivationMode;
   bool _isDragging = false;
 
   int _minPercent(WaveformTarget target) => 0;
@@ -170,6 +171,8 @@ class _SettingsViewState extends State<SettingsView>
         prefs?.inspectorWaveformHoverTimeGuide ?? true;
     _accentColor = prefs?.accentColor ?? 'zinc';
     _themeMode = prefs?.themeMode ?? ThemeMode.dark;
+    _trackActivationMode =
+        prefs?.trackActivationMode ?? TrackActivationMode.doubleClick;
 
     final currentPts = _selectedTarget == WaveformTarget.nowPlaying
         ? _nowPlayingWaveformPoints
@@ -197,6 +200,7 @@ class _SettingsViewState extends State<SettingsView>
     final newInspectorHover = prefs.inspectorWaveformHoverTimeGuide;
     final newAccent = prefs.accentColor;
     final newThemeMode = prefs.themeMode;
+    final newTrackActivationMode = prefs.trackActivationMode;
 
     if (_showNowPlayingWaveform != newShowNowPlaying ||
         _showInspectorWaveform != newShowInspector ||
@@ -207,7 +211,8 @@ class _SettingsViewState extends State<SettingsView>
         _nowPlayingWaveformHoverTimeGuide != newNowPlayingHover ||
         _inspectorWaveformHoverTimeGuide != newInspectorHover ||
         _accentColor != newAccent ||
-        _themeMode != newThemeMode) {
+        _themeMode != newThemeMode ||
+        _trackActivationMode != newTrackActivationMode) {
       setState(() {
         _showNowPlayingWaveform = newShowNowPlaying;
         _showInspectorWaveform = newShowInspector;
@@ -219,6 +224,7 @@ class _SettingsViewState extends State<SettingsView>
         _inspectorWaveformHoverTimeGuide = newInspectorHover;
         _accentColor = newAccent;
         _themeMode = newThemeMode;
+        _trackActivationMode = newTrackActivationMode;
 
         final currentPts = _selectedTarget == WaveformTarget.nowPlaying
             ? _nowPlayingWaveformPoints
@@ -411,6 +417,18 @@ class _SettingsViewState extends State<SettingsView>
           label: 'Waveform Visualization',
           icon: LucideIcons.activity,
           builder: (context) => _buildWaveformSection(context, tokens),
+        ),
+        LyraSettingsSection<SettingsNavSection>(
+          id: SettingsNavSection.interaction,
+          label: 'Interaction & Behavior',
+          icon: LucideIcons.mousePointerClick,
+          builder: (context) => _buildInteractionSection(context, tokens),
+        ),
+        LyraSettingsSection<SettingsNavSection>(
+          id: SettingsNavSection.shortcuts,
+          label: 'Keyboard Shortcuts',
+          icon: LucideIcons.keyboard,
+          builder: (context) => _buildShortcutsSection(context, tokens),
         ),
       ],
     );
@@ -897,6 +915,196 @@ class _SettingsViewState extends State<SettingsView>
           ),
         ],
       ),
+    );
+  }
+
+  Widget _buildInteractionSection(
+    BuildContext context,
+    LyraThemeTokens tokens,
+  ) {
+    return LyraCard(
+      padding: const EdgeInsets.all(LyraSpacing.lg),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(
+                LucideIcons.mousePointerClick,
+                size: 20.0,
+                color: tokens.primary,
+              ),
+              const SizedBox(width: LyraSpacing.sm),
+              Text('Interaction & Behavior', style: LyraTypography.h3(tokens)),
+            ],
+          ),
+          const SizedBox(height: LyraSpacing.lg),
+
+          // Grouped Settings Row
+          _SettingRow(
+            title: 'Track Activation',
+            description: _trackActivationMode == TrackActivationMode.doubleClick
+                ? 'Single-click focuses and selects track; double-click or Enter begins playback.'
+                : 'Single-click immediately plays track; click playing track to toggle pause.',
+            trailing: SizedBox(
+              width: 280.0,
+              child: ShadTabs<TrackActivationMode>(
+                value: _trackActivationMode,
+                onChanged: (mode) {
+                  setState(() => _trackActivationMode = mode);
+                  widget.preferencesService?.setTrackActivationMode(mode);
+                },
+                tabs: const [
+                  ShadTab(
+                    value: TrackActivationMode.doubleClick,
+                    padding: EdgeInsets.symmetric(
+                      horizontal: 8.0,
+                      vertical: 4.0,
+                    ),
+                    child: Flexible(
+                      child: Text(
+                        'Double-Click',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  ),
+                  ShadTab(
+                    value: TrackActivationMode.singleClick,
+                    padding: EdgeInsets.symmetric(
+                      horizontal: 8.0,
+                      vertical: 4.0,
+                    ),
+                    child: Flexible(
+                      child: Text(
+                        'Single-Click',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            tokens: tokens,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildShortcutsSection(BuildContext context, LyraThemeTokens tokens) {
+    return LyraCard(
+      padding: const EdgeInsets.all(LyraSpacing.lg),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(LucideIcons.keyboard, size: 20.0, color: tokens.primary),
+              const SizedBox(width: LyraSpacing.sm),
+              Text('Keyboard Shortcuts', style: LyraTypography.h3(tokens)),
+            ],
+          ),
+          const SizedBox(height: LyraSpacing.lg),
+
+          _buildShortcutCategory(
+            title: 'Playback & Queue',
+            tokens: tokens,
+            items: const [
+              ('Space', 'Play / Pause playback'),
+              ('Enter / Return', 'Play selected track'),
+            ],
+          ),
+
+          const SizedBox(height: LyraSpacing.lg),
+
+          _buildShortcutCategory(
+            title: 'Selection & List',
+            tokens: tokens,
+            items: const [
+              ('Cmd / Ctrl + A', 'Select all tracks in current view'),
+              ('Shift + Click', 'Range select contiguous tracks'),
+              (
+                'Cmd / Ctrl + Click',
+                'Add or toggle individual track selection',
+              ),
+              ('Esc', 'Dismiss open context menu / Clear selection'),
+            ],
+          ),
+
+          const SizedBox(height: LyraSpacing.lg),
+
+          _buildShortcutCategory(
+            title: 'Navigation & Panels',
+            tokens: tokens,
+            items: const [
+              ('Cmd / Ctrl + F', 'Focus search input'),
+              ('Cmd / Ctrl + I', 'Toggle Audio Inspector drawer'),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildShortcutCategory({
+    required String title,
+    required List<(String, String)> items,
+    required LyraThemeTokens tokens,
+  }) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          title.toUpperCase(),
+          style: LyraTypography.small(tokens).copyWith(
+            fontWeight: FontWeight.w600,
+            letterSpacing: 0.8,
+            color: tokens.textMuted,
+          ),
+        ),
+        const SizedBox(height: LyraSpacing.xs),
+        Container(
+          decoration: BoxDecoration(
+            color: tokens.card,
+            borderRadius: LyraRadius.mdRadius,
+            border: Border.all(color: tokens.border, width: 1.0),
+          ),
+          child: Column(
+            children: [
+              for (var i = 0; i < items.length; i++) ...[
+                if (i > 0)
+                  Divider(
+                    color: tokens.borderSubtle,
+                    height: 1.0,
+                    thickness: 0.5,
+                  ),
+                Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: LyraSpacing.lg,
+                    vertical: LyraSpacing.sm + 2.0,
+                  ),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          items[i].$2,
+                          style: LyraTypography.small(
+                            tokens,
+                          ).copyWith(color: tokens.text),
+                        ),
+                      ),
+                      const SizedBox(width: LyraSpacing.lg),
+                      _KbdBadge(keyLabel: items[i].$1, tokens: tokens),
+                    ],
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
+      ],
     );
   }
 }
@@ -1608,6 +1816,32 @@ class _CustomColorPopoverContentState
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _KbdBadge extends StatelessWidget {
+  final String keyLabel;
+  final LyraThemeTokens tokens;
+
+  const _KbdBadge({required this.keyLabel, required this.tokens});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 3.0),
+      decoration: BoxDecoration(
+        color: tokens.surfaceSecondary,
+        borderRadius: LyraRadius.smRadius,
+        border: Border.all(color: tokens.border, width: 1.0),
+      ),
+      child: Text(
+        keyLabel,
+        style: LyraTypography.mono(
+          tokens,
+          fontSize: 11.0,
+        ).copyWith(fontWeight: FontWeight.w600, color: tokens.text),
       ),
     );
   }

@@ -6,6 +6,29 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+/// Mode for activating audio playback from track lists and tables.
+enum TrackActivationMode {
+  /// Double-clicking a track row or pressing Enter initiates playback. Single-clicking selects/focuses the row.
+  doubleClick,
+
+  /// Single-clicking a track row immediately initiates playback.
+  singleClick;
+
+  static TrackActivationMode fromString(String? value) {
+    if (value == null) return TrackActivationMode.doubleClick;
+    final trimmed = value.trim();
+    if (trimmed.isEmpty) return TrackActivationMode.doubleClick;
+    for (final mode in TrackActivationMode.values) {
+      if (mode.name == trimmed) return mode;
+    }
+    final normalized = trimmed.toLowerCase().replaceAll(RegExp(r'[-_\s]'), '');
+    for (final mode in TrackActivationMode.values) {
+      if (mode.name.toLowerCase() == normalized) return mode;
+    }
+    return TrackActivationMode.doubleClick;
+  }
+}
+
 /// Abstract service defining persistence operations for application preferences and table states.
 abstract class PreferencesService extends ChangeNotifier {
   // Theme mode & Accent
@@ -98,6 +121,10 @@ abstract class PreferencesService extends ChangeNotifier {
 
   bool get casAutoVerify;
   Future<void> setCasAutoVerify(bool enabled);
+
+  // Track activation mode
+  TrackActivationMode get trackActivationMode;
+  Future<void> setTrackActivationMode(TrackActivationMode mode);
 }
 
 /// SharedPreferences implementation of [PreferencesService] for persistent desktop storage.
@@ -139,6 +166,7 @@ class SharedPreferencesService extends PreferencesService {
   static const String keyAudioBufferSize = 'lyra_audio_buffer_size';
   static const String keyAudioDopEnabled = 'lyra_audio_dop_enabled';
   static const String keyCasAutoVerify = 'lyra_cas_auto_verify';
+  static const String keyTrackActivationMode = 'lyra_track_activation_mode';
 
   final SharedPreferences _prefs;
 
@@ -724,6 +752,30 @@ class SharedPreferencesService extends PreferencesService {
     } catch (_) {}
     notifyListeners();
   }
+
+  @override
+  TrackActivationMode get trackActivationMode {
+    try {
+      final val = _prefs.get(keyTrackActivationMode);
+      if (val is String) {
+        return TrackActivationMode.fromString(val);
+      }
+      if (val is int && val >= 0 && val < TrackActivationMode.values.length) {
+        return TrackActivationMode.values[val];
+      }
+      return TrackActivationMode.doubleClick;
+    } catch (_) {
+      return TrackActivationMode.doubleClick;
+    }
+  }
+
+  @override
+  Future<void> setTrackActivationMode(TrackActivationMode mode) async {
+    try {
+      await _prefs.setString(keyTrackActivationMode, mode.name);
+    } catch (_) {}
+    notifyListeners();
+  }
 }
 
 /// In-memory implementation of [PreferencesService] for testing and transient state fallbacks.
@@ -753,6 +805,7 @@ class InMemoryPreferencesService extends PreferencesService {
   int _audioBufferSize;
   bool _audioDopEnabled;
   bool _casAutoVerify;
+  TrackActivationMode _trackActivationMode;
 
   InMemoryPreferencesService({
     ThemeMode themeMode = ThemeMode.dark,
@@ -782,6 +835,7 @@ class InMemoryPreferencesService extends PreferencesService {
     int audioBufferSize = 256,
     bool audioDopEnabled = false,
     bool casAutoVerify = true,
+    TrackActivationMode trackActivationMode = TrackActivationMode.doubleClick,
   }) : _themeMode = themeMode,
        _accentColor = accentColor,
        _isSidebarCollapsed = isSidebarCollapsed,
@@ -824,7 +878,8 @@ class InMemoryPreferencesService extends PreferencesService {
        _audioExclusiveMode = audioExclusiveMode,
        _audioBufferSize = audioBufferSize,
        _audioDopEnabled = audioDopEnabled,
-       _casAutoVerify = casAutoVerify;
+       _casAutoVerify = casAutoVerify,
+       _trackActivationMode = trackActivationMode;
 
   @override
   ThemeMode get themeMode => _themeMode;
@@ -1098,6 +1153,15 @@ class InMemoryPreferencesService extends PreferencesService {
   @override
   Future<void> setCasAutoVerify(bool enabled) async {
     _casAutoVerify = enabled;
+    notifyListeners();
+  }
+
+  @override
+  TrackActivationMode get trackActivationMode => _trackActivationMode;
+
+  @override
+  Future<void> setTrackActivationMode(TrackActivationMode mode) async {
+    _trackActivationMode = mode;
     notifyListeners();
   }
 }

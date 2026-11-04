@@ -10,7 +10,9 @@ import 'package:ui/design_system/factory/lyra_design_system_scope.dart';
 import 'package:ui/design_system/factory/shadcn_factory.dart';
 import 'package:ui/design_system/tokens/lyra_tokens.dart';
 import 'package:ui/design_system/widgets/lyra_button.dart';
+import 'package:ui/features/common/context_menu_coordinator.dart';
 import 'package:ui/features/models/track.dart';
+import 'package:ui/features/settings/services/preferences_service.dart';
 import 'package:ui/features/tracks/tracks_view.dart';
 
 Widget _buildTracksViewTest({
@@ -28,6 +30,7 @@ Widget _buildTracksViewTest({
   ValueChanged<List<Track>>? onBatchPlayNext,
   ValueChanged<Track>? onInspectTrack,
   ValueChanged<Track>? onInspectAudio,
+  ValueChanged<Track>? onTrackFocus,
   ValueChanged<String>? onGoToAlbum,
   ValueChanged<String>? onGoToArtist,
   Map<String, int>? audioVersionCounts,
@@ -39,6 +42,10 @@ Widget _buildTracksViewTest({
   ValueChanged<List<TrackColumn>>? onColumnOrderChanged,
   ValueNotifier<ThemeMode>? themeNotifier,
   VoidCallback? onImport,
+  PreferencesService? preferencesService,
+  TrackActivationMode? trackActivationMode,
+  bool isNowPlayingExpanded = false,
+  Widget? topWidget,
 }) {
   final themeModeNotifier =
       themeNotifier ?? ValueNotifier<ThemeMode>(ThemeMode.dark);
@@ -68,32 +75,74 @@ Widget _buildTracksViewTest({
             tokens: tokens,
             themeModeNotifier: themeModeNotifier,
             child: Scaffold(
-              body: TracksView(
-                tracks: tracks,
-                currentTrack: currentTrack,
-                isPlaying: isPlaying,
-                onTrackSelected: onTrackSelected ?? (_) {},
-                onTogglePlay: onTogglePlay ?? () {},
-                onPlayNext: onPlayNext,
-                onAddToQueue: onAddToQueue,
-                onAddToPlaylist: onAddToPlaylist,
-                onBatchAddToPlaylist: onBatchAddToPlaylist,
-                onBatchAddTag: onBatchAddTag,
-                onBatchAddToQueue: onBatchAddToQueue,
-                onBatchPlayNext: onBatchPlayNext,
-                onInspectTrack: onInspectTrack,
-                onInspectAudio: onInspectAudio,
-                onGoToAlbum: onGoToAlbum,
-                onGoToArtist: onGoToArtist,
-                audioVersionCounts: audioVersionCounts,
-                filterLabel: filterLabel,
-                onClearFilter: onClearFilter,
-                visibleColumns: visibleColumns,
-                onVisibleColumnsChanged: onVisibleColumnsChanged,
-                columnOrder: columnOrder,
-                onColumnOrderChanged: onColumnOrderChanged,
-                onImport: onImport,
-              ),
+              body: topWidget != null
+                  ? Column(
+                      children: [
+                        topWidget,
+                        Expanded(
+                          child: TracksView(
+                            tracks: tracks,
+                            currentTrack: currentTrack,
+                            isPlaying: isPlaying,
+                            onTrackSelected: onTrackSelected ?? (_) {},
+                            onTogglePlay: onTogglePlay ?? () {},
+                            onPlayNext: onPlayNext,
+                            onAddToQueue: onAddToQueue,
+                            onAddToPlaylist: onAddToPlaylist,
+                            onBatchAddToPlaylist: onBatchAddToPlaylist,
+                            onBatchAddTag: onBatchAddTag,
+                            onBatchAddToQueue: onBatchAddToQueue,
+                            onBatchPlayNext: onBatchPlayNext,
+                            onInspectTrack: onInspectTrack,
+                            onInspectAudio: onInspectAudio,
+                            onGoToAlbum: onGoToAlbum,
+                            onGoToArtist: onGoToArtist,
+                            onTrackFocus: onTrackFocus ?? onInspectTrack,
+                            audioVersionCounts: audioVersionCounts,
+                            filterLabel: filterLabel,
+                            onClearFilter: onClearFilter,
+                            visibleColumns: visibleColumns,
+                            onVisibleColumnsChanged: onVisibleColumnsChanged,
+                            columnOrder: columnOrder,
+                            onColumnOrderChanged: onColumnOrderChanged,
+                            onImport: onImport,
+                            preferencesService: preferencesService,
+                            trackActivationMode: trackActivationMode,
+                            isNowPlayingExpanded: isNowPlayingExpanded,
+                          ),
+                        ),
+                      ],
+                    )
+                  : TracksView(
+                      tracks: tracks,
+                      currentTrack: currentTrack,
+                      isPlaying: isPlaying,
+                      onTrackSelected: onTrackSelected ?? (_) {},
+                      onTogglePlay: onTogglePlay ?? () {},
+                      onPlayNext: onPlayNext,
+                      onAddToQueue: onAddToQueue,
+                      onAddToPlaylist: onAddToPlaylist,
+                      onBatchAddToPlaylist: onBatchAddToPlaylist,
+                      onBatchAddTag: onBatchAddTag,
+                      onBatchAddToQueue: onBatchAddToQueue,
+                      onBatchPlayNext: onBatchPlayNext,
+                      onInspectTrack: onInspectTrack,
+                      onInspectAudio: onInspectAudio,
+                      onGoToAlbum: onGoToAlbum,
+                      onGoToArtist: onGoToArtist,
+                      onTrackFocus: onTrackFocus ?? onInspectTrack,
+                      audioVersionCounts: audioVersionCounts,
+                      filterLabel: filterLabel,
+                      onClearFilter: onClearFilter,
+                      visibleColumns: visibleColumns,
+                      onVisibleColumnsChanged: onVisibleColumnsChanged,
+                      columnOrder: columnOrder,
+                      onColumnOrderChanged: onColumnOrderChanged,
+                      onImport: onImport,
+                      preferencesService: preferencesService,
+                      trackActivationMode: trackActivationMode,
+                      isNowPlayingExpanded: isNowPlayingExpanded,
+                    ),
             ),
           ),
         );
@@ -235,6 +284,7 @@ void main() {
         tracks: sampleTracks,
         currentTrack: sampleTracks.first,
         isPlaying: false,
+        trackActivationMode: TrackActivationMode.singleClick,
         onTrackSelected: (t) => selectedTrack = t,
         onTogglePlay: () => togglePlayCalled = true,
       ),
@@ -251,6 +301,65 @@ void main() {
     await tester.pumpAndSettle();
     expect(selectedTrack?.id, equals('2'));
   });
+
+  testWidgets(
+    'TracksView in doubleClick mode: single-click selects/inspects, double-click plays, Enter plays',
+    (tester) async {
+      Track? selectedTrack;
+      Track? inspectedTrack;
+      bool togglePlayCalled = false;
+
+      await tester.pumpWidget(
+        _buildTracksViewTest(
+          tracks: sampleTracks,
+          currentTrack: sampleTracks.first,
+          isPlaying: false,
+          trackActivationMode: TrackActivationMode.doubleClick,
+          onTrackSelected: (t) => selectedTrack = t,
+          onInspectTrack: (t) => inspectedTrack = t,
+          onTogglePlay: () => togglePlayCalled = true,
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      // 1. Single click on non-current track ('Track Two')
+      await tester.tap(find.text('Track Two'));
+      await tester.pump(const Duration(milliseconds: 350));
+      await tester.pumpAndSettle();
+
+      // In doubleClick mode, single click MUST NOT trigger onTrackSelected or onTogglePlay
+      expect(selectedTrack, isNull);
+      expect(togglePlayCalled, isFalse);
+      // It should notify onInspectTrack so the inspector focuses on it
+      expect(inspectedTrack?.id, equals('2'));
+
+      // 2. Double-click on 'Track Two' initiates playback
+      final gesture1 = await tester.startGesture(
+        tester.getCenter(find.text('Track Two')),
+      );
+      await gesture1.up();
+      await tester.pump(const Duration(milliseconds: 60));
+      final gesture2 = await tester.startGesture(
+        tester.getCenter(find.text('Track Two')),
+      );
+      await gesture2.up();
+      await tester.pumpAndSettle();
+
+      expect(selectedTrack?.id, equals('2'));
+
+      // 3. Reset and select 'Track One', then press Enter key
+      selectedTrack = null;
+      await tester.tap(find.text('Track One'));
+      await tester.pump(const Duration(milliseconds: 350));
+      await tester.pumpAndSettle();
+      expect(selectedTrack, isNull);
+
+      await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+      await tester.pumpAndSettle();
+
+      expect(selectedTrack?.id, equals('1'));
+    },
+  );
 
   testWidgets(
     'TracksView renders filterLabel badge and triggers onClearFilter',
@@ -1856,6 +1965,7 @@ void main() {
           await tester.pumpWidget(
             _buildTracksViewTest(
               tracks: sampleTracks,
+              trackActivationMode: TrackActivationMode.singleClick,
               onTrackSelected: (t) => selectedTrack = t,
             ),
           );
@@ -1969,6 +2079,7 @@ void main() {
         _buildTracksViewTest(
           tracks: multiTracks,
           currentTrack: multiTracks[0],
+          trackActivationMode: TrackActivationMode.singleClick,
           onTrackSelected: (t) => selectedTrack = t,
           onTogglePlay: () => togglePlayCount++,
         ),
@@ -2010,6 +2121,7 @@ void main() {
         await tester.pumpWidget(
           _buildTracksViewTest(
             tracks: multiTracks,
+            trackActivationMode: TrackActivationMode.singleClick,
             onTrackSelected: (_) => selectedCount++,
           ),
         );
@@ -2059,6 +2171,7 @@ void main() {
         await tester.pumpWidget(
           _buildTracksViewTest(
             tracks: multiTracks,
+            trackActivationMode: TrackActivationMode.singleClick,
             onTrackSelected: (_) => selectedCount++,
           ),
         );
@@ -2374,6 +2487,7 @@ void main() {
           _buildTracksViewTest(
             tracks: multiTracks,
             currentTrack: multiTracks[0], // mt_1 is currently playing
+            trackActivationMode: TrackActivationMode.singleClick,
             themeNotifier: themeNotifier,
           ),
         );
@@ -2573,6 +2687,179 @@ void main() {
         );
         expect(counterText.style?.fontSize, equals(14.0));
         expect(counterText.style?.fontWeight, equals(FontWeight.w600));
+      },
+    );
+
+    testWidgets(
+      'TracksView Escape dismisses context menu first before clearing track selection',
+      (tester) async {
+        await tester.pumpWidget(_buildTracksViewTest(tracks: sampleTracks));
+        await tester.pumpAndSettle();
+
+        // Click track 1 to select it
+        await tester.tap(find.text(sampleTracks.first.title!));
+        await tester.pumpAndSettle();
+
+        // Right-click track 1 to open context menu
+        final gesture = await tester.createGesture(
+          kind: PointerDeviceKind.mouse,
+          buttons: kSecondaryMouseButton,
+        );
+        await gesture.down(
+          tester.getCenter(find.text(sampleTracks.first.title!)),
+        );
+        await gesture.up();
+        await tester.pumpAndSettle();
+
+        expect(LyraContextMenuCoordinator.activeController, isNotNull);
+
+        // First Escape dismisses context menu only
+        await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+        await tester.pumpAndSettle();
+
+        expect(LyraContextMenuCoordinator.activeController, isNull);
+
+        // Second Escape clears selection
+        await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+        await tester.pumpAndSettle();
+      },
+    );
+
+    testWidgets(
+      'TracksView does not handle Escape/Enter when isNowPlayingExpanded is true',
+      (tester) async {
+        Track? selectedTrack;
+        await tester.pumpWidget(
+          _buildTracksViewTest(
+            tracks: sampleTracks,
+            isNowPlayingExpanded: true,
+            trackActivationMode: TrackActivationMode.doubleClick,
+            onTrackSelected: (t) => selectedTrack = t,
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        // Tap track 1
+        await tester.tap(find.text(sampleTracks.first.title!));
+        await tester.pumpAndSettle();
+
+        // Enter key should NOT trigger track playback because Now Playing is expanded
+        await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+        await tester.pumpAndSettle();
+
+        expect(selectedTrack, isNull);
+      },
+    );
+
+    testWidgets(
+      'Enter key initiates playback and dismisses active context menu in TracksView',
+      (tester) async {
+        Track? playedTrack;
+        await tester.pumpWidget(
+          _buildTracksViewTest(
+            tracks: sampleTracks,
+            trackActivationMode: TrackActivationMode.doubleClick,
+            onTrackSelected: (t) => playedTrack = t,
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        // Tap track 1 to select
+        await tester.tap(find.text(sampleTracks.first.title!));
+        await tester.pumpAndSettle();
+
+        // Right-click track 1 to open context menu
+        final gesture = await tester.createGesture(
+          kind: PointerDeviceKind.mouse,
+          buttons: kSecondaryMouseButton,
+        );
+        await gesture.down(
+          tester.getCenter(find.text(sampleTracks.first.title!)),
+        );
+        await gesture.up();
+        await tester.pumpAndSettle();
+
+        expect(LyraContextMenuCoordinator.activeController, isNotNull);
+
+        // Enter key should play track AND dismiss active context menu
+        await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+        await tester.pumpAndSettle();
+
+        expect(playedTrack?.id, equals(sampleTracks.first.id));
+        expect(LyraContextMenuCoordinator.activeController, isNull);
+      },
+    );
+
+    testWidgets(
+      'Enter key does not hijack playback when focus is on an actionable button',
+      (tester) async {
+        Track? playedTrack;
+        bool buttonPressed = false;
+        final buttonFocusNode = FocusNode();
+
+        await tester.pumpWidget(
+          _buildTracksViewTest(
+            tracks: sampleTracks,
+            trackActivationMode: TrackActivationMode.doubleClick,
+            onTrackSelected: (t) => playedTrack = t,
+            topWidget: LyraButton(
+              focusNode: buttonFocusNode,
+              child: const Text('Action Button'),
+              onPressed: () => buttonPressed = true,
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        // Select track 1
+        await tester.tap(find.text(sampleTracks.first.title!));
+        await tester.pumpAndSettle();
+
+        // Focus the Action Button
+        buttonFocusNode.requestFocus();
+        await tester.pumpAndSettle();
+        expect(buttonFocusNode.hasFocus, isTrue);
+
+        // Now with focus on button, send Enter
+        playedTrack = null;
+        await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+        await tester.pumpAndSettle();
+
+        expect(playedTrack, isNull);
+        expect(buttonPressed, isTrue);
+      },
+    );
+
+    testWidgets(
+      'TracksView updates dynamically when PreferencesService trackActivationMode changes',
+      (tester) async {
+        final prefs = InMemoryPreferencesService(
+          trackActivationMode: TrackActivationMode.doubleClick,
+        );
+        Track? playedTrack;
+
+        await tester.pumpWidget(
+          _buildTracksViewTest(
+            tracks: sampleTracks,
+            preferencesService: prefs,
+            onTrackSelected: (t) => playedTrack = t,
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        // Single click should NOT play in doubleClick mode
+        await tester.tap(find.text(sampleTracks.first.title!));
+        await tester.pumpAndSettle();
+        expect(playedTrack, isNull);
+
+        // Update preference to singleClick
+        await prefs.setTrackActivationMode(TrackActivationMode.singleClick);
+        await tester.pumpAndSettle();
+
+        // Now single click on track 2 should immediately play
+        await tester.tap(find.text(sampleTracks[1].title!));
+        await tester.pumpAndSettle();
+        expect(playedTrack?.id, equals(sampleTracks[1].id));
       },
     );
   });

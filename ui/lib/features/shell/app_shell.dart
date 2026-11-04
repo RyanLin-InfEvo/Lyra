@@ -136,6 +136,7 @@ class AppShellState extends State<AppShell> {
   late List<WorkColumn> _workColumnOrder;
   late Set<TrackColumn> _playlistVisibleColumns;
   late List<TrackColumn> _playlistColumnOrder;
+  late TrackActivationMode _trackActivationMode;
 
   // Playback State delegation
   Track? get _currentTrack => _playbackController.currentTrack;
@@ -233,6 +234,9 @@ class AppShellState extends State<AppShell> {
       widget.preferencesService?.volume ?? 0.85,
     );
     _volumeNotifier.addListener(_onVolumeNotifierChanged);
+    _trackActivationMode =
+        widget.preferencesService?.trackActivationMode ??
+        TrackActivationMode.doubleClick;
     widget.preferencesService?.addListener(_onPreferencesChanged);
     _initColumns();
     _isNowPlayingVisible = _isNowPlayingExpandedNotifier.value;
@@ -275,6 +279,10 @@ class AppShellState extends State<AppShell> {
     bool needsRebuild = false;
     if (_isSidebarCollapsed != prefs.isSidebarCollapsed) {
       _isSidebarCollapsed = prefs.isSidebarCollapsed;
+      needsRebuild = true;
+    }
+    if (_trackActivationMode != prefs.trackActivationMode) {
+      _trackActivationMode = prefs.trackActivationMode;
       needsRebuild = true;
     }
     final oldTrackOrder = _trackColumnOrder;
@@ -1242,6 +1250,7 @@ class AppShellState extends State<AppShell> {
         return RepaintBoundary(
           child: TracksView(
             preferencesService: widget.preferencesService,
+            trackActivationMode: _trackActivationMode,
             tracks: effectiveTracks,
             currentTrack: _currentTrack,
             isPlaying: _isPlaying,
@@ -1287,9 +1296,18 @@ class AppShellState extends State<AppShell> {
                 _playbackController.playAllNext(tracks),
             onInspectTrack: _openInspectorForTrack,
             onInspectAudio: _openInspectorForAudio,
+            onTrackFocus: (track) {
+              if (_isInspectorOpen) {
+                setState(() {
+                  _inspectedTrack = track;
+                  _inspectedAsset = null;
+                });
+              }
+            },
             onGoToAlbum: _navigateToAlbum,
             onGoToArtist: _navigateToArtist,
             onImport: _showImportDialog,
+            isNowPlayingExpanded: _isNowPlayingExpanded,
           ),
         );
       case AppTab.works:
@@ -1460,6 +1478,8 @@ class AppShellState extends State<AppShell> {
             ];
             return RepaintBoundary(
               child: PlaylistDetailView(
+                preferencesService: widget.preferencesService,
+                trackActivationMode: _trackActivationMode,
                 playlist: playlist,
                 tracks: playlistTracks,
                 playbackController: _playbackController,
@@ -1522,6 +1542,16 @@ class AppShellState extends State<AppShell> {
                 onInspectAudio: (track) {
                   _openInspectorForAudio(track);
                 },
+                onTrackFocus: (track) {
+                  if (_isInspectorOpen) {
+                    setState(() {
+                      _inspectedTrack = track;
+                      _inspectedAsset = null;
+                    });
+                  }
+                },
+                onTogglePlay: _togglePlay,
+                isNowPlayingExpanded: _isNowPlayingExpanded,
               ),
             );
           } else {

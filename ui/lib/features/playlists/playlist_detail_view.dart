@@ -7,8 +7,9 @@ import 'package:flutter/material.dart'
         Material,
         ReorderableDragStartListener,
         ReorderableListView;
+import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
-import 'package:lucide_icons_flutter/lucide_icons.dart';
+import 'package:shadcn_ui/shadcn_ui.dart';
 
 import '../../design_system/contracts/lyra_contracts.dart';
 import '../../design_system/factory/lyra_design_system_scope.dart';
@@ -23,8 +24,10 @@ import '../common/context_menu_coordinator.dart';
 import '../models/playlist.dart';
 import '../models/track.dart';
 import '../player/controllers/playback_queue_controller.dart';
+import '../settings/services/preferences_service.dart';
 import '../tracks/tracks_view.dart';
 
+export '../settings/services/preferences_service.dart' show TrackActivationMode;
 export '../tracks/tracks_view.dart' show TrackColumn;
 
 /// Detailed view for a single playlist, featuring metadata header, playback actions,
@@ -50,6 +53,11 @@ class PlaylistDetailView extends StatefulWidget {
   final ValueChanged<Set<TrackColumn>>? onVisibleColumnsChanged;
   final List<TrackColumn>? columnOrder;
   final ValueChanged<List<TrackColumn>>? onColumnOrderChanged;
+  final PreferencesService? preferencesService;
+  final TrackActivationMode? trackActivationMode;
+  final VoidCallback? onTogglePlay;
+  final ValueChanged<Track>? onTrackFocus;
+  final bool isNowPlayingExpanded;
 
   static final Set<TrackColumn> defaultVisibleColumns = {
     TrackColumn.index,
@@ -72,6 +80,7 @@ class PlaylistDetailView extends StatefulWidget {
     this.onRemoveTrack,
     this.onReorderTracks,
     this.onInspectAudio,
+    this.onTrackFocus,
     this.onGoToAlbum,
     this.onGoToArtist,
     this.currentTrack,
@@ -80,6 +89,10 @@ class PlaylistDetailView extends StatefulWidget {
     this.onVisibleColumnsChanged,
     this.columnOrder,
     this.onColumnOrderChanged,
+    this.preferencesService,
+    this.trackActivationMode,
+    this.onTogglePlay,
+    this.isNowPlayingExpanded = false,
   });
 
   @override
@@ -91,19 +104,38 @@ class _PlaylistDetailViewState extends State<PlaylistDetailView> {
   late Set<TrackColumn> _internalVisibleColumns;
   late final OverlayPortalController _columnsOverlayController;
   late final ValueNotifier<Offset> _columnsPositionNotifier;
+  String? _selectedTrackId;
+  int? _selectedTrackIndex;
+
+  TrackActivationMode get _effectiveActivationMode =>
+      widget.trackActivationMode ??
+      widget.preferencesService?.trackActivationMode ??
+      TrackActivationMode.doubleClick;
 
   @override
   void initState() {
     super.initState();
+    HardwareKeyboard.instance.addHandler(_handleKeyEvent);
+    widget.preferencesService?.addListener(_onPreferencesChanged);
     _columnsOverlayController = OverlayPortalController();
     _columnsPositionNotifier = ValueNotifier<Offset>(Offset.zero);
     _internalColumnOrder = _normalizeColumnOrder(widget.columnOrder);
     _internalVisibleColumns = _normalizeVisibleColumns(widget.visibleColumns);
   }
 
+  void _onPreferencesChanged() {
+    if (mounted) {
+      setState(() {});
+    }
+  }
+
   @override
   void didUpdateWidget(covariant PlaylistDetailView oldWidget) {
     super.didUpdateWidget(oldWidget);
+    if (widget.preferencesService != oldWidget.preferencesService) {
+      oldWidget.preferencesService?.removeListener(_onPreferencesChanged);
+      widget.preferencesService?.addListener(_onPreferencesChanged);
+    }
     if (widget.columnOrder != null &&
         widget.columnOrder != oldWidget.columnOrder) {
       _internalColumnOrder = _normalizeColumnOrder(widget.columnOrder);
@@ -112,12 +144,120 @@ class _PlaylistDetailViewState extends State<PlaylistDetailView> {
         widget.visibleColumns != oldWidget.visibleColumns) {
       _internalVisibleColumns = _normalizeVisibleColumns(widget.visibleColumns);
     }
+    if (oldWidget.playlist.id != widget.playlist.id) {
+      _selectedTrackId = null;
+      _selectedTrackIndex = null;
+    } else if (_selectedTrackId != null) {
+      final idx = widget.tracks.indexWhere((t) => t.id == _selectedTrackId);
+      if (idx == -1) {
+        _selectedTrackId = null;
+        _selectedTrackIndex = null;
+      } else {
+        _selectedTrackIndex = idx;
+      }
+    } else if (_selectedTrackIndex != null &&
+        _selectedTrackIndex! >= widget.tracks.length) {
+      _selectedTrackIndex = null;
+    }
   }
 
   @override
   void dispose() {
+    widget.preferencesService?.removeListener(_onPreferencesChanged);
+    HardwareKeyboard.instance.removeHandler(_handleKeyEvent);
     _columnsPositionNotifier.dispose();
     super.dispose();
+  }
+
+  bool _handleKeyEvent(KeyEvent event) {
+    if (event is! KeyDownEvent) {
+      return false;
+    }
+
+    if (!mounted ||
+        ModalRoute.of(context)?.isCurrent != true ||
+        widget.isNowPlayingExpanded) {
+      return false;
+    }
+
+    final primaryFocusContext = FocusManager.instance.primaryFocus?.context;
+    if (primaryFocusContext != null) {
+      final isEditingText =
+          primaryFocusContext.findAncestorWidgetOfExactType<EditableText>() !=
+          null;
+      if (isEditingText) {
+        return false;
+      }
+      final isActionableButton =
+          primaryFocusContext.findAncestorWidgetOfExactType<LyraButton>() !=
+              null ||
+          primaryFocusContext.findAncestorWidgetOfExactType<ShadButton>() !=
+              null;
+      if (isActionableButton) {
+        return false;
+      }
+    }
+
+    if (event.logicalKey == LogicalKeyboardKey.escape) {
+      if (LyraContextMenuCoordinator.hideActive()) {
+        return true;
+      }
+      if (_selectedTrackId != null || _selectedTrackIndex != null) {
+        setState(() {
+          _selectedTrackId = null;
+          _selectedTrackIndex = null;
+        });
+        return true;
+      }
+      return false;
+    }
+
+    if (event.logicalKey == LogicalKeyboardKey.enter ||
+        event.logicalKey == LogicalKeyboardKey.numpadEnter) {
+      Track? trackToPlay;
+      if (_selectedTrackId != null) {
+        for (final t in widget.tracks) {
+          if (t.id == _selectedTrackId) {
+            trackToPlay = t;
+            break;
+          }
+        }
+      }
+      if (trackToPlay == null &&
+          _selectedTrackIndex != null &&
+          _selectedTrackIndex! < widget.tracks.length) {
+        trackToPlay = widget.tracks[_selectedTrackIndex!];
+      }
+      if (trackToPlay != null) {
+        LyraContextMenuCoordinator.hideActive();
+        _handlePlayTrack(trackToPlay);
+        return true;
+      }
+    }
+
+    return false;
+  }
+
+  void _handleTrackTap(int index, Track track) {
+    setState(() {
+      _selectedTrackId = track.id;
+      _selectedTrackIndex = index;
+    });
+
+    if (_effectiveActivationMode == TrackActivationMode.singleClick) {
+      final isCurrent = widget.currentTrack?.id == track.id;
+      if (isCurrent) {
+        if (widget.onTogglePlay != null) {
+          widget.onTogglePlay!();
+        } else {
+          widget.playbackController?.togglePlay();
+        }
+      } else {
+        _handlePlayTrack(track);
+      }
+    } else {
+      widget.onTrackFocus?.call(track);
+    }
   }
 
   static List<TrackColumn> _normalizeColumnOrder(List<TrackColumn>? order) {
@@ -641,11 +781,18 @@ class _PlaylistDetailViewState extends State<PlaylistDetailView> {
               track: track,
               isCurrent: isCurrent,
               isPlaying: isPlaying,
+              isSelected: _selectedTrackId != null
+                  ? track.id == _selectedTrackId
+                  : _selectedTrackIndex == index,
               columnOrder: _effectiveColumnOrder,
               visibleColumns: _effectiveVisibleColumns,
               tokens: tokens,
               canReorder: widget.tracks.length > 1,
-              onTap: () => _handlePlayTrack(track),
+              onTap: () => _handleTrackTap(index, track),
+              onDoubleTap:
+                  _effectiveActivationMode == TrackActivationMode.doubleClick
+                  ? () => _handlePlayTrack(track)
+                  : null,
               onPlayNow: () => _handlePlayTrack(track),
               onPlayNext: () => _handlePlayNext(track),
               onAddToQueue: () => _handleAddToQueue(track),
@@ -670,11 +817,13 @@ class _PlaylistTrackRow extends StatefulWidget {
   final Track track;
   final bool isCurrent;
   final bool isPlaying;
+  final bool isSelected;
   final List<TrackColumn> columnOrder;
   final Set<TrackColumn> visibleColumns;
   final LyraThemeTokens tokens;
   final bool canReorder;
   final VoidCallback onTap;
+  final VoidCallback? onDoubleTap;
   final VoidCallback onPlayNow;
   final VoidCallback onPlayNext;
   final VoidCallback onAddToQueue;
@@ -689,11 +838,13 @@ class _PlaylistTrackRow extends StatefulWidget {
     required this.track,
     required this.isCurrent,
     required this.isPlaying,
+    this.isSelected = false,
     required this.columnOrder,
     required this.visibleColumns,
     required this.tokens,
     this.canReorder = true,
     required this.onTap,
+    this.onDoubleTap,
     required this.onPlayNow,
     required this.onPlayNext,
     required this.onAddToQueue,
@@ -711,6 +862,21 @@ class _PlaylistTrackRowState extends State<_PlaylistTrackRow> {
   bool _isHovered = false;
   late final ShadContextMenuController _contextMenuController =
       ShadContextMenuController();
+  DateTime? _lastTapTime;
+
+  void _handleTap() {
+    LyraContextMenuCoordinator.hideActive();
+    final now = DateTime.now();
+    if (widget.onDoubleTap != null &&
+        _lastTapTime != null &&
+        now.difference(_lastTapTime!) < const Duration(milliseconds: 350)) {
+      _lastTapTime = null;
+      widget.onDoubleTap!();
+    } else {
+      _lastTapTime = now;
+      widget.onTap();
+    }
+  }
 
   @override
   void initState() {
@@ -1100,23 +1266,29 @@ class _PlaylistTrackRowState extends State<_PlaylistTrackRow> {
           onExit: (_) => setState(() => _isHovered = false),
           child: GestureDetector(
             behavior: HitTestBehavior.opaque,
-            onTap: () {
-              LyraContextMenuCoordinator.hideActive();
-              widget.onTap();
-            },
+            onTap: _handleTap,
             child: Container(
               padding: const EdgeInsets.symmetric(
                 horizontal: LyraSpacing.xl,
                 vertical: LyraSpacing.xs,
               ),
               decoration: BoxDecoration(
-                color: isCurrent
+                color: widget.isSelected
+                    ? (_isHovered
+                          ? tokens.surfaceElevatedHover
+                          : tokens.surfaceElevated)
+                    : isCurrent
                     ? tokens.surfaceSecondary
                     : tokens.itemBackground(
                         isHovered: _isHovered || _contextMenuController.isOpen,
                       ),
                 border: Border(
-                  bottom: BorderSide(color: tokens.borderSubtle, width: 0.5),
+                  bottom: BorderSide(
+                    color: widget.isSelected
+                        ? tokens.primary.withValues(alpha: 0.3)
+                        : tokens.borderSubtle,
+                    width: 1.0,
+                  ),
                 ),
               ),
               child: Row(

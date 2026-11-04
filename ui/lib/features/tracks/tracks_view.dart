@@ -12,7 +12,7 @@ import 'package:flutter/material.dart'
         ReorderableListView;
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
-import 'package:lucide_icons_flutter/lucide_icons.dart';
+import 'package:shadcn_ui/shadcn_ui.dart';
 
 import '../../design_system/contracts/lyra_contracts.dart';
 import '../../design_system/factory/lyra_design_system_scope.dart';
@@ -194,6 +194,7 @@ class TracksView extends StatefulWidget {
   final ValueChanged<List<Track>>? onBatchPlayNext;
   final ValueChanged<Track>? onInspectTrack;
   final ValueChanged<Track>? onInspectAudio;
+  final ValueChanged<Track>? onTrackFocus;
   final ValueChanged<String>? onGoToAlbum;
   final ValueChanged<String>? onGoToArtist;
   final Map<String, int>? audioVersionCounts;
@@ -205,6 +206,8 @@ class TracksView extends StatefulWidget {
   final ValueChanged<List<TrackColumn>>? onColumnOrderChanged;
   final VoidCallback? onImport;
   final PreferencesService? preferencesService;
+  final TrackActivationMode? trackActivationMode;
+  final bool isNowPlayingExpanded;
   final Map<String, double>? columnWidths;
   final ValueChanged<Map<String, double>>? onColumnWidthsChanged;
 
@@ -224,6 +227,7 @@ class TracksView extends StatefulWidget {
     this.onBatchPlayNext,
     this.onInspectTrack,
     this.onInspectAudio,
+    this.onTrackFocus,
     this.onGoToAlbum,
     this.onGoToArtist,
     this.audioVersionCounts,
@@ -235,6 +239,8 @@ class TracksView extends StatefulWidget {
     this.onColumnOrderChanged,
     this.onImport,
     this.preferencesService,
+    this.trackActivationMode,
+    this.isNowPlayingExpanded = false,
     this.columnWidths,
     this.onColumnWidthsChanged,
   });
@@ -255,6 +261,11 @@ class _TracksViewState extends State<TracksView> {
   final Set<String> _selectedTrackIds = {};
   String? _selectionAnchorId;
   bool _isModifierSelectionActive = false;
+
+  TrackActivationMode get _effectiveActivationMode =>
+      widget.trackActivationMode ??
+      widget.preferencesService?.trackActivationMode ??
+      TrackActivationMode.doubleClick;
 
   void _handleSort(TrackColumn col) {
     if (col == TrackColumn.index) return;
@@ -277,6 +288,7 @@ class _TracksViewState extends State<TracksView> {
   void initState() {
     super.initState();
     HardwareKeyboard.instance.addHandler(_handleKeyEvent);
+    widget.preferencesService?.addListener(_onPreferencesChanged);
     _columnsOverlayController = OverlayPortalController();
     _columnsPositionNotifier = ValueNotifier<Offset>(Offset.zero);
     _internalColumnOrder = _normalizeColumnOrder(widget.columnOrder);
@@ -286,9 +298,19 @@ class _TracksViewState extends State<TracksView> {
     );
   }
 
+  void _onPreferencesChanged() {
+    if (mounted) {
+      setState(() {});
+    }
+  }
+
   @override
   void didUpdateWidget(covariant TracksView oldWidget) {
     super.didUpdateWidget(oldWidget);
+    if (widget.preferencesService != oldWidget.preferencesService) {
+      oldWidget.preferencesService?.removeListener(_onPreferencesChanged);
+      widget.preferencesService?.addListener(_onPreferencesChanged);
+    }
     _selectedTrackIds.removeWhere(
       (id) => !widget.tracks.any((t) => t.id == id),
     );
@@ -315,6 +337,7 @@ class _TracksViewState extends State<TracksView> {
 
   @override
   void dispose() {
+    widget.preferencesService?.removeListener(_onPreferencesChanged);
     HardwareKeyboard.instance.removeHandler(_handleKeyEvent);
     _columnsPositionNotifier.dispose();
     super.dispose();
@@ -333,15 +356,34 @@ class _TracksViewState extends State<TracksView> {
       return false;
     }
 
-    final isEditingText =
-        FocusManager.instance.primaryFocus?.context
-            ?.findAncestorWidgetOfExactType<EditableText>() !=
-        null;
-    if (isEditingText) {
+    if (!mounted ||
+        ModalRoute.of(context)?.isCurrent != true ||
+        widget.isNowPlayingExpanded) {
       return false;
     }
 
+    final primaryFocusContext = FocusManager.instance.primaryFocus?.context;
+    if (primaryFocusContext != null) {
+      final isEditingText =
+          primaryFocusContext.findAncestorWidgetOfExactType<EditableText>() !=
+          null;
+      if (isEditingText) {
+        return false;
+      }
+      final isActionableButton =
+          primaryFocusContext.findAncestorWidgetOfExactType<LyraButton>() !=
+              null ||
+          primaryFocusContext.findAncestorWidgetOfExactType<ShadButton>() !=
+              null;
+      if (isActionableButton) {
+        return false;
+      }
+    }
+
     if (event.logicalKey == LogicalKeyboardKey.escape) {
+      if (LyraContextMenuCoordinator.hideActive()) {
+        return true;
+      }
       if (_hasSelection) {
         setState(() {
           _clearSelection();
@@ -387,6 +429,35 @@ class _TracksViewState extends State<TracksView> {
           _isModifierSelectionActive = true;
         });
         return true;
+      }
+    }
+
+    if (event.logicalKey == LogicalKeyboardKey.enter ||
+        event.logicalKey == LogicalKeyboardKey.numpadEnter) {
+      if (_selectedTrackIds.isNotEmpty) {
+        final displayTracks = _getDisplayTracks();
+        Track? trackToPlay;
+        if (_selectionAnchorId != null) {
+          for (final t in displayTracks) {
+            if (t.id == _selectionAnchorId) {
+              trackToPlay = t;
+              break;
+            }
+          }
+        }
+        if (trackToPlay == null) {
+          for (final t in displayTracks) {
+            if (_selectedTrackIds.contains(t.id)) {
+              trackToPlay = t;
+              break;
+            }
+          }
+        }
+        if (trackToPlay != null) {
+          LyraContextMenuCoordinator.hideActive();
+          widget.onTrackSelected(trackToPlay);
+          return true;
+        }
       }
     }
 
@@ -519,11 +590,15 @@ class _TracksViewState extends State<TracksView> {
       _isModifierSelectionActive = false;
     });
 
-    final isCurrent = widget.currentTrack?.id == track.id;
-    if (isCurrent) {
-      widget.onTogglePlay();
+    if (_effectiveActivationMode == TrackActivationMode.singleClick) {
+      final isCurrent = widget.currentTrack?.id == track.id;
+      if (isCurrent) {
+        widget.onTogglePlay();
+      } else {
+        widget.onTrackSelected(track);
+      }
     } else {
-      widget.onTrackSelected(track);
+      widget.onTrackFocus?.call(track);
     }
   }
 
@@ -1013,6 +1088,11 @@ class _TracksViewState extends State<TracksView> {
                         columnOrder: _effectiveColumnOrder,
                         visibleColumns: _effectiveVisibleColumns,
                         onTap: () => _handleTrackTap(track, displayTracks),
+                        onDoubleTap:
+                            _effectiveActivationMode ==
+                                TrackActivationMode.doubleClick
+                            ? () => widget.onTrackSelected(track)
+                            : null,
                         onPlayNow: () => widget.onTrackSelected(track),
                         onPlayNext: widget.onPlayNext != null
                             ? () => widget.onPlayNext!(track)
@@ -1314,6 +1394,7 @@ class _TrackRow extends StatefulWidget {
   final bool isSelected;
   final int versionCount;
   final VoidCallback onTap;
+  final VoidCallback? onDoubleTap;
   final VoidCallback? onPlayNow;
   final VoidCallback? onPlayNext;
   final VoidCallback? onAddToQueue;
@@ -1335,6 +1416,7 @@ class _TrackRow extends StatefulWidget {
     this.isSelected = false,
     this.versionCount = 1,
     required this.onTap,
+    this.onDoubleTap,
     this.onPlayNow,
     this.onPlayNext,
     this.onAddToQueue,
@@ -1356,6 +1438,21 @@ class _TrackRowState extends State<_TrackRow> {
   bool _isHovered = false;
   late final ShadContextMenuController _contextMenuController =
       ShadContextMenuController();
+  DateTime? _lastTapTime;
+
+  void _handleTap() {
+    LyraContextMenuCoordinator.hideActive();
+    final now = DateTime.now();
+    if (widget.onDoubleTap != null &&
+        _lastTapTime != null &&
+        now.difference(_lastTapTime!) < const Duration(milliseconds: 350)) {
+      _lastTapTime = null;
+      widget.onDoubleTap!();
+    } else {
+      _lastTapTime = now;
+      widget.onTap();
+    }
+  }
 
   @override
   void initState() {
@@ -1706,9 +1803,9 @@ class _TrackRowState extends State<_TrackRow> {
 
     Color? rowBackgroundColor;
     if (isSelected) {
-      rowBackgroundColor = tokens.isDark
-          ? (_isHovered ? LyraColors.zinc600 : tokens.surfaceElevated)
-          : (_isHovered ? LyraColors.zinc200 : tokens.surfaceElevated);
+      rowBackgroundColor = _isHovered
+          ? tokens.surfaceElevatedHover
+          : tokens.surfaceElevated;
     } else if (widget.isCurrent) {
       rowBackgroundColor = tokens.surfaceSecondary;
     } else if (isHoverOrMenu) {
@@ -1770,10 +1867,7 @@ class _TrackRowState extends State<_TrackRow> {
           onExit: (_) => setState(() => _isHovered = false),
           child: GestureDetector(
             behavior: HitTestBehavior.opaque,
-            onTap: () {
-              LyraContextMenuCoordinator.hideActive();
-              widget.onTap();
-            },
+            onTap: _handleTap,
             child: Container(
               padding: const EdgeInsets.symmetric(
                 horizontal: LyraSpacing.xl,

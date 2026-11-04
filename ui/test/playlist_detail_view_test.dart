@@ -3,15 +3,18 @@
 
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shadcn_ui/shadcn_ui.dart';
 import 'package:ui/design_system/factory/lyra_design_system_scope.dart';
 import 'package:ui/design_system/factory/shadcn_factory.dart';
 import 'package:ui/design_system/tokens/lyra_tokens.dart';
+import 'package:ui/features/common/context_menu_coordinator.dart';
 import 'package:ui/features/models/playlist.dart';
 import 'package:ui/features/models/track.dart';
 import 'package:ui/features/player/controllers/playback_queue_controller.dart';
 import 'package:ui/features/playlists/playlist_detail_view.dart';
+import 'package:ui/features/settings/services/preferences_service.dart';
 
 Widget _buildPlaylistDetailTest(
   Widget child, {
@@ -275,13 +278,16 @@ void main() {
       },
     );
 
-    testWidgets('tapping track calls onTrackSelected', (tester) async {
+    testWidgets('tapping track calls onTrackSelected in singleClick mode', (
+      tester,
+    ) async {
       Track? selectedTrack;
       await tester.pumpWidget(
         _buildPlaylistDetailTest(
           PlaylistDetailView(
             playlist: testPlaylist,
             tracks: const [track1, track2, track3],
+            trackActivationMode: TrackActivationMode.singleClick,
             onBack: () {},
             onTrackSelected: (t) => selectedTrack = t,
           ),
@@ -294,6 +300,64 @@ void main() {
 
       expect(selectedTrack, equals(track2));
     });
+
+    testWidgets(
+      'PlaylistDetailView in doubleClick mode: single-click selects/inspects, double-click plays, Enter plays',
+      (tester) async {
+        Track? selectedTrack;
+        Track? inspectedTrack;
+
+        await tester.pumpWidget(
+          _buildPlaylistDetailTest(
+            PlaylistDetailView(
+              playlist: testPlaylist,
+              tracks: const [track1, track2, track3],
+              trackActivationMode: TrackActivationMode.doubleClick,
+              onBack: () {},
+              onTrackSelected: (t) => selectedTrack = t,
+              onTrackFocus: (t) => inspectedTrack = t,
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        // 1. Single click on 'So What'
+        await tester.tap(find.text('So What'));
+        await tester.pump(const Duration(milliseconds: 350));
+        await tester.pumpAndSettle();
+
+        // In doubleClick mode, single click MUST NOT trigger onTrackSelected
+        expect(selectedTrack, isNull);
+        // It should call onTrackFocus
+        expect(inspectedTrack?.id, equals(track2.id));
+
+        // 2. Double click on 'So What' initiates playback
+        final gesture1 = await tester.startGesture(
+          tester.getCenter(find.text('So What')),
+        );
+        await gesture1.up();
+        await tester.pump(const Duration(milliseconds: 60));
+        final gesture2 = await tester.startGesture(
+          tester.getCenter(find.text('So What')),
+        );
+        await gesture2.up();
+        await tester.pumpAndSettle();
+
+        expect(selectedTrack?.id, equals(track2.id));
+
+        // 3. Reset and select 'Giorgio by Moroder', then press Enter key
+        selectedTrack = null;
+        await tester.tap(find.text('Giorgio by Moroder'));
+        await tester.pump(const Duration(milliseconds: 350));
+        await tester.pumpAndSettle();
+        expect(selectedTrack, isNull);
+
+        await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+        await tester.pumpAndSettle();
+
+        expect(selectedTrack?.id, equals(track3.id));
+      },
+    );
 
     testWidgets('reordering tracks invokes onReorderTracks callback', (
       tester,
@@ -527,6 +591,7 @@ void main() {
             PlaylistDetailView(
               playlist: testPlaylist,
               tracks: [track1, track2, track3],
+              trackActivationMode: TrackActivationMode.singleClick,
               onBack: () {},
               onTrackSelected: (t) => playedTrack = t,
             ),
@@ -1143,6 +1208,315 @@ void main() {
 
         expect(resetColumns, equals(PlaylistDetailView.defaultVisibleColumns));
         expect(resetOrder, equals(TrackColumn.values));
+      },
+    );
+
+    testWidgets(
+      'PlaylistDetailView single-click on currently playing track calls onTogglePlay',
+      (tester) async {
+        bool togglePlayCalled = false;
+        Track? selectedTrack;
+
+        await tester.pumpWidget(
+          _buildPlaylistDetailTest(
+            PlaylistDetailView(
+              playlist: testPlaylist,
+              tracks: const [track1, track2],
+              onBack: () {},
+              currentTrack: track1,
+              isPlaying: true,
+              trackActivationMode: TrackActivationMode.singleClick,
+              onTogglePlay: () => togglePlayCalled = true,
+              onTrackSelected: (t) => selectedTrack = t,
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        // Tap currently playing track (track1)
+        await tester.tap(find.text(track1.title!));
+        await tester.pumpAndSettle();
+
+        expect(togglePlayCalled, isTrue);
+        expect(selectedTrack, isNull);
+      },
+    );
+
+    testWidgets(
+      'PlaylistDetailView doubleClick mode invokes onTrackFocus instead of onInspectAudio on single click',
+      (tester) async {
+        bool inspectCalled = false;
+        Track? focusedTrack;
+
+        await tester.pumpWidget(
+          _buildPlaylistDetailTest(
+            PlaylistDetailView(
+              playlist: testPlaylist,
+              tracks: const [track1, track2],
+              onBack: () {},
+              trackActivationMode: TrackActivationMode.doubleClick,
+              onInspectAudio: (_) => inspectCalled = true,
+              onTrackFocus: (t) => focusedTrack = t,
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        await tester.tap(find.text(track1.title!));
+        await tester.pumpAndSettle();
+
+        expect(inspectCalled, isFalse);
+        expect(focusedTrack?.id, equals(track1.id));
+      },
+    );
+
+    testWidgets(
+      'PlaylistDetailView handles duplicate tracks disambiguating row selection',
+      (tester) async {
+        Track? playedTrack;
+
+        await tester.pumpWidget(
+          _buildPlaylistDetailTest(
+            PlaylistDetailView(
+              playlist: testPlaylist,
+              tracks: const [track1, track2, track1],
+              onBack: () {},
+              trackActivationMode: TrackActivationMode.doubleClick,
+              onTrackSelected: (t) => playedTrack = t,
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        final track1Widgets = find.text(track1.title!);
+        expect(track1Widgets, findsNWidgets(2));
+
+        // Click the second occurrence (index 2)
+        await tester.tap(track1Widgets.at(1));
+        await tester.pumpAndSettle();
+
+        // Press Enter to play
+        await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+        await tester.pumpAndSettle();
+
+        expect(playedTrack?.id, equals(track1.id));
+      },
+    );
+
+    testWidgets(
+      'PlaylistDetailView Escape dismisses context menu first before clearing row selection',
+      (tester) async {
+        await tester.pumpWidget(
+          _buildPlaylistDetailTest(
+            PlaylistDetailView(
+              playlist: testPlaylist,
+              tracks: const [track1, track2],
+              onBack: () {},
+              trackActivationMode: TrackActivationMode.doubleClick,
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        // Click track 1 to select it
+        await tester.tap(find.text(track1.title!));
+        await tester.pumpAndSettle();
+
+        // Right-click track 1 to open context menu
+        final gesture = await tester.createGesture(
+          kind: PointerDeviceKind.mouse,
+          buttons: kSecondaryMouseButton,
+        );
+        await gesture.down(tester.getCenter(find.text(track1.title!)));
+        await gesture.up();
+        await tester.pumpAndSettle();
+
+        expect(LyraContextMenuCoordinator.activeController, isNotNull);
+
+        // First Escape dismisses context menu only
+        await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+        await tester.pumpAndSettle();
+
+        expect(LyraContextMenuCoordinator.activeController, isNull);
+
+        // Second Escape clears selection
+        await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+        await tester.pumpAndSettle();
+      },
+    );
+
+    testWidgets(
+      'PlaylistDetailView does not handle Escape/Enter when isNowPlayingExpanded is true',
+      (tester) async {
+        Track? playedTrack;
+        await tester.pumpWidget(
+          _buildPlaylistDetailTest(
+            PlaylistDetailView(
+              playlist: testPlaylist,
+              tracks: const [track1, track2],
+              onBack: () {},
+              trackActivationMode: TrackActivationMode.doubleClick,
+              isNowPlayingExpanded: true,
+              onTrackSelected: (t) => playedTrack = t,
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        // Click track 1
+        await tester.tap(find.text(track1.title!));
+        await tester.pumpAndSettle();
+
+        // Enter key should NOT trigger track playback because Now Playing is expanded
+        await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+        await tester.pumpAndSettle();
+
+        expect(playedTrack, isNull);
+      },
+    );
+
+    testWidgets(
+      'Enter key initiates playback and dismisses active context menu in PlaylistDetailView',
+      (tester) async {
+        Track? playedTrack;
+        await tester.pumpWidget(
+          _buildPlaylistDetailTest(
+            PlaylistDetailView(
+              playlist: testPlaylist,
+              tracks: const [track1, track2],
+              onBack: () {},
+              trackActivationMode: TrackActivationMode.doubleClick,
+              onTrackSelected: (t) => playedTrack = t,
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        // Click track 1 to select
+        await tester.tap(find.text(track1.title!));
+        await tester.pumpAndSettle();
+
+        // Right-click track 1 to open context menu
+        final gesture = await tester.createGesture(
+          kind: PointerDeviceKind.mouse,
+          buttons: kSecondaryMouseButton,
+        );
+        await gesture.down(tester.getCenter(find.text(track1.title!)));
+        await gesture.up();
+        await tester.pumpAndSettle();
+
+        expect(LyraContextMenuCoordinator.activeController, isNotNull);
+
+        // Enter key plays track AND dismisses context menu
+        await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+        await tester.pumpAndSettle();
+
+        expect(playedTrack?.id, equals(track1.id));
+        expect(LyraContextMenuCoordinator.activeController, isNull);
+      },
+    );
+
+    testWidgets(
+      'Selected track index does not leak across different playlist IDs',
+      (tester) async {
+        Track? playedTrack;
+        final playlistA = const Playlist(id: 'pl-A', title: 'Playlist A');
+        final playlistB = const Playlist(id: 'pl-B', title: 'Playlist B');
+
+        Widget buildView(Playlist pl) {
+          return _buildPlaylistDetailTest(
+            PlaylistDetailView(
+              playlist: pl,
+              tracks: const [track1, track2],
+              onBack: () {},
+              trackActivationMode: TrackActivationMode.doubleClick,
+              onTrackSelected: (t) => playedTrack = t,
+            ),
+          );
+        }
+
+        await tester.pumpWidget(buildView(playlistA));
+        await tester.pumpAndSettle();
+
+        // Select track 1 in Playlist A
+        await tester.tap(find.text(track1.title!));
+        await tester.pumpAndSettle();
+
+        // Switch to Playlist B with different ID
+        await tester.pumpWidget(buildView(playlistB));
+        await tester.pumpAndSettle();
+
+        // In Playlist B, selection must be cleared; pressing Enter should NOT play track 1
+        playedTrack = null;
+        await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+        await tester.pumpAndSettle();
+
+        expect(playedTrack, isNull);
+      },
+    );
+
+    testWidgets(
+      'Single-click in doubleClick mode does NOT hijack onInspectAudio when onTrackFocus is null',
+      (tester) async {
+        bool inspectCalled = false;
+
+        await tester.pumpWidget(
+          _buildPlaylistDetailTest(
+            PlaylistDetailView(
+              playlist: testPlaylist,
+              tracks: const [track1, track2],
+              onBack: () {},
+              trackActivationMode: TrackActivationMode.doubleClick,
+              onInspectAudio: (t) => inspectCalled = true,
+              onTrackFocus: null,
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        // Single click track 1
+        await tester.tap(find.text(track1.title!));
+        await tester.pumpAndSettle();
+
+        // Should NOT call onInspectAudio on single click
+        expect(inspectCalled, isFalse);
+      },
+    );
+
+    testWidgets(
+      'PlaylistDetailView updates dynamically when PreferencesService trackActivationMode changes',
+      (tester) async {
+        final prefs = InMemoryPreferencesService(
+          trackActivationMode: TrackActivationMode.doubleClick,
+        );
+        Track? playedTrack;
+
+        await tester.pumpWidget(
+          _buildPlaylistDetailTest(
+            PlaylistDetailView(
+              playlist: testPlaylist,
+              tracks: const [track1, track2],
+              onBack: () {},
+              preferencesService: prefs,
+              onTrackSelected: (t) => playedTrack = t,
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        // Single click should NOT play in doubleClick mode
+        await tester.tap(find.text(track1.title!));
+        await tester.pumpAndSettle();
+        expect(playedTrack, isNull);
+
+        // Update preference to singleClick
+        await prefs.setTrackActivationMode(TrackActivationMode.singleClick);
+        await tester.pumpAndSettle();
+
+        // Now single click on track 2 should immediately play
+        await tester.tap(find.text(track2.title!));
+        await tester.pumpAndSettle();
+        expect(playedTrack?.id, equals(track2.id));
       },
     );
   });

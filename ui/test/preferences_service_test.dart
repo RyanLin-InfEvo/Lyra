@@ -52,6 +52,7 @@ void main() {
       expect(service.audioBufferSize, 256);
       expect(service.audioDopEnabled, isFalse);
       expect(service.casAutoVerify, isTrue);
+      expect(service.trackActivationMode, TrackActivationMode.doubleClick);
     });
 
     test('initializes with mock initial values correctly', () async {
@@ -82,6 +83,7 @@ void main() {
         SharedPreferencesService.keyAudioBufferSize: 512,
         SharedPreferencesService.keyAudioDopEnabled: true,
         SharedPreferencesService.keyCasAutoVerify: false,
+        SharedPreferencesService.keyTrackActivationMode: 'singleClick',
       });
 
       final prefs = await SharedPreferences.getInstance();
@@ -114,6 +116,7 @@ void main() {
       expect(service.audioBufferSize, 512);
       expect(service.audioDopEnabled, isTrue);
       expect(service.casAutoVerify, isFalse);
+      expect(service.trackActivationMode, TrackActivationMode.singleClick);
     });
 
     test('fallback to ThemeMode.dark on invalid themeMode string', () async {
@@ -211,7 +214,25 @@ void main() {
 
       await service.setCasAutoVerify(false);
       expect(service.casAutoVerify, isFalse);
+
+      await service.setTrackActivationMode(TrackActivationMode.singleClick);
+      expect(service.trackActivationMode, TrackActivationMode.singleClick);
     });
+
+    test(
+      'SharedPreferencesService notifies listeners on setTrackActivationMode',
+      () async {
+        SharedPreferences.setMockInitialValues({});
+        final prefs = await SharedPreferences.getInstance();
+        final service = SharedPreferencesService(prefs);
+        int notified = 0;
+        service.addListener(() => notified++);
+
+        await service.setTrackActivationMode(TrackActivationMode.singleClick);
+        expect(notified, 1);
+        expect(service.trackActivationMode, TrackActivationMode.singleClick);
+      },
+    );
   });
 
   group('InMemoryPreferencesService Tests', () {
@@ -245,6 +266,7 @@ void main() {
       expect(service.audioBufferSize, 256);
       expect(service.audioDopEnabled, isFalse);
       expect(service.casAutoVerify, isTrue);
+      expect(service.trackActivationMode, TrackActivationMode.doubleClick);
     });
 
     test('custom initial values and setters', () async {
@@ -272,6 +294,7 @@ void main() {
         audioBufferSize: 128,
         audioDopEnabled: true,
         casAutoVerify: false,
+        trackActivationMode: TrackActivationMode.singleClick,
       );
 
       expect(service.themeMode, ThemeMode.light);
@@ -301,6 +324,7 @@ void main() {
       expect(service.audioBufferSize, 128);
       expect(service.audioDopEnabled, isTrue);
       expect(service.casAutoVerify, isFalse);
+      expect(service.trackActivationMode, TrackActivationMode.singleClick);
 
       await service.setThemeMode(ThemeMode.dark);
       expect(service.themeMode, ThemeMode.dark);
@@ -382,6 +406,9 @@ void main() {
 
       await service.setCasAutoVerify(true);
       expect(service.casAutoVerify, isTrue);
+
+      await service.setTrackActivationMode(TrackActivationMode.doubleClick);
+      expect(service.trackActivationMode, TrackActivationMode.doubleClick);
     });
 
     test('notifies listeners when settings change', () async {
@@ -412,6 +439,9 @@ void main() {
 
       await service.resetTableColumns();
       expect(notifyCount, 8);
+
+      await service.setTrackActivationMode(TrackActivationMode.singleClick);
+      expect(notifyCount, 9);
     });
 
     test('defensive copying of lists, sets, and maps', () async {
@@ -439,6 +469,61 @@ void main() {
       retrievedMap['col3'] = 300.0;
       expect(service.trackColumnWidths, {'col1': 120.0});
     });
+  });
+
+  group('TrackActivationMode Enum Tests', () {
+    test('fromString handles exact match, null, and empty string', () {
+      expect(
+        TrackActivationMode.fromString(null),
+        TrackActivationMode.doubleClick,
+      );
+      expect(
+        TrackActivationMode.fromString(''),
+        TrackActivationMode.doubleClick,
+      );
+      expect(
+        TrackActivationMode.fromString('doubleClick'),
+        TrackActivationMode.doubleClick,
+      );
+      expect(
+        TrackActivationMode.fromString('singleClick'),
+        TrackActivationMode.singleClick,
+      );
+    });
+
+    test(
+      'fromString handles case-insensitivity, snake_case, kebab-case, and trimming',
+      () {
+        expect(
+          TrackActivationMode.fromString(' singleClick '),
+          TrackActivationMode.singleClick,
+        );
+        expect(
+          TrackActivationMode.fromString('single_click'),
+          TrackActivationMode.singleClick,
+        );
+        expect(
+          TrackActivationMode.fromString('single-click'),
+          TrackActivationMode.singleClick,
+        );
+        expect(
+          TrackActivationMode.fromString('SINGLE_CLICK'),
+          TrackActivationMode.singleClick,
+        );
+        expect(
+          TrackActivationMode.fromString('double_click'),
+          TrackActivationMode.doubleClick,
+        );
+        expect(
+          TrackActivationMode.fromString('DOUBLE-CLICK'),
+          TrackActivationMode.doubleClick,
+        );
+        expect(
+          TrackActivationMode.fromString('completely_unknown'),
+          TrackActivationMode.doubleClick,
+        );
+      },
+    );
   });
 
   group('Defensive Type Conversion, Error Resilience & Edge Cases', () {
@@ -594,6 +679,48 @@ void main() {
         final prefs2 = await SharedPreferences.getInstance();
         final service2 = SharedPreferencesService(prefs2);
         expect(service2.themeMode, ThemeMode.dark);
+      },
+    );
+
+    test(
+      'trackActivationMode getter handles invalid or unknown values safely',
+      () async {
+        SharedPreferences.setMockInitialValues({
+          SharedPreferencesService.keyTrackActivationMode: 'invalid_mode',
+        });
+        final prefs1 = await SharedPreferences.getInstance();
+        final service1 = SharedPreferencesService(prefs1);
+        expect(service1.trackActivationMode, TrackActivationMode.doubleClick);
+
+        SharedPreferences.setMockInitialValues({
+          SharedPreferencesService.keyTrackActivationMode: 999,
+        });
+        final prefs2 = await SharedPreferences.getInstance();
+        final service2 = SharedPreferencesService(prefs2);
+        expect(service2.trackActivationMode, TrackActivationMode.doubleClick);
+
+        // Integer indices for enum values
+        SharedPreferences.setMockInitialValues({
+          SharedPreferencesService.keyTrackActivationMode: 1, // singleClick
+        });
+        final prefs3 = await SharedPreferences.getInstance();
+        final service3 = SharedPreferencesService(prefs3);
+        expect(service3.trackActivationMode, TrackActivationMode.singleClick);
+
+        SharedPreferences.setMockInitialValues({
+          SharedPreferencesService.keyTrackActivationMode: 0, // doubleClick
+        });
+        final prefs4 = await SharedPreferences.getInstance();
+        final service4 = SharedPreferencesService(prefs4);
+        expect(service4.trackActivationMode, TrackActivationMode.doubleClick);
+
+        // Boolean fallback
+        SharedPreferences.setMockInitialValues({
+          SharedPreferencesService.keyTrackActivationMode: true,
+        });
+        final prefs5 = await SharedPreferences.getInstance();
+        final service5 = SharedPreferencesService(prefs5);
+        expect(service5.trackActivationMode, TrackActivationMode.doubleClick);
       },
     );
 

@@ -293,6 +293,10 @@ class LyraThemeTokens {
   /// Elevated surface background color for selected list rows and cards.
   Color get surfaceElevated => isDark ? LyraColors.zinc700 : LyraColors.zinc100;
 
+  /// Elevated surface hover background color for selected list rows and cards.
+  Color get surfaceElevatedHover =>
+      isDark ? LyraColors.zinc600 : LyraColors.zinc200;
+
   /// Secondary surface background color for active / current playing indicators.
   Color get surfaceSecondary =>
       isDark ? LyraColors.zinc800 : LyraColors.zinc200;

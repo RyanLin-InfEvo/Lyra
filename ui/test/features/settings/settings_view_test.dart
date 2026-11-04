@@ -1276,4 +1276,102 @@ void main() {
       },
     );
   });
+
+  group('SettingsView Interaction & Shortcuts Sections', () {
+    testWidgets(
+      'navigates to Interaction & Behavior section and toggles track activation via ShadTabs',
+      (tester) async {
+        final prefs = InMemoryPreferencesService();
+
+        await tester.pumpWidget(
+          _buildSettingsTestApp(
+            prefs,
+            child: SettingsView(preferencesService: prefs),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        // Navigate to Interaction & Behavior section in sidebar
+        await tester.tap(find.text('Interaction & Behavior'));
+        await tester.pumpAndSettle();
+
+        // Verify Interaction section headers and icons (sidebar + card header)
+        expect(find.text('Interaction & Behavior'), findsNWidgets(2));
+        expect(find.byIcon(LucideIcons.mousePointerClick), findsNWidgets(2));
+        expect(find.text('Track Activation'), findsOneWidget);
+        // Redundant subtitle should be eliminated per Apple HIG concise typography
+        expect(
+          find.text(
+            'Configure track table click activation and playback triggers.',
+          ),
+          findsNothing,
+        );
+
+        // Verify initial selection is Double-Click
+        expect(
+          prefs.trackActivationMode,
+          equals(TrackActivationMode.doubleClick),
+        );
+        expect(find.text('Double-Click'), findsOneWidget);
+        expect(find.text('Single-Click'), findsOneWidget);
+
+        // Tap Single-Click option
+        await tester.tap(find.text('Single-Click'));
+        await tester.pumpAndSettle();
+
+        expect(
+          prefs.trackActivationMode,
+          equals(TrackActivationMode.singleClick),
+        );
+
+        // Tap Double-Click option again
+        await tester.tap(find.text('Double-Click'));
+        await tester.pumpAndSettle();
+
+        expect(
+          prefs.trackActivationMode,
+          equals(TrackActivationMode.doubleClick),
+        );
+      },
+    );
+
+    testWidgets(
+      'navigates to Keyboard Shortcuts section and displays categorized shortcuts with mono badges',
+      (tester) async {
+        final prefs = InMemoryPreferencesService();
+
+        await tester.pumpWidget(
+          _buildSettingsTestApp(
+            prefs,
+            child: SettingsView(preferencesService: prefs),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        // Navigate to Keyboard Shortcuts in sidebar
+        await tester.tap(find.text('Keyboard Shortcuts'));
+        await tester.pumpAndSettle();
+
+        // Verify category headers and section icon (sidebar + card header)
+        expect(find.byIcon(LucideIcons.keyboard), findsNWidgets(2));
+        expect(
+          find.text(
+            'Desktop keyboard commands for playback control, track selection, and library navigation.',
+          ),
+          findsNothing,
+        );
+        expect(find.text('PLAYBACK & QUEUE'), findsOneWidget);
+        expect(find.text('SELECTION & LIST'), findsOneWidget);
+        expect(find.text('NAVIGATION & PANELS'), findsOneWidget);
+
+        // Verify specific shortcut entries
+        expect(find.text('Play / Pause playback'), findsOneWidget);
+        expect(find.text('Space'), findsOneWidget);
+        expect(find.text('Select all tracks in current view'), findsOneWidget);
+        expect(find.text('Cmd / Ctrl + A'), findsOneWidget);
+        expect(find.text('Toggle Audio Inspector drawer'), findsOneWidget);
+        expect(find.text('Cmd / Ctrl + I'), findsOneWidget);
+      },
+    );
+  });
 }

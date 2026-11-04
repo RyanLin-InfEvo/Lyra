@@ -25,11 +25,13 @@ class LyraContextMenuCoordinator {
     _activeController = controller;
   }
 
-  static void hideActive() {
+  static bool hideActive() {
     if (_activeController != null) {
       _activeController!.hide();
       _activeController = null;
+      return true;
     }
+    return false;
   }
 
   static void onDisposed(ShadContextMenuController controller) {
