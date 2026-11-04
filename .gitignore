@@ -47,3 +47,4 @@ __pycache__/
 core/tests/manual_api_request_test.py
 .directory
 lyra_storage/
+*.old
