@@ -108,7 +108,7 @@ void main() {
     await tester.pumpAndSettle();
 
     // Verify Brand / Sidebar
-    expect(find.text('Lyra Audio'), findsOneWidget);
+    expect(find.text('Lyra'), findsOneWidget);
     expect(find.text('Tracks'), findsOneWidget);
     expect(find.text('Works'), findsOneWidget);
     expect(find.text('Albums'), findsOneWidget);
@@ -788,18 +788,30 @@ void main() {
       await tester.pumpWidget(_buildAppShellTest());
       await tester.pumpAndSettle();
 
-      expect(find.text('Lyra Audio'), findsOneWidget);
+      expect(find.text('Lyra'), findsOneWidget);
       expect(find.text('LIBRARY'), findsOneWidget);
       expect(find.text('Playlists'), findsOneWidget);
-      expect(find.byTooltip('Collapse sidebar'), findsOneWidget);
+      expect(find.byTooltip('Toggle Sidebar  Ctrl+B'), findsOneWidget);
+
+      final lyraPosExpanded = tester.getTopLeft(find.text('Lyra'));
+      final togglePosExpanded =
+          tester.getTopLeft(find.byTooltip('Toggle Sidebar  Ctrl+B'));
 
       // 2. Toggle collapse manually on wide desktop
-      await tester.tap(find.byTooltip('Collapse sidebar'));
+      await tester.tap(find.byTooltip('Toggle Sidebar  Ctrl+B'));
       await tester.pumpAndSettle();
 
       expect(find.text('LIBRARY'), findsNothing);
       expect(find.text('Playlists'), findsNothing);
-      expect(find.byTooltip('Expand sidebar'), findsOneWidget);
+      expect(find.byTooltip('Toggle Sidebar  Ctrl+B'), findsOneWidget);
+
+      // Lyra brand text and Toggle Sidebar button remain strictly stationary in the independent Top layer
+      expect(find.text('Lyra'), findsOneWidget);
+      expect(tester.getTopLeft(find.text('Lyra')), equals(lyraPosExpanded));
+      expect(
+        tester.getTopLeft(find.byTooltip('Toggle Sidebar  Ctrl+B')),
+        equals(togglePosExpanded),
+      );
 
       // 3. Small Screen (< 900px, e.g. 800px) -> Effective collapsed
       tester.view.physicalSize = const Size(800, 600);
@@ -828,7 +840,7 @@ void main() {
       await tester.pumpAndSettle();
 
       // Collapse sidebar
-      await tester.tap(find.byTooltip('Collapse sidebar'));
+      await tester.tap(find.byTooltip('Toggle Sidebar  Ctrl+B'));
       await tester.pumpAndSettle();
 
       // 1. Sidebar width is 64.0
@@ -837,13 +849,12 @@ void main() {
       final sidebarSize = tester.getSize(sidebarFinder);
       expect(sidebarSize.width, 64.0);
 
-      // 2. Logo icon is centered at x = 31.5 (64px width - 1px right border = 63px content width)
+      // 2. Music icon removed per Apple HIG & minimal design
       final musicIcon = find.descendant(
         of: sidebarFinder,
         matching: find.byIcon(LucideIcons.music),
       );
-      expect(musicIcon, findsOneWidget);
-      expect(tester.getCenter(musicIcon).dx, 31.5);
+      expect(musicIcon, findsNothing);
 
       // 3. Navigation icons are centered at x = 31.5
       final tracksIcon = find.descendant(
@@ -1202,7 +1213,7 @@ void main() {
       // 1. Initial dark mode
       expect(themeNotifier.value, equals(ThemeMode.dark));
       final scaffoldDark = tester.widget<Scaffold>(find.byType(Scaffold));
-      expect(scaffoldDark.backgroundColor, equals(LyraColors.zinc950));
+      expect(scaffoldDark.backgroundColor, equals(LyraColors.charcoal950));
 
       // Toggle to Light Mode via theme button in HeaderBar (shows sun icon in dark mode)
       final themeToggleBtn = find.byIcon(LucideIcons.sun);
@@ -1253,7 +1264,7 @@ void main() {
 
       expect(themeNotifier.value, equals(ThemeMode.dark));
       final scaffoldBackDark = tester.widget<Scaffold>(find.byType(Scaffold));
-      expect(scaffoldBackDark.backgroundColor, equals(LyraColors.zinc950));
+      expect(scaffoldBackDark.backgroundColor, equals(LyraColors.charcoal950));
     },
   );
 
@@ -1946,6 +1957,22 @@ void main() {
         tester.widget<EditableText>(searchInput).focusNode.hasFocus,
         isTrue,
       );
+
+      // Meta+B toggles sidebar collapse
+      final shellState = tester.state<AppShellState>(find.byType(AppShell));
+      expect(shellState.isSidebarCollapsed, isFalse);
+      await tester.sendKeyDownEvent(LogicalKeyboardKey.meta);
+      await tester.sendKeyEvent(LogicalKeyboardKey.keyB);
+      await tester.sendKeyUpEvent(LogicalKeyboardKey.meta);
+      await tester.pumpAndSettle();
+      expect(shellState.isSidebarCollapsed, isTrue);
+
+      // Ctrl+B toggles sidebar expand
+      await tester.sendKeyDownEvent(LogicalKeyboardKey.control);
+      await tester.sendKeyEvent(LogicalKeyboardKey.keyB);
+      await tester.sendKeyUpEvent(LogicalKeyboardKey.control);
+      await tester.pumpAndSettle();
+      expect(shellState.isSidebarCollapsed, isFalse);
     },
   );
 
@@ -2492,7 +2519,7 @@ void main() {
 
         // 1. Toggle sidebar via header button
         expect(prefs.isSidebarCollapsed, isFalse);
-        final toggleSidebarFinder = find.byTooltip('Collapse sidebar');
+        final toggleSidebarFinder = find.byTooltip('Toggle Sidebar  Ctrl+B');
         expect(toggleSidebarFinder, findsOneWidget);
         await tester.tap(toggleSidebarFinder);
         await tester.pumpAndSettle();
@@ -2501,9 +2528,7 @@ void main() {
         expect(prefs.isSidebarCollapsed, isTrue);
 
         // Toggle back
-        final expandSidebarFinder = find.byTooltip('Expand sidebar');
-        expect(expandSidebarFinder, findsOneWidget);
-        await tester.tap(expandSidebarFinder);
+        await tester.tap(toggleSidebarFinder);
         await tester.pumpAndSettle();
 
         expect(shellState.isSidebarCollapsed, isFalse);

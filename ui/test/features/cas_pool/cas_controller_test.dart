@@ -54,7 +54,7 @@ void main() {
         expect(controller.coverBytes, equals(2 * 1024 * 1024));
         expect(controller.formattedCoverBytes, equals('2.0 MB'));
         expect(controller.formattedImageBytes, equals('2.0 MB'));
-        expect(controller.immutabilityStatus, equals('100% Bit-Perfect'));
+        expect(controller.immutabilityStatus, equals('Verified'));
         expect(controller.searchQuery, isEmpty);
         expect(controller.filteredCasObjects.length, equals(3));
         expect(controller.isVerifying, isFalse);
@@ -262,7 +262,7 @@ void main() {
 
       final verifiedController = CasController(initialObjects: testObjects);
       addTearDown(verifiedController.dispose);
-      expect(verifiedController.immutabilityStatus, equals('100% Bit-Perfect'));
+      expect(verifiedController.immutabilityStatus, equals('Verified'));
     });
 
     test('databaseBytes and totalPoolBytes calculate and format correctly', () {

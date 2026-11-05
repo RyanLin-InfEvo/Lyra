@@ -515,7 +515,7 @@ void main() {
       expect(themeDark.brightness, equals(Brightness.dark));
 
       final activeTitleTextDark = tester.widget<Text>(find.text('Track One'));
-      expect(activeTitleTextDark.style?.color, equals(LyraColors.zinc50));
+      expect(activeTitleTextDark.style?.color, equals(LyraColors.softWhite));
 
       // Switch to Light Mode (single frame 0ms)
       themeNotifier.value = ThemeMode.light;
@@ -2098,7 +2098,7 @@ void main() {
       // Selected row has lighter gray highlight
       expect(
         getRowDecoration(tester, 'Batch Track 2').color,
-        equals(const Color(0xFF3F3F46)),
+        equals(const Color(0xFF323232)),
       );
       // Only 1 track selected, so batch toolbar remains hidden
       expect(find.byKey(const Key('batch_action_toolbar')), findsNothing);
@@ -2142,7 +2142,7 @@ void main() {
         expect(selectedCount, equals(1));
 
         // Rows 1, 2, 3 should all be selected with lighter gray highlight
-        const expectedSelectedColor = Color(0xFF3F3F46);
+        const expectedSelectedColor = Color(0xFF323232);
         expect(
           getRowDecoration(tester, 'Batch Track 1').color,
           equals(expectedSelectedColor),
@@ -2177,7 +2177,7 @@ void main() {
         );
         await tester.pumpAndSettle();
 
-        const selectedColor = Color(0xFF3F3F46);
+        const selectedColor = Color(0xFF323232);
 
         // 1. Normal click Track 1
         await tester.tap(find.text('Batch Track 1'));
@@ -2494,40 +2494,40 @@ void main() {
         await tester.pumpAndSettle();
 
         // 1. Dark Mode Initial state:
-        // Current track (mt_1) is NOT selected -> darker gray highlight Color(0xFF27272A)
+        // Current track (mt_1) is NOT selected -> darker gray highlight Color(0xFF222222)
         expect(
           getRowDecoration(tester, 'Batch Track 1').color,
-          equals(const Color(0xFF27272A)),
+          equals(const Color(0xFF222222)),
         );
         // Track 2 is unselected and not current -> null
         expect(getRowDecoration(tester, 'Batch Track 2').color, isNull);
 
-        // 2. Select track 2 via normal click -> track 2 has lighter gray highlight Color(0xFF3F3F46)
-        // Current track 1 still has darker gray highlight Color(0xFF27272A)
+        // 2. Select track 2 via normal click -> track 2 has lighter gray highlight Color(0xFF323232)
+        // Current track 1 still has darker gray highlight Color(0xFF222222)
         await tester.tap(find.text('Batch Track 2'));
         await tester.pumpAndSettle();
         expect(
           getRowDecoration(tester, 'Batch Track 2').color,
-          equals(const Color(0xFF3F3F46)),
+          equals(const Color(0xFF323232)),
         );
         expect(
           getRowDecoration(tester, 'Batch Track 1').color,
-          equals(const Color(0xFF27272A)),
+          equals(const Color(0xFF222222)),
         );
 
         // 3. Select current track (mt_1) via Ctrl+Click -> mt_1 is BOTH currently playing and selected.
-        // Strict priority rule: isSelected overrides isCurrent -> mt_1 has lighter gray Color(0xFF3F3F46)!
+        // Strict priority rule: isSelected overrides isCurrent -> mt_1 has lighter gray Color(0xFF323232)!
         await tester.sendKeyDownEvent(LogicalKeyboardKey.controlLeft);
         await tester.tap(find.text('Batch Track 1'));
         await tester.sendKeyUpEvent(LogicalKeyboardKey.controlLeft);
         await tester.pumpAndSettle();
         expect(
           getRowDecoration(tester, 'Batch Track 1').color,
-          equals(const Color(0xFF3F3F46)),
+          equals(const Color(0xFF323232)),
         );
         expect(
           getRowDecoration(tester, 'Batch Track 2').color,
-          equals(const Color(0xFF3F3F46)),
+          equals(const Color(0xFF323232)),
         );
 
         // 4. Switch to Light Mode
@@ -2579,11 +2579,11 @@ void main() {
         expect(find.text('2 selected'), findsOneWidget);
         expect(
           getRowDecoration(tester, 'Batch Track 1').color,
-          equals(const Color(0xFF3F3F46)),
+          equals(const Color(0xFF323232)),
         );
         expect(
           getRowDecoration(tester, 'Batch Track 2').color,
-          equals(const Color(0xFF3F3F46)),
+          equals(const Color(0xFF323232)),
         );
 
         // 2. Click in the blank area below table rows

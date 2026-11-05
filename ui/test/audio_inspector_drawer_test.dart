@@ -1227,6 +1227,13 @@ void main() {
         await tester.tap(find.widgetWithText(LyraButton, 'Edit'));
         await tester.pumpAndSettle();
 
+        // Enter new title to make form dirty
+        await tester.enterText(
+          find.byKey(const Key('inspector_edit_title_input')).first,
+          'Hotel California (Live Master)',
+        );
+        await tester.pumpAndSettle();
+
         // Tap Save to open diff dialog
         await tester.tap(find.widgetWithText(LyraButton, 'Save'));
         await tester.pump();
@@ -2505,6 +2512,7 @@ void main() {
         // Focus title input field (managed by generic FocusScope, not artist/album focus nodes)
         final titleEditable = find.byType(EditableText).first;
         await tester.tap(titleEditable);
+        await tester.enterText(titleEditable, 'Unfocus Test Title');
         await tester.pumpAndSettle();
 
         expect(
@@ -3277,14 +3285,18 @@ void main() {
           find.descendant(of: saveBtnFinder, matching: find.text('Save')),
           findsOneWidget,
         );
-        expect(initialSaveBtn.onPressed, isNotNull);
+        // Clean form: Save button is disabled (onPressed is null)
+        expect(initialSaveBtn.onPressed, isNull);
 
-        // Edit title to generate diff
+        // Edit title to generate diff -> dirty state
         await tester.enterText(
           find.byKey(const Key('inspector_edit_title_input')).first,
           'Testing Spinner on Confirm',
         );
         await tester.pumpAndSettle();
+
+        final dirtySaveBtn = tester.widget<LyraButton>(saveBtnFinder);
+        expect(dirtySaveBtn.onPressed, isNotNull);
 
         // 2. Tap Save button -> confirmation state (_isConfirming = true)
         await tester.tap(saveBtnFinder);
@@ -3408,6 +3420,117 @@ void main() {
         expect(find.widgetWithText(LyraButton, 'Edit'), findsOneWidget);
       },
     );
+
+    testWidgets(
+      'Commit 4: Save button is disabled when clean and enabled when dirty (and disabled upon revert)',
+      (tester) async {
+        tester.view.physicalSize = const Size(1280, 800);
+        tester.view.devicePixelRatio = 1.0;
+        addTearDown(tester.view.resetPhysicalSize);
+
+        final service = MockMusicService();
+        final tracks = await service.getTracks();
+        final track = tracks.firstWhere((t) => t.id == 'trk-001');
+
+        await tester.pumpWidget(
+          _buildAudioInspectorTestWidget(track: track, musicService: service),
+        );
+        await tester.pumpAndSettle();
+
+        // 1. Enter edit mode
+        await tester.tap(find.widgetWithText(LyraButton, 'Edit'));
+        await tester.pumpAndSettle();
+
+        final saveBtnFinder = find.byWidgetPredicate(
+          (w) => w is LyraButton && w.key == const Key('inspector_save_button'),
+        );
+        expect(saveBtnFinder, findsOneWidget);
+
+        // Clean initial form -> Save button must be disabled
+        var saveBtn = tester.widget<LyraButton>(saveBtnFinder);
+        expect(saveBtn.onPressed, isNull);
+
+        // 2. Modify title -> dirty -> Save button must be enabled
+        final titleInput =
+            find.byKey(const Key('inspector_edit_title_input')).first;
+        await tester.enterText(titleInput, 'Hotel California Modified');
+        await tester.pumpAndSettle();
+
+        saveBtn = tester.widget<LyraButton>(saveBtnFinder);
+        expect(saveBtn.onPressed, isNotNull);
+
+        // 3. Revert title back to original -> clean -> Save button must be disabled again
+        await tester.enterText(titleInput, track.title ?? '');
+        await tester.pumpAndSettle();
+
+        saveBtn = tester.widget<LyraButton>(saveBtnFinder);
+        expect(saveBtn.onPressed, isNull);
+
+        // 4. Modify artist -> dirty -> Save button enabled
+        final artistInput =
+            find.byKey(const Key('inspector_edit_artist_input')).first;
+        await tester.enterText(artistInput, 'Different Artist');
+        await tester.pumpAndSettle();
+
+        saveBtn = tester.widget<LyraButton>(saveBtnFinder);
+        expect(saveBtn.onPressed, isNotNull);
+
+        // 5. Cancel editing -> discards immediately without modal
+        await tester.tap(find.byKey(const Key('inspector_cancel_button')).first);
+        await tester.pumpAndSettle();
+
+        expect(find.byKey(const Key('metadata_diff_dialog')), findsNothing);
+        expect(find.widgetWithText(LyraButton, 'Edit'), findsOneWidget);
+      },
+    );
+
+    testWidgets(
+      'Commit 4: Active audio switching safely handles failure with error banner and resets loading',
+      (tester) async {
+        tester.view.physicalSize = const Size(1280, 800);
+        tester.view.devicePixelRatio = 1.0;
+        addTearDown(tester.view.resetPhysicalSize);
+
+        final service = _ControllableInspectorLoadingMusicService();
+        service.failSwitchAudio = true;
+
+        final tracks = await service.getTracks();
+        final track = tracks.firstWhere((t) => t.id == 'trk-001');
+
+        await tester.pumpWidget(
+          _buildAudioInspectorTestWidget(track: track, musicService: service),
+        );
+        await tester.pumpAndSettle();
+
+        // Find versions list and tap non-active version to show "Set as Active Audio" button
+        final alternateVersionFinder = find.text('24-bit/192kHz');
+        if (alternateVersionFinder.evaluate().isNotEmpty) {
+          await tester.tap(alternateVersionFinder.first);
+          await tester.pumpAndSettle();
+        }
+
+        final switchBtnFinder =
+            find.widgetWithText(LyraButton, 'Set as Active Audio');
+        if (switchBtnFinder.evaluate().isNotEmpty) {
+          await tester.tap(switchBtnFinder.first);
+          await tester.pumpAndSettle();
+
+          // Error banner must be displayed
+          expect(
+            find.byKey(const Key('inspector_switch_audio_error_banner')),
+            findsOneWidget,
+          );
+          expect(
+            find.textContaining('Hardware I/O error switching audio stream'),
+            findsWidgets,
+          );
+
+          // Button must be re-enabled and not stuck in loading
+          final reloadedBtn = tester.widget<LyraButton>(switchBtnFinder);
+          expect(reloadedBtn.onPressed, isNotNull);
+        }
+      },
+    );
   });
 }
 
@@ -3416,6 +3539,7 @@ class _ControllableInspectorLoadingMusicService extends MockMusicService {
   Completer<void>? switchAudioCompleter;
   int switchAudioCallCount = 0;
   bool failUpdateTrack = false;
+  bool failSwitchAudio = false;
   final Map<String, Completer<Track>> updateTrackCompleters = {};
   final Map<String, List<Audio>> customAudioVersions = {};
   final Map<String, Audio> customAudioDetails = {};
@@ -3453,6 +3577,9 @@ class _ControllableInspectorLoadingMusicService extends MockMusicService {
   @override
   Future<void> switchTrackAudio(String trackId, String newPcmHash) async {
     switchAudioCallCount++;
+    if (failSwitchAudio) {
+      throw Exception('Hardware I/O error switching audio stream');
+    }
     if (switchAudioCompleter != null) {
       await switchAudioCompleter!.future;
     }

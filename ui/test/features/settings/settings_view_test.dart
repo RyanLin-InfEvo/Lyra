@@ -4,6 +4,7 @@
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shadcn_ui/shadcn_ui.dart';
 import 'package:ui/core/models/waveform_data.dart';
@@ -685,7 +686,7 @@ void main() {
       (tester) async {
         // Presets in Dark Mode
         final zincDark = deriveLyraThemeTokens('zinc', true);
-        expect(zincDark.primary, LyraColors.zinc50);
+        expect(zincDark.primary, LyraColors.softWhite);
 
         final blueDark = deriveLyraThemeTokens('blue', true);
         expect(blueDark.primary, LyraColors.blue500);
@@ -750,7 +751,7 @@ void main() {
     });
 
     testWidgets(
-      'Dark mode accent colors strictly preserve pure Zinc neutral canvas',
+      'Dark mode accent colors strictly preserve pure Charcoal neutral canvas',
       (tester) async {
         const presets = [
           'zinc',
@@ -766,18 +767,18 @@ void main() {
           final scheme = deriveShadColorScheme(preset, Brightness.dark);
           expect(
             scheme.background,
-            const Color(0xFF09090B),
+            const Color(0xFF101010),
             reason: '$preset background',
           );
-          expect(scheme.card, const Color(0xFF18181B), reason: '$preset card');
+          expect(scheme.card, const Color(0xFF1B1B1B), reason: '$preset card');
           expect(
             scheme.border,
-            const Color(0xFF27272A),
+            const Color(0xFF242424),
             reason: '$preset border',
           );
           expect(
             scheme.foreground,
-            const Color(0xFFFAFAFA),
+            const Color(0xFFEDEDED),
             reason: '$preset foreground',
           );
         }
@@ -809,7 +810,7 @@ void main() {
         );
         expect(
           deriveLyraThemeTokens('amber', true).primaryForeground,
-          const Color(0xFF09090B),
+          const Color(0xFF101010),
         );
         expect(
           deriveLyraThemeTokens('slate', true).ring,
@@ -1371,6 +1372,138 @@ void main() {
         expect(find.text('Cmd / Ctrl + A'), findsOneWidget);
         expect(find.text('Toggle Audio Inspector drawer'), findsOneWidget);
         expect(find.text('Cmd / Ctrl + I'), findsOneWidget);
+      },
+    );
+
+    testWidgets(
+      'ThemeOptionCard and AccentColorCard support keyboard Tab navigation and Enter/Space activation with Focus Ring',
+      (tester) async {
+        final prefs = InMemoryPreferencesService();
+        await tester.pumpWidget(_buildSettingsTestApp(prefs));
+        await tester.pumpAndSettle();
+
+        // 1. Verify FocusableActionDetector widgets exist for theme and accent cards
+        final fadFinder = find.descendant(
+          of: find.byType(SettingsView),
+          matching: find.byType(FocusableActionDetector),
+        );
+        expect(fadFinder, findsWidgets);
+
+        // 2. Find Zinc Light theme card
+        final lightCardText = find.text('Zinc Light');
+        expect(lightCardText, findsOneWidget);
+        final lightCardFad = find.ancestor(
+          of: lightCardText,
+          matching: find.byType(FocusableActionDetector),
+        );
+        expect(lightCardFad, findsOneWidget);
+
+        // Request focus on the light card FocusNode
+        final fadWidget = tester.widget<FocusableActionDetector>(lightCardFad);
+        fadWidget.focusNode!.requestFocus();
+        await tester.pumpAndSettle();
+
+        expect(fadWidget.focusNode!.hasFocus, isTrue);
+
+        // Verify focus ring is rendered on AnimatedContainer
+        final animatedContainer = find.descendant(
+          of: lightCardFad,
+          matching: find.byType(AnimatedContainer),
+        );
+        expect(animatedContainer, findsOneWidget);
+        final containerWidget =
+            tester.widget<AnimatedContainer>(animatedContainer);
+        final deco = containerWidget.decoration as BoxDecoration;
+        final border = deco.border as Border;
+        final expectedTokens = deriveLyraThemeTokens(prefs.accentColor, true);
+        expect(border.top.color, equals(expectedTokens.ring));
+        expect(border.top.width, equals(2.0));
+
+        // 3. Activate via Enter key
+        await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+        await tester.pumpAndSettle();
+
+        // Should switch to light mode in preferences
+        expect(prefs.themeMode, equals(ThemeMode.light));
+
+        // 4. Test Accent Color card focus and Space key activation
+        final emeraldOption = find.text('Emerald');
+        expect(emeraldOption, findsOneWidget);
+        final emeraldFad = find.ancestor(
+          of: emeraldOption,
+          matching: find.byType(FocusableActionDetector),
+        );
+        expect(emeraldFad, findsOneWidget);
+
+        final emeraldFadWidget =
+            tester.widget<FocusableActionDetector>(emeraldFad);
+        emeraldFadWidget.focusNode!.requestFocus();
+        await tester.pumpAndSettle();
+        expect(emeraldFadWidget.focusNode!.hasFocus, isTrue);
+
+        // Activate via Space key
+        await tester.sendKeyEvent(LogicalKeyboardKey.space);
+        await tester.pumpAndSettle();
+
+        expect(prefs.accentColor, equals('emerald'));
+      },
+    );
+
+    testWidgets(
+      'AppearancePreviewCard progress bar background uses tokens.border for WCAG > 3:1 contrast in light mode',
+      (tester) async {
+        final prefs = InMemoryPreferencesService(themeMode: ThemeMode.light);
+        final themeModeNotifier = ValueNotifier<ThemeMode>(ThemeMode.light);
+        const factory = ShadcnFactory();
+
+        await tester.pumpWidget(
+          ShadApp(
+            debugShowCheckedModeBanner: false,
+            home: ValueListenableBuilder<ThemeMode>(
+              valueListenable: themeModeNotifier,
+              builder: (context, themeMode, _) {
+                final isDark = themeMode == ThemeMode.dark;
+                final tokens = deriveLyraThemeTokens(prefs.accentColor, isDark);
+                final colorScheme = deriveShadColorScheme(
+                  prefs.accentColor,
+                  isDark ? Brightness.dark : Brightness.light,
+                );
+
+                return ShadTheme(
+                  data: ShadThemeData(
+                    brightness: isDark ? Brightness.dark : Brightness.light,
+                    colorScheme: colorScheme,
+                  ),
+                  child: LyraDesignSystemScope(
+                    factory: factory,
+                    tokens: tokens,
+                    themeModeNotifier: themeModeNotifier,
+                    child: Scaffold(
+                      body: SettingsView(preferencesService: prefs),
+                    ),
+                  ),
+                );
+              },
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        // Find progress bar background container in preview card
+        final lightTokens = deriveLyraThemeTokens('zinc', false);
+        final progressBarTrack = find.byWidgetPredicate(
+          (w) =>
+              w is Container &&
+              w.constraints?.maxHeight == 4.0 &&
+              w.decoration is BoxDecoration &&
+              (w.decoration as BoxDecoration).color == lightTokens.border,
+        );
+        expect(
+          progressBarTrack,
+          findsOneWidget,
+          reason:
+              'Progress bar background must use tokens.border (zinc200, #E4E4E7) to satisfy WCAG contrast > 3:1 in light mode',
+        );
       },
     );
   });

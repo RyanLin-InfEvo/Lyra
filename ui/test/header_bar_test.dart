@@ -137,9 +137,15 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      // Tooltip should indicate collapsing when expanded
-      expect(find.byTooltip('Collapse sidebar'), findsOneWidget);
+      // Tooltip indicates toggling sidebar with shortcut
+      expect(find.byTooltip('Toggle Sidebar  Ctrl+B'), findsOneWidget);
       expect(find.byIcon(LucideIcons.panelLeft), findsOneWidget);
+
+      // Verify 'Lyra' title is rendered to the left of the toggle button
+      expect(find.text('Lyra'), findsOneWidget);
+      final lyraRect = tester.getRect(find.text('Lyra'));
+      final toggleRect = tester.getRect(find.byTooltip('Toggle Sidebar  Ctrl+B'));
+      expect(lyraRect.right, lessThan(toggleRect.left));
 
       await tester.tap(find.byIcon(LucideIcons.panelLeft));
       await tester.pumpAndSettle();
@@ -154,7 +160,7 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
-      expect(find.byTooltip('Expand sidebar'), findsOneWidget);
+      expect(find.byTooltip('Toggle Sidebar  Ctrl+B'), findsOneWidget);
     },
   );
 

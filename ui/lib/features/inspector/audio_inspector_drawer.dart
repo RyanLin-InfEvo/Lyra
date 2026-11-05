@@ -11,9 +11,12 @@ import 'package:flutter/material.dart'
         PopupMenuItem,
         RoundSliderOverlayShape,
         RoundSliderThumbShape,
+        ScaffoldMessenger,
         SelectionArea,
         Slider,
         SliderTheme,
+        SnackBar,
+        SnackBarBehavior,
         showDialog;
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
@@ -233,6 +236,7 @@ class _AudioInspectorContentState extends State<AudioInspectorContent> {
   bool _isSaving = false;
   bool _isConfirming = false;
   String? _saveErrorMessage;
+  String? _switchAudioErrorMessage;
 
   late final TextEditingController _titleController;
   late final TextEditingController _artistController;
@@ -242,6 +246,41 @@ class _AudioInspectorContentState extends State<AudioInspectorContent> {
   late final TextEditingController _genreController;
   late final TextEditingController _iswcController;
   late final TextEditingController _isrcController;
+
+  bool get _isDirty {
+    final track = _track;
+    if (track == null) return false;
+    final title = _titleController.text.trim();
+    final artist = _artistController.text.trim();
+    final album = _albumController.text.trim();
+    final year = _yearController.text.trim();
+    final trackNum = _trackNumberController.text.trim();
+    final genre = _genreController.text.trim();
+    final iswc = _iswcController.text.trim();
+    final isrc = _isrcController.text.trim();
+
+    final origTitle = (track.title ?? '').trim();
+    final origArtist = (track.artistName ?? '').trim();
+    final origAlbum = (track.albumTitle ?? '').trim();
+    final origYear = (track.recordingYear?.toString() ?? '').trim();
+    final origTrackNum = (track.trackNumber?.toString() ?? '').trim();
+    final origGenre = (track.genre ?? '').trim();
+    final origIswc = (track.iswc ?? '').trim();
+    final origIsrc = (track.isrc ?? '').trim();
+
+    return title != origTitle ||
+        artist != origArtist ||
+        album != origAlbum ||
+        year != origYear ||
+        trackNum != origTrackNum ||
+        genre != origGenre ||
+        iswc != origIswc ||
+        isrc != origIsrc;
+  }
+
+  void _onFormFieldChanged() {
+    if (mounted) setState(() {});
+  }
 
   late final FocusNode _artistFocusNode;
   late final FocusNode _albumFocusNode;
@@ -275,14 +314,15 @@ class _AudioInspectorContentState extends State<AudioInspectorContent> {
     widget.playbackController?.addListener(_onPlaybackStateChanged);
     widget.preferencesService?.addListener(_onPreferencesChanged);
 
-    _titleController = TextEditingController();
-    _artistController = TextEditingController();
-    _albumController = TextEditingController();
-    _yearController = TextEditingController();
-    _trackNumberController = TextEditingController();
-    _genreController = TextEditingController();
-    _iswcController = TextEditingController();
-    _isrcController = TextEditingController();
+    _titleController = TextEditingController()..addListener(_onFormFieldChanged);
+    _artistController = TextEditingController()..addListener(_onFormFieldChanged);
+    _albumController = TextEditingController()..addListener(_onFormFieldChanged);
+    _yearController = TextEditingController()..addListener(_onFormFieldChanged);
+    _trackNumberController =
+        TextEditingController()..addListener(_onFormFieldChanged);
+    _genreController = TextEditingController()..addListener(_onFormFieldChanged);
+    _iswcController = TextEditingController()..addListener(_onFormFieldChanged);
+    _isrcController = TextEditingController()..addListener(_onFormFieldChanged);
 
     _artistFocusNode = FocusNode();
     _albumFocusNode = FocusNode();
@@ -362,6 +402,7 @@ class _AudioInspectorContentState extends State<AudioInspectorContent> {
         _isSwitchingActive = false;
         _isConfirming = false;
         _saveErrorMessage = null;
+        _switchAudioErrorMessage = null;
         _validationErrors.clear();
       }
       // State Caching / Continuity:
@@ -391,6 +432,14 @@ class _AudioInspectorContentState extends State<AudioInspectorContent> {
   void dispose() {
     widget.preferencesService?.removeListener(_onPreferencesChanged);
     widget.playbackController?.removeListener(_onPlaybackStateChanged);
+    _titleController.removeListener(_onFormFieldChanged);
+    _artistController.removeListener(_onFormFieldChanged);
+    _albumController.removeListener(_onFormFieldChanged);
+    _yearController.removeListener(_onFormFieldChanged);
+    _trackNumberController.removeListener(_onFormFieldChanged);
+    _genreController.removeListener(_onFormFieldChanged);
+    _iswcController.removeListener(_onFormFieldChanged);
+    _isrcController.removeListener(_onFormFieldChanged);
     _titleController.dispose();
     _artistController.dispose();
     _albumController.dispose();
@@ -1019,6 +1068,7 @@ class _AudioInspectorContentState extends State<AudioInspectorContent> {
 
     setState(() {
       _selectedAudio = version;
+      _switchAudioErrorMessage = null;
       _isLoading = true;
     });
     _loadWaveform();
@@ -1075,6 +1125,7 @@ class _AudioInspectorContentState extends State<AudioInspectorContent> {
 
     setState(() {
       _isSwitchingActive = true;
+      _switchAudioErrorMessage = null;
     });
 
     try {
@@ -1089,7 +1140,19 @@ class _AudioInspectorContentState extends State<AudioInspectorContent> {
           sampleRate: _selectedAudio!.sampleRate,
         );
       });
-    } catch (_) {
+    } catch (e) {
+      if (mounted && _track?.id == trackId) {
+        final errorText = 'Failed to switch active audio: $e';
+        setState(() {
+          _switchAudioErrorMessage = errorText;
+        });
+        ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+          SnackBar(
+            content: Text(errorText),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
     } finally {
       if (mounted && _track?.id == trackId) {
         setState(() {
@@ -1768,7 +1831,9 @@ class _AudioInspectorContentState extends State<AudioInspectorContent> {
               child: LyraButton.primary(
                 key: const Key('inspector_save_button'),
                 size: LyraButtonSize.sm,
-                onPressed: (_isSaving || _isConfirming) ? null : _saveEditing,
+                onPressed: (_isSaving || _isConfirming || !_isDirty)
+                    ? null
+                    : _saveEditing,
                 leading: (_isSaving || _isConfirming)
                     ? LyraSpinner(size: 14.0)
                     : null,
@@ -2142,6 +2207,44 @@ class _AudioInspectorContentState extends State<AudioInspectorContent> {
         }),
         if (!isInspectingActive && _track != null) ...[
           const SizedBox(height: LyraSpacing.xs),
+          if (_switchAudioErrorMessage != null) ...[
+            Container(
+              key: const Key('inspector_switch_audio_error_banner'),
+              margin: const EdgeInsets.only(bottom: LyraSpacing.xs),
+              padding: const EdgeInsets.symmetric(
+                horizontal: LyraSpacing.sm,
+                vertical: LyraSpacing.xs + 2.0,
+              ),
+              decoration: BoxDecoration(
+                color: tokens.destructive.withValues(alpha: 0.1),
+                borderRadius: LyraRadius.smRadius,
+                border: Border.all(
+                  color: tokens.destructive.withValues(alpha: 0.3),
+                  width: 1.0,
+                ),
+              ),
+              child: Row(
+                children: [
+                  Icon(
+                    LucideIcons.alertCircle,
+                    size: 15.0,
+                    color: tokens.destructive,
+                  ),
+                  const SizedBox(width: LyraSpacing.xs),
+                  Expanded(
+                    child: Text(
+                      _switchAudioErrorMessage!,
+                      style: LyraTypography.small(tokens).copyWith(
+                        color: tokens.destructive,
+                        fontWeight: FontWeight.w500,
+                        fontSize: 11.0,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
           SizedBox(
             width: double.infinity,
             child: LyraButton(

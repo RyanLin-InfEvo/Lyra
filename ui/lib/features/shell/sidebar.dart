@@ -123,7 +123,7 @@ class _LyraSidebarState extends State<LyraSidebar> {
         key: const Key('sidebar_inner_container'),
         clipBehavior: Clip.hardEdge,
         decoration: BoxDecoration(
-          color: tokens.card,
+          color: tokens.sidebar,
           border: hasBorder
               ? Border(right: BorderSide(color: tokens.border, width: 1.0))
               : null,
@@ -133,50 +133,6 @@ class _LyraSidebarState extends State<LyraSidebar> {
             Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // Header / Logo
-                Container(
-                  height: 64.0,
-                  padding: const EdgeInsets.only(left: 15.5),
-                  alignment: Alignment.centerLeft,
-                  decoration: BoxDecoration(
-                    border: Border(
-                      bottom: BorderSide(color: tokens.border, width: 1.0),
-                    ),
-                  ),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.start,
-                    children: [
-                      Container(
-                        width: 32.0,
-                        height: 32.0,
-                        decoration: BoxDecoration(
-                          color: tokens.primary,
-                          borderRadius: LyraRadius.mdRadius,
-                        ),
-                        child: Center(
-                          child: Icon(
-                            LucideIcons.music,
-                            size: 18.0,
-                            color: tokens.primaryForeground,
-                          ),
-                        ),
-                      ),
-                      if (!widget.isCollapsed) ...[
-                        const SizedBox(width: LyraSpacing.sm),
-                        Expanded(
-                          child: Text(
-                            'Lyra Audio',
-                            maxLines: 1,
-                            softWrap: false,
-                            overflow: TextOverflow.ellipsis,
-                            style: LyraTypography.h4(tokens),
-                          ),
-                        ),
-                      ],
-                    ],
-                  ),
-                ),
-
                 // Navigation Sections
                 Expanded(
                   child: SingleChildScrollView(

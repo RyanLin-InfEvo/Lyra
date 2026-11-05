@@ -794,6 +794,11 @@ class AppShellState extends State<AppShell> {
       return true;
     }
 
+    if (isMetaOrCtrl && event.logicalKey == LogicalKeyboardKey.keyB) {
+      _toggleSidebar();
+      return true;
+    }
+
     if (isMetaOrCtrl && event.logicalKey == LogicalKeyboardKey.comma) {
       _navigateToSettings();
       return true;
@@ -1724,15 +1729,23 @@ class AppShellState extends State<AppShell> {
       autofocus: true,
       child: Scaffold(
         backgroundColor: tokens.background,
-        body: LayoutBuilder(
-          builder: (context, constraints) {
-            final isCompact = constraints.maxWidth < 900;
-            final effectiveSidebarCollapsed = _isSidebarCollapsed || isCompact;
+        body: Column(
+          children: [
+            // Top Header Bar (Independent Top Layer across entire width)
+            _buildHeader(),
 
-            return Row(
-              children: [
-                // Sidebar (Left)
-                ValueListenableBuilder<double>(
+            // Lower Content Area (Sidebar on Left, Main Content + Player Bar on Right)
+            Expanded(
+              child: LayoutBuilder(
+                builder: (context, constraints) {
+                  final isCompact = constraints.maxWidth < 900;
+                  final effectiveSidebarCollapsed =
+                      _isSidebarCollapsed || isCompact;
+
+                  return Row(
+                    children: [
+                      // Sidebar (Left)
+                      ValueListenableBuilder<double>(
                   valueListenable: _sidebarWidthNotifier,
                   builder: (context, sidebarWidth, _) {
                     return RepaintBoundary(
@@ -1832,13 +1845,10 @@ class AppShellState extends State<AppShell> {
                   },
                 ),
 
-                // Right Pane (Header + Main Area + Player Bar)
+                // Right Pane (Main Area + Player Bar)
                 Expanded(
                   child: Column(
                     children: [
-                      // Header Bar (Top)
-                      _buildHeader(),
-
                       // Main View Content + Docked Inspector Drawer + Now Playing Overlay (Center)
                       Expanded(
                         child: Stack(
@@ -2086,7 +2096,10 @@ class AppShellState extends State<AppShell> {
           },
         ),
       ),
-    );
+    ],
+  ),
+),
+);
   }
 }
 

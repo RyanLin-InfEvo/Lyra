@@ -61,21 +61,27 @@ ShadColorScheme deriveShadColorScheme(
 
   if (isDark) {
     const base = ShadZincColorScheme.dark(
-      background: Color(0xFF09090B),
-      foreground: Color(0xFFFAFAFA),
-      card: Color(0xFF18181B),
-      cardForeground: Color(0xFFFAFAFA),
-      popover: Color(0xFF18181B),
-      popoverForeground: Color(0xFFFAFAFA),
-      border: Color(0xFF27272A),
-      input: Color(0xFF27272A),
+      background: Color(0xFF101010),
+      foreground: Color(0xFFEDEDED),
+      card: Color(0xFF1B1B1B),
+      cardForeground: Color(0xFFEDEDED),
+      popover: Color(0xFF1B1B1B),
+      popoverForeground: Color(0xFFEDEDED),
+      border: Color(0xFF242424),
+      input: Color(0xFF242424),
+      secondary: Color(0xFF323232),
+      secondaryForeground: Color(0xFFEDEDED),
+      accent: Color(0xFF1C1C1C),
+      accentForeground: Color(0xFFEDEDED),
+      muted: Color(0xFF1C1C1C),
+      mutedForeground: Color(0xFF8E8E8E),
     );
 
     switch (lower) {
       case 'zinc':
         return base.copyWith(
-          primary: const Color(0xFFFAFAFA),
-          primaryForeground: const Color(0xFF18181B),
+          primary: const Color(0xFFEDEDED),
+          primaryForeground: const Color(0xFF101010),
           ring: const Color(0xFF71717A),
         );
       case 'blue':
@@ -109,7 +115,7 @@ ShadColorScheme deriveShadColorScheme(
       case 'amber':
         return base.copyWith(
           primary: const Color(0xFFF59E0B),
-          primaryForeground: const Color(0xFF09090B),
+          primaryForeground: const Color(0xFF101010),
           ring: const Color(0xFFFBBF24),
           accent: const Color(0xFFF59E0B).withValues(alpha: 0.2),
         );
@@ -125,13 +131,13 @@ ShadColorScheme deriveShadColorScheme(
     final customColor = parseHexColor(accentColor);
     if (customColor != null) {
       final isLight = customColor.computeLuminance() > 0.5;
-      final fg = isLight ? const Color(0xFF09090B) : const Color(0xFFFFFFFF);
+      final fg = isLight ? const Color(0xFF0A0A0A) : const Color(0xFFFFFFFF);
       return base.copyWith(
         primary: customColor,
         primaryForeground: fg,
         ring: customColor,
         accent: customColor.withValues(alpha: 0.2),
-        accentForeground: const Color(0xFFFAFAFA),
+        accentForeground: const Color(0xFFEDEDED),
       );
     }
 
@@ -274,6 +280,18 @@ class _LyraAppState extends State<LyraApp> {
           final shadTheme = ShadThemeData(
             brightness: isDark ? Brightness.dark : Brightness.light,
             colorScheme: colorScheme,
+            secondaryButtonTheme: ShadButtonTheme(
+              backgroundColor: tokens.secondary,
+              hoverBackgroundColor: tokens.isDark
+                  ? LyraColors.charcoal700
+                  : tokens.secondary.elevate(6, isDark: tokens.isDark),
+              foregroundColor: tokens.text,
+            ),
+            ghostButtonTheme: ShadButtonTheme(
+              hoverBackgroundColor: tokens.accent,
+              foregroundColor: tokens.textMuted,
+              hoverForegroundColor: tokens.text,
+            ),
             switchTheme: const ShadSwitchTheme(
               duration: Duration(milliseconds: 180),
             ),

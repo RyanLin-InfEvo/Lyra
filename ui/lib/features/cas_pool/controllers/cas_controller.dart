@@ -188,7 +188,7 @@ class CasController extends ChangeNotifier {
     if (_casObjects.any((obj) => !obj.verified)) {
       return 'Integrity Warning';
     }
-    return '100% Bit-Perfect';
+    return 'Verified';
   }
 
   // ---------------------------------------------------------------------------

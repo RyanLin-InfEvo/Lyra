@@ -20,6 +20,19 @@ class LyraColors {
   static const Color zinc900 = Color(0xFF18181B);
   static const Color zinc950 = Color(0xFF09090B);
 
+  // Neutral Charcoal Palette (Pure Saturation 0: R == G == B)
+  static const Color charcoal950 = Color(0xFF101010); // Main Canvas Background
+  static const Color charcoal900 = Color(0xFF161616); // Sidebar Background
+  static const Color charcoal850 = Color(0xFF1B1B1B); // Card & Container Surface (101010 + 11)
+  static const Color charcoal800 = Color(0xFF242424); // Subtle 1px Border (161616 + 14)
+  static const Color charcoal750 = Color(0xFF323232); // Selected / Active Item Surface (161616 + 28)
+  static const Color charcoal700 = Color(0xFF383838); // Selected Item Hover Surface (161616 + 34)
+  static const Color charcoalHover = Color(0xFF1C1C1C); // Sidebar Item Hover Surface (161616 + 6)
+  static const Color charcoalSecondary = Color(0xFF222222); // Secondary Button / Pill Surface
+  static const Color softWhite = Color(0xFFEDEDED); // Softened Primary Text (Anti-glare, Saturation 0)
+  static const Color appleGray = Color(0xFF8E8E8E); // Apple Secondary Label Gray (Saturation 0)
+  static const Color charcoalMutedText = Color(0xFF8E8E8E); // Secondary Label Gray (Saturation 0)
+
   // Emerald Palette (Success / CAS Verified)
   static const Color emerald50 = Color(0xFFECFDF5);
   static const Color emerald500 = Color(0xFF10B981);
@@ -97,32 +110,32 @@ class LyraThemeTokens {
     required this.warningForeground,
   });
 
-  /// Zinc Dark Mode Tokens
+  /// Dark Mode Tokens (Apple HIG Pure Neutral Charcoal, Saturation 0)
   factory LyraThemeTokens.dark() {
     return const LyraThemeTokens(
       isDark: true,
-      background: LyraColors.zinc950, // #09090b
-      foreground: LyraColors.zinc50, // #fafafa
-      card: LyraColors.zinc900, // #18181b
-      cardForeground: LyraColors.zinc50,
-      border: LyraColors.zinc800, // #27272a
-      text: LyraColors.zinc50, // #fafafa
-      textMuted: LyraColors.zinc400, // #a1a1aa
-      primary: LyraColors.zinc50,
-      primaryForeground: LyraColors.zinc900,
-      secondary: LyraColors.zinc800,
-      secondaryForeground: LyraColors.zinc50,
-      muted: LyraColors.zinc800,
-      mutedForeground: LyraColors.zinc400,
-      accent: LyraColors.zinc800,
-      accentForeground: LyraColors.zinc50,
+      background: LyraColors.charcoal950, // #101010
+      foreground: LyraColors.softWhite, // #EDEDED
+      card: LyraColors.charcoal850, // #1B1B1B
+      cardForeground: LyraColors.softWhite,
+      border: LyraColors.charcoal800, // #242424
+      text: LyraColors.softWhite, // #EDEDED
+      textMuted: LyraColors.charcoalMutedText, // #8E8E8E
+      primary: LyraColors.softWhite,
+      primaryForeground: LyraColors.charcoal950,
+      secondary: LyraColors.charcoal750, // #323232 (Selected Item)
+      secondaryForeground: LyraColors.softWhite,
+      muted: LyraColors.charcoalHover, // #1C1C1C
+      mutedForeground: LyraColors.charcoalMutedText, // #8E8E8E
+      accent: LyraColors.charcoalHover, // #1C1C1C (Hover Item)
+      accentForeground: LyraColors.softWhite,
       destructive: LyraColors.red500,
-      destructiveForeground: LyraColors.zinc50,
-      ring: LyraColors.blue500, // #3b82f6
+      destructiveForeground: LyraColors.softWhite,
+      ring: Color(0xFF007AFF), // Apple System Blue focus ring
       success: LyraColors.emerald500,
-      successForeground: LyraColors.zinc950,
+      successForeground: LyraColors.charcoal950,
       warning: LyraColors.amber500,
-      warningForeground: LyraColors.zinc950,
+      warningForeground: LyraColors.charcoal950,
     );
   }
 
@@ -290,16 +303,26 @@ class LyraThemeTokens {
     return itemHoverTransparent;
   }
 
+  /// Sidebar background color ensuring receding navigation layer per Apple HIG.
+  Color get sidebar => isDark ? LyraColors.charcoal900 : const Color(0xFFFFFFFF);
+
   /// Elevated surface background color for selected list rows and cards.
-  Color get surfaceElevated => isDark ? LyraColors.zinc700 : LyraColors.zinc100;
+  Color get surfaceElevated =>
+      isDark ? LyraColors.charcoal750 : LyraColors.zinc100;
 
   /// Elevated surface hover background color for selected list rows and cards.
   Color get surfaceElevatedHover =>
-      isDark ? LyraColors.zinc600 : LyraColors.zinc200;
+      isDark ? LyraColors.charcoal700 : LyraColors.zinc200;
 
   /// Secondary surface background color for active / current playing indicators.
   Color get surfaceSecondary =>
-      isDark ? LyraColors.zinc800 : LyraColors.zinc200;
+      isDark ? LyraColors.charcoalSecondary : LyraColors.zinc200;
+
+  /// Computes hover surface color relative to [baseSurface].
+  Color hoverOn(Color baseSurface) => baseSurface.hoverSurface(isDark: isDark);
+
+  /// Computes active/selected surface color relative to [baseSurface].
+  Color activeOn(Color baseSurface) => baseSurface.activeSurface(isDark: isDark);
 
   /// Subtle semi-transparent border color.
   Color get borderSubtle => border.withValues(alpha: 0.5);
@@ -311,6 +334,44 @@ class LyraThemeTokens {
   /// Unfocused ring border preserving [ring] RGB channels to prevent dark-gray flashes during Border.lerp.
   Border unfocusedRingBorder({double width = 1.5}) =>
       Border.all(color: ring.withValues(alpha: 0.0), width: width);
+}
+
+/// Relative surface elevation extension for systematic layer management.
+///
+/// Follows pure saturation-0 grayscale rules (R == G == B):
+/// - In dark mode, higher elevation adds brightness (+delta RGB units).
+/// - In light mode, higher elevation subtracts brightness (-delta RGB units)
+///   to maintain consistent relative contrast.
+extension LyraSurfaceElevation on Color {
+  /// Elevates a base surface color by [delta] brightness steps.
+  Color elevate(int delta, {bool isDark = true}) {
+    final effectiveDelta = isDark ? delta : -delta;
+    final r = (this.r * 255.0).round();
+    final g = (this.g * 255.0).round();
+    final b = (this.b * 255.0).round();
+    final a = (this.a * 255.0).round();
+    return Color.fromARGB(
+      a,
+      (r + effectiveDelta).clamp(0, 255),
+      (g + effectiveDelta).clamp(0, 255),
+      (b + effectiveDelta).clamp(0, 255),
+    );
+  }
+
+  /// Subtle interactive hover state (+6 RGB units, e.g. #161616 -> #1C1C1C).
+  Color hoverSurface({bool isDark = true}) => elevate(6, isDark: isDark);
+
+  /// Active or selected item surface (+28 RGB units, e.g. #161616 -> #323232).
+  Color activeSurface({bool isDark = true}) => elevate(28, isDark: isDark);
+
+  /// Hover state over an active/selected surface (+34 RGB units, e.g. #161616 -> #383838).
+  Color activeHoverSurface({bool isDark = true}) => elevate(34, isDark: isDark);
+
+  /// Subtle 1px dividing border (+14 RGB units, e.g. #101010 -> #1E1E1E, #161616 -> #242424).
+  Color borderSurface({bool isDark = true}) => elevate(14, isDark: isDark);
+
+  /// Card/container surface (+11 RGB units, e.g. #101010 -> #1B1B1B).
+  Color cardSurface({bool isDark = true}) => elevate(11, isDark: isDark);
 }
 
 /// Parses a hex color string (e.g. '#3B82F6', '3B82F6', '0xFF3B82F6').
@@ -338,10 +399,11 @@ LyraThemeTokens deriveLyraThemeTokens(String accentColor, bool isDark) {
     switch (lower) {
       case 'zinc':
         return base.copyWith(
-          primary: const Color(0xFFFAFAFA),
-          primaryForeground: const Color(0xFF18181B),
+          primary: LyraColors.softWhite,
+          primaryForeground: LyraColors.charcoal950,
           ring: const Color(0xFF71717A),
-          accent: const Color(0xFF27272A),
+          accent: LyraColors.charcoalHover,
+          secondary: LyraColors.charcoal750,
         );
       case 'slate':
         return base.copyWith(
@@ -381,7 +443,7 @@ LyraThemeTokens deriveLyraThemeTokens(String accentColor, bool isDark) {
       case 'amber':
         return base.copyWith(
           primary: const Color(0xFFF59E0B),
-          primaryForeground: const Color(0xFF09090B),
+          primaryForeground: LyraColors.charcoal950,
           ring: const Color(0xFFFBBF24),
           accent: const Color(0xFFF59E0B).withValues(alpha: 0.2),
         );
@@ -391,7 +453,7 @@ LyraThemeTokens deriveLyraThemeTokens(String accentColor, bool isDark) {
     if (customColor != null) {
       final luminance = customColor.computeLuminance();
       final fg = luminance > 0.5
-          ? const Color(0xFF09090B)
+          ? LyraColors.charcoal950
           : const Color(0xFFFFFFFF);
       return base.copyWith(
         primary: customColor,

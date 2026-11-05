@@ -132,7 +132,7 @@ class WorkColumn {
   String toString() => 'WorkColumn.$name';
 }
 
-/// High-density table view of Tier 1 musical composition works.
+/// High-density table view of musical composition works.
 class WorksView extends StatefulWidget {
   final List<Work> works;
   final ValueChanged<Work>? onWorkSelected;
@@ -386,13 +386,11 @@ class _WorksViewState extends State<WorksView> {
                   Text('Musical Works', style: LyraTypography.h2(tokens)),
                   const SizedBox(height: LyraSpacing.xs),
                   Text(
-                    '${widget.works.length} compositions (Tier 1)',
+                    '${widget.works.length} compositions',
                     style: LyraTypography.muted(tokens),
                   ),
                 ],
               ),
-              const Spacer(),
-              LyraBadge.secondary(child: Text('${widget.works.length} Works')),
             ],
           ),
         ),

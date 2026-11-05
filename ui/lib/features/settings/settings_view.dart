@@ -5,6 +5,7 @@ import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:shadcn_ui/shadcn_ui.dart';
 
 import '../../core/models/waveform_data.dart';
@@ -1445,7 +1446,7 @@ class _AppearancePreviewCard extends StatelessWidget {
                 Container(
                   height: 4.0,
                   decoration: BoxDecoration(
-                    color: tokens.muted,
+                    color: tokens.border,
                     borderRadius: LyraRadius.fullRadius,
                   ),
                   child: FractionallySizedBox(
@@ -1518,7 +1519,7 @@ class _SettingRow extends StatelessWidget {
   }
 }
 
-class _ThemeOptionCard extends StatelessWidget {
+class _ThemeOptionCard extends StatefulWidget {
   final String label;
   final ThemeMode mode;
   final IconData icon;
@@ -1536,29 +1537,64 @@ class _ThemeOptionCard extends StatelessWidget {
   });
 
   @override
+  State<_ThemeOptionCard> createState() => _ThemeOptionCardState();
+}
+
+class _ThemeOptionCardState extends State<_ThemeOptionCard> {
+  late final FocusNode _focusNode = FocusNode();
+  // ignore: unused_field
+  bool _isHovered = false;
+  bool _isFocused = false;
+
+  @override
+  void dispose() {
+    _focusNode.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final tokens = widget.tokens;
     final isDarkCard =
-        mode == ThemeMode.dark || (mode == ThemeMode.system && tokens.isDark);
+        widget.mode == ThemeMode.dark ||
+        (widget.mode == ThemeMode.system && tokens.isDark);
 
     return Semantics(
       button: true,
-      selected: isSelected,
-      label: label,
-      child: MouseRegion(
-        cursor: SystemMouseCursors.click,
+      selected: widget.isSelected,
+      label: widget.label,
+      child: FocusableActionDetector(
+        focusNode: _focusNode,
+        mouseCursor: SystemMouseCursors.click,
+        onShowHoverHighlight: (v) => setState(() => _isHovered = v),
+        onShowFocusHighlight: (v) => setState(() => _isFocused = v),
+        onFocusChange: (v) => setState(() => _isFocused = v),
+        shortcuts: const {
+          SingleActivator(LogicalKeyboardKey.enter): ActivateIntent(),
+          SingleActivator(LogicalKeyboardKey.space): ActivateIntent(),
+        },
+        actions: {
+          ActivateIntent: CallbackAction<ActivateIntent>(
+            onInvoke: (_) => widget.onTap(),
+          ),
+        },
         child: GestureDetector(
           behavior: HitTestBehavior.opaque,
-          onTap: onTap,
-          child: Container(
+          onTap: widget.onTap,
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 150),
+            curve: Curves.easeOut,
             width: 130.0,
             padding: const EdgeInsets.all(LyraSpacing.md),
             decoration: BoxDecoration(
-              color: isDarkCard ? LyraColors.zinc950 : const Color(0xFFFFFFFF),
+              color: isDarkCard ? LyraColors.charcoal950 : const Color(0xFFFFFFFF),
               borderRadius: LyraRadius.mdRadius,
-              border: Border.all(
-                color: isSelected ? tokens.ring : tokens.border,
-                width: isSelected ? 2.0 : 1.0,
-              ),
+              border: _isFocused
+                  ? tokens.focusedRingBorder(width: 2.0)
+                  : Border.all(
+                      color: widget.isSelected ? tokens.ring : tokens.border,
+                      width: widget.isSelected ? 2.0 : 1.0,
+                    ),
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -1566,30 +1602,30 @@ class _ThemeOptionCard extends StatelessWidget {
                 Row(
                   children: [
                     Icon(
-                      icon,
+                      widget.icon,
                       size: 16.0,
                       color: isDarkCard
-                          ? LyraColors.zinc50
+                          ? LyraColors.softWhite
                           : LyraColors.zinc950,
                     ),
                     const Spacer(),
-                    if (isSelected)
+                    if (widget.isSelected)
                       Icon(
                         LucideIcons.check,
                         size: 14.0,
                         color: isDarkCard
-                            ? LyraColors.zinc50
+                            ? LyraColors.softWhite
                             : LyraColors.zinc950,
                       ),
                   ],
                 ),
                 const SizedBox(height: LyraSpacing.md),
                 Text(
-                  label,
+                  widget.label,
                   style: TextStyle(
                     fontSize: 13.0,
                     fontWeight: FontWeight.w600,
-                    color: isDarkCard ? LyraColors.zinc50 : LyraColors.zinc950,
+                    color: isDarkCard ? LyraColors.softWhite : LyraColors.zinc950,
                   ),
                 ),
               ],
@@ -1601,7 +1637,7 @@ class _ThemeOptionCard extends StatelessWidget {
   }
 }
 
-class _AccentColorCard extends StatelessWidget {
+class _AccentColorCard extends StatefulWidget {
   final AccentColorOption option;
   final bool isSelected;
   final VoidCallback onTap;
@@ -1615,28 +1651,66 @@ class _AccentColorCard extends StatelessWidget {
   });
 
   @override
+  State<_AccentColorCard> createState() => _AccentColorCardState();
+}
+
+class _AccentColorCardState extends State<_AccentColorCard> {
+  late final FocusNode _focusNode = FocusNode();
+  bool _isHovered = false;
+  bool _isFocused = false;
+
+  @override
+  void dispose() {
+    _focusNode.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final tokens = widget.tokens;
+
     return Semantics(
       button: true,
-      selected: isSelected,
-      label: option.label,
-      child: MouseRegion(
-        cursor: SystemMouseCursors.click,
+      selected: widget.isSelected,
+      label: widget.option.label,
+      child: FocusableActionDetector(
+        focusNode: _focusNode,
+        mouseCursor: SystemMouseCursors.click,
+        onShowHoverHighlight: (v) => setState(() => _isHovered = v),
+        onShowFocusHighlight: (v) => setState(() => _isFocused = v),
+        onFocusChange: (v) => setState(() => _isFocused = v),
+        shortcuts: const {
+          SingleActivator(LogicalKeyboardKey.enter): ActivateIntent(),
+          SingleActivator(LogicalKeyboardKey.space): ActivateIntent(),
+        },
+        actions: {
+          ActivateIntent: CallbackAction<ActivateIntent>(
+            onInvoke: (_) => widget.onTap(),
+          ),
+        },
         child: GestureDetector(
           behavior: HitTestBehavior.opaque,
-          onTap: onTap,
-          child: Container(
+          onTap: widget.onTap,
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 150),
+            curve: Curves.easeOut,
             padding: const EdgeInsets.symmetric(
               horizontal: LyraSpacing.sm,
               vertical: 6.0,
             ),
             decoration: BoxDecoration(
-              color: tokens.itemBackground(isSelected: isSelected),
-              borderRadius: LyraRadius.mdRadius,
-              border: Border.all(
-                color: isSelected ? tokens.ring : tokens.border,
-                width: isSelected ? 2.0 : 1.0,
+              color: tokens.itemBackground(
+                isSelected: widget.isSelected,
+                isHovered: _isHovered,
+                isFocused: _isFocused,
               ),
+              borderRadius: LyraRadius.mdRadius,
+              border: _isFocused
+                  ? tokens.focusedRingBorder(width: 2.0)
+                  : Border.all(
+                      color: widget.isSelected ? tokens.ring : tokens.border,
+                      width: widget.isSelected ? 2.0 : 1.0,
+                    ),
             ),
             child: Row(
               mainAxisSize: MainAxisSize.min,
@@ -1645,18 +1719,18 @@ class _AccentColorCard extends StatelessWidget {
                   width: 12.0,
                   height: 12.0,
                   decoration: BoxDecoration(
-                    color: option.color,
+                    color: widget.option.color,
                     shape: BoxShape.circle,
                   ),
                 ),
                 const SizedBox(width: 6.0),
                 Text(
-                  option.label,
+                  widget.option.label,
                   style: LyraTypography.small(tokens).copyWith(
-                    fontWeight: isSelected
+                    fontWeight: widget.isSelected
                         ? FontWeight.w600
                         : FontWeight.normal,
-                    color: isSelected ? tokens.text : tokens.textMuted,
+                    color: widget.isSelected ? tokens.text : tokens.textMuted,
                   ),
                 ),
               ],

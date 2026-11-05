@@ -225,8 +225,8 @@ void main() {
 
       expect(find.byKey(const Key('sidebar_resize_handle')), findsOneWidget);
 
-      // Toggle collapse via Collapse sidebar tooltip
-      final collapseBtn = find.byTooltip('Collapse sidebar');
+      // Toggle collapse via Toggle Sidebar tooltip
+      final collapseBtn = find.byTooltip('Toggle Sidebar  Ctrl+B');
       expect(collapseBtn, findsOneWidget);
       await tester.tap(collapseBtn);
       await tester.pumpAndSettle();

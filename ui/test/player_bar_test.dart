@@ -405,12 +405,12 @@ void main() {
       );
       await tester.pump();
 
-      // 1. Dark Mode: PlayerBar container background is zinc900 (tokens.card)
+      // 1. Dark Mode: PlayerBar container background is charcoal850 (tokens.card)
       final playerBarContainerDark = tester.widget<Container>(
         find.byType(Container).first,
       );
       final darkDeco = playerBarContainerDark.decoration as BoxDecoration;
-      expect(darkDeco.color, equals(LyraColors.zinc900));
+      expect(darkDeco.color, equals(LyraColors.charcoal850));
 
       // Switch to Light Mode (single frame 0ms)
       themeNotifier.value = ThemeMode.light;
@@ -607,12 +607,12 @@ void main() {
       await gesture.moveTo(tester.getCenter(playIconFinder));
       await tester.pump();
 
-      // On hover: circular background turns to tokens.accent (zinc800 in dark mode)
+      // On hover: circular background turns to tokens.accent (charcoalHover in dark mode)
       deco =
           tester.widget<Container>(playContainerFinder).decoration
               as BoxDecoration;
       expect(deco.shape, equals(BoxShape.circle));
-      expect(deco.color, equals(LyraColors.zinc800));
+      expect(deco.color, equals(LyraColors.charcoalHover));
 
       // Pointer moves away
       await gesture.moveTo(Offset.zero);

@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Tzu-Ting Lin
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
@@ -36,19 +37,36 @@ class LyraHeaderBar extends StatelessWidget {
   Widget build(BuildContext context) {
     final scope = LyraDesignSystemScope.of(context);
     final tokens = scope.tokens;
+    final shortcutLabel =
+        defaultTargetPlatform == TargetPlatform.macOS ? '⌘B' : 'Ctrl+B';
+    final sidebarTooltip = 'Toggle Sidebar  $shortcutLabel';
 
     return Container(
       height: 64.0,
       padding: const EdgeInsets.symmetric(horizontal: LyraSpacing.lg),
       decoration: BoxDecoration(
-        color: tokens.card,
+        color: tokens.background,
         border: Border(bottom: BorderSide(color: tokens.border, width: 1.0)),
       ),
       child: Row(
         children: [
+          // App Brand Title
+          Text(
+            'Lyra',
+            maxLines: 1,
+            softWrap: false,
+            overflow: TextOverflow.ellipsis,
+            style: LyraTypography.h4(tokens).copyWith(
+              fontWeight: FontWeight.w600,
+              letterSpacing: -0.2,
+            ),
+          ),
+
+          const SizedBox(width: LyraSpacing.sm),
+
           // Sidebar Toggle Button
           LyraTooltip(
-            message: isSidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar',
+            message: sidebarTooltip,
             child: LyraButton.ghost(
               size: LyraButtonSize.sm,
               width: 32.0,
@@ -63,7 +81,7 @@ class LyraHeaderBar extends StatelessWidget {
             ),
           ),
 
-          const SizedBox(width: LyraSpacing.md),
+          const SizedBox(width: LyraSpacing.lg),
 
           // Search Input
           Expanded(

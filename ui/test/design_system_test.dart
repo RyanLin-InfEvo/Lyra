@@ -65,13 +65,13 @@ void main() {
     test('LyraThemeTokens dark mode sets zinc palette correctly', () {
       final tokens = LyraThemeTokens.dark();
       expect(tokens.isDark, isTrue);
-      expect(tokens.background, equals(LyraColors.zinc950));
-      expect(tokens.card, equals(LyraColors.zinc900));
-      expect(tokens.border, equals(LyraColors.zinc800));
-      expect(tokens.text, equals(LyraColors.zinc50));
-      expect(tokens.textMuted, equals(LyraColors.zinc400));
-      expect(tokens.ring, equals(LyraColors.blue500));
-      expect(tokens.successForeground, equals(LyraColors.zinc950));
+      expect(tokens.background, equals(LyraColors.charcoal950));
+      expect(tokens.card, equals(LyraColors.charcoal850));
+      expect(tokens.border, equals(LyraColors.charcoal800));
+      expect(tokens.text, equals(LyraColors.softWhite));
+      expect(tokens.textMuted, equals(LyraColors.appleGray));
+      expect(tokens.ring, equals(const Color(0xFF007AFF)));
+      expect(tokens.successForeground, equals(LyraColors.charcoal950));
     });
 
     test('LyraThemeTokens light mode sets zinc light palette', () {
@@ -1161,14 +1161,10 @@ void main() {
 
         // Verify initial Dark Theme
         expect(currentTokens.isDark, isTrue);
-        expect(currentTokens.background, equals(LyraColors.zinc950));
-        expect(currentTokens.card, equals(LyraColors.zinc900));
-        expect(currentTokens.secondary, equals(LyraColors.zinc800));
+        expect(currentTokens.background, equals(LyraColors.charcoal950));
+        expect(currentTokens.card, equals(LyraColors.charcoal850));
+        expect(currentTokens.secondary, equals(LyraColors.charcoal750));
         expect(currentShadTheme.brightness, equals(Brightness.dark));
-        expect(
-          currentShadTheme.colorScheme.secondary,
-          equals(const ShadZincColorScheme.dark().secondary),
-        );
         expect(
           currentShadTheme.colorScheme.card,
           equals(const ShadZincColorScheme.dark().card),

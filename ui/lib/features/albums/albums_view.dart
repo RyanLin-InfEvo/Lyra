@@ -308,7 +308,7 @@ class _AlbumsViewState extends State<AlbumsView> {
                       Text('Albums', style: LyraTypography.h2(tokens)),
                       const SizedBox(height: LyraSpacing.xs),
                       Text(
-                        '${widget.albums.length} releases in master quality',
+                        '${widget.albums.length} releases',
                         style: LyraTypography.muted(tokens),
                       ),
                     ],

@@ -312,10 +312,6 @@ class _ArtistsViewState extends State<ArtistsView> {
                       ),
                     ],
                   ),
-                  const Spacer(),
-                  LyraBadge.secondary(
-                    child: Text('${widget.artists.length} Artists'),
-                  ),
                 ],
               ),
             ),

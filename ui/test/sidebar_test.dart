@@ -416,12 +416,12 @@ void main() {
       expect(find.text('Tracks'), findsNothing);
       expect(find.text('Collapse'), findsNothing);
 
-      // Centered icons check at dx = 31.5
+      // Centered icons check at dx = 31.5 (music logo icon removed from header)
       final musicIcon = find.descendant(
         of: sidebarFinder,
         matching: find.byIcon(LucideIcons.music),
       );
-      expect(tester.getCenter(musicIcon).dx, 31.5);
+      expect(musicIcon, findsNothing);
 
       final tracksIcon = find.descendant(
         of: sidebarFinder,
@@ -495,15 +495,15 @@ void main() {
       );
       await tester.pump();
 
-      // 1. Dark Mode: Inner Sidebar container background is zinc900 (tokens.card), active item text is zinc50
+      // 1. Dark Mode: Inner Sidebar container background is charcoal900 (tokens.sidebar), active item text is softWhite
       final darkInnerContainer = tester.widget<Container>(
         find.byKey(const Key('sidebar_inner_container')),
       );
       final darkDecoration = darkInnerContainer.decoration as BoxDecoration;
-      expect(darkDecoration.color, equals(LyraColors.zinc900));
+      expect(darkDecoration.color, equals(LyraColors.charcoal900));
 
       final activeTextDark = tester.widget<Text>(find.text('Tracks'));
-      expect(activeTextDark.style?.color, equals(LyraColors.zinc50));
+      expect(activeTextDark.style?.color, equals(LyraColors.softWhite));
 
       // Switch to Light Mode (single frame 0ms)
       themeNotifier.value = ThemeMode.light;
@@ -649,18 +649,18 @@ void main() {
       final selectedDec = selectedContainer.decoration as BoxDecoration;
       expect(
         selectedDec.color,
-        equals(LyraColors.zinc50.withValues(alpha: 0.15)),
+        equals(LyraColors.softWhite.withValues(alpha: 0.15)),
       );
       final selectedBorder = selectedDec.border as Border?;
       expect(
         selectedBorder?.top.color,
-        equals(LyraColors.zinc50.withValues(alpha: 0.65)),
+        equals(LyraColors.softWhite.withValues(alpha: 0.65)),
       );
 
       final selectedText = tester.widget<Text>(find.text('kpop'));
       expect(
         selectedText.style?.color,
-        equals(LyraColors.zinc50),
+        equals(LyraColors.softWhite),
       ); // tokens.primary in dark mode
       expect(selectedText.style?.fontWeight, equals(FontWeight.w600));
 
@@ -676,13 +676,13 @@ void main() {
       final unselectedDec = unselectedContainer.decoration as BoxDecoration;
       expect(
         unselectedDec.color,
-        isNot(equals(LyraColors.zinc50.withValues(alpha: 0.15))),
+        isNot(equals(LyraColors.softWhite.withValues(alpha: 0.15))),
       );
 
       final unselectedText = tester.widget<Text>(find.text('Audiophile'));
       expect(
         unselectedText.style?.color,
-        equals(LyraColors.zinc400),
+        equals(LyraColors.appleGray),
       ); // tokens.textMuted in dark mode
       expect(unselectedText.style?.fontWeight, equals(FontWeight.w500));
 
@@ -715,7 +715,7 @@ void main() {
             .first,
       );
       final lqDec = lowQualityContainer.decoration as BoxDecoration;
-      expect(lqDec.color, equals(LyraColors.zinc50.withValues(alpha: 0.15)));
+      expect(lqDec.color, equals(LyraColors.softWhite.withValues(alpha: 0.15)));
 
       final kpopContainer = tester.widget<AnimatedContainer>(
         find
@@ -728,7 +728,7 @@ void main() {
       final kpopDec = kpopContainer.decoration as BoxDecoration;
       expect(
         kpopDec.color,
-        isNot(equals(LyraColors.zinc50.withValues(alpha: 0.15))),
+        isNot(equals(LyraColors.softWhite.withValues(alpha: 0.15))),
       );
     },
   );
@@ -748,7 +748,7 @@ void main() {
 
       // 1. Group header contrast: opacity must be 1.0 (no alpha reduction on textMuted)
       final headerTextWidget = tester.widget<Text>(find.text('# artist'));
-      expect(headerTextWidget.style?.color, equals(LyraColors.zinc400));
+      expect(headerTextWidget.style?.color, equals(LyraColors.appleGray));
 
       // 2. Capsule height must be 28.0 (GEMINI.md mandated fixed geometry)
       final capsuleFinder = find

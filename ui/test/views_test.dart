@@ -99,6 +99,9 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('Musical Works'), findsOneWidget);
+      expect(find.text('${sampleWorks.length} compositions'), findsOneWidget);
+      expect(find.textContaining('(Tier 1)'), findsNothing);
+      expect(find.text('${sampleWorks.length} Works'), findsNothing);
       expect(find.text('Symphony No. 5 in C Minor'), findsOneWidget);
       expect(find.text('1804–1808'), findsOneWidget);
       expect(find.text('T-070.111.222-3'), findsOneWidget);
@@ -647,6 +650,13 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('Artists'), findsOneWidget);
+      expect(find.text('${sampleArtists.length} Artists'), findsNothing);
+      expect(
+        find.text(
+          '${sampleArtists.length} performers, composers, and ensembles',
+        ),
+        findsOneWidget,
+      );
       expect(find.text('Miles Davis'), findsOneWidget);
       expect(find.text('Trumpet / Composer'), findsOneWidget);
       expect(find.text('Pink Floyd'), findsOneWidget);
@@ -1037,7 +1047,8 @@ void main() {
         await tester.pumpAndSettle();
 
         expect(find.text('Albums'), findsOneWidget);
-        expect(find.text('1 releases in master quality'), findsOneWidget);
+        expect(find.text('1 releases'), findsOneWidget);
+        expect(find.text('1 releases in master quality'), findsNothing);
 
         // Verify redundant header total badge is eliminated
         expect(
