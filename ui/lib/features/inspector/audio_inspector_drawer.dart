@@ -33,6 +33,7 @@ import '../../design_system/widgets/lyra_dialog.dart';
 import '../../design_system/widgets/lyra_input.dart';
 import '../../design_system/widgets/lyra_skeleton.dart';
 import '../../design_system/widgets/lyra_spinner.dart';
+import '../../design_system/widgets/lyra_toast.dart';
 import '../../design_system/widgets/lyra_tooltip.dart';
 import '../models/asset.dart';
 import '../models/audio.dart';
@@ -1146,6 +1147,13 @@ class _AudioInspectorContentState extends State<AudioInspectorContent> {
         setState(() {
           _switchAudioErrorMessage = errorText;
         });
+        LyraToaster.maybeOf(context)?.show(
+          LyraToast(
+            title: 'Failed to switch active audio',
+            message: e.toString(),
+            variant: LyraToastVariant.destructive,
+          ),
+        );
         ScaffoldMessenger.maybeOf(context)?.showSnackBar(
           SnackBar(
             content: Text(errorText),

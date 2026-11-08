@@ -16,6 +16,7 @@ import '../../design_system/widgets/lyra_button.dart';
 import '../../design_system/widgets/lyra_dialog.dart';
 import '../../design_system/widgets/lyra_input.dart';
 import '../../design_system/widgets/lyra_spinner.dart';
+import '../../design_system/widgets/lyra_toast.dart';
 import '../albums/albums_view.dart';
 import '../artists/artists_view.dart';
 import '../audio/controllers/audio_device_controller.dart';
@@ -138,6 +139,8 @@ class AppShellState extends State<AppShell> {
   late Set<TrackColumn> _playlistVisibleColumns;
   late List<TrackColumn> _playlistColumnOrder;
   late TrackActivationMode _trackActivationMode;
+  late NotificationPosition _notificationPosition;
+  late final LyraToastController _toastController;
 
   // Playback State delegation
   Track? get _currentTrack => _playbackController.currentTrack;
@@ -238,6 +241,12 @@ class AppShellState extends State<AppShell> {
     _trackActivationMode =
         widget.preferencesService?.trackActivationMode ??
         TrackActivationMode.doubleClick;
+    _notificationPosition =
+        widget.preferencesService?.notificationPosition ??
+        NotificationPosition.bottomLeft;
+    _toastController = LyraToastController(
+      preferencesService: widget.preferencesService,
+    );
     widget.preferencesService?.addListener(_onPreferencesChanged);
     _initColumns();
     _isNowPlayingVisible = _isNowPlayingExpandedNotifier.value;
@@ -284,6 +293,10 @@ class AppShellState extends State<AppShell> {
     }
     if (_trackActivationMode != prefs.trackActivationMode) {
       _trackActivationMode = prefs.trackActivationMode;
+      needsRebuild = true;
+    }
+    if (_notificationPosition != prefs.notificationPosition) {
+      _notificationPosition = prefs.notificationPosition;
       needsRebuild = true;
     }
     final oldTrackOrder = _trackColumnOrder;
@@ -480,6 +493,7 @@ class AppShellState extends State<AppShell> {
     _inspectorWidthNotifier.dispose();
     _isNowPlayingExpandedNotifier.removeListener(_onNowPlayingExpandedChanged);
     _isNowPlayingExpandedNotifier.dispose();
+    _toastController.dispose();
     super.dispose();
   }
 
@@ -1727,10 +1741,16 @@ class AppShellState extends State<AppShell> {
 
     return Focus(
       autofocus: true,
-      child: Scaffold(
-        backgroundColor: tokens.background,
-        body: Column(
-          children: [
+      child: LyraToastScope(
+        controller: _toastController,
+        child: ScaffoldMessenger(
+          child: Scaffold(
+            backgroundColor: tokens.background,
+            body: Stack(
+              fit: StackFit.expand,
+              children: [
+                Column(
+                  children: [
             // Top Header Bar (Independent Top Layer across entire width)
             _buildHeader(),
 
@@ -2098,6 +2118,29 @@ class AppShellState extends State<AppShell> {
       ),
     ],
   ),
+  Positioned(
+    left: (_notificationPosition == NotificationPosition.bottomLeft ||
+            _notificationPosition == NotificationPosition.topLeft)
+        ? 20.0
+        : null,
+    right: (_notificationPosition == NotificationPosition.bottomRight ||
+            _notificationPosition == NotificationPosition.topRight)
+        ? 20.0
+        : null,
+    bottom: (_notificationPosition == NotificationPosition.bottomLeft ||
+            _notificationPosition == NotificationPosition.bottomRight)
+        ? 24.0
+        : null,
+    top: (_notificationPosition == NotificationPosition.topLeft ||
+            _notificationPosition == NotificationPosition.topRight)
+        ? 72.0
+        : null,
+    child: const LyraToastStack(),
+  ),
+],
+),
+),
+),
 ),
 );
   }

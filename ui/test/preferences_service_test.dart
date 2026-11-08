@@ -725,6 +725,91 @@ void main() {
     );
 
     test(
+      'notificationPosition getter and setter persist across SharedPreferences and InMemory',
+      () async {
+        SharedPreferences.setMockInitialValues({});
+        final prefs = await SharedPreferences.getInstance();
+        final service = SharedPreferencesService(prefs);
+
+        // Default
+        expect(service.notificationPosition, NotificationPosition.bottomLeft);
+
+        // Set to bottomRight
+        await service.setNotificationPosition(NotificationPosition.bottomRight);
+        expect(service.notificationPosition, NotificationPosition.bottomRight);
+
+        // Set to topLeft
+        await service.setNotificationPosition(NotificationPosition.topLeft);
+        expect(service.notificationPosition, NotificationPosition.topLeft);
+
+        // Fallbacks
+        SharedPreferences.setMockInitialValues({
+          SharedPreferencesService.keyNotificationPosition: 'invalid_pos',
+        });
+        final prefsInvalid = await SharedPreferences.getInstance();
+        final serviceInvalid = SharedPreferencesService(prefsInvalid);
+        expect(
+          serviceInvalid.notificationPosition,
+          NotificationPosition.bottomLeft,
+        );
+
+        // InMemory service
+        final inMemory = InMemoryPreferencesService();
+        expect(inMemory.notificationPosition, NotificationPosition.bottomLeft);
+        await inMemory.setNotificationPosition(NotificationPosition.topRight);
+        expect(inMemory.notificationPosition, NotificationPosition.topRight);
+      },
+    );
+
+    test(
+      'toastAutoDismiss, toastShowProgressBar, and toastDurationSeconds persist across SharedPreferences and InMemory',
+      () async {
+        SharedPreferences.setMockInitialValues({});
+        final prefs = await SharedPreferences.getInstance();
+        final service = SharedPreferencesService(prefs);
+
+        // Defaults
+        expect(service.toastAutoDismiss, isTrue);
+        expect(service.toastShowProgressBar, isTrue);
+        expect(service.toastDurationSeconds, 10);
+
+        // Set auto dismiss to false
+        await service.setToastAutoDismiss(false);
+        expect(service.toastAutoDismiss, isFalse);
+
+        // Set show progress bar to false
+        await service.setToastShowProgressBar(false);
+        expect(service.toastShowProgressBar, isFalse);
+
+        // Set duration to 25s
+        await service.setToastDurationSeconds(25);
+        expect(service.toastDurationSeconds, 25);
+
+        // Duration clamped to 1..60
+        await service.setToastDurationSeconds(100);
+        expect(service.toastDurationSeconds, 60);
+
+        await service.setToastDurationSeconds(-5);
+        expect(service.toastDurationSeconds, 1);
+
+        // InMemory defaults and setters
+        final inMemory = InMemoryPreferencesService();
+        expect(inMemory.toastAutoDismiss, isTrue);
+        expect(inMemory.toastShowProgressBar, isTrue);
+        expect(inMemory.toastDurationSeconds, 10);
+
+        await inMemory.setToastAutoDismiss(false);
+        expect(inMemory.toastAutoDismiss, isFalse);
+
+        await inMemory.setToastShowProgressBar(false);
+        expect(inMemory.toastShowProgressBar, isFalse);
+
+        await inMemory.setToastDurationSeconds(45);
+        expect(inMemory.toastDurationSeconds, 45);
+      },
+    );
+
+    test(
       'column lists return null on corrupted types or empty lists',
       () async {
         SharedPreferences.setMockInitialValues({

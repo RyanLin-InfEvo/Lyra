@@ -16,6 +16,7 @@ import '../../design_system/widgets/lyra_button.dart';
 import '../../design_system/widgets/lyra_card.dart';
 import '../../design_system/widgets/lyra_settings_layout.dart';
 import '../../design_system/widgets/lyra_switch.dart';
+import '../../design_system/widgets/lyra_toast.dart';
 import '../player/views/components/waveform_scrubber.dart';
 import 'services/preferences_service.dart';
 
@@ -85,7 +86,7 @@ const List<AccentColorOption> kAccentColorOptions = [
 ];
 
 /// Sub-navigation section identifiers.
-enum SettingsNavSection { appearance, waveform, interaction, shortcuts }
+enum SettingsNavSection { appearance, waveform, interaction, shortcuts, debug }
 
 /// Waveform settings target view.
 enum WaveformTarget { nowPlaying, inspector }
@@ -116,7 +117,15 @@ class _SettingsViewState extends State<SettingsView>
   late String _accentColor;
   late ThemeMode _themeMode;
   late TrackActivationMode _trackActivationMode;
+  late NotificationPosition _notificationPosition;
+  late bool _toastAutoDismiss;
+  late bool _toastShowProgressBar;
+  late int _toastDurationSeconds;
+  int _previewCount = 0;
   bool _isDragging = false;
+  bool _showDebugDestructiveBanner = false;
+  bool _showDebugWarningBanner = false;
+  bool _showDebugInfoBanner = false;
 
   int _minPercent(WaveformTarget target) => 0;
 
@@ -174,6 +183,11 @@ class _SettingsViewState extends State<SettingsView>
     _themeMode = prefs?.themeMode ?? ThemeMode.dark;
     _trackActivationMode =
         prefs?.trackActivationMode ?? TrackActivationMode.doubleClick;
+    _notificationPosition =
+        prefs?.notificationPosition ?? NotificationPosition.bottomLeft;
+    _toastAutoDismiss = prefs?.toastAutoDismiss ?? true;
+    _toastShowProgressBar = prefs?.toastShowProgressBar ?? true;
+    _toastDurationSeconds = prefs?.toastDurationSeconds ?? 10;
 
     final currentPts = _selectedTarget == WaveformTarget.nowPlaying
         ? _nowPlayingWaveformPoints
@@ -202,6 +216,10 @@ class _SettingsViewState extends State<SettingsView>
     final newAccent = prefs.accentColor;
     final newThemeMode = prefs.themeMode;
     final newTrackActivationMode = prefs.trackActivationMode;
+    final newNotificationPosition = prefs.notificationPosition;
+    final newToastAutoDismiss = prefs.toastAutoDismiss;
+    final newToastShowProgressBar = prefs.toastShowProgressBar;
+    final newToastDurationSeconds = prefs.toastDurationSeconds;
 
     if (_showNowPlayingWaveform != newShowNowPlaying ||
         _showInspectorWaveform != newShowInspector ||
@@ -213,7 +231,11 @@ class _SettingsViewState extends State<SettingsView>
         _inspectorWaveformHoverTimeGuide != newInspectorHover ||
         _accentColor != newAccent ||
         _themeMode != newThemeMode ||
-        _trackActivationMode != newTrackActivationMode) {
+        _trackActivationMode != newTrackActivationMode ||
+        _notificationPosition != newNotificationPosition ||
+        _toastAutoDismiss != newToastAutoDismiss ||
+        _toastShowProgressBar != newToastShowProgressBar ||
+        _toastDurationSeconds != newToastDurationSeconds) {
       setState(() {
         _showNowPlayingWaveform = newShowNowPlaying;
         _showInspectorWaveform = newShowInspector;
@@ -226,6 +248,10 @@ class _SettingsViewState extends State<SettingsView>
         _accentColor = newAccent;
         _themeMode = newThemeMode;
         _trackActivationMode = newTrackActivationMode;
+        _notificationPosition = newNotificationPosition;
+        _toastAutoDismiss = newToastAutoDismiss;
+        _toastShowProgressBar = newToastShowProgressBar;
+        _toastDurationSeconds = newToastDurationSeconds;
 
         final currentPts = _selectedTarget == WaveformTarget.nowPlaying
             ? _nowPlayingWaveformPoints
@@ -430,6 +456,12 @@ class _SettingsViewState extends State<SettingsView>
           label: 'Keyboard Shortcuts',
           icon: LucideIcons.keyboard,
           builder: (context) => _buildShortcutsSection(context, tokens),
+        ),
+        LyraSettingsSection<SettingsNavSection>(
+          id: SettingsNavSection.debug,
+          label: 'Debug & Diagnostics',
+          icon: LucideIcons.terminal,
+          builder: (context) => _buildDebugSection(context, tokens),
         ),
       ],
     );
@@ -989,7 +1021,274 @@ class _SettingsViewState extends State<SettingsView>
             ),
             tokens: tokens,
           ),
+          const SizedBox(height: LyraSpacing.lg),
+          Container(height: 1.0, color: tokens.border),
+          const SizedBox(height: LyraSpacing.lg),
+
+          _SettingRow(
+            title: 'Notification Placement',
+            description:
+                'Select screen corner where notifications appear. Click any quadrant to update placement and preview deck stacking.',
+            trailing: _buildNotificationPlacementGrid(tokens),
+            tokens: tokens,
+          ),
+          const SizedBox(height: LyraSpacing.lg),
+          Container(height: 1.0, color: tokens.border),
+          const SizedBox(height: LyraSpacing.lg),
+
+          _SettingRow(
+            title: 'Auto-dismiss notifications',
+            description:
+                'Automatically expire and dismiss notification cards after the configured timeout.',
+            trailing: LyraSwitch(
+              key: const Key('toast_auto_dismiss_switch'),
+              value: _toastAutoDismiss,
+              onChanged: (val) {
+                setState(() => _toastAutoDismiss = val);
+                widget.preferencesService?.setToastAutoDismiss(val);
+              },
+            ),
+            tokens: tokens,
+          ),
+          const SizedBox(height: LyraSpacing.lg),
+          Container(height: 1.0, color: tokens.border),
+          const SizedBox(height: LyraSpacing.lg),
+
+          _SettingRow(
+            title: 'Countdown progress bar',
+            description:
+                'Display a linear progress countdown bar at the bottom edge of active notification cards.',
+            trailing: Opacity(
+              opacity: _toastAutoDismiss ? 1.0 : 0.4,
+              child: IgnorePointer(
+                ignoring: !_toastAutoDismiss,
+                child: LyraSwitch(
+                  key: const Key('toast_progress_bar_switch'),
+                  value: _toastShowProgressBar,
+                  onChanged: (val) {
+                    setState(() => _toastShowProgressBar = val);
+                    widget.preferencesService?.setToastShowProgressBar(val);
+                    _handleProgressBarToggle(val);
+                  },
+                ),
+              ),
+            ),
+            tokens: tokens,
+          ),
+          const SizedBox(height: LyraSpacing.lg),
+          Container(height: 1.0, color: tokens.border),
+          const SizedBox(height: LyraSpacing.lg),
+
+          _SettingRow(
+            title: 'Dismiss timeout',
+            description:
+                'Number of seconds before notification cards automatically expire (1 to 60 seconds).',
+            trailing: Opacity(
+              opacity: _toastAutoDismiss ? 1.0 : 0.4,
+              child: IgnorePointer(
+                ignoring: !_toastAutoDismiss,
+                child: SizedBox(
+                  width: 220.0,
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: ShadSlider(
+                          key: const Key('toast_duration_slider'),
+                          min: 1.0,
+                          max: 60.0,
+                          initialValue: _toastDurationSeconds.toDouble(),
+                          onChanged: (val) {
+                            final secs = val.round().clamp(1, 60);
+                            setState(() => _toastDurationSeconds = secs);
+                            widget.preferencesService
+                                ?.setToastDurationSeconds(secs);
+                          },
+                        ),
+                      ),
+                      const SizedBox(width: 10.0),
+                      Container(
+                        width: 36.0,
+                        alignment: Alignment.centerRight,
+                        child: Text(
+                          '${_toastDurationSeconds}s',
+                          style: LyraTypography.mono(tokens, fontSize: 12.0)
+                              .copyWith(
+                            fontWeight: FontWeight.w600,
+                            color: tokens.text,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+            tokens: tokens,
+          ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildNotificationPlacementGrid(LyraThemeTokens tokens) {
+    return Container(
+      width: 140.0,
+      height: 90.0,
+      padding: const EdgeInsets.all(4.0),
+      decoration: BoxDecoration(
+        color: tokens.card,
+        borderRadius: BorderRadius.circular(6.0),
+        border: Border.all(color: tokens.border, width: 1.0),
+      ),
+      child: Column(
+        children: [
+          Expanded(
+            child: Row(
+              children: [
+                Expanded(
+                  child: _buildQuadrantButton(
+                    NotificationPosition.topLeft,
+                    'TL',
+                    Alignment.topLeft,
+                    tokens,
+                  ),
+                ),
+                const SizedBox(width: 4.0),
+                Expanded(
+                  child: _buildQuadrantButton(
+                    NotificationPosition.topRight,
+                    'TR',
+                    Alignment.topRight,
+                    tokens,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 4.0),
+          Expanded(
+            child: Row(
+              children: [
+                Expanded(
+                  child: _buildQuadrantButton(
+                    NotificationPosition.bottomLeft,
+                    'BL',
+                    Alignment.bottomLeft,
+                    tokens,
+                  ),
+                ),
+                const SizedBox(width: 4.0),
+                Expanded(
+                  child: _buildQuadrantButton(
+                    NotificationPosition.bottomRight,
+                    'BR',
+                    Alignment.bottomRight,
+                    tokens,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildQuadrantButton(
+    NotificationPosition pos,
+    String label,
+    Alignment pillAlign,
+    LyraThemeTokens tokens,
+  ) {
+    final isSelected = _notificationPosition == pos;
+
+    return ShadTooltip(
+      builder: (context) => Text(pos.label),
+      child: MouseRegion(
+        cursor: SystemMouseCursors.click,
+        child: GestureDetector(
+          key: Key('placement_quadrant_${pos.name}'),
+          behavior: HitTestBehavior.opaque,
+          onTap: () => _handleSelectNotificationPosition(pos),
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 150),
+            padding: const EdgeInsets.all(4.0),
+            decoration: BoxDecoration(
+              color: isSelected
+                  ? tokens.primary.withValues(alpha: 0.15)
+                  : tokens.secondary.withValues(alpha: 0.35),
+              borderRadius: BorderRadius.circular(4.0),
+              border: Border.all(
+                color: isSelected
+                    ? tokens.primary
+                    : tokens.border.withValues(alpha: 0.5),
+                width: isSelected ? 1.5 : 1.0,
+              ),
+            ),
+            child: Stack(
+              children: [
+                Align(
+                  alignment: pillAlign,
+                  child: Container(
+                    width: 14.0,
+                    height: 6.0,
+                    decoration: BoxDecoration(
+                      color: isSelected
+                          ? tokens.primary
+                          : tokens.textMuted.withValues(alpha: 0.4),
+                      borderRadius: BorderRadius.circular(2.0),
+                    ),
+                  ),
+                ),
+                Center(
+                  child: Text(
+                    label,
+                    style: LyraTypography.mono(tokens, fontSize: 10.0).copyWith(
+                      fontWeight:
+                          isSelected ? FontWeight.w700 : FontWeight.w500,
+                      color: isSelected ? tokens.primary : tokens.textMuted,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _handleSelectNotificationPosition(NotificationPosition pos) {
+    setState(() => _notificationPosition = pos);
+    widget.preferencesService?.setNotificationPosition(pos);
+
+    _previewCount++;
+    final toaster = LyraToaster.maybeOf(context);
+    toaster?.show(
+      LyraToast(
+        id: 'preview_toast_$_previewCount',
+        title: 'Preview: ${pos.label}',
+        tag: 'Deck #$_previewCount',
+        message: 'Placement set to ${pos.label}. Tap again to test stacking.',
+        variant: LyraToastVariant.success,
+        autoDismiss: true,
+      ),
+    );
+  }
+
+  void _handleProgressBarToggle(bool enabled) {
+    _previewCount++;
+    final toaster = LyraToaster.maybeOf(context);
+    toaster?.show(
+      LyraToast(
+        id: 'preview_toast_$_previewCount',
+        title: enabled ? 'Progress Bar Enabled' : 'Progress Bar Disabled',
+        tag: 'Preview',
+        message: enabled
+            ? 'Countdown progress bar is now active on notification cards.'
+            : 'Countdown progress bar is now hidden.',
+        variant: LyraToastVariant.info,
+        autoDismiss: true,
       ),
     );
   }
@@ -1045,6 +1344,429 @@ class _SettingsViewState extends State<SettingsView>
               ('Cmd / Ctrl + ,', 'Open Preferences / Settings'),
             ],
           ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDebugSection(BuildContext context, LyraThemeTokens tokens) {
+    return LyraCard(
+      padding: const EdgeInsets.all(LyraSpacing.lg),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(LucideIcons.terminal, size: 20.0, color: tokens.primary),
+              const SizedBox(width: LyraSpacing.sm),
+              Text('Debug & UI Diagnostics', style: LyraTypography.h3(tokens)),
+            ],
+          ),
+          const SizedBox(height: LyraSpacing.xs),
+          Text(
+            'Interactive testing workbench for transient and persistent notification patterns.',
+            style: LyraTypography.muted(tokens),
+          ),
+          const SizedBox(height: LyraSpacing.lg),
+
+          // 1. Floating SnackBars
+          Text(
+            'Floating Notification (SnackBar)',
+            style: LyraTypography.p(tokens).copyWith(fontWeight: FontWeight.w600),
+          ),
+          const SizedBox(height: LyraSpacing.xs),
+          Text(
+            'Global floating notification anchored at the bottom of the window. Automatically dismisses after a timeout.',
+            style: LyraTypography.muted(tokens),
+          ),
+          const SizedBox(height: LyraSpacing.md),
+          Wrap(
+            spacing: LyraSpacing.md,
+            runSpacing: LyraSpacing.sm,
+            children: [
+              LyraButton.outline(
+                key: const Key('debug_trigger_error_snackbar'),
+                size: LyraButtonSize.sm,
+                onPressed: () {
+                  ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+                    SnackBar(
+                      content: Row(
+                        children: [
+                          Icon(
+                            LucideIcons.alertCircle,
+                            size: 16.0,
+                            color: tokens.destructiveForeground,
+                          ),
+                          const SizedBox(width: LyraSpacing.sm),
+                          Expanded(
+                            child: Text(
+                              'Sample Error SnackBar: Failed to switch audio endpoint (Connection timeout).',
+                              style: LyraTypography.small(tokens).copyWith(
+                                color: tokens.destructiveForeground,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      backgroundColor: tokens.destructive,
+                      behavior: SnackBarBehavior.floating,
+                      duration: const Duration(seconds: 4),
+                    ),
+                  );
+                },
+                child: const Text('Trigger Error SnackBar'),
+              ),
+              LyraButton.outline(
+                key: const Key('debug_trigger_info_snackbar'),
+                size: LyraButtonSize.sm,
+                onPressed: () {
+                  ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+                    SnackBar(
+                      content: const Text(
+                        'Sample Info SnackBar: Metadata successfully updated and committed to CAS pool.',
+                      ),
+                      behavior: SnackBarBehavior.floating,
+                      duration: const Duration(seconds: 3),
+                    ),
+                  );
+                },
+                child: const Text('Trigger Info SnackBar'),
+              ),
+            ],
+          ),
+
+          const SizedBox(height: LyraSpacing.lg),
+          Container(height: 1.0, color: tokens.border),
+          const SizedBox(height: LyraSpacing.lg),
+
+          // 2. TradingView-Style Toast Stack (Non-blocking Overlay)
+          Text(
+            'Toast Stack Notification (TradingView Style)',
+            style: LyraTypography.p(tokens).copyWith(fontWeight: FontWeight.w600),
+          ),
+          const SizedBox(height: LyraSpacing.xs),
+          Text(
+            'Non-blocking floating notification deck anchored at the chosen screen corner. Overlays sidebar and control bar without obscuring center playback controls. Stacks cards automatically with count and expand/collapse actions.',
+            style: LyraTypography.muted(tokens),
+          ),
+          const SizedBox(height: LyraSpacing.md),
+          Wrap(
+            spacing: LyraSpacing.md,
+            runSpacing: LyraSpacing.sm,
+            children: [
+              LyraButton.outline(
+                key: const Key('debug_trigger_success_toast'),
+                size: LyraButtonSize.sm,
+                onPressed: () {
+                  LyraToaster.maybeOf(context)?.show(
+                    LyraToast(
+                      title: 'Stop Loss order modified on',
+                      tag: 'CRYPTO:BTCUSD',
+                      message: 'Sell 0.0001 at 62,250.36',
+                      variant: LyraToastVariant.success,
+                    ),
+                  );
+                },
+                child: const Text('Trigger Success Toast'),
+              ),
+              LyraButton.outline(
+                key: const Key('debug_trigger_error_toast'),
+                size: LyraButtonSize.sm,
+                onPressed: () {
+                  LyraToaster.maybeOf(context)?.show(
+                    LyraToast(
+                      title: 'Audio Output Stream Error',
+                      tag: 'CoreAudio',
+                      message:
+                          'Failed to negotiate hardware sample rate with external DAC.',
+                      variant: LyraToastVariant.destructive,
+                    ),
+                  );
+                },
+                child: const Text('Trigger Error Toast'),
+              ),
+              LyraButton.outline(
+                key: const Key('debug_trigger_warning_toast'),
+                size: LyraButtonSize.sm,
+                onPressed: () {
+                  LyraToaster.maybeOf(context)?.show(
+                    LyraToast(
+                      title: 'Exclusive Mode Disengaged',
+                      tag: 'Shared Buffer',
+                      message:
+                          'System audio mixer has taken control of the output endpoint.',
+                      variant: LyraToastVariant.warning,
+                    ),
+                  );
+                },
+                child: const Text('Trigger Warning Toast'),
+              ),
+              LyraButton.outline(
+                key: const Key('debug_trigger_batch_toasts'),
+                size: LyraButtonSize.sm,
+                onPressed: () {
+                  final toaster = LyraToaster.maybeOf(context);
+                  toaster?.show(
+                    LyraToast(
+                      id: 'batch_1_${DateTime.now().millisecondsSinceEpoch}',
+                      title: 'Market order executed on',
+                      tag: 'CRYPTO:BTCUSD',
+                      message: 'Sell 0.0001 at 75,914.40',
+                      variant: LyraToastVariant.success,
+                    ),
+                  );
+                  toaster?.show(
+                    LyraToast(
+                      id: 'batch_2_${DateTime.now().millisecondsSinceEpoch}',
+                      title: 'Market order placed on',
+                      tag: 'CRYPTO:BTCUSD',
+                      message: 'Sell 0.0001',
+                      variant: LyraToastVariant.warning,
+                    ),
+                  );
+                  toaster?.show(
+                    LyraToast(
+                      id: 'batch_3_${DateTime.now().millisecondsSinceEpoch}',
+                      title: 'Take Profit order cancelled on',
+                      tag: 'CRYPTO:BTCUSD',
+                      message: 'Sell 0.0001 at 86,206.05',
+                      variant: LyraToastVariant.destructive,
+                    ),
+                  );
+                },
+                child: const Text('Trigger 3 Toasts (Deck Stack)'),
+              ),
+              LyraButton.outline(
+                key: const Key('debug_clear_toasts'),
+                size: LyraButtonSize.sm,
+                onPressed: () {
+                  LyraToaster.maybeOf(context)?.dismissAll();
+                },
+                child: const Text('Clear All Toasts'),
+              ),
+            ],
+          ),
+
+          const SizedBox(height: LyraSpacing.lg),
+          Container(height: 1.0, color: tokens.border),
+          const SizedBox(height: LyraSpacing.lg),
+
+          // 3. Contextual Inline Banners
+          Text(
+            'Contextual Inline Banner',
+            style: LyraTypography.p(tokens).copyWith(fontWeight: FontWeight.w600),
+          ),
+          const SizedBox(height: LyraSpacing.xs),
+          Text(
+            'Persistent in-place banner embedded directly inside container workflows (such as the Audio Inspector drawer).',
+            style: LyraTypography.muted(tokens),
+          ),
+          const SizedBox(height: LyraSpacing.md),
+          Wrap(
+            spacing: LyraSpacing.md,
+            runSpacing: LyraSpacing.sm,
+            children: [
+              LyraButton.outline(
+                key: const Key('debug_toggle_destructive_banner'),
+                size: LyraButtonSize.sm,
+                onPressed: () {
+                  setState(() {
+                    _showDebugDestructiveBanner = !_showDebugDestructiveBanner;
+                  });
+                },
+                child: Text(
+                  _showDebugDestructiveBanner
+                      ? 'Hide Destructive Banner'
+                      : 'Show Destructive Banner',
+                ),
+              ),
+              LyraButton.outline(
+                key: const Key('debug_toggle_warning_banner'),
+                size: LyraButtonSize.sm,
+                onPressed: () {
+                  setState(() {
+                    _showDebugWarningBanner = !_showDebugWarningBanner;
+                  });
+                },
+                child: Text(
+                  _showDebugWarningBanner
+                      ? 'Hide Warning Banner'
+                      : 'Show Warning Banner',
+                ),
+              ),
+              LyraButton.outline(
+                key: const Key('debug_toggle_info_banner'),
+                size: LyraButtonSize.sm,
+                onPressed: () {
+                  setState(() {
+                    _showDebugInfoBanner = !_showDebugInfoBanner;
+                  });
+                },
+                child: Text(
+                  _showDebugInfoBanner ? 'Hide Info Banner' : 'Show Info Banner',
+                ),
+              ),
+            ],
+          ),
+
+          if (_showDebugDestructiveBanner) ...[
+            const SizedBox(height: LyraSpacing.md),
+            Container(
+              key: const Key('debug_destructive_banner'),
+              padding: const EdgeInsets.symmetric(
+                horizontal: LyraSpacing.md,
+                vertical: LyraSpacing.sm,
+              ),
+              decoration: BoxDecoration(
+                color: tokens.destructive.withValues(alpha: 0.1),
+                borderRadius: LyraRadius.smRadius,
+                border: Border.all(
+                  color: tokens.destructive.withValues(alpha: 0.3),
+                  width: 1.0,
+                ),
+              ),
+              child: Row(
+                children: [
+                  Icon(
+                    LucideIcons.alertCircle,
+                    size: 16.0,
+                    color: tokens.destructive,
+                  ),
+                  const SizedBox(width: LyraSpacing.sm),
+                  Expanded(
+                    child: Text(
+                      'Sample Destructive Banner: Failed to switch active audio: Connection refused (endpoint unavailable).',
+                      style: LyraTypography.small(tokens).copyWith(
+                        color: tokens.destructive,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: LyraSpacing.sm),
+                  LyraButton.ghost(
+                    key: const Key('debug_dismiss_destructive_banner'),
+                    size: LyraButtonSize.sm,
+                    height: 24.0,
+                    padding: const EdgeInsets.symmetric(horizontal: 4.0),
+                    onPressed: () {
+                      setState(() => _showDebugDestructiveBanner = false);
+                    },
+                    child: Icon(
+                      LucideIcons.x,
+                      size: 14.0,
+                      color: tokens.textMuted,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+
+          if (_showDebugWarningBanner) ...[
+            const SizedBox(height: LyraSpacing.md),
+            Container(
+              key: const Key('debug_warning_banner'),
+              padding: const EdgeInsets.symmetric(
+                horizontal: LyraSpacing.md,
+                vertical: LyraSpacing.sm,
+              ),
+              decoration: BoxDecoration(
+                color: tokens.warning.withValues(alpha: 0.1),
+                borderRadius: LyraRadius.smRadius,
+                border: Border.all(
+                  color: tokens.warning.withValues(alpha: 0.3),
+                  width: 1.0,
+                ),
+              ),
+              child: Row(
+                children: [
+                  Icon(
+                    LucideIcons.triangleAlert,
+                    size: 16.0,
+                    color: tokens.warning,
+                  ),
+                  const SizedBox(width: LyraSpacing.sm),
+                  Expanded(
+                    child: Text(
+                      'Sample Warning Banner: Audio engine restart required for exclusive mode changes.',
+                      style: LyraTypography.small(tokens).copyWith(
+                        color: tokens.warning,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: LyraSpacing.sm),
+                  LyraButton.ghost(
+                    key: const Key('debug_dismiss_warning_banner'),
+                    size: LyraButtonSize.sm,
+                    height: 24.0,
+                    padding: const EdgeInsets.symmetric(horizontal: 4.0),
+                    onPressed: () {
+                      setState(() => _showDebugWarningBanner = false);
+                    },
+                    child: Icon(
+                      LucideIcons.x,
+                      size: 14.0,
+                      color: tokens.textMuted,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+
+          if (_showDebugInfoBanner) ...[
+            const SizedBox(height: LyraSpacing.md),
+            Container(
+              key: const Key('debug_info_banner'),
+              padding: const EdgeInsets.symmetric(
+                horizontal: LyraSpacing.md,
+                vertical: LyraSpacing.sm,
+              ),
+              decoration: BoxDecoration(
+                color: tokens.primary.withValues(alpha: 0.1),
+                borderRadius: LyraRadius.smRadius,
+                border: Border.all(
+                  color: tokens.primary.withValues(alpha: 0.3),
+                  width: 1.0,
+                ),
+              ),
+              child: Row(
+                children: [
+                  Icon(
+                    LucideIcons.info,
+                    size: 16.0,
+                    color: tokens.primary,
+                  ),
+                  const SizedBox(width: LyraSpacing.sm),
+                  Expanded(
+                    child: Text(
+                      'Sample Info Banner: CAS Pool indexing is running in background thread pool.',
+                      style: LyraTypography.small(tokens).copyWith(
+                        color: tokens.primary,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: LyraSpacing.sm),
+                  LyraButton.ghost(
+                    key: const Key('debug_dismiss_info_banner'),
+                    size: LyraButtonSize.sm,
+                    height: 24.0,
+                    padding: const EdgeInsets.symmetric(horizontal: 4.0),
+                    onPressed: () {
+                      setState(() => _showDebugInfoBanner = false);
+                    },
+                    child: Icon(
+                      LucideIcons.x,
+                      size: 14.0,
+                      color: tokens.textMuted,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
         ],
       ),
     );

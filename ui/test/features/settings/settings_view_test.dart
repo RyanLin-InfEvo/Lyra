@@ -13,14 +13,21 @@ import 'package:ui/design_system/factory/shadcn_factory.dart';
 import 'package:ui/design_system/tokens/lyra_tokens.dart';
 import 'package:ui/design_system/widgets/lyra_settings_layout.dart';
 import 'package:ui/design_system/widgets/lyra_switch.dart';
+import 'package:ui/design_system/widgets/lyra_toast.dart';
 import 'package:ui/features/player/views/components/waveform_scrubber.dart';
 import 'package:ui/features/settings/services/preferences_service.dart';
 import 'package:ui/features/settings/settings_view.dart';
 import 'package:ui/main.dart';
 
-Widget _buildSettingsTestApp(PreferencesService prefs, {Widget? child}) {
+Widget _buildSettingsTestApp(
+  PreferencesService prefs, {
+  Widget? child,
+  LyraToastController? toastController,
+}) {
   final themeModeNotifier = ValueNotifier<ThemeMode>(ThemeMode.dark);
   const factory = ShadcnFactory();
+  final effectiveController =
+      toastController ?? LyraToastController(preferencesService: prefs);
 
   return ShadApp(
     debugShowCheckedModeBanner: false,
@@ -43,8 +50,23 @@ Widget _buildSettingsTestApp(PreferencesService prefs, {Widget? child}) {
             factory: factory,
             tokens: tokens,
             themeModeNotifier: themeModeNotifier,
-            child: Scaffold(
-              body: child ?? SettingsView(preferencesService: prefs),
+            child: LyraToastScope(
+              controller: effectiveController,
+              child: ScaffoldMessenger(
+                child: Scaffold(
+                  body: Stack(
+                    fit: StackFit.expand,
+                    children: [
+                      child ?? SettingsView(preferencesService: prefs),
+                      const Positioned(
+                        left: 20,
+                        bottom: 24,
+                        child: LyraToastStack(),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
             ),
           ),
         );
@@ -1504,6 +1526,210 @@ void main() {
           reason:
               'Progress bar background must use tokens.border (zinc200, #E4E4E7) to satisfy WCAG contrast > 3:1 in light mode',
         );
+      },
+    );
+
+    testWidgets(
+      'SettingsView renders Debug & Diagnostics section and triggers banners and snackbars',
+      (tester) async {
+        final prefs = InMemoryPreferencesService();
+        final toastController = LyraToastController(preferencesService: prefs);
+        addTearDown(toastController.dispose);
+
+        tester.view.physicalSize = const Size(1920, 1080);
+        tester.view.devicePixelRatio = 1.0;
+        addTearDown(tester.view.resetPhysicalSize);
+
+        await tester.pumpWidget(
+          _buildSettingsTestApp(prefs, toastController: toastController),
+        );
+        await tester.pumpAndSettle();
+
+        // 1. Verify Debug navigation item exists
+        final debugNav = find.text('Debug & Diagnostics');
+        expect(debugNav, findsOneWidget);
+
+        // 2. Click to navigate to Debug section
+        await tester.tap(debugNav);
+        await tester.pumpAndSettle();
+
+        expect(find.text('Debug & UI Diagnostics'), findsOneWidget);
+        expect(
+          find.byKey(const Key('debug_trigger_error_snackbar')),
+          findsWidgets,
+        );
+        expect(
+          find.byKey(const Key('debug_trigger_info_snackbar')),
+          findsWidgets,
+        );
+
+        // 3. Trigger Error SnackBar
+        await tester.tap(
+          find.byKey(const Key('debug_trigger_error_snackbar')).first,
+        );
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 300));
+        expect(find.byType(SnackBar), findsOneWidget);
+        expect(find.textContaining('Sample Error SnackBar'), findsOneWidget);
+
+        // Clear snackbars for next test
+        ScaffoldMessenger.of(
+          tester.element(find.byType(SettingsView)),
+        ).clearSnackBars();
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 300));
+
+        // 4. Trigger Info SnackBar
+        await tester.tap(
+          find.byKey(const Key('debug_trigger_info_snackbar')).first,
+        );
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 300));
+        expect(find.byType(SnackBar), findsOneWidget);
+        expect(find.textContaining('Sample Info SnackBar'), findsOneWidget);
+
+        ScaffoldMessenger.of(
+          tester.element(find.byType(SettingsView)),
+        ).clearSnackBars();
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 300));
+
+        // 5. Toggle and dismiss Destructive Banner
+        expect(find.byKey(const Key('debug_destructive_banner')), findsNothing);
+        await tester.tap(
+          find.byKey(const Key('debug_toggle_destructive_banner')).first,
+        );
+        await tester.pumpAndSettle();
+        expect(
+          find.byKey(const Key('debug_destructive_banner')),
+          findsOneWidget,
+        );
+
+        await tester.tap(
+          find.byKey(const Key('debug_dismiss_destructive_banner')).first,
+        );
+        await tester.pumpAndSettle();
+        expect(find.byKey(const Key('debug_destructive_banner')), findsNothing);
+
+        // 6. Toggle and dismiss Warning Banner
+        expect(find.byKey(const Key('debug_warning_banner')), findsNothing);
+        await tester.tap(
+          find.byKey(const Key('debug_toggle_warning_banner')).first,
+        );
+        await tester.pumpAndSettle();
+        expect(find.byKey(const Key('debug_warning_banner')), findsOneWidget);
+
+        await tester.tap(
+          find.byKey(const Key('debug_dismiss_warning_banner')).first,
+        );
+        await tester.pumpAndSettle();
+        expect(find.byKey(const Key('debug_warning_banner')), findsNothing);
+
+        // 7. Toggle and dismiss Info Banner
+        expect(find.byKey(const Key('debug_info_banner')), findsNothing);
+        await tester.tap(
+          find.byKey(const Key('debug_toggle_info_banner')).first,
+        );
+        await tester.pumpAndSettle();
+        expect(find.byKey(const Key('debug_info_banner')), findsOneWidget);
+
+        await tester.tap(find.byKey(const Key('debug_dismiss_info_banner')).first);
+        await tester.pumpAndSettle();
+        expect(find.byKey(const Key('debug_info_banner')), findsNothing);
+
+        // 8. Trigger Toast notifications
+        await tester.tap(
+          find.byKey(const Key('debug_trigger_success_toast')).first,
+        );
+        await tester.pump(const Duration(milliseconds: 300));
+        expect(find.text('Stop Loss order modified on'), findsOneWidget);
+
+        await tester.tap(find.byKey(const Key('debug_clear_toasts')).first);
+        await tester.pumpAndSettle();
+        expect(find.text('Stop Loss order modified on'), findsNothing);
+      },
+    );
+
+    testWidgets(
+      'SettingsView switches notification placement via Interaction & Behavior section',
+      (tester) async {
+        final prefs = InMemoryPreferencesService();
+        final toastController = LyraToastController(preferencesService: prefs);
+        addTearDown(toastController.dispose);
+
+        tester.view.physicalSize = const Size(1920, 1080);
+        tester.view.devicePixelRatio = 1.0;
+        addTearDown(tester.view.resetPhysicalSize);
+
+        await tester.pumpWidget(
+          _buildSettingsTestApp(prefs, toastController: toastController),
+        );
+        await tester.pumpAndSettle();
+
+        // 1. Navigate to Interaction & Behavior tab
+        final interactionNav = find.text('Interaction & Behavior');
+        expect(interactionNav, findsOneWidget);
+        await tester.tap(interactionNav);
+        await tester.pumpAndSettle();
+
+        // 2. Verify Notification Placement row exists
+        expect(find.text('Notification Placement'), findsOneWidget);
+        expect(prefs.notificationPosition, NotificationPosition.bottomLeft);
+
+        // 3. Tap Bottom Right quadrant
+        final bottomRightQuadrant = find.byKey(
+          const Key('placement_quadrant_bottomRight'),
+        );
+        expect(bottomRightQuadrant, findsOneWidget);
+        await tester.tap(bottomRightQuadrant);
+        await tester.pump(const Duration(milliseconds: 300));
+        expect(prefs.notificationPosition, NotificationPosition.bottomRight);
+        expect(find.text('Preview: Bottom Right'), findsOneWidget);
+
+        // 4. Tap Top Left quadrant
+        final topLeftQuadrant = find.byKey(
+          const Key('placement_quadrant_topLeft'),
+        );
+        expect(topLeftQuadrant, findsOneWidget);
+        await tester.tap(topLeftQuadrant);
+        await tester.pump(const Duration(milliseconds: 300));
+        expect(prefs.notificationPosition, NotificationPosition.topLeft);
+        expect(find.text('Preview: Top Left'), findsOneWidget);
+
+        // 5. Test Auto-dismiss switch
+        expect(find.text('Auto-dismiss notifications'), findsOneWidget);
+        expect(prefs.toastAutoDismiss, isTrue);
+
+        // 6. Test Countdown progress bar switch
+        expect(find.text('Countdown progress bar'), findsOneWidget);
+        expect(prefs.toastShowProgressBar, isTrue);
+        final progressBarSwitch = find.byKey(
+          const Key('toast_progress_bar_switch'),
+        );
+        expect(progressBarSwitch, findsOneWidget);
+        await tester.tap(progressBarSwitch);
+        await tester.pump(const Duration(milliseconds: 300));
+        expect(prefs.toastShowProgressBar, isFalse);
+        expect(find.text('Progress Bar Disabled'), findsOneWidget);
+
+        // Turn progress bar back on
+        await tester.tap(progressBarSwitch);
+        await tester.pump(const Duration(milliseconds: 300));
+        expect(prefs.toastShowProgressBar, isTrue);
+        expect(find.text('Progress Bar Enabled'), findsOneWidget);
+
+        // 7. Test turning off auto-dismiss disables progress bar & slider
+        final autoDismissSwitch = find.byKey(
+          const Key('toast_auto_dismiss_switch'),
+        );
+        expect(autoDismissSwitch, findsOneWidget);
+        await tester.tap(autoDismissSwitch);
+        await tester.pumpAndSettle();
+        expect(prefs.toastAutoDismiss, isFalse);
+
+        // 8. Test Dismiss timeout row
+        expect(find.text('Dismiss timeout'), findsOneWidget);
+        expect(find.byKey(const Key('toast_duration_slider')), findsOneWidget);
       },
     );
   });

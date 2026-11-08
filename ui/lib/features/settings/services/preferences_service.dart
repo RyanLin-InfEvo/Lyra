@@ -29,6 +29,41 @@ enum TrackActivationMode {
   }
 }
 
+/// Screen placement options for floating toast notifications.
+enum NotificationPosition {
+  bottomLeft,
+  bottomRight,
+  topLeft,
+  topRight;
+
+  String get label {
+    switch (this) {
+      case NotificationPosition.bottomLeft:
+        return 'Bottom Left';
+      case NotificationPosition.bottomRight:
+        return 'Bottom Right';
+      case NotificationPosition.topLeft:
+        return 'Top Left';
+      case NotificationPosition.topRight:
+        return 'Top Right';
+    }
+  }
+
+  static NotificationPosition fromString(String? value) {
+    if (value == null) return NotificationPosition.bottomLeft;
+    final trimmed = value.trim();
+    if (trimmed.isEmpty) return NotificationPosition.bottomLeft;
+    for (final pos in NotificationPosition.values) {
+      if (pos.name == trimmed) return pos;
+    }
+    final normalized = trimmed.toLowerCase().replaceAll(RegExp(r'[-_\s]'), '');
+    for (final pos in NotificationPosition.values) {
+      if (pos.name.toLowerCase() == normalized) return pos;
+    }
+    return NotificationPosition.bottomLeft;
+  }
+}
+
 /// Abstract service defining persistence operations for application preferences and table states.
 abstract class PreferencesService extends ChangeNotifier {
   // Theme mode & Accent
@@ -125,6 +160,19 @@ abstract class PreferencesService extends ChangeNotifier {
   // Track activation mode
   TrackActivationMode get trackActivationMode;
   Future<void> setTrackActivationMode(TrackActivationMode mode);
+
+  // Notification placement & auto-dismiss
+  NotificationPosition get notificationPosition;
+  Future<void> setNotificationPosition(NotificationPosition position);
+
+  bool get toastAutoDismiss;
+  Future<void> setToastAutoDismiss(bool autoDismiss);
+
+  bool get toastShowProgressBar;
+  Future<void> setToastShowProgressBar(bool show);
+
+  int get toastDurationSeconds;
+  Future<void> setToastDurationSeconds(int seconds);
 }
 
 /// SharedPreferences implementation of [PreferencesService] for persistent desktop storage.
@@ -167,6 +215,10 @@ class SharedPreferencesService extends PreferencesService {
   static const String keyAudioDopEnabled = 'lyra_audio_dop_enabled';
   static const String keyCasAutoVerify = 'lyra_cas_auto_verify';
   static const String keyTrackActivationMode = 'lyra_track_activation_mode';
+  static const String keyNotificationPosition = 'lyra_notification_position';
+  static const String keyToastAutoDismiss = 'lyra_toast_auto_dismiss';
+  static const String keyToastShowProgressBar = 'lyra_toast_show_progress_bar';
+  static const String keyToastDurationSeconds = 'lyra_toast_duration_seconds';
 
   final SharedPreferences _prefs;
 
@@ -776,6 +828,85 @@ class SharedPreferencesService extends PreferencesService {
     } catch (_) {}
     notifyListeners();
   }
+
+  @override
+  NotificationPosition get notificationPosition {
+    try {
+      final val = _prefs.get(keyNotificationPosition);
+      if (val is String) {
+        return NotificationPosition.fromString(val);
+      }
+      if (val is int && val >= 0 && val < NotificationPosition.values.length) {
+        return NotificationPosition.values[val];
+      }
+      return NotificationPosition.bottomLeft;
+    } catch (_) {
+      return NotificationPosition.bottomLeft;
+    }
+  }
+
+  @override
+  Future<void> setNotificationPosition(NotificationPosition position) async {
+    try {
+      await _prefs.setString(keyNotificationPosition, position.name);
+    } catch (_) {}
+    notifyListeners();
+  }
+
+  @override
+  bool get toastAutoDismiss {
+    try {
+      final val = _prefs.get(keyToastAutoDismiss);
+      if (val is bool) return val;
+      return true;
+    } catch (_) {
+      return true;
+    }
+  }
+
+  @override
+  Future<void> setToastAutoDismiss(bool autoDismiss) async {
+    try {
+      await _prefs.setBool(keyToastAutoDismiss, autoDismiss);
+    } catch (_) {}
+    notifyListeners();
+  }
+
+  @override
+  bool get toastShowProgressBar {
+    try {
+      return _prefs.getBool(keyToastShowProgressBar) ?? true;
+    } catch (_) {
+      return true;
+    }
+  }
+
+  @override
+  Future<void> setToastShowProgressBar(bool show) async {
+    try {
+      await _prefs.setBool(keyToastShowProgressBar, show);
+    } catch (_) {}
+    notifyListeners();
+  }
+
+  @override
+  int get toastDurationSeconds {
+    try {
+      final val = _prefs.get(keyToastDurationSeconds);
+      if (val is int) return val.clamp(1, 60);
+      return 10;
+    } catch (_) {
+      return 10;
+    }
+  }
+
+  @override
+  Future<void> setToastDurationSeconds(int seconds) async {
+    try {
+      await _prefs.setInt(keyToastDurationSeconds, seconds.clamp(1, 60));
+    } catch (_) {}
+    notifyListeners();
+  }
 }
 
 /// In-memory implementation of [PreferencesService] for testing and transient state fallbacks.
@@ -806,6 +937,10 @@ class InMemoryPreferencesService extends PreferencesService {
   bool _audioDopEnabled;
   bool _casAutoVerify;
   TrackActivationMode _trackActivationMode;
+  NotificationPosition _notificationPosition;
+  bool _toastAutoDismiss;
+  bool _toastShowProgressBar;
+  int _toastDurationSeconds;
 
   InMemoryPreferencesService({
     ThemeMode themeMode = ThemeMode.dark,
@@ -836,6 +971,10 @@ class InMemoryPreferencesService extends PreferencesService {
     bool audioDopEnabled = false,
     bool casAutoVerify = true,
     TrackActivationMode trackActivationMode = TrackActivationMode.doubleClick,
+    NotificationPosition notificationPosition = NotificationPosition.bottomLeft,
+    bool toastAutoDismiss = true,
+    bool toastShowProgressBar = true,
+    int toastDurationSeconds = 10,
   }) : _themeMode = themeMode,
        _accentColor = accentColor,
        _isSidebarCollapsed = isSidebarCollapsed,
@@ -879,7 +1018,11 @@ class InMemoryPreferencesService extends PreferencesService {
        _audioBufferSize = audioBufferSize,
        _audioDopEnabled = audioDopEnabled,
        _casAutoVerify = casAutoVerify,
-       _trackActivationMode = trackActivationMode;
+       _trackActivationMode = trackActivationMode,
+       _notificationPosition = notificationPosition,
+       _toastAutoDismiss = toastAutoDismiss,
+       _toastShowProgressBar = toastShowProgressBar,
+       _toastDurationSeconds = toastDurationSeconds;
 
   @override
   ThemeMode get themeMode => _themeMode;
@@ -1162,6 +1305,42 @@ class InMemoryPreferencesService extends PreferencesService {
   @override
   Future<void> setTrackActivationMode(TrackActivationMode mode) async {
     _trackActivationMode = mode;
+    notifyListeners();
+  }
+
+  @override
+  NotificationPosition get notificationPosition => _notificationPosition;
+
+  @override
+  Future<void> setNotificationPosition(NotificationPosition position) async {
+    _notificationPosition = position;
+    notifyListeners();
+  }
+
+  @override
+  bool get toastAutoDismiss => _toastAutoDismiss;
+
+  @override
+  Future<void> setToastAutoDismiss(bool autoDismiss) async {
+    _toastAutoDismiss = autoDismiss;
+    notifyListeners();
+  }
+
+  @override
+  bool get toastShowProgressBar => _toastShowProgressBar;
+
+  @override
+  Future<void> setToastShowProgressBar(bool show) async {
+    _toastShowProgressBar = show;
+    notifyListeners();
+  }
+
+  @override
+  int get toastDurationSeconds => _toastDurationSeconds;
+
+  @override
+  Future<void> setToastDurationSeconds(int seconds) async {
+    _toastDurationSeconds = seconds.clamp(1, 60);
     notifyListeners();
   }
 }
