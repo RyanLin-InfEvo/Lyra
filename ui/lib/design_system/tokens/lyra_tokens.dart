@@ -23,15 +23,33 @@ class LyraColors {
   // Neutral Charcoal Palette (Pure Saturation 0: R == G == B)
   static const Color charcoal950 = Color(0xFF101010); // Main Canvas Background
   static const Color charcoal900 = Color(0xFF161616); // Sidebar Background
-  static const Color charcoal850 = Color(0xFF1B1B1B); // Card & Container Surface (101010 + 11)
-  static const Color charcoal800 = Color(0xFF242424); // Subtle 1px Border (161616 + 14)
-  static const Color charcoal750 = Color(0xFF323232); // Selected / Active Item Surface (161616 + 28)
-  static const Color charcoal700 = Color(0xFF383838); // Selected Item Hover Surface (161616 + 34)
-  static const Color charcoalHover = Color(0xFF1C1C1C); // Sidebar Item Hover Surface (161616 + 6)
-  static const Color charcoalSecondary = Color(0xFF222222); // Secondary Button / Pill Surface
-  static const Color softWhite = Color(0xFFEDEDED); // Softened Primary Text (Anti-glare, Saturation 0)
-  static const Color appleGray = Color(0xFF8E8E8E); // Apple Secondary Label Gray (Saturation 0)
-  static const Color charcoalMutedText = Color(0xFF8E8E8E); // Secondary Label Gray (Saturation 0)
+  static const Color charcoal850 = Color(
+    0xFF1B1B1B,
+  ); // Card & Container Surface (101010 + 11)
+  static const Color charcoal800 = Color(
+    0xFF242424,
+  ); // Subtle 1px Border (161616 + 14)
+  static const Color charcoal750 = Color(
+    0xFF323232,
+  ); // Selected / Active Item Surface (161616 + 28)
+  static const Color charcoal700 = Color(
+    0xFF383838,
+  ); // Selected Item Hover Surface (161616 + 34)
+  static const Color charcoalHover = Color(
+    0xFF1C1C1C,
+  ); // Sidebar Item Hover Surface (161616 + 6)
+  static const Color charcoalSecondary = Color(
+    0xFF222222,
+  ); // Secondary Button / Pill Surface
+  static const Color softWhite = Color(
+    0xFFEDEDED,
+  ); // Softened Primary Text (Anti-glare, Saturation 0)
+  static const Color appleGray = Color(
+    0xFF8E8E8E,
+  ); // Apple Secondary Label Gray (Saturation 0)
+  static const Color charcoalMutedText = Color(
+    0xFF8E8E8E,
+  ); // Secondary Label Gray (Saturation 0)
 
   // Emerald Palette (Success / CAS Verified)
   static const Color emerald50 = Color(0xFFECFDF5);
@@ -304,7 +322,8 @@ class LyraThemeTokens {
   }
 
   /// Sidebar background color ensuring receding navigation layer per Apple HIG.
-  Color get sidebar => isDark ? LyraColors.charcoal900 : const Color(0xFFFFFFFF);
+  Color get sidebar =>
+      isDark ? LyraColors.charcoal900 : const Color(0xFFFFFFFF);
 
   /// Elevated surface background color for selected list rows and cards.
   Color get surfaceElevated =>
@@ -322,7 +341,8 @@ class LyraThemeTokens {
   Color hoverOn(Color baseSurface) => baseSurface.hoverSurface(isDark: isDark);
 
   /// Computes active/selected surface color relative to [baseSurface].
-  Color activeOn(Color baseSurface) => baseSurface.activeSurface(isDark: isDark);
+  Color activeOn(Color baseSurface) =>
+      baseSurface.activeSurface(isDark: isDark);
 
   /// Subtle semi-transparent border color.
   Color get borderSubtle => border.withValues(alpha: 0.5);

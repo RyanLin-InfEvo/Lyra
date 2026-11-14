@@ -315,13 +315,17 @@ class _AudioInspectorContentState extends State<AudioInspectorContent> {
     widget.playbackController?.addListener(_onPlaybackStateChanged);
     widget.preferencesService?.addListener(_onPreferencesChanged);
 
-    _titleController = TextEditingController()..addListener(_onFormFieldChanged);
-    _artistController = TextEditingController()..addListener(_onFormFieldChanged);
-    _albumController = TextEditingController()..addListener(_onFormFieldChanged);
+    _titleController = TextEditingController()
+      ..addListener(_onFormFieldChanged);
+    _artistController = TextEditingController()
+      ..addListener(_onFormFieldChanged);
+    _albumController = TextEditingController()
+      ..addListener(_onFormFieldChanged);
     _yearController = TextEditingController()..addListener(_onFormFieldChanged);
-    _trackNumberController =
-        TextEditingController()..addListener(_onFormFieldChanged);
-    _genreController = TextEditingController()..addListener(_onFormFieldChanged);
+    _trackNumberController = TextEditingController()
+      ..addListener(_onFormFieldChanged);
+    _genreController = TextEditingController()
+      ..addListener(_onFormFieldChanged);
     _iswcController = TextEditingController()..addListener(_onFormFieldChanged);
     _isrcController = TextEditingController()..addListener(_onFormFieldChanged);
 

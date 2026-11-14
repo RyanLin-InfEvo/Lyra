@@ -17,6 +17,7 @@ import 'package:ui/design_system/widgets/lyra_toast.dart';
 import 'package:ui/features/player/views/components/waveform_scrubber.dart';
 import 'package:ui/features/settings/services/preferences_service.dart';
 import 'package:ui/features/settings/settings_view.dart';
+import 'package:ui/features/tracks/tracks_view.dart' show TrackColumn;
 import 'package:ui/main.dart';
 
 Widget _buildSettingsTestApp(
@@ -181,7 +182,7 @@ void main() {
     });
 
     testWidgets(
-      'Master-Detail layout has widened sub-navigation (250px) and maxWidth 1040 constrained content',
+      'Master-Detail layout has widened sub-navigation (250px) and maxWidth 1280 constrained content',
       (tester) async {
         tester.view.physicalSize = const Size(1920, 1080);
         tester.view.devicePixelRatio = 1.0;
@@ -209,14 +210,14 @@ void main() {
             .first;
         expect(tester.getSize(navContainer).width, 250.0);
 
-        // Right content constrained box has maxWidth 1040
+        // Right content constrained box has maxWidth 1280
         final constrainedBoxes = tester.widgetList<ConstrainedBox>(
           find.byType(ConstrainedBox),
         );
-        final has1040Constraint = constrainedBoxes.any(
-          (cb) => cb.constraints.maxWidth == 1040.0,
+        final has1280Constraint = constrainedBoxes.any(
+          (cb) => cb.constraints.maxWidth == 1280.0,
         );
-        expect(has1040Constraint, isTrue);
+        expect(has1280Constraint, isTrue);
 
         // Verify Layout & Workbench is completely removed
         expect(find.text('Layout & Workbench'), findsNothing);
@@ -762,6 +763,19 @@ void main() {
       await tester.pumpAndSettle();
 
       // Check Waveform section texts
+      for (final tw in tester.widgetList<Text>(find.byType(Text))) {
+        final data = tw.data ?? tw.textSpan?.toPlainText() ?? '';
+        expect(
+          emojiRegex.hasMatch(data),
+          isFalse,
+          reason: 'Emoji found: $data',
+        );
+      }
+
+      // Switch to Views & Layout section
+      await tester.tap(find.text('Views & Layout'));
+      await tester.pumpAndSettle();
+
       for (final tw in tester.widgetList<Text>(find.byType(Text))) {
         final data = tw.data ?? tw.textSpan?.toPlainText() ?? '';
         expect(
@@ -1433,8 +1447,9 @@ void main() {
           matching: find.byType(AnimatedContainer),
         );
         expect(animatedContainer, findsOneWidget);
-        final containerWidget =
-            tester.widget<AnimatedContainer>(animatedContainer);
+        final containerWidget = tester.widget<AnimatedContainer>(
+          animatedContainer,
+        );
         final deco = containerWidget.decoration as BoxDecoration;
         final border = deco.border as Border;
         final expectedTokens = deriveLyraThemeTokens(prefs.accentColor, true);
@@ -1457,8 +1472,9 @@ void main() {
         );
         expect(emeraldFad, findsOneWidget);
 
-        final emeraldFadWidget =
-            tester.widget<FocusableActionDetector>(emeraldFad);
+        final emeraldFadWidget = tester.widget<FocusableActionDetector>(
+          emeraldFad,
+        );
         emeraldFadWidget.focusNode!.requestFocus();
         await tester.pumpAndSettle();
         expect(emeraldFadWidget.focusNode!.hasFocus, isTrue);
@@ -1633,7 +1649,9 @@ void main() {
         await tester.pumpAndSettle();
         expect(find.byKey(const Key('debug_info_banner')), findsOneWidget);
 
-        await tester.tap(find.byKey(const Key('debug_dismiss_info_banner')).first);
+        await tester.tap(
+          find.byKey(const Key('debug_dismiss_info_banner')).first,
+        );
         await tester.pumpAndSettle();
         expect(find.byKey(const Key('debug_info_banner')), findsNothing);
 
@@ -1730,6 +1748,205 @@ void main() {
         // 8. Test Dismiss timeout row
         expect(find.text('Dismiss timeout'), findsOneWidget);
         expect(find.byKey(const Key('toast_duration_slider')), findsOneWidget);
+      },
+    );
+
+    testWidgets(
+      'Views & Layout configures view mode, header visibility, and attributes with live preview across all targets',
+      (tester) async {
+        tester.view.physicalSize = const Size(1280, 900);
+        tester.view.devicePixelRatio = 1.0;
+        addTearDown(tester.view.resetPhysicalSize);
+
+        final prefs = InMemoryPreferencesService();
+        await tester.pumpWidget(_buildSettingsTestApp(prefs));
+        await tester.pumpAndSettle();
+
+        // Navigate to Views & Layout
+        await tester.tap(find.text('Views & Layout'));
+        await tester.pumpAndSettle();
+
+        final previewFinder = find.byKey(
+          const ValueKey('view_layout_preview_card'),
+        );
+        expect(previewFinder, findsOneWidget);
+        expect(find.text('Target View'), findsNothing);
+        expect(find.text('Target Configuration'), findsNothing);
+        expect(find.text('Tracks Library · Detail'), findsNothing);
+        expect(find.byKey(const Key('preview_table_header')), findsOneWidget);
+        expect(
+          find.byKey(const Key('tracks_show_header_switch')),
+          findsOneWidget,
+        );
+
+        // Toggle Tracks header bar off and back on
+        await tester.tap(find.byKey(const Key('tracks_show_header_switch')));
+        await tester.pumpAndSettle();
+        expect(prefs.showTrackHeader, isFalse);
+        expect(find.byKey(const Key('preview_table_header')), findsNothing);
+
+        await tester.tap(find.byKey(const Key('tracks_show_header_switch')));
+        await tester.pumpAndSettle();
+        expect(prefs.showTrackHeader, isTrue);
+        expect(find.byKey(const Key('preview_table_header')), findsOneWidget);
+
+        // Toggle Tracks display mode to List
+        await tester.tap(find.byKey(const Key('settings_view_mode_list')));
+        await tester.pumpAndSettle();
+        expect(prefs.trackViewMode, TrackListViewMode.list);
+        expect(find.text('Tracks Library · List'), findsNothing);
+        final previewBox = tester.getRect(previewFinder);
+        final durationBox = tester.getRect(
+          find.descendant(of: previewFinder, matching: find.text('7:12')),
+        );
+        expect(previewBox.right - durationBox.right, lessThan(40.0));
+
+        // Toggle Genre attribute in List mode -> immediately appears in Preview
+        await tester.tap(find.byKey(const Key('settings_col_checkbox_genre')));
+        await tester.pumpAndSettle();
+        expect(
+          find.descendant(
+            of: previewFinder,
+            matching: find.textContaining('Acoustic Rock'),
+          ),
+          findsOneWidget,
+        );
+
+        // Switch to Playlist Detail target, toggle header bar and mode
+        await tester.tap(find.text('Playlist Detail'));
+        await tester.pumpAndSettle();
+        expect(find.text('Playlist Detail · Detail'), findsNothing);
+        expect(
+          find.byKey(const Key('playlist_show_header_switch')),
+          findsOneWidget,
+        );
+        await tester.tap(find.byKey(const Key('playlist_show_header_switch')));
+        await tester.pumpAndSettle();
+        expect(prefs.showPlaylistHeader, isFalse);
+        expect(find.byKey(const Key('preview_table_header')), findsNothing);
+
+        await tester.tap(find.byKey(const Key('settings_view_mode_list')));
+        await tester.pumpAndSettle();
+        expect(prefs.playlistViewMode, TrackListViewMode.list);
+        expect(find.text('Playlist Detail · List'), findsNothing);
+
+        // Switch to Up Next Queue target, toggle Show Header Bar & Detail mode
+        await tester.tap(find.text('Up Next Queue'));
+        await tester.pumpAndSettle();
+        expect(find.text('Up Next Queue · List'), findsNothing);
+        expect(
+          find.byKey(const Key('up_next_show_header_switch')),
+          findsOneWidget,
+        );
+        expect(find.byKey(const Key('preview_table_header')), findsOneWidget);
+
+        await tester.tap(find.byKey(const Key('up_next_show_header_switch')));
+        await tester.pumpAndSettle();
+        expect(prefs.showUpNextHeader, isFalse);
+        expect(find.byKey(const Key('preview_table_header')), findsNothing);
+
+        await tester.tap(find.byKey(const Key('settings_view_mode_detail')));
+        await tester.pumpAndSettle();
+        expect(prefs.upNextViewMode, TrackListViewMode.detail);
+        expect(find.text('Up Next Queue · Detail'), findsNothing);
+
+        // Verify ShadCheckbox uses LyraThemeTokens.primaryForeground for checkmark icon
+        final genreCheckbox = tester.widget<ShadCheckbox>(
+          find.byKey(const Key('settings_col_checkbox_genre')),
+        );
+        expect(genreCheckbox.icon, isA<Icon>());
+        expect(
+          (genreCheckbox.icon! as Icon).color,
+          LyraThemeTokens.dark().primaryForeground,
+        );
+
+        // Reset restores defaults (including column widths) on Tracks target
+        await tester.tap(find.text('Tracks Library'));
+        await tester.pumpAndSettle();
+        await prefs.setTrackColumnWidths({'title': 280.0});
+        expect(prefs.trackColumnWidths, {'title': 280.0});
+        await tester.tap(
+          find.byKey(const Key('settings_views_reset_columns_button')),
+        );
+        await tester.pumpAndSettle();
+        expect(prefs.trackColumnWidths, isEmpty);
+        expect(
+          find.descendant(
+            of: previewFinder,
+            matching: find.textContaining('Acoustic Rock'),
+          ),
+          findsNothing,
+        );
+
+        // Preview card in List mode with all 13 columns at 2.0x text scaling does not overflow
+        tester.view.physicalSize = const Size(800, 600);
+        tester.view.devicePixelRatio = 1.0;
+        addTearDown(tester.view.resetPhysicalSize);
+        tester.platformDispatcher.textScaleFactorTestValue = 2.0;
+        addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+        await prefs.setTrackViewMode(TrackListViewMode.list);
+        await prefs.setTrackVisibleColumns({
+          'index',
+          'cover',
+          'title',
+          'album',
+          'resolution',
+          'duration',
+          'work',
+          'iswc',
+          'year',
+          'musicbrainzId',
+          'isrc',
+          'genre',
+          'trackNumber',
+        });
+        await tester.pumpAndSettle();
+        expect(tester.takeException(), isNull);
+
+        // Narrow List-mode preview card (220px at 2.0x) omits Resolution header to match omitted badge
+        await tester.pumpWidget(
+          _buildSettingsTestApp(
+            prefs,
+            child: Center(
+              child: SizedBox(
+                width: 220,
+                child: ViewLayoutPreviewCard(
+                  target: ViewSettingsTarget.tracks,
+                  viewMode: TrackListViewMode.list,
+                  showHeader: true,
+                  orderedVisibleColumns: const [
+                    TrackColumn.index,
+                    TrackColumn.cover,
+                    TrackColumn.title,
+                    TrackColumn.resolution,
+                    TrackColumn.duration,
+                  ],
+                  tokens: LyraThemeTokens.dark(),
+                ),
+              ),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+        expect(tester.takeException(), isNull);
+        expect(
+          find.descendant(
+            of: find.byKey(const Key('preview_table_header')),
+            matching: find.text('Resolution'),
+          ),
+          findsNothing,
+        );
+        expect(
+          tester
+              .widget<Text>(
+                find.descendant(
+                  of: find.byKey(const Key('preview_table_header')),
+                  matching: find.text('Cover'),
+                ),
+              )
+              .maxLines,
+          1,
+        );
       },
     );
   });

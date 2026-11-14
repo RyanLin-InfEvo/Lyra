@@ -437,15 +437,43 @@ class ShadcnFactory extends LyraDesignSystemFactory {
     Widget? sublabel,
     EdgeInsetsGeometry? padding,
   }) {
-    return ShadCheckbox(
-      key: key,
-      value: value,
-      onChanged: onChanged,
-      enabled: enabled,
-      focusNode: focusNode,
-      label: label,
-      sublabel: sublabel,
-      padding: padding,
+    return Builder(
+      builder: (context) {
+        final tokens =
+            LyraDesignSystemScope.maybeOf(context)?.tokens ??
+            LyraThemeTokens.dark();
+        final uncheckedBg = tokens.isDark
+            ? LyraColors.charcoal700
+            : LyraColors.zinc100;
+        final borderColor = value
+            ? tokens.primary
+            : (tokens.isDark ? LyraColors.zinc600 : LyraColors.zinc300);
+
+        return ShadCheckbox(
+          key: key,
+          value: value,
+          onChanged: onChanged,
+          enabled: enabled,
+          focusNode: focusNode,
+          label: label,
+          sublabel: sublabel,
+          padding: padding,
+          color: tokens.primary,
+          uncheckedColor: uncheckedBg,
+          icon: Icon(
+            LucideIcons.check,
+            size: 12.0,
+            color: tokens.primaryForeground,
+          ),
+          decoration: ShadDecoration(
+            border: ShadBorder.all(
+              color: borderColor,
+              width: 1.0,
+              radius: BorderRadius.circular(4.0),
+            ),
+          ),
+        );
+      },
     );
   }
 

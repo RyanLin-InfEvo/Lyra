@@ -144,7 +144,9 @@ void main() {
       // Verify 'Lyra' title is rendered to the left of the toggle button
       expect(find.text('Lyra'), findsOneWidget);
       final lyraRect = tester.getRect(find.text('Lyra'));
-      final toggleRect = tester.getRect(find.byTooltip('Toggle Sidebar  Ctrl+B'));
+      final toggleRect = tester.getRect(
+        find.byTooltip('Toggle Sidebar  Ctrl+B'),
+      );
       expect(lyraRect.right, lessThan(toggleRect.left));
 
       await tester.tap(find.byIcon(LucideIcons.panelLeft));

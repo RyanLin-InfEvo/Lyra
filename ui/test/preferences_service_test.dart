@@ -1006,6 +1006,97 @@ void main() {
         expect(shared.inspectorWaveformPoints, 300);
       },
     );
+
+    test('TrackListViewMode.fromString handles case, null, and fallback', () {
+      expect(TrackListViewMode.fromString('list'), TrackListViewMode.list);
+      expect(TrackListViewMode.fromString('LIST'), TrackListViewMode.list);
+      expect(
+        TrackListViewMode.fromString(' detail '),
+        TrackListViewMode.detail,
+      );
+      expect(TrackListViewMode.fromString(null), TrackListViewMode.detail);
+      expect(
+        TrackListViewMode.fromString(
+          'unknown',
+          fallback: TrackListViewMode.list,
+        ),
+        TrackListViewMode.list,
+      );
+    });
+
+    test(
+      'View mode, header visibility, and Up Next column preferences persist and reset across SharedPreferences and InMemory',
+      () async {
+        final inMem = InMemoryPreferencesService();
+        expect(inMem.trackViewMode, TrackListViewMode.detail);
+        expect(inMem.playlistViewMode, TrackListViewMode.detail);
+        expect(inMem.upNextViewMode, TrackListViewMode.list);
+        expect(inMem.showTrackHeader, isTrue);
+        expect(inMem.showPlaylistHeader, isTrue);
+        expect(inMem.showUpNextHeader, isTrue);
+        expect(inMem.getUpNextColumnOrder(), isNull);
+        expect(inMem.getUpNextVisibleColumns(), isNull);
+
+        int notifyCount = 0;
+        inMem.addListener(() => notifyCount++);
+
+        await inMem.setTrackViewMode(TrackListViewMode.list);
+        await inMem.setPlaylistViewMode(TrackListViewMode.list);
+        await inMem.setUpNextViewMode(TrackListViewMode.detail);
+        await inMem.setShowTrackHeader(false);
+        await inMem.setShowPlaylistHeader(false);
+        await inMem.setShowUpNextHeader(false);
+        await inMem.setUpNextColumnOrder(['title', 'genre', 'duration']);
+        await inMem.setUpNextVisibleColumns({'title', 'genre'});
+
+        expect(notifyCount, 8);
+        expect(inMem.trackViewMode, TrackListViewMode.list);
+        expect(inMem.playlistViewMode, TrackListViewMode.list);
+        expect(inMem.upNextViewMode, TrackListViewMode.detail);
+        expect(inMem.showTrackHeader, isFalse);
+        expect(inMem.showPlaylistHeader, isFalse);
+        expect(inMem.showUpNextHeader, isFalse);
+        expect(inMem.getUpNextColumnOrder(), ['title', 'genre', 'duration']);
+        expect(inMem.getUpNextVisibleColumns(), {'title', 'genre'});
+
+        await inMem.resetTableColumns();
+        expect(inMem.getUpNextColumnOrder(), isNull);
+        expect(inMem.getUpNextVisibleColumns(), isNull);
+
+        SharedPreferences.setMockInitialValues({});
+        final prefs = await SharedPreferences.getInstance();
+        final shared = SharedPreferencesService(prefs);
+
+        expect(shared.trackViewMode, TrackListViewMode.detail);
+        expect(shared.playlistViewMode, TrackListViewMode.detail);
+        expect(shared.upNextViewMode, TrackListViewMode.list);
+        expect(shared.showTrackHeader, isTrue);
+        expect(shared.showPlaylistHeader, isTrue);
+        expect(shared.showUpNextHeader, isTrue);
+
+        await shared.setTrackViewMode(TrackListViewMode.list);
+        await shared.setPlaylistViewMode(TrackListViewMode.list);
+        await shared.setUpNextViewMode(TrackListViewMode.detail);
+        await shared.setShowTrackHeader(false);
+        await shared.setShowPlaylistHeader(false);
+        await shared.setShowUpNextHeader(false);
+        await shared.setUpNextColumnOrder(['cover', 'title', 'year']);
+        await shared.setUpNextVisibleColumns({'cover', 'title', 'year'});
+
+        expect(shared.trackViewMode, TrackListViewMode.list);
+        expect(shared.playlistViewMode, TrackListViewMode.list);
+        expect(shared.upNextViewMode, TrackListViewMode.detail);
+        expect(shared.showTrackHeader, isFalse);
+        expect(shared.showPlaylistHeader, isFalse);
+        expect(shared.showUpNextHeader, isFalse);
+        expect(shared.getUpNextColumnOrder(), ['cover', 'title', 'year']);
+        expect(shared.getUpNextVisibleColumns(), {'cover', 'title', 'year'});
+
+        await shared.resetTableColumns();
+        expect(shared.getUpNextColumnOrder(), isNull);
+        expect(shared.getUpNextVisibleColumns(), isNull);
+      },
+    );
   });
 }
 

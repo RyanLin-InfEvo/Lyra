@@ -794,8 +794,9 @@ void main() {
       expect(find.byTooltip('Toggle Sidebar  Ctrl+B'), findsOneWidget);
 
       final lyraPosExpanded = tester.getTopLeft(find.text('Lyra'));
-      final togglePosExpanded =
-          tester.getTopLeft(find.byTooltip('Toggle Sidebar  Ctrl+B'));
+      final togglePosExpanded = tester.getTopLeft(
+        find.byTooltip('Toggle Sidebar  Ctrl+B'),
+      );
 
       // 2. Toggle collapse manually on wide desktop
       await tester.tap(find.byTooltip('Toggle Sidebar  Ctrl+B'));
@@ -3679,5 +3680,82 @@ void main() {
         expect(find.byType(SettingsView), findsOneWidget);
       },
     );
+
+    testWidgets(
+      'AppShell + TracksView column drag resize commits once on drag end and reset without per-frame or duplicate writes',
+      (tester) async {
+        tester.view.physicalSize = const Size(1280, 800);
+        tester.view.devicePixelRatio = 1.0;
+        addTearDown(tester.view.resetPhysicalSize);
+
+        final prefs = _TrackWidthCountingPreferencesService();
+        await tester.pumpWidget(_buildAppShellTest(preferencesService: prefs));
+        await tester.pumpAndSettle();
+
+        final handleFinder = find.byKey(
+          const Key('column_resize_handle_title'),
+        );
+        final albumHandleFinder = find.byKey(
+          const Key('column_resize_handle_album'),
+        );
+        expect(handleFinder, findsOneWidget);
+        expect(albumHandleFinder, findsOneWidget);
+        expect(prefs.setTrackColumnWidthsCalls, 0);
+
+        // Double-tapping an unresized handle is a no-op (zero preference writes)
+        await tester.tap(albumHandleFinder);
+        await tester.pump(const Duration(milliseconds: 50));
+        await tester.tap(albumHandleFinder);
+        await tester.pumpAndSettle();
+        expect(prefs.setTrackColumnWidthsCalls, 0);
+
+        // A zero-delta gesture that ends without changing widths is a no-op
+        final noOpGesture = await tester.startGesture(
+          tester.getCenter(handleFinder),
+        );
+        await noOpGesture.moveBy(Offset.zero);
+        await tester.pump();
+        await noOpGesture.up();
+        await tester.pumpAndSettle();
+        expect(prefs.setTrackColumnWidthsCalls, 0);
+
+        final gesture = await tester.startGesture(
+          tester.getCenter(handleFinder),
+        );
+        await gesture.moveBy(const Offset(25.0, 0.0));
+        await tester.pump();
+        await gesture.moveBy(const Offset(25.0, 0.0));
+        await tester.pump();
+
+        // Zero preference writes while dragging
+        expect(prefs.setTrackColumnWidthsCalls, 0);
+
+        await gesture.up();
+        await tester.pumpAndSettle();
+
+        // Exactly one preference write on drag end
+        expect(prefs.setTrackColumnWidthsCalls, 1);
+        expect(prefs.trackColumnWidths['title'], isNotNull);
+
+        // Double-tap handle resets width with exactly one preference write
+        await tester.tap(handleFinder);
+        await tester.pump(const Duration(milliseconds: 50));
+        await tester.tap(handleFinder);
+        await tester.pumpAndSettle();
+
+        expect(prefs.setTrackColumnWidthsCalls, 2);
+        expect(prefs.trackColumnWidths.containsKey('title'), isFalse);
+      },
+    );
   });
+}
+
+class _TrackWidthCountingPreferencesService extends InMemoryPreferencesService {
+  int setTrackColumnWidthsCalls = 0;
+
+  @override
+  Future<void> setTrackColumnWidths(Map<String, double> widths) {
+    setTrackColumnWidthsCalls++;
+    return super.setTrackColumnWidths(widths);
+  }
 }

@@ -530,6 +530,7 @@ class _NowPlayingViewState extends State<NowPlayingView> {
                     key: const ValueKey('up_next_tab'),
                     child: UpNextTab(
                       playbackController: widget.playbackController,
+                      preferencesService: widget.preferencesService,
                       queueSource: widget.queueSource,
                       onAddToPlaylist: widget.onAddToPlaylist,
                       onInspectAudio: widget.onInspectAudio,

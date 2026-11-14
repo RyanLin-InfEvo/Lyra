@@ -3,6 +3,7 @@
 
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shadcn_ui/shadcn_ui.dart';
@@ -2860,6 +2861,301 @@ void main() {
         await tester.tap(find.text(sampleTracks[1].title!));
         await tester.pumpAndSettle();
         expect(playedTrack?.id, equals(sampleTracks[1].id));
+      },
+    );
+
+    testWidgets(
+      'TracksView renders Cover Art thumbnails and switches between Detail and List modes with attribute visibility',
+      (tester) async {
+        final prefs = InMemoryPreferencesService();
+        const richTracks = [
+          Track(
+            id: 'trk-rich-1',
+            title: 'Blue in Green',
+            artistName: 'Miles Davis',
+            albumTitle: 'Kind of Blue',
+            recordingYear: 1959,
+            genre: 'Modal Jazz',
+            durationMs: 327000,
+            format: 'FLAC',
+            sampleRate: 96000,
+            bitDepth: 24,
+          ),
+        ];
+
+        await tester.pumpWidget(
+          _buildTracksViewTest(tracks: richTracks, preferencesService: prefs),
+        );
+        await tester.pumpAndSettle();
+
+        // View mode toggle is hidden in TracksView (moved to Settings)
+        expect(
+          find.byKey(const Key('tracks_view_mode_toggle_list')),
+          findsNothing,
+        );
+        expect(
+          find.byKey(const Key('tracks_view_mode_toggle_detail')),
+          findsNothing,
+        );
+
+        // Detail mode is default and includes Cover header + thumbnail
+        expect(find.byKey(const Key('tracks_table_header')), findsOneWidget);
+        expect(find.text('Cover'), findsOneWidget);
+        expect(find.byType(TrackCoverThumbnail), findsOneWidget);
+        expect(prefs.trackViewMode, TrackListViewMode.detail);
+
+        // Switch to List mode via preference
+        await prefs.setTrackViewMode(TrackListViewMode.list);
+        await tester.pumpAndSettle();
+
+        expect(prefs.trackViewMode, TrackListViewMode.list);
+        final listHeader = find.byKey(const Key('tracks_table_header'));
+        expect(listHeader, findsOneWidget);
+        expect(
+          find.descendant(
+            of: listHeader,
+            matching: find.text('Title & Details'),
+          ),
+          findsOneWidget,
+        );
+        expect(
+          find.descendant(of: listHeader, matching: find.text('Album')),
+          findsNothing,
+        );
+        expect(find.byType(TrackCoverThumbnail), findsOneWidget);
+        expect(find.text('Blue in Green'), findsOneWidget);
+        expect(find.text('Miles Davis · Kind of Blue'), findsOneWidget);
+
+        // Enable Genre attribute and verify it renders in List mode
+        await prefs.setTrackVisibleColumns({
+          TrackColumn.index.name,
+          TrackColumn.cover.name,
+          TrackColumn.title.name,
+          TrackColumn.album.name,
+          TrackColumn.genre.name,
+          TrackColumn.duration.name,
+        });
+        await tester.pumpAndSettle();
+
+        expect(
+          find.text('Miles Davis · Kind of Blue · Modal Jazz'),
+          findsOneWidget,
+        );
+
+        // Switch back to Detail mode via preference
+        await prefs.setTrackViewMode(TrackListViewMode.detail);
+        await tester.pumpAndSettle();
+        expect(prefs.trackViewMode, TrackListViewMode.detail);
+        expect(find.text('Genre'), findsOneWidget);
+
+        // Hiding header bar via preference hides tracks_table_header while keeping right-click on tracks_view_header working
+        await prefs.setShowTrackHeader(false);
+        await tester.pumpAndSettle();
+        expect(find.byKey(const Key('tracks_table_header')), findsNothing);
+
+        await tester.tap(
+          find.byKey(const Key('tracks_view_header')),
+          buttons: kSecondaryMouseButton,
+          kind: PointerDeviceKind.mouse,
+        );
+        await tester.pumpAndSettle();
+        expect(find.byKey(const Key('tracks_columns_window')), findsOneWidget);
+      },
+    );
+
+    testWidgets(
+      'TracksView in Detail and List modes with all 13 columns enabled and multi-version badges renders at 2.0x text scaling on 800x600 without RenderFlex overflow and syncs reset',
+      (tester) async {
+        tester.view.physicalSize = const Size(1280, 800);
+        tester.view.devicePixelRatio = 1.0;
+        addTearDown(tester.view.resetPhysicalSize);
+
+        final prefs = InMemoryPreferencesService();
+
+        // Verify List-mode subtitle does not prematurely truncate long album names at desktop width (1.0x scale)
+        await prefs.setTrackViewMode(TrackListViewMode.list);
+        await tester.pumpWidget(
+          _buildTracksViewTest(
+            tracks: const [
+              Track(
+                id: 'trk-long-sub',
+                title: 'Pharaohs Dance',
+                artistName: 'Miles Davis',
+                albumTitle: 'Bitches Brew (Complete Columbia Sessions)',
+                durationMs: 1200000,
+              ),
+            ],
+            preferencesService: prefs,
+          ),
+        );
+        await tester.pumpAndSettle();
+        final subtitleRichText = tester.renderObject<RenderParagraph>(
+          find.textContaining('Bitches Brew (Complete Columbia Sessions)'),
+        );
+        expect(subtitleRichText.didExceedMaxLines, isFalse);
+
+        tester.view.physicalSize = const Size(800, 600);
+        tester.platformDispatcher.textScaleFactorTestValue = 2.0;
+        addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+
+        await prefs.setTrackViewMode(TrackListViewMode.detail);
+        await prefs.setTrackVisibleColumns(
+          TrackColumn.values.map((c) => c.name).toSet(),
+        );
+        await prefs.setTrackColumnWidths({'title': 380.0});
+
+        const richTracks = [
+          Track(
+            id: 'trk-all-cols-1',
+            title: 'Blue in Green',
+            artistName: 'Miles Davis',
+            albumTitle: 'Kind of Blue',
+            workTitle: 'Blue in Green Work',
+            recordingYear: 1959,
+            trackNumber: 3,
+            genre: 'Modal Jazz',
+            iswc: 'T-070.240.123-1',
+            isrc: 'USSM15900113',
+            musicbrainzId: 'mb-blue-in-green-1',
+            durationMs: 327000,
+            format: 'FLAC',
+            sampleRate: 96000,
+            bitDepth: 24,
+          ),
+        ];
+
+        await tester.pumpWidget(
+          _buildTracksViewTest(
+            tracks: richTracks,
+            audioVersionCounts: const {'trk-all-cols-1': 3},
+            preferencesService: prefs,
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        expect(tester.takeException(), isNull);
+        expect(find.text('Work'), findsOneWidget);
+        expect(find.text('ISWC'), findsOneWidget);
+        expect(find.text('Year'), findsOneWidget);
+        expect(find.text('MusicBrainz ID'), findsOneWidget);
+        expect(find.text('ISRC'), findsOneWidget);
+        expect(find.text('Genre'), findsOneWidget);
+        expect(find.text('Trk#'), findsOneWidget);
+        expect(
+          tester
+              .renderObject<RenderParagraph>(find.text('5:27'))
+              .didExceedMaxLines,
+          isFalse,
+        );
+        expect(
+          tester.getSize(find.byKey(const ValueKey('header_cell_title'))).width,
+          380.0,
+        );
+
+        await prefs.setTrackColumnWidths(const {});
+        await tester.pumpAndSettle();
+        expect(
+          tester.getSize(find.byKey(const ValueKey('header_cell_title'))).width,
+          lessThan(380.0),
+        );
+
+        // Switch to List mode with all 13 columns enabled at 2.0x text scaling
+        await prefs.setTrackViewMode(TrackListViewMode.list);
+        await tester.pumpAndSettle();
+        expect(tester.takeException(), isNull);
+        expect(find.textContaining('Trk 3'), findsOneWidget);
+
+        // Resetting table columns reverts mounted TracksView to defaults
+        await prefs.resetTableColumns();
+        await tester.pumpAndSettle();
+        expect(find.textContaining('Trk 3'), findsNothing);
+      },
+    );
+
+    testWidgets(
+      'TracksView handles narrow columns, long wrapping Detail metadata, narrow List badge clipping, and scaled List index widths at 2.0x scale',
+      (tester) async {
+        tester.view.physicalSize = const Size(800, 600);
+        tester.view.devicePixelRatio = 1.0;
+        addTearDown(tester.view.resetPhysicalSize);
+        tester.platformDispatcher.textScaleFactorTestValue = 2.0;
+        addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+
+        final prefs = InMemoryPreferencesService(
+          trackViewMode: TrackListViewMode.detail,
+          trackVisibleColumns: TrackColumn.values.map((c) => c.name).toSet(),
+          trackColumnWidths: const {
+            'title': 70.0,
+            'album': 70.0,
+            'work': 70.0,
+            'genre': 70.0,
+          },
+        );
+        const longWrapTrack = Track(
+          id: 'trk-long-wrap',
+          title:
+              'Very Long Symphony Movement Title That Should Ellipsize Cleanly',
+          artistName: 'Very Long Orchestral Performer Ensemble Name',
+          albumTitle: 'Complete Recorded Works Box Set Remastered Edition',
+          workTitle: 'Symphony No 9 in D Minor Op 125 Movement IV Finale',
+          genre: 'Classical Orchestral Choral',
+          recordingYear: 1963,
+          trackNumber: 105,
+          iswc: 'T-123.456.789-0',
+          isrc: 'DEUM76300001',
+          musicbrainzId: 'mb-long-symphony-identifier-999',
+          durationMs: 900000,
+          format: 'FLAC',
+          sampleRate: 192000,
+          bitDepth: 24,
+        );
+
+        await tester.pumpWidget(
+          _buildTracksViewTest(
+            tracks: const [longWrapTrack],
+            preferencesService: prefs,
+          ),
+        );
+        await tester.pumpAndSettle();
+        expect(tester.takeException(), isNull);
+        for (final label in const [
+          '#',
+          'Cover',
+          'Title & Artist',
+          'MusicBrainz ID',
+          'Time',
+        ]) {
+          expect(tester.widget<Text>(find.text(label)).maxLines, 1);
+        }
+
+        // List mode at 2.0x scales default index column header width from 40.0 to 80.0
+        await prefs.setTrackViewMode(TrackListViewMode.list);
+        await tester.pumpAndSettle();
+        expect(tester.takeException(), isNull);
+        final listHeaderHashWidth = tester
+            .getSize(
+              find
+                  .ancestor(of: find.text('#'), matching: find.byType(SizedBox))
+                  .first,
+            )
+            .width;
+        expect(listHeaderHashWidth, 80.0);
+
+        // Live resize of already-mounted List viewport to ultra-narrow 240px:
+        // hides resolution badge cleanly without ShadBadge padding overflow and shrinks '#' <= 20%
+        tester.view.physicalSize = const Size(240, 600);
+        await tester.pumpAndSettle();
+        expect(tester.takeException(), isNull);
+        expect(find.text('Resolution'), findsNothing);
+        expect(tester.widget<Text>(find.text('Cover')).maxLines, 1);
+        final narrowHashWidth = tester
+            .getSize(
+              find
+                  .ancestor(of: find.text('#'), matching: find.byType(SizedBox))
+                  .first,
+            )
+            .width;
+        expect(narrowHashWidth, lessThan(40.0));
       },
     );
   });

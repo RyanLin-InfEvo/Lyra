@@ -134,10 +134,15 @@ class AppShellState extends State<AppShell> {
   // Table Customization State
   late Set<TrackColumn> _trackVisibleColumns;
   late List<TrackColumn> _trackColumnOrder;
+  late Map<String, double> _trackColumnWidths;
+  late TrackListViewMode _trackViewMode;
+  late bool _showTrackHeader;
   late Set<WorkColumn> _workVisibleColumns;
   late List<WorkColumn> _workColumnOrder;
   late Set<TrackColumn> _playlistVisibleColumns;
   late List<TrackColumn> _playlistColumnOrder;
+  late TrackListViewMode _playlistViewMode;
+  late bool _showPlaylistHeader;
   late TrackActivationMode _trackActivationMode;
   late NotificationPosition _notificationPosition;
   late final LyraToastController _toastController;
@@ -301,17 +306,27 @@ class AppShellState extends State<AppShell> {
     }
     final oldTrackOrder = _trackColumnOrder;
     final oldTrackVisible = _trackVisibleColumns;
+    final oldTrackWidths = _trackColumnWidths;
+    final oldTrackViewMode = _trackViewMode;
+    final oldShowTrackHeader = _showTrackHeader;
     final oldWorkOrder = _workColumnOrder;
     final oldWorkVisible = _workVisibleColumns;
     final oldPlaylistOrder = _playlistColumnOrder;
     final oldPlaylistVisible = _playlistVisibleColumns;
+    final oldPlaylistViewMode = _playlistViewMode;
+    final oldShowPlaylistHeader = _showPlaylistHeader;
     _initColumns();
     if (!listEquals(oldTrackOrder, _trackColumnOrder) ||
         !setEquals(oldTrackVisible, _trackVisibleColumns) ||
+        !mapEquals(oldTrackWidths, _trackColumnWidths) ||
+        oldTrackViewMode != _trackViewMode ||
+        oldShowTrackHeader != _showTrackHeader ||
         !listEquals(oldWorkOrder, _workColumnOrder) ||
         !setEquals(oldWorkVisible, _workVisibleColumns) ||
         !listEquals(oldPlaylistOrder, _playlistColumnOrder) ||
-        !setEquals(oldPlaylistVisible, _playlistVisibleColumns)) {
+        !setEquals(oldPlaylistVisible, _playlistVisibleColumns) ||
+        oldPlaylistViewMode != _playlistViewMode ||
+        oldShowPlaylistHeader != _showPlaylistHeader) {
       needsRebuild = true;
     }
     if (needsRebuild) {
@@ -453,6 +468,16 @@ class AppShellState extends State<AppShell> {
         PlaylistDetailView.defaultVisibleColumns,
       );
     }
+
+    _trackColumnWidths = Map<String, double>.from(
+      widget.preferencesService?.trackColumnWidths ?? const {},
+    );
+    _trackViewMode =
+        widget.preferencesService?.trackViewMode ?? TrackListViewMode.detail;
+    _showTrackHeader = widget.preferencesService?.showTrackHeader ?? true;
+    _playlistViewMode =
+        widget.preferencesService?.playlistViewMode ?? TrackListViewMode.detail;
+    _showPlaylistHeader = widget.preferencesService?.showPlaylistHeader ?? true;
   }
 
   void _onPlaybackChanged() {
@@ -1308,17 +1333,29 @@ class AppShellState extends State<AppShell> {
             audioVersionCounts: _audioVersionCounts,
             visibleColumns: _trackVisibleColumns,
             columnOrder: _trackColumnOrder,
+            columnWidths: _trackColumnWidths,
+            viewMode: _trackViewMode,
+            showHeader: _showTrackHeader,
             onVisibleColumnsChanged: (columns) {
-              _trackVisibleColumns = columns;
+              setState(() {
+                _trackVisibleColumns = columns;
+              });
               widget.preferencesService?.setTrackVisibleColumns(
                 columns.map((c) => c.name).toSet(),
               );
             },
             onColumnOrderChanged: (order) {
-              _trackColumnOrder = order;
+              setState(() {
+                _trackColumnOrder = order;
+              });
               widget.preferencesService?.setTrackColumnOrder(
                 order.map((c) => c.name).toList(),
               );
+            },
+            onColumnWidthsChanged: (widths) {
+              setState(() {
+                _trackColumnWidths = Map<String, double>.from(widths);
+              });
             },
             onClearFilter: () => setState(() {
               _activeTrackFilter = null;
@@ -1363,13 +1400,17 @@ class AppShellState extends State<AppShell> {
             visibleColumns: _workVisibleColumns,
             columnOrder: _workColumnOrder,
             onVisibleColumnsChanged: (columns) {
-              _workVisibleColumns = columns;
+              setState(() {
+                _workVisibleColumns = columns;
+              });
               widget.preferencesService?.setWorkVisibleColumns(
                 columns.map((c) => c.name).toSet(),
               );
             },
             onColumnOrderChanged: (order) {
-              _workColumnOrder = order;
+              setState(() {
+                _workColumnOrder = order;
+              });
               widget.preferencesService?.setWorkColumnOrder(
                 order.map((c) => c.name).toList(),
               );
@@ -1533,16 +1574,22 @@ class AppShellState extends State<AppShell> {
                 isPlaying: _isPlaying,
                 visibleColumns: _playlistVisibleColumns,
                 columnOrder: _playlistColumnOrder,
+                viewMode: _playlistViewMode,
+                showHeader: _showPlaylistHeader,
                 onGoToAlbum: _navigateToAlbum,
                 onGoToArtist: _navigateToArtist,
                 onVisibleColumnsChanged: (columns) {
-                  _playlistVisibleColumns = columns;
+                  setState(() {
+                    _playlistVisibleColumns = columns;
+                  });
                   widget.preferencesService?.setPlaylistVisibleColumns(
                     columns.map((c) => c.name).toSet(),
                   );
                 },
                 onColumnOrderChanged: (order) {
-                  _playlistColumnOrder = order;
+                  setState(() {
+                    _playlistColumnOrder = order;
+                  });
                   widget.preferencesService?.setPlaylistColumnOrder(
                     order.map((c) => c.name).toList(),
                   );
@@ -1751,398 +1798,444 @@ class AppShellState extends State<AppShell> {
               children: [
                 Column(
                   children: [
-            // Top Header Bar (Independent Top Layer across entire width)
-            _buildHeader(),
+                    // Top Header Bar (Independent Top Layer across entire width)
+                    _buildHeader(),
 
-            // Lower Content Area (Sidebar on Left, Main Content + Player Bar on Right)
-            Expanded(
-              child: LayoutBuilder(
-                builder: (context, constraints) {
-                  final isCompact = constraints.maxWidth < 900;
-                  final effectiveSidebarCollapsed =
-                      _isSidebarCollapsed || isCompact;
+                    // Lower Content Area (Sidebar on Left, Main Content + Player Bar on Right)
+                    Expanded(
+                      child: LayoutBuilder(
+                        builder: (context, constraints) {
+                          final isCompact = constraints.maxWidth < 900;
+                          final effectiveSidebarCollapsed =
+                              _isSidebarCollapsed || isCompact;
 
-                  return Row(
-                    children: [
-                      // Sidebar (Left)
-                      ValueListenableBuilder<double>(
-                  valueListenable: _sidebarWidthNotifier,
-                  builder: (context, sidebarWidth, _) {
-                    return RepaintBoundary(
-                      child: LyraSidebar(
-                        expandedWidth: sidebarWidth,
-                        showRightBorder: true,
-                        currentTab: _currentTab,
-                        isCollapsed: effectiveSidebarCollapsed,
-                        playlists: _sidebarPlaylists,
-                        selectedPlaylistId: _selectedPlaylistId,
-                        onPlaylistSelected: (pl) {
-                          _isNowPlayingExpanded = false;
-                          setState(() {
-                            _selectedPlaylistId = pl.id;
-                            _selectedTagId = null;
-                            _selectedTagIds = {};
-                            _currentTab = AppTab.playlists;
-                          });
-                        },
-                        onPlaylistsHeaderSelected: () {
-                          _isNowPlayingExpanded = false;
-                          setState(() {
-                            _selectedPlaylistId = null;
-                            _selectedTagId = null;
-                            _selectedTagIds = {};
-                            _currentTab = AppTab.playlists;
-                          });
-                        },
-                        tags: _tags,
-                        selectedTagId: _selectedTagId,
-                        selectedTagIds: _selectedTagIds,
-                        onTagSelected: (tag) {
-                          _isNowPlayingExpanded = false;
-                          _filterByTag(tag);
-                        },
-                        onTagsHeaderSelected: () {
-                          _isNowPlayingExpanded = false;
-                          setState(() {
-                            _selectedTagId = null;
-                            _selectedTagIds = {};
-                            _selectedPlaylistId = null;
-                            _currentTab = AppTab.tags;
-                          });
-                        },
-                        selectedCasTab: _selectedCasTab,
-                        onCasSubTabSelected: (subTab) {
-                          _isNowPlayingExpanded = false;
-                          setState(() {
-                            _selectedPlaylistId = null;
-                            _selectedTagId = null;
-                            _selectedTagIds = {};
-                            _selectedCasTab = subTab;
-                            _currentTab = AppTab.casStorage;
-                          });
-                        },
-                        onCasHeaderSelected: () {
-                          _isNowPlayingExpanded = false;
-                          setState(() {
-                            _selectedPlaylistId = null;
-                            _selectedTagId = null;
-                            _selectedTagIds = {};
-                            _currentTab = AppTab.casStorage;
-                          });
-                        },
-                        onTabSelected: (tab) {
-                          _isNowPlayingExpanded = false;
-                          setState(() {
-                            _selectedTagId = null;
-                            _selectedTagIds = {};
-                            _activeTrackFilter = null;
-                            if (tab != AppTab.playlists) {
-                              _selectedPlaylistId = null;
-                            }
-                            _currentTab = tab;
-                          });
-                        },
-                        onSettingsPressed: _navigateToSettings,
-                        onToggleCollapse: _toggleSidebar,
-                        onResizeDelta: (delta) {
-                          _sidebarWidthNotifier.value =
-                              (_sidebarWidthNotifier.value + delta).clamp(
-                                160.0,
-                                420.0,
-                              );
-                        },
-                        onResizeEnd: () {
-                          widget.preferencesService?.setSidebarWidth(
-                            _sidebarWidthNotifier.value,
-                          );
-                        },
-                        onResetWidth: () {
-                          _sidebarWidthNotifier.value = 210.0;
-                          widget.preferencesService?.setSidebarWidth(210.0);
-                        },
-                      ),
-                    );
-                  },
-                ),
+                          return Row(
+                            children: [
+                              // Sidebar (Left)
+                              ValueListenableBuilder<double>(
+                                valueListenable: _sidebarWidthNotifier,
+                                builder: (context, sidebarWidth, _) {
+                                  return RepaintBoundary(
+                                    child: LyraSidebar(
+                                      expandedWidth: sidebarWidth,
+                                      showRightBorder: true,
+                                      currentTab: _currentTab,
+                                      isCollapsed: effectiveSidebarCollapsed,
+                                      playlists: _sidebarPlaylists,
+                                      selectedPlaylistId: _selectedPlaylistId,
+                                      onPlaylistSelected: (pl) {
+                                        _isNowPlayingExpanded = false;
+                                        setState(() {
+                                          _selectedPlaylistId = pl.id;
+                                          _selectedTagId = null;
+                                          _selectedTagIds = {};
+                                          _currentTab = AppTab.playlists;
+                                        });
+                                      },
+                                      onPlaylistsHeaderSelected: () {
+                                        _isNowPlayingExpanded = false;
+                                        setState(() {
+                                          _selectedPlaylistId = null;
+                                          _selectedTagId = null;
+                                          _selectedTagIds = {};
+                                          _currentTab = AppTab.playlists;
+                                        });
+                                      },
+                                      tags: _tags,
+                                      selectedTagId: _selectedTagId,
+                                      selectedTagIds: _selectedTagIds,
+                                      onTagSelected: (tag) {
+                                        _isNowPlayingExpanded = false;
+                                        _filterByTag(tag);
+                                      },
+                                      onTagsHeaderSelected: () {
+                                        _isNowPlayingExpanded = false;
+                                        setState(() {
+                                          _selectedTagId = null;
+                                          _selectedTagIds = {};
+                                          _selectedPlaylistId = null;
+                                          _currentTab = AppTab.tags;
+                                        });
+                                      },
+                                      selectedCasTab: _selectedCasTab,
+                                      onCasSubTabSelected: (subTab) {
+                                        _isNowPlayingExpanded = false;
+                                        setState(() {
+                                          _selectedPlaylistId = null;
+                                          _selectedTagId = null;
+                                          _selectedTagIds = {};
+                                          _selectedCasTab = subTab;
+                                          _currentTab = AppTab.casStorage;
+                                        });
+                                      },
+                                      onCasHeaderSelected: () {
+                                        _isNowPlayingExpanded = false;
+                                        setState(() {
+                                          _selectedPlaylistId = null;
+                                          _selectedTagId = null;
+                                          _selectedTagIds = {};
+                                          _currentTab = AppTab.casStorage;
+                                        });
+                                      },
+                                      onTabSelected: (tab) {
+                                        _isNowPlayingExpanded = false;
+                                        setState(() {
+                                          _selectedTagId = null;
+                                          _selectedTagIds = {};
+                                          _activeTrackFilter = null;
+                                          if (tab != AppTab.playlists) {
+                                            _selectedPlaylistId = null;
+                                          }
+                                          _currentTab = tab;
+                                        });
+                                      },
+                                      onSettingsPressed: _navigateToSettings,
+                                      onToggleCollapse: _toggleSidebar,
+                                      onResizeDelta: (delta) {
+                                        _sidebarWidthNotifier.value =
+                                            (_sidebarWidthNotifier.value +
+                                                    delta)
+                                                .clamp(160.0, 420.0);
+                                      },
+                                      onResizeEnd: () {
+                                        widget.preferencesService
+                                            ?.setSidebarWidth(
+                                              _sidebarWidthNotifier.value,
+                                            );
+                                      },
+                                      onResetWidth: () {
+                                        _sidebarWidthNotifier.value = 210.0;
+                                        widget.preferencesService
+                                            ?.setSidebarWidth(210.0);
+                                      },
+                                    ),
+                                  );
+                                },
+                              ),
 
-                // Right Pane (Main Area + Player Bar)
-                Expanded(
-                  child: Column(
-                    children: [
-                      // Main View Content + Docked Inspector Drawer + Now Playing Overlay (Center)
-                      Expanded(
-                        child: Stack(
-                          children: [
-                            Row(
-                              children: [
-                                Expanded(
-                                  child: Container(
-                                    color: tokens.background,
-                                    child: _buildMainContent(),
-                                  ),
-                                ),
-                                ValueListenableBuilder<double>(
-                                  key: const ValueKey(
-                                    'inspector_width_builder',
-                                  ),
-                                  valueListenable: _inspectorWidthNotifier,
-                                  builder: (context, inspectorWidth, _) {
-                                    final maxInspectorWidth = math.max(
-                                      320.0,
-                                      MediaQuery.sizeOf(context).width * 0.5,
-                                    );
-                                    final effectiveTargetWidth =
-                                        _isInspectorOpen ? inspectorWidth : 0.0;
-                                    final isVisible =
-                                        _isInspectorOpen || _isInspectorVisible;
-
-                                    return RepaintBoundary(
-                                      child: AnimatedContainer(
-                                        key: const ValueKey(
-                                          'inspector_animated_container',
-                                        ),
-                                        duration: _isInspectorResizing
-                                            ? Duration.zero
-                                            : LyraAnimation.normal,
-                                        curve: Curves.easeInOutCubic,
-                                        width: effectiveTargetWidth,
-                                        decoration: isVisible
-                                            ? BoxDecoration(
-                                                border: Border(
-                                                  left: BorderSide(
-                                                    color: tokens.border,
-                                                    width: 1.0,
-                                                  ),
+                              // Right Pane (Main Area + Player Bar)
+                              Expanded(
+                                child: Column(
+                                  children: [
+                                    // Main View Content + Docked Inspector Drawer + Now Playing Overlay (Center)
+                                    Expanded(
+                                      child: Stack(
+                                        children: [
+                                          Row(
+                                            children: [
+                                              Expanded(
+                                                child: Container(
+                                                  color: tokens.background,
+                                                  child: _buildMainContent(),
                                                 ),
-                                              )
-                                            : null,
-                                        onEnd: _onInspectorAnimationEnd,
-                                        child: ClipRect(
-                                          child: OverflowBox(
-                                            key: const ValueKey(
-                                              'inspector_overflow_box',
-                                            ),
-                                            alignment: Alignment.topRight,
-                                            minWidth: inspectorWidth,
-                                            maxWidth: inspectorWidth,
-                                            child: IgnorePointer(
-                                              key: const ValueKey(
-                                                'inspector_ignore_pointer',
                                               ),
-                                              ignoring: !_isInspectorOpen,
-                                              child: ExcludeFocus(
+                                              ValueListenableBuilder<double>(
                                                 key: const ValueKey(
-                                                  'inspector_exclude_focus',
+                                                  'inspector_width_builder',
                                                 ),
-                                                excluding: !_isInspectorOpen,
-                                                child: Visibility(
-                                                  key: const ValueKey(
-                                                    'inspector_visibility',
-                                                  ),
-                                                  visible: isVisible,
-                                                  maintainState: true,
-                                                  child: _hasOpenedInspectorOnce
-                                                      ? RepaintBoundary(
-                                                          child: AudioInspectorDrawer(
-                                                            width:
-                                                                inspectorWidth,
-                                                            showLeftBorder:
-                                                                false,
+                                                valueListenable:
+                                                    _inspectorWidthNotifier,
+                                                builder: (context, inspectorWidth, _) {
+                                                  final maxInspectorWidth = math
+                                                      .max(
+                                                        320.0,
+                                                        MediaQuery.sizeOf(
+                                                              context,
+                                                            ).width *
+                                                            0.5,
+                                                      );
+                                                  final effectiveTargetWidth =
+                                                      _isInspectorOpen
+                                                      ? inspectorWidth
+                                                      : 0.0;
+                                                  final isVisible =
+                                                      _isInspectorOpen ||
+                                                      _isInspectorVisible;
+
+                                                  return RepaintBoundary(
+                                                    child: AnimatedContainer(
+                                                      key: const ValueKey(
+                                                        'inspector_animated_container',
+                                                      ),
+                                                      duration:
+                                                          _isInspectorResizing
+                                                          ? Duration.zero
+                                                          : LyraAnimation
+                                                                .normal,
+                                                      curve:
+                                                          Curves.easeInOutCubic,
+                                                      width:
+                                                          effectiveTargetWidth,
+                                                      decoration: isVisible
+                                                          ? BoxDecoration(
+                                                              border: Border(
+                                                                left: BorderSide(
+                                                                  color: tokens
+                                                                      .border,
+                                                                  width: 1.0,
+                                                                ),
+                                                              ),
+                                                            )
+                                                          : null,
+                                                      onEnd:
+                                                          _onInspectorAnimationEnd,
+                                                      child: ClipRect(
+                                                        child: OverflowBox(
+                                                          key: const ValueKey(
+                                                            'inspector_overflow_box',
+                                                          ),
+                                                          alignment: Alignment
+                                                              .topRight,
+                                                          minWidth:
+                                                              inspectorWidth,
+                                                          maxWidth:
+                                                              inspectorWidth,
+                                                          child: IgnorePointer(
+                                                            key: const ValueKey(
+                                                              'inspector_ignore_pointer',
+                                                            ),
+                                                            ignoring:
+                                                                !_isInspectorOpen,
+                                                            child: ExcludeFocus(
+                                                              key: const ValueKey(
+                                                                'inspector_exclude_focus',
+                                                              ),
+                                                              excluding:
+                                                                  !_isInspectorOpen,
+                                                              child: Visibility(
+                                                                key: const ValueKey(
+                                                                  'inspector_visibility',
+                                                                ),
+                                                                visible:
+                                                                    isVisible,
+                                                                maintainState:
+                                                                    true,
+                                                                child:
+                                                                    _hasOpenedInspectorOnce
+                                                                    ? RepaintBoundary(
+                                                                        child: AudioInspectorDrawer(
+                                                                          width:
+                                                                              inspectorWidth,
+                                                                          showLeftBorder:
+                                                                              false,
+                                                                          playbackController:
+                                                                              _playbackController,
+                                                                          track:
+                                                                              _inspectedTrack ??
+                                                                              (_inspectedAsset !=
+                                                                                      null
+                                                                                  ? null
+                                                                                  : _currentTrack),
+                                                                          asset:
+                                                                              _inspectedAsset,
+                                                                          musicService:
+                                                                              widget.musicService,
+                                                                          preferencesService:
+                                                                              widget.preferencesService,
+                                                                          onClose:
+                                                                              _closeInspector,
+                                                                          onActiveAudioChanged:
+                                                                              (
+                                                                                newPcmHash,
+                                                                              ) {
+                                                                                if (_inspectedTrack !=
+                                                                                    null) {
+                                                                                  setState(
+                                                                                    () {
+                                                                                      _inspectedTrack = _inspectedTrack!.copyWith(
+                                                                                        pcmHash: newPcmHash,
+                                                                                      );
+                                                                                    },
+                                                                                  );
+                                                                                }
+                                                                                _loadCatalog();
+                                                                              },
+                                                                          onTrackUpdated:
+                                                                              _handleTrackUpdated,
+                                                                          onResizeStart: () {
+                                                                            setState(() {
+                                                                              _isInspectorResizing = true;
+                                                                            });
+                                                                          },
+                                                                          onResizeDelta:
+                                                                              (
+                                                                                delta,
+                                                                              ) {
+                                                                                _inspectorWidthNotifier.value =
+                                                                                    (_inspectorWidthNotifier.value -
+                                                                                            delta)
+                                                                                        .clamp(
+                                                                                          300.0,
+                                                                                          maxInspectorWidth,
+                                                                                        );
+                                                                              },
+                                                                          onResizeEnd: () {
+                                                                            setState(() {
+                                                                              _isInspectorResizing = false;
+                                                                            });
+                                                                            widget.preferencesService?.setInspectorWidth(
+                                                                              _inspectorWidthNotifier.value,
+                                                                            );
+                                                                          },
+                                                                          onResetWidth: () {
+                                                                            _inspectorWidthNotifier.value =
+                                                                                420.0;
+                                                                            widget.preferencesService?.setInspectorWidth(
+                                                                              420.0,
+                                                                            );
+                                                                          },
+                                                                        ),
+                                                                      )
+                                                                    : const SizedBox.shrink(),
+                                                              ),
+                                                            ),
+                                                          ),
+                                                        ),
+                                                      ),
+                                                    ),
+                                                  );
+                                                },
+                                              ),
+                                            ],
+                                          ),
+
+                                          // Now Playing View Overlay (Pre-warmed offscreen and animated via AnimatedSlide)
+                                          Positioned.fill(
+                                            child: ValueListenableBuilder<bool>(
+                                              key: const ValueKey(
+                                                'now_playing_expanded_builder',
+                                              ),
+                                              valueListenable:
+                                                  _isNowPlayingExpandedNotifier,
+                                              builder: (context, isNowPlayingExpanded, _) {
+                                                final bool isVisible =
+                                                    _isNowPlayingVisible ||
+                                                    isNowPlayingExpanded;
+
+                                                return RepaintBoundary(
+                                                  child: AnimatedSlide(
+                                                    key: const ValueKey(
+                                                      'now_playing_animated_slide',
+                                                    ),
+                                                    offset: isNowPlayingExpanded
+                                                        ? Offset.zero
+                                                        : const Offset(
+                                                            0.0,
+                                                            1.0,
+                                                          ),
+                                                    duration: widget
+                                                        .nowPlayingDuration,
+                                                    curve:
+                                                        widget.nowPlayingCurve,
+                                                    onEnd:
+                                                        _onNowPlayingSlideEnd,
+                                                    child: IgnorePointer(
+                                                      key: const ValueKey(
+                                                        'now_playing_ignore_pointer',
+                                                      ),
+                                                      ignoring:
+                                                          !isNowPlayingExpanded,
+                                                      child: Visibility(
+                                                        key: const ValueKey(
+                                                          'now_playing_visibility',
+                                                        ),
+                                                        visible: isVisible,
+                                                        maintainState: true,
+                                                        child: RepaintBoundary(
+                                                          child: NowPlayingView(
+                                                            track:
+                                                                _currentTrack,
                                                             playbackController:
                                                                 _playbackController,
-                                                            track:
-                                                                _inspectedTrack ??
-                                                                (_inspectedAsset !=
-                                                                        null
-                                                                    ? null
-                                                                    : _currentTrack),
-                                                            asset:
-                                                                _inspectedAsset,
+                                                            onCollapse:
+                                                                _collapseNowPlaying,
+                                                            isExpanded:
+                                                                isNowPlayingExpanded,
                                                             musicService: widget
                                                                 .musicService,
                                                             preferencesService:
                                                                 widget
                                                                     .preferencesService,
-                                                            onClose:
-                                                                _closeInspector,
-                                                            onActiveAudioChanged: (newPcmHash) {
-                                                              if (_inspectedTrack !=
-                                                                  null) {
-                                                                setState(() {
-                                                                  _inspectedTrack =
-                                                                      _inspectedTrack!.copyWith(
-                                                                        pcmHash:
-                                                                            newPcmHash,
-                                                                      );
-                                                                });
-                                                              }
-                                                              _loadCatalog();
-                                                            },
-                                                            onTrackUpdated:
-                                                                _handleTrackUpdated,
-                                                            onResizeStart: () {
-                                                              setState(() {
-                                                                _isInspectorResizing =
-                                                                    true;
-                                                              });
-                                                            },
-                                                            onResizeDelta: (delta) {
-                                                              _inspectorWidthNotifier
-                                                                      .value =
-                                                                  (_inspectorWidthNotifier
-                                                                              .value -
-                                                                          delta)
-                                                                      .clamp(
-                                                                        300.0,
-                                                                        maxInspectorWidth,
-                                                                      );
-                                                            },
-                                                            onResizeEnd: () {
-                                                              setState(() {
-                                                                _isInspectorResizing =
-                                                                    false;
-                                                              });
-                                                              widget
-                                                                  .preferencesService
-                                                                  ?.setInspectorWidth(
-                                                                    _inspectorWidthNotifier
-                                                                        .value,
-                                                                  );
-                                                            },
-                                                            onResetWidth: () {
-                                                              _inspectorWidthNotifier
-                                                                      .value =
-                                                                  420.0;
-                                                              widget
-                                                                  .preferencesService
-                                                                  ?.setInspectorWidth(
-                                                                    420.0,
-                                                                  );
-                                                            },
+                                                            selectedTabNotifier:
+                                                                _nowPlayingTabNotifier,
+                                                            onAddToPlaylist:
+                                                                _showAddToPlaylistDialog,
+                                                            onInspectAudio:
+                                                                _openInspectorForAudio,
+                                                            onGoToAlbum:
+                                                                _navigateToAlbum,
+                                                            onGoToArtist:
+                                                                _navigateToArtist,
+                                                            queueSource:
+                                                                _activeTrackFilter !=
+                                                                    null
+                                                                ? _activeTrackFilter!
+                                                                      .label
+                                                                : (_currentTab ==
+                                                                          AppTab
+                                                                              .playlists
+                                                                      ? 'Playing from Playlist'
+                                                                      : 'Playing from Library'),
                                                           ),
-                                                        )
-                                                      : const SizedBox.shrink(),
-                                                ),
-                                              ),
+                                                        ),
+                                                      ),
+                                                    ),
+                                                  ),
+                                                );
+                                              },
                                             ),
                                           ),
-                                        ),
-                                      ),
-                                    );
-                                  },
-                                ),
-                              ],
-                            ),
-
-                            // Now Playing View Overlay (Pre-warmed offscreen and animated via AnimatedSlide)
-                            Positioned.fill(
-                              child: ValueListenableBuilder<bool>(
-                                key: const ValueKey(
-                                  'now_playing_expanded_builder',
-                                ),
-                                valueListenable: _isNowPlayingExpandedNotifier,
-                                builder: (context, isNowPlayingExpanded, _) {
-                                  final bool isVisible =
-                                      _isNowPlayingVisible ||
-                                      isNowPlayingExpanded;
-
-                                  return RepaintBoundary(
-                                    child: AnimatedSlide(
-                                      key: const ValueKey(
-                                        'now_playing_animated_slide',
-                                      ),
-                                      offset: isNowPlayingExpanded
-                                          ? Offset.zero
-                                          : const Offset(0.0, 1.0),
-                                      duration: widget.nowPlayingDuration,
-                                      curve: widget.nowPlayingCurve,
-                                      onEnd: _onNowPlayingSlideEnd,
-                                      child: IgnorePointer(
-                                        key: const ValueKey(
-                                          'now_playing_ignore_pointer',
-                                        ),
-                                        ignoring: !isNowPlayingExpanded,
-                                        child: Visibility(
-                                          key: const ValueKey(
-                                            'now_playing_visibility',
-                                          ),
-                                          visible: isVisible,
-                                          maintainState: true,
-                                          child: RepaintBoundary(
-                                            child: NowPlayingView(
-                                              track: _currentTrack,
-                                              playbackController:
-                                                  _playbackController,
-                                              onCollapse: _collapseNowPlaying,
-                                              isExpanded: isNowPlayingExpanded,
-                                              musicService: widget.musicService,
-                                              preferencesService:
-                                                  widget.preferencesService,
-                                              selectedTabNotifier:
-                                                  _nowPlayingTabNotifier,
-                                              onAddToPlaylist:
-                                                  _showAddToPlaylistDialog,
-                                              onInspectAudio:
-                                                  _openInspectorForAudio,
-                                              onGoToAlbum: _navigateToAlbum,
-                                              onGoToArtist: _navigateToArtist,
-                                              queueSource:
-                                                  _activeTrackFilter != null
-                                                  ? _activeTrackFilter!.label
-                                                  : (_currentTab ==
-                                                            AppTab.playlists
-                                                        ? 'Playing from Playlist'
-                                                        : 'Playing from Library'),
-                                            ),
-                                          ),
-                                        ),
+                                        ],
                                       ),
                                     ),
-                                  );
-                                },
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
 
-                      // Fixed Player Bar (Bottom)
-                      _buildBottomPlayer(),
-                    ],
-                  ),
+                                    // Fixed Player Bar (Bottom)
+                                    _buildBottomPlayer(),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          );
+                        },
+                      ),
+                    ),
+                  ],
+                ),
+                Positioned(
+                  left:
+                      (_notificationPosition ==
+                              NotificationPosition.bottomLeft ||
+                          _notificationPosition == NotificationPosition.topLeft)
+                      ? 20.0
+                      : null,
+                  right:
+                      (_notificationPosition ==
+                              NotificationPosition.bottomRight ||
+                          _notificationPosition ==
+                              NotificationPosition.topRight)
+                      ? 20.0
+                      : null,
+                  bottom:
+                      (_notificationPosition ==
+                              NotificationPosition.bottomLeft ||
+                          _notificationPosition ==
+                              NotificationPosition.bottomRight)
+                      ? 24.0
+                      : null,
+                  top:
+                      (_notificationPosition == NotificationPosition.topLeft ||
+                          _notificationPosition ==
+                              NotificationPosition.topRight)
+                      ? 72.0
+                      : null,
+                  child: const LyraToastStack(),
                 ),
               ],
-            );
-          },
+            ),
+          ),
         ),
       ),
-    ],
-  ),
-  Positioned(
-    left: (_notificationPosition == NotificationPosition.bottomLeft ||
-            _notificationPosition == NotificationPosition.topLeft)
-        ? 20.0
-        : null,
-    right: (_notificationPosition == NotificationPosition.bottomRight ||
-            _notificationPosition == NotificationPosition.topRight)
-        ? 20.0
-        : null,
-    bottom: (_notificationPosition == NotificationPosition.bottomLeft ||
-            _notificationPosition == NotificationPosition.bottomRight)
-        ? 24.0
-        : null,
-    top: (_notificationPosition == NotificationPosition.topLeft ||
-            _notificationPosition == NotificationPosition.topRight)
-        ? 72.0
-        : null,
-    child: const LyraToastStack(),
-  ),
-],
-),
-),
-),
-),
-);
+    );
   }
 }
 

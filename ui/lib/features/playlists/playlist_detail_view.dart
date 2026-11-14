@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: 2026 Tzu-Ting Lin
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart'
     show
         ClampingScrollPhysics,
@@ -58,9 +60,12 @@ class PlaylistDetailView extends StatefulWidget {
   final VoidCallback? onTogglePlay;
   final ValueChanged<Track>? onTrackFocus;
   final bool isNowPlayingExpanded;
+  final TrackListViewMode? viewMode;
+  final bool? showHeader;
 
   static final Set<TrackColumn> defaultVisibleColumns = {
     TrackColumn.index,
+    TrackColumn.cover,
     TrackColumn.title,
     TrackColumn.album,
     TrackColumn.duration,
@@ -93,6 +98,8 @@ class PlaylistDetailView extends StatefulWidget {
     this.trackActivationMode,
     this.onTogglePlay,
     this.isNowPlayingExpanded = false,
+    this.viewMode,
+    this.showHeader,
   });
 
   @override
@@ -102,6 +109,8 @@ class PlaylistDetailView extends StatefulWidget {
 class _PlaylistDetailViewState extends State<PlaylistDetailView> {
   late List<TrackColumn> _internalColumnOrder;
   late Set<TrackColumn> _internalVisibleColumns;
+  late TrackListViewMode _localViewMode;
+  late bool _localShowHeader;
   late final OverlayPortalController _columnsOverlayController;
   late final ValueNotifier<Offset> _columnsPositionNotifier;
   String? _selectedTrackId;
@@ -112,6 +121,38 @@ class _PlaylistDetailViewState extends State<PlaylistDetailView> {
       widget.preferencesService?.trackActivationMode ??
       TrackActivationMode.doubleClick;
 
+  TrackListViewMode get _effectiveViewMode => widget.viewMode ?? _localViewMode;
+  bool get _effectiveShowHeader => widget.showHeader ?? _localShowHeader;
+
+  void _syncColumnsFromPreferences() {
+    final prefs = widget.preferencesService;
+    if (prefs == null) return;
+    final colMap = {for (final c in TrackColumn.values) c.name: c};
+    if (widget.columnOrder == null) {
+      final savedOrder = prefs.getPlaylistColumnOrder();
+      _internalColumnOrder = savedOrder != null
+          ? normalizeTrackColumnOrder(
+              savedOrder
+                  .map((n) => colMap[n])
+                  .whereType<TrackColumn>()
+                  .toList(),
+            )
+          : List<TrackColumn>.from(TrackColumn.values);
+    }
+    if (widget.visibleColumns == null) {
+      final savedVisible = prefs.getPlaylistVisibleColumns();
+      _internalVisibleColumns = savedVisible != null
+          ? normalizeTrackVisibleColumns(
+              savedVisible
+                  .map((n) => colMap[n])
+                  .whereType<TrackColumn>()
+                  .toSet(),
+              defaults: PlaylistDetailView.defaultVisibleColumns,
+            )
+          : Set<TrackColumn>.from(PlaylistDetailView.defaultVisibleColumns);
+    }
+  }
+
   @override
   void initState() {
     super.initState();
@@ -119,14 +160,30 @@ class _PlaylistDetailViewState extends State<PlaylistDetailView> {
     widget.preferencesService?.addListener(_onPreferencesChanged);
     _columnsOverlayController = OverlayPortalController();
     _columnsPositionNotifier = ValueNotifier<Offset>(Offset.zero);
+    _localViewMode =
+        widget.viewMode ??
+        widget.preferencesService?.playlistViewMode ??
+        TrackListViewMode.detail;
+    _localShowHeader =
+        widget.showHeader ??
+        widget.preferencesService?.showPlaylistHeader ??
+        true;
     _internalColumnOrder = _normalizeColumnOrder(widget.columnOrder);
     _internalVisibleColumns = _normalizeVisibleColumns(widget.visibleColumns);
+    _syncColumnsFromPreferences();
   }
 
   void _onPreferencesChanged() {
-    if (mounted) {
-      setState(() {});
-    }
+    if (!mounted) return;
+    setState(() {
+      if (widget.viewMode == null && widget.preferencesService != null) {
+        _localViewMode = widget.preferencesService!.playlistViewMode;
+      }
+      if (widget.showHeader == null && widget.preferencesService != null) {
+        _localShowHeader = widget.preferencesService!.showPlaylistHeader;
+      }
+      _syncColumnsFromPreferences();
+    });
   }
 
   @override
@@ -135,6 +192,20 @@ class _PlaylistDetailViewState extends State<PlaylistDetailView> {
     if (widget.preferencesService != oldWidget.preferencesService) {
       oldWidget.preferencesService?.removeListener(_onPreferencesChanged);
       widget.preferencesService?.addListener(_onPreferencesChanged);
+      if (widget.viewMode == null && widget.preferencesService != null) {
+        _localViewMode = widget.preferencesService!.playlistViewMode;
+      }
+      if (widget.showHeader == null && widget.preferencesService != null) {
+        _localShowHeader = widget.preferencesService!.showPlaylistHeader;
+      }
+      _syncColumnsFromPreferences();
+    }
+    if (widget.viewMode != null && widget.viewMode != oldWidget.viewMode) {
+      _localViewMode = widget.viewMode!;
+    }
+    if (widget.showHeader != null &&
+        widget.showHeader != oldWidget.showHeader) {
+      _localShowHeader = widget.showHeader!;
     }
     if (widget.columnOrder != null &&
         widget.columnOrder != oldWidget.columnOrder) {
@@ -260,36 +331,14 @@ class _PlaylistDetailViewState extends State<PlaylistDetailView> {
     }
   }
 
-  static List<TrackColumn> _normalizeColumnOrder(List<TrackColumn>? order) {
-    if (order == null || order.isEmpty) {
-      return List<TrackColumn>.from(TrackColumn.values);
-    }
-    final normalized = <TrackColumn>[];
-    for (final col in order) {
-      if (TrackColumn.values.contains(col) && !normalized.contains(col)) {
-        normalized.add(col);
-      }
-    }
-    for (final col in TrackColumn.values) {
-      if (!normalized.contains(col)) {
-        normalized.add(col);
-      }
-    }
-    return normalized;
-  }
+  static List<TrackColumn> _normalizeColumnOrder(List<TrackColumn>? order) =>
+      normalizeTrackColumnOrder(order);
 
-  static Set<TrackColumn> _normalizeVisibleColumns(Set<TrackColumn>? visible) {
-    if (visible == null || visible.isEmpty) {
-      return Set<TrackColumn>.from(PlaylistDetailView.defaultVisibleColumns);
-    }
-    final normalized = Set<TrackColumn>.from(visible);
-    for (final col in TrackColumn.values) {
-      if (col.isMandatory) {
-        normalized.add(col);
-      }
-    }
-    return normalized;
-  }
+  static Set<TrackColumn> _normalizeVisibleColumns(Set<TrackColumn>? visible) =>
+      normalizeTrackVisibleColumns(
+        visible,
+        defaults: PlaylistDetailView.defaultVisibleColumns,
+      );
 
   List<TrackColumn> get _effectiveColumnOrder => _internalColumnOrder;
   Set<TrackColumn> get _effectiveVisibleColumns => _internalVisibleColumns;
@@ -307,6 +356,11 @@ class _PlaylistDetailViewState extends State<PlaylistDetailView> {
       current.add(column);
     }
     widget.onVisibleColumnsChanged?.call(current);
+    if (widget.onVisibleColumnsChanged == null) {
+      widget.preferencesService?.setPlaylistVisibleColumns(
+        current.map((c) => c.name).toSet(),
+      );
+    }
     setState(() {
       _internalVisibleColumns = current;
     });
@@ -320,6 +374,11 @@ class _PlaylistDetailViewState extends State<PlaylistDetailView> {
     final item = newOrder.removeAt(oldIndex);
     newOrder.insert(newIndex, item);
     widget.onColumnOrderChanged?.call(newOrder);
+    if (widget.onColumnOrderChanged == null) {
+      widget.preferencesService?.setPlaylistColumnOrder(
+        newOrder.map((c) => c.name).toList(),
+      );
+    }
     setState(() {
       _internalColumnOrder = newOrder;
     });
@@ -332,6 +391,16 @@ class _PlaylistDetailViewState extends State<PlaylistDetailView> {
     );
     widget.onColumnOrderChanged?.call(defaultOrder);
     widget.onVisibleColumnsChanged?.call(defaultVisible);
+    if (widget.onColumnOrderChanged == null) {
+      widget.preferencesService?.setPlaylistColumnOrder(
+        defaultOrder.map((c) => c.name).toList(),
+      );
+    }
+    if (widget.onVisibleColumnsChanged == null) {
+      widget.preferencesService?.setPlaylistVisibleColumns(
+        defaultVisible.map((c) => c.name).toSet(),
+      );
+    }
     setState(() {
       _internalColumnOrder = defaultOrder;
       _internalVisibleColumns = defaultVisible;
@@ -448,11 +517,56 @@ class _PlaylistDetailViewState extends State<PlaylistDetailView> {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           _buildHeader(context, tokens),
-          if (widget.tracks.isNotEmpty) _buildTableHeader(tokens),
           if (widget.tracks.isEmpty)
             _buildEmptyState(tokens)
           else
-            _buildTracksList(context, tokens),
+            Expanded(
+              child: LayoutBuilder(
+                builder: (context, constraints) {
+                  final orderedVisible = [
+                    for (final col in _effectiveColumnOrder)
+                      if (_effectiveVisibleColumns.contains(col)) col,
+                  ];
+                  final isDetail =
+                      _effectiveViewMode == TrackListViewMode.detail;
+                  final textScale = math.max(
+                    1.0,
+                    MediaQuery.textScalerOf(context).scale(1.0),
+                  );
+                  final requiredWidth = isDetail
+                      ? _requiredDetailTableWidth(
+                          orderedVisible,
+                          textScale: textScale,
+                        )
+                      : 0.0;
+                  final effectiveWidth = isDetail
+                      ? math.max(constraints.maxWidth, requiredWidth)
+                      : constraints.maxWidth;
+                  final needsHorizontalScroll =
+                      isDetail && requiredWidth > constraints.maxWidth;
+
+                  final inner = SizedBox(
+                    width: effectiveWidth,
+                    height: constraints.maxHeight,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        _buildTableHeader(tokens, orderedVisible),
+                        _buildTracksList(context, tokens),
+                      ],
+                    ),
+                  );
+
+                  if (needsHorizontalScroll) {
+                    return SingleChildScrollView(
+                      scrollDirection: Axis.horizontal,
+                      child: inner,
+                    );
+                  }
+                  return inner;
+                },
+              ),
+            ),
         ],
       ),
     );
@@ -463,61 +577,67 @@ class _PlaylistDetailViewState extends State<PlaylistDetailView> {
         widget.playlist.description != null &&
         widget.playlist.description!.trim().isNotEmpty;
 
-    return Padding(
-      padding: const EdgeInsets.symmetric(
-        horizontal: LyraSpacing.xl,
-        vertical: LyraSpacing.lg,
+    return GestureDetector(
+      key: const Key('playlist_view_header'),
+      behavior: HitTestBehavior.opaque,
+      onSecondaryTapDown: (details) => DraggableColumnsOverlay.showAt(
+        controller: _columnsOverlayController,
+        positionNotifier: _columnsPositionNotifier,
+        globalPosition: details.globalPosition,
+        context: context,
+        estimatedCardHeight: 60.0 + _effectiveColumnOrder.length * 36.0,
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Back navigation button
-          LyraButton.ghost(
-            key: const Key('playlist_detail_back_button'),
-            size: LyraButtonSize.sm,
-            onPressed: widget.onBack,
-            padding: const EdgeInsets.symmetric(
-              horizontal: LyraSpacing.sm,
-              vertical: LyraSpacing.xs,
-            ),
-            leading: const Icon(LucideIcons.arrowLeft, size: 16.0),
-            child: const Text('Playlists'),
-          ),
-          const SizedBox(height: LyraSpacing.md),
-
-          // Playlist Artwork + Meta row
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.end,
-            children: [
-              // Artwork placeholder
-              Container(
-                width: 140.0,
-                height: 140.0,
-                decoration: BoxDecoration(
-                  color: tokens.card,
-                  borderRadius: LyraRadius.lgRadius,
-                  border: Border.all(color: tokens.border, width: 1.0),
-                  boxShadow: [
-                    BoxShadow(
-                      color: const Color(0x1A000000),
-                      blurRadius: 12.0,
-                      offset: const Offset(0, 4),
-                    ),
-                  ],
-                ),
-                child: Center(
-                  child: Icon(
-                    LucideIcons.listMusic,
-                    size: 56.0,
-                    color: tokens.primary,
-                  ),
-                ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(
+          horizontal: LyraSpacing.xl,
+          vertical: LyraSpacing.lg,
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Back navigation button
+            LyraButton.ghost(
+              key: const Key('playlist_detail_back_button'),
+              size: LyraButtonSize.sm,
+              onPressed: widget.onBack,
+              padding: const EdgeInsets.symmetric(
+                horizontal: LyraSpacing.sm,
+                vertical: LyraSpacing.xs,
               ),
-              const SizedBox(width: LyraSpacing.xl),
+              leading: const Icon(LucideIcons.arrowLeft, size: 16.0),
+              child: const Text('Playlists'),
+            ),
+            const SizedBox(height: LyraSpacing.md),
 
-              // Metadata & Actions
-              Expanded(
-                child: Column(
+            // Playlist Artwork + Meta row (stacks vertically on narrow viewports)
+            LayoutBuilder(
+              builder: (context, headerConstraints) {
+                final isCompactHeader = headerConstraints.maxWidth < 420.0;
+                final artworkSize = isCompactHeader ? 72.0 : 140.0;
+                final artworkBox = Container(
+                  width: artworkSize,
+                  height: artworkSize,
+                  decoration: BoxDecoration(
+                    color: tokens.card,
+                    borderRadius: LyraRadius.lgRadius,
+                    border: Border.all(color: tokens.border, width: 1.0),
+                    boxShadow: [
+                      BoxShadow(
+                        color: const Color(0x1A000000),
+                        blurRadius: 12.0,
+                        offset: const Offset(0, 4),
+                      ),
+                    ],
+                  ),
+                  child: Center(
+                    child: Icon(
+                      LucideIcons.listMusic,
+                      size: isCompactHeader ? 32.0 : 56.0,
+                      color: tokens.primary,
+                    ),
+                  ),
+                );
+                final metadataColumn = Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   mainAxisSize: MainAxisSize.min,
                   children: [
@@ -548,7 +668,8 @@ class _PlaylistDetailViewState extends State<PlaylistDetailView> {
                     ],
                     const SizedBox(height: 8.0),
                     // Metadata summary row
-                    Row(
+                    Wrap(
+                      crossAxisAlignment: WrapCrossAlignment.center,
                       children: [
                         Text(
                           '${widget.tracks.length} ${widget.tracks.length == 1 ? 'track' : 'tracks'}',
@@ -574,7 +695,9 @@ class _PlaylistDetailViewState extends State<PlaylistDetailView> {
                     ),
                     const SizedBox(height: LyraSpacing.md),
                     // Action buttons: Play All, Shuffle All
-                    Row(
+                    Wrap(
+                      spacing: LyraSpacing.sm,
+                      runSpacing: LyraSpacing.sm,
                       children: [
                         LyraButton(
                           key: const Key('playlist_play_all_button'),
@@ -585,7 +708,6 @@ class _PlaylistDetailViewState extends State<PlaylistDetailView> {
                           leading: const Icon(LucideIcons.play, size: 16.0),
                           child: const Text('Play All'),
                         ),
-                        const SizedBox(width: LyraSpacing.sm),
                         LyraButton.outline(
                           key: const Key('playlist_shuffle_all_button'),
                           size: LyraButtonSize.sm,
@@ -598,11 +720,29 @@ class _PlaylistDetailViewState extends State<PlaylistDetailView> {
                       ],
                     ),
                   ],
-                ),
-              ),
-            ],
-          ),
-        ],
+                );
+                if (isCompactHeader) {
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      artworkBox,
+                      const SizedBox(height: LyraSpacing.md),
+                      metadataColumn,
+                    ],
+                  );
+                }
+                return Row(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    artworkBox,
+                    const SizedBox(width: LyraSpacing.xl),
+                    Expanded(child: metadataColumn),
+                  ],
+                );
+              },
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -616,7 +756,25 @@ class _PlaylistDetailViewState extends State<PlaylistDetailView> {
     if (col == TrackColumn.index) {
       cellContent = Align(
         alignment: Alignment.centerLeft,
-        child: Text(col.headerLabel, style: headerTextStyle),
+        child: Text(
+          col.headerLabel,
+          style: headerTextStyle,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+        ),
+      );
+    } else if (col == TrackColumn.cover) {
+      cellContent = Align(
+        alignment: Alignment.centerLeft,
+        child: Padding(
+          padding: const EdgeInsets.only(right: 12.0),
+          child: Text(
+            col.headerLabel,
+            style: headerTextStyle,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+        ),
       );
     } else if (col == TrackColumn.duration ||
         col == TrackColumn.trackNumber ||
@@ -628,6 +786,7 @@ class _PlaylistDetailViewState extends State<PlaylistDetailView> {
           child: Text(
             col.headerLabel,
             style: headerTextStyle,
+            maxLines: 1,
             overflow: TextOverflow.ellipsis,
           ),
         ),
@@ -640,20 +799,127 @@ class _PlaylistDetailViewState extends State<PlaylistDetailView> {
           child: Text(
             col.headerLabel,
             style: headerTextStyle,
+            maxLines: 1,
             overflow: TextOverflow.ellipsis,
           ),
         ),
       );
     }
 
+    final scale = math.max(1.0, MediaQuery.textScalerOf(context).scale(1.0));
     if (col.width != null) {
-      return SizedBox(width: col.width, child: cellContent);
+      final width = col == TrackColumn.cover ? col.width! : col.width! * scale;
+      return SizedBox(width: width, child: cellContent);
     } else {
       return Expanded(flex: col.flex ?? 1, child: cellContent);
     }
   }
 
-  Widget _buildTableHeader(LyraThemeTokens tokens) {
+  double _requiredDetailTableWidth(
+    List<TrackColumn> visibleOrdered, {
+    double textScale = 1.0,
+  }) {
+    if (visibleOrdered.isEmpty) return 0.0;
+    final scale = math.max(1.0, textScale);
+    var width = LyraSpacing.xl * 2;
+    for (final col in visibleOrdered) {
+      if (col.width != null) {
+        width += col == TrackColumn.cover ? col.width! : col.width! * scale;
+      } else {
+        width += (col.flex ?? 1) * 32.0 * scale;
+      }
+    }
+    return width;
+  }
+
+  Widget _buildListHeaderRow(
+    LyraThemeTokens tokens,
+    List<TrackColumn> orderedVisible,
+  ) {
+    final headerTextStyle = LyraTypography.small(
+      tokens,
+    ).copyWith(color: tokens.textMuted, fontWeight: FontWeight.w600);
+    final showIndex = orderedVisible.contains(TrackColumn.index);
+    final showCover = orderedVisible.contains(TrackColumn.cover);
+    final hasResolution = orderedVisible.contains(TrackColumn.resolution);
+    final hasDuration = orderedVisible.contains(TrackColumn.duration);
+    final hasTrailing = hasResolution || hasDuration;
+    final scale = math.max(1.0, MediaQuery.textScalerOf(context).scale(1.0));
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final indexWidth = showIndex
+            ? math.min(
+                (TrackColumn.index.width ?? 40.0) * scale,
+                constraints.maxWidth * 0.2,
+              )
+            : 0.0;
+        final leftFixedWidth =
+            indexWidth + (showCover ? 52.0 : 0.0) + (hasTrailing ? 12.0 : 0.0);
+        final metrics = computeTrackListTrailingMetrics(
+          availableRowWidth: constraints.maxWidth,
+          leftFixedWidth: leftFixedWidth,
+          hasResolution: hasResolution,
+          hasDuration: hasDuration,
+          textScale: scale,
+        );
+        final trailingLabels = buildTrackListTrailingHeaderLabels(
+          orderedVisibleColumns: orderedVisible,
+          metrics: metrics,
+          style: headerTextStyle,
+        );
+
+        return Row(
+          children: [
+            if (showIndex)
+              SizedBox(
+                width: indexWidth,
+                child: Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    TrackColumn.index.headerLabel,
+                    style: headerTextStyle,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              ),
+            if (showCover)
+              SizedBox(
+                width: 52.0,
+                child: Padding(
+                  padding: const EdgeInsets.only(right: 12.0),
+                  child: Text(
+                    TrackColumn.cover.headerLabel,
+                    style: headerTextStyle,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              ),
+            Expanded(
+              child: Text(
+                'Title & Details',
+                style: headerTextStyle,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+            if (trailingLabels.isNotEmpty) ...[
+              const SizedBox(width: 12.0),
+              ...trailingLabels,
+            ],
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _buildTableHeader(
+    LyraThemeTokens tokens,
+    List<TrackColumn> orderedVisible,
+  ) {
+    final isDetail = _effectiveViewMode == TrackListViewMode.detail;
     return DraggableColumnsOverlay(
       key: const Key('playlist_tracks_table_header_context_menu'),
       controller: _columnsOverlayController,
@@ -695,24 +961,29 @@ class _PlaylistDetailViewState extends State<PlaylistDetailView> {
           );
         },
       ),
-      child: Container(
-        key: const Key('playlist_tracks_table_header'),
-        padding: const EdgeInsets.symmetric(
-          horizontal: LyraSpacing.xl,
-          vertical: LyraSpacing.sm,
-        ),
-        decoration: BoxDecoration(
-          color: tokens.background,
-          border: Border(bottom: BorderSide(color: tokens.border, width: 1.0)),
-        ),
-        child: Row(
-          children: [
-            for (final col in _effectiveColumnOrder)
-              if (_effectiveVisibleColumns.contains(col))
-                _buildHeaderCell(col, tokens),
-          ],
-        ),
-      ),
+      child: _effectiveShowHeader
+          ? Container(
+              key: const Key('playlist_tracks_table_header'),
+              padding: const EdgeInsets.symmetric(
+                horizontal: LyraSpacing.xl,
+                vertical: LyraSpacing.sm,
+              ),
+              decoration: BoxDecoration(
+                color: tokens.background,
+                border: Border(
+                  bottom: BorderSide(color: tokens.border, width: 1.0),
+                ),
+              ),
+              child: isDetail
+                  ? Row(
+                      children: [
+                        for (final col in orderedVisible)
+                          _buildHeaderCell(col, tokens),
+                      ],
+                    )
+                  : _buildListHeaderRow(tokens, orderedVisible),
+            )
+          : const SizedBox.shrink(),
     );
   }
 
@@ -743,9 +1014,10 @@ class _PlaylistDetailViewState extends State<PlaylistDetailView> {
   }
 
   Widget _buildTracksList(BuildContext context, LyraThemeTokens tokens) {
-    final textScale = MediaQuery.textScalerOf(
-      context,
-    ).scale(1.0).clamp(1.0, 1.5);
+    final textScale = math.max(
+      1.0,
+      MediaQuery.textScalerOf(context).scale(1.0),
+    );
     final itemKeys = <Key>[];
     final countMap = <String, int>{};
     for (var i = 0; i < widget.tracks.length; i++) {
@@ -764,7 +1036,9 @@ class _PlaylistDetailViewState extends State<PlaylistDetailView> {
           padding: const EdgeInsets.symmetric(vertical: LyraSpacing.xs),
           buildDefaultDragHandles: false,
           itemCount: widget.tracks.length,
-          itemExtent: 56.0 * textScale,
+          itemExtent:
+              (_effectiveViewMode == TrackListViewMode.list ? 64.0 : 56.0) *
+              textScale,
           proxyDecorator: (child, index, animation) =>
               _proxyDecorator(child, index, animation, tokens),
           onReorder: (oldIndex, newIndex) {
@@ -779,6 +1053,7 @@ class _PlaylistDetailViewState extends State<PlaylistDetailView> {
               key: itemKeys[index],
               index: index,
               track: track,
+              viewMode: _effectiveViewMode,
               isCurrent: isCurrent,
               isPlaying: isPlaying,
               isSelected: _selectedTrackId != null
@@ -815,6 +1090,7 @@ class _PlaylistDetailViewState extends State<PlaylistDetailView> {
 class _PlaylistTrackRow extends StatefulWidget {
   final int index;
   final Track track;
+  final TrackListViewMode viewMode;
   final bool isCurrent;
   final bool isPlaying;
   final bool isSelected;
@@ -836,6 +1112,7 @@ class _PlaylistTrackRow extends StatefulWidget {
     super.key,
     required this.index,
     required this.track,
+    this.viewMode = TrackListViewMode.detail,
     required this.isCurrent,
     required this.isPlaying,
     this.isSelected = false,
@@ -907,15 +1184,22 @@ class _PlaylistTrackRowState extends State<_PlaylistTrackRow> {
     final track = widget.track;
     final isCurrent = widget.isCurrent;
     final isPlaying = widget.isPlaying;
+    final scale = math.max(1.0, MediaQuery.textScalerOf(context).scale(1.0));
 
     switch (col.name) {
       case 'index':
         return SizedBox(
-          width: col.width ?? 40.0,
+          width: (col.width ?? 40.0) * scale,
           child: Align(
             alignment: Alignment.centerLeft,
             child: isPlaying
                 ? Icon(LucideIcons.volume2, size: 16.0, color: tokens.primary)
+                : _isHovered
+                ? Icon(
+                    LucideIcons.play,
+                    size: 16.0,
+                    color: isCurrent ? tokens.primary : tokens.text,
+                  )
                 : Text(
                     '${widget.index + 1}',
                     style: LyraTypography.small(tokens).copyWith(
@@ -925,12 +1209,29 @@ class _PlaylistTrackRowState extends State<_PlaylistTrackRow> {
                           : FontWeight.normal,
                       fontFeatures: const [FontFeature.tabularFigures()],
                     ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                   ),
+          ),
+        );
+      case 'cover':
+        return SizedBox(
+          width: col.width ?? 52.0,
+          child: Padding(
+            padding: const EdgeInsets.only(right: 12.0),
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: TrackCoverThumbnail(
+                track: track,
+                isActive: isCurrent,
+                size: 36.0,
+              ),
+            ),
           ),
         );
       case 'trackNumber':
         return SizedBox(
-          width: col.width ?? 66.0,
+          width: (col.width ?? 66.0) * scale,
           child: Align(
             alignment: Alignment.centerRight,
             child: Padding(
@@ -941,6 +1242,8 @@ class _PlaylistTrackRowState extends State<_PlaylistTrackRow> {
                   color: tokens.textMuted,
                   fontFeatures: const [FontFeature.tabularFigures()],
                 ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
               ),
             ),
           ),
@@ -997,7 +1300,7 @@ class _PlaylistTrackRowState extends State<_PlaylistTrackRow> {
         );
       case 'duration':
         return SizedBox(
-          width: col.width ?? 76.0,
+          width: (col.width ?? 76.0) * scale,
           child: Align(
             alignment: Alignment.centerRight,
             child: Padding(
@@ -1009,6 +1312,8 @@ class _PlaylistTrackRowState extends State<_PlaylistTrackRow> {
                   fontWeight: FontWeight.w500,
                   fontFeatures: const [FontFeature.tabularFigures()],
                 ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
               ),
             ),
           ),
@@ -1037,6 +1342,7 @@ class _PlaylistTrackRowState extends State<_PlaylistTrackRow> {
                       style: LyraTypography.small(
                         tokens,
                       ).copyWith(fontSize: 10.0, fontWeight: FontWeight.w600),
+                      maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                     ),
                   ),
@@ -1055,13 +1361,14 @@ class _PlaylistTrackRowState extends State<_PlaylistTrackRow> {
               style: LyraTypography.small(
                 tokens,
               ).copyWith(color: tokens.textMuted),
+              maxLines: 1,
               overflow: TextOverflow.ellipsis,
             ),
           ),
         );
       case 'year':
         return SizedBox(
-          width: col.width ?? 74.0,
+          width: (col.width ?? 74.0) * scale,
           child: Align(
             alignment: Alignment.centerRight,
             child: Padding(
@@ -1072,6 +1379,7 @@ class _PlaylistTrackRowState extends State<_PlaylistTrackRow> {
                   color: tokens.textMuted,
                   fontFeatures: const [FontFeature.tabularFigures()],
                 ),
+                maxLines: 1,
                 overflow: TextOverflow.ellipsis,
               ),
             ),
@@ -1087,6 +1395,7 @@ class _PlaylistTrackRowState extends State<_PlaylistTrackRow> {
               style: LyraTypography.small(
                 tokens,
               ).copyWith(color: tokens.textMuted),
+              maxLines: 1,
               overflow: TextOverflow.ellipsis,
             ),
           ),
@@ -1094,7 +1403,7 @@ class _PlaylistTrackRowState extends State<_PlaylistTrackRow> {
       case 'iswc':
         final val = track.iswc;
         return SizedBox(
-          width: col.width ?? 140.0,
+          width: (col.width ?? 140.0) * scale,
           child: Padding(
             padding: const EdgeInsets.only(right: 16.0),
             child: (val != null && val.isNotEmpty)
@@ -1110,6 +1419,7 @@ class _PlaylistTrackRowState extends State<_PlaylistTrackRow> {
                               tokens,
                               fontSize: 11.0,
                             ).copyWith(color: tokens.textMuted),
+                            maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                           ),
                         ),
@@ -1123,13 +1433,15 @@ class _PlaylistTrackRowState extends State<_PlaylistTrackRow> {
                     style: LyraTypography.small(
                       tokens,
                     ).copyWith(color: tokens.textMuted),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                   ),
           ),
         );
       case 'isrc':
         final val = track.isrc;
         return SizedBox(
-          width: col.width ?? 130.0,
+          width: (col.width ?? 130.0) * scale,
           child: Padding(
             padding: const EdgeInsets.only(right: 16.0),
             child: (val != null && val.isNotEmpty)
@@ -1145,6 +1457,7 @@ class _PlaylistTrackRowState extends State<_PlaylistTrackRow> {
                               tokens,
                               fontSize: 11.0,
                             ).copyWith(color: tokens.textMuted),
+                            maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                           ),
                         ),
@@ -1158,13 +1471,15 @@ class _PlaylistTrackRowState extends State<_PlaylistTrackRow> {
                     style: LyraTypography.small(
                       tokens,
                     ).copyWith(color: tokens.textMuted),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                   ),
           ),
         );
       case 'musicbrainzId':
         final val = track.musicbrainzId;
         return SizedBox(
-          width: col.width ?? 260.0,
+          width: (col.width ?? 260.0) * scale,
           child: Padding(
             padding: const EdgeInsets.only(right: 16.0),
             child: (val != null && val.isNotEmpty)
@@ -1180,6 +1495,7 @@ class _PlaylistTrackRowState extends State<_PlaylistTrackRow> {
                               tokens,
                               fontSize: 11.0,
                             ).copyWith(color: tokens.textMuted),
+                            maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                           ),
                         ),
@@ -1196,12 +1512,140 @@ class _PlaylistTrackRowState extends State<_PlaylistTrackRow> {
                     style: LyraTypography.small(
                       tokens,
                     ).copyWith(color: tokens.textMuted),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                   ),
           ),
         );
       default:
         return const SizedBox.shrink();
     }
+  }
+
+  Widget _buildListRowContent(LyraThemeTokens tokens) {
+    final track = widget.track;
+    final isCurrent = widget.isCurrent;
+    final isPlaying = widget.isPlaying;
+    final orderedVisible = [
+      for (final col in widget.columnOrder)
+        if (widget.visibleColumns.contains(col)) col,
+    ];
+    final showIndex = widget.visibleColumns.contains(TrackColumn.index);
+    final showCover = widget.visibleColumns.contains(TrackColumn.cover);
+    final hasResolution = widget.visibleColumns.contains(
+      TrackColumn.resolution,
+    );
+    final hasDuration = widget.visibleColumns.contains(TrackColumn.duration);
+    final hasTrailing = hasResolution || hasDuration;
+    final scale = math.max(1.0, MediaQuery.textScalerOf(context).scale(1.0));
+    final subtitleChildren = buildTrackListSubtitleChildren(
+      track,
+      orderedVisible,
+      LyraTypography.small(
+        tokens,
+      ).copyWith(fontSize: 12.0, color: tokens.textMuted),
+    );
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final indexWidth = showIndex
+            ? math.min(
+                (TrackColumn.index.width ?? 40.0) * scale,
+                constraints.maxWidth * 0.2,
+              )
+            : 0.0;
+        final leftFixedWidth =
+            indexWidth + (showCover ? 52.0 : 0.0) + (hasTrailing ? 12.0 : 0.0);
+        final metrics = computeTrackListTrailingMetrics(
+          availableRowWidth: constraints.maxWidth,
+          leftFixedWidth: leftFixedWidth,
+          hasResolution: hasResolution,
+          hasDuration: hasDuration,
+          textScale: scale,
+        );
+        final trailingChildren = buildTrackListTrailingChildren(
+          track: track,
+          orderedVisibleColumns: orderedVisible,
+          tokens: tokens,
+          onInspectAudio: widget.onInspectAudio,
+          maxBadgeWidth: metrics.maxBadgeWidth,
+          durationWidth: metrics.durationWidth,
+        );
+
+        return Row(
+          children: [
+            if (showIndex)
+              SizedBox(
+                width: indexWidth,
+                child: Align(
+                  alignment: Alignment.centerLeft,
+                  child: isPlaying
+                      ? Icon(
+                          LucideIcons.volume2,
+                          size: 16.0,
+                          color: tokens.primary,
+                        )
+                      : _isHovered
+                      ? Icon(
+                          LucideIcons.play,
+                          size: 16.0,
+                          color: isCurrent ? tokens.primary : tokens.text,
+                        )
+                      : Text(
+                          '${widget.index + 1}',
+                          style: LyraTypography.small(tokens).copyWith(
+                            color: isCurrent
+                                ? tokens.primary
+                                : tokens.textMuted,
+                            fontWeight: isCurrent
+                                ? FontWeight.w600
+                                : FontWeight.normal,
+                            fontFeatures: const [FontFeature.tabularFigures()],
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                ),
+              ),
+            if (showCover)
+              Padding(
+                padding: const EdgeInsets.only(right: 12.0),
+                child: TrackCoverThumbnail(
+                  track: track,
+                  isActive: isCurrent,
+                  size: 40.0,
+                ),
+              ),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Text(
+                    track.displayTitle,
+                    style: LyraTypography.p(tokens).copyWith(
+                      fontSize: 13.0,
+                      fontWeight: isCurrent ? FontWeight.w600 : FontWeight.w500,
+                      color: isCurrent ? tokens.primary : tokens.text,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  if (subtitleChildren.isNotEmpty) ...[
+                    const SizedBox(height: 2.0),
+                    Row(children: subtitleChildren),
+                  ],
+                ],
+              ),
+            ),
+            if (trailingChildren.isNotEmpty) ...[
+              const SizedBox(width: 12.0),
+              ...trailingChildren,
+            ],
+          ],
+        );
+      },
+    );
   }
 
   @override
@@ -1291,13 +1735,15 @@ class _PlaylistTrackRowState extends State<_PlaylistTrackRow> {
                   ),
                 ),
               ),
-              child: Row(
-                children: [
-                  for (final col in widget.columnOrder)
-                    if (widget.visibleColumns.contains(col))
-                      _buildRowCell(col, tokens),
-                ],
-              ),
+              child: widget.viewMode == TrackListViewMode.list
+                  ? _buildListRowContent(tokens)
+                  : Row(
+                      children: [
+                        for (final col in widget.columnOrder)
+                          if (widget.visibleColumns.contains(col))
+                            _buildRowCell(col, tokens),
+                      ],
+                    ),
             ),
           ),
         ),
@@ -1400,12 +1846,13 @@ class _PlaylistColumnMenuItemState extends State<_PlaylistColumnMenuItem> {
                 onTap: widget.canToggle ? _handleToggle : null,
                 child: Row(
                   children: [
-                    IgnorePointer(
-                      child: LyraCheckbox(
-                        key: Key('playlist_track_col_checkbox_${col.name}'),
-                        value: _isChecked,
-                        enabled: widget.canToggle,
-                      ),
+                    LyraCheckbox(
+                      key: Key('playlist_track_col_checkbox_${col.name}'),
+                      value: _isChecked,
+                      enabled: widget.canToggle,
+                      onChanged: widget.canToggle
+                          ? (_) => _handleToggle()
+                          : null,
                     ),
                     const SizedBox(width: 8.0),
                     Expanded(

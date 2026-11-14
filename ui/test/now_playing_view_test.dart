@@ -20,7 +20,10 @@ import 'package:ui/features/player/views/components/up_next_tab.dart';
 import 'package:ui/features/player/views/components/video_surface_card.dart';
 import 'package:ui/features/player/views/now_playing_view.dart';
 import 'package:ui/features/services/music_service.dart';
+import 'package:ui/features/settings/services/preferences_service.dart';
 import 'package:ui/features/shell/player_bar.dart';
+import 'package:ui/features/tracks/tracks_view.dart'
+    show TrackColumn, TrackCoverThumbnail;
 
 Widget _buildNowPlayingTest({
   required PlaybackQueueController playbackController,
@@ -38,6 +41,7 @@ Widget _buildNowPlayingTest({
   void Function(Track track)? onInspectAudio,
   ValueChanged<String>? onGoToAlbum,
   ValueChanged<String>? onGoToArtist,
+  PreferencesService? preferencesService,
 }) {
   final themeModeNotifier =
       themeNotifier ?? ValueNotifier<ThemeMode>(ThemeMode.dark);
@@ -82,6 +86,7 @@ Widget _buildNowPlayingTest({
                 onInspectAudio: onInspectAudio,
                 onGoToAlbum: onGoToAlbum,
                 onGoToArtist: onGoToArtist,
+                preferencesService: preferencesService,
               ),
             ),
           ),
@@ -1655,6 +1660,234 @@ void main() {
 
         expect(find.byType(UpNextTab), findsOneWidget);
         expect(find.byType(LyricsTab), findsNothing);
+      },
+    );
+  });
+
+  group('UpNextTab - View Modes, Column Customization & Header Visibility', () {
+    testWidgets(
+      'UpNextTab switches between List and Detail modes and customizes attributes via right-click or Columns button',
+      (tester) async {
+        tester.view.physicalSize = const Size(800, 700);
+        tester.view.devicePixelRatio = 1.0;
+        addTearDown(tester.view.resetPhysicalSize);
+
+        final prefs = InMemoryPreferencesService();
+        final controller = PlaybackQueueController(autoStartTimer: false);
+        addTearDown(controller.dispose);
+        const richTrack = Track(
+          id: 'uq-1',
+          title: 'Autumn Leaves',
+          artistName: 'Cannonball Adderley',
+          albumTitle: 'Somethin Else',
+          genre: 'Hard Bop',
+          recordingYear: 1958,
+          durationMs: 659000,
+          format: 'FLAC',
+        );
+        controller.addAllToQueue([richTrack]);
+
+        await tester.pumpWidget(
+          ShadApp(
+            home: LyraDesignSystemScope(
+              factory: const ShadcnFactory(),
+              tokens: LyraThemeTokens.dark(),
+              themeModeNotifier: ValueNotifier(ThemeMode.dark),
+              child: Scaffold(
+                body: UpNextTab(
+                  playbackController: controller,
+                  preferencesService: prefs,
+                ),
+              ),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        expect(
+          find.byKey(const Key('up_next_view_mode_toggle_detail')),
+          findsNothing,
+        );
+        expect(find.byKey(const Key('up_next_columns_button')), findsNothing);
+        expect(prefs.upNextViewMode, TrackListViewMode.list);
+        expect(find.byKey(const Key('up_next_table_header')), findsOneWidget);
+        expect(find.byType(TrackCoverThumbnail), findsOneWidget);
+        expect(
+          find.text('Cannonball Adderley · Somethin Else'),
+          findsOneWidget,
+        );
+
+        // Verify List-mode hover swaps row index to play icon before mouse secondary taps
+        final hoverGesture = await tester.createGesture(
+          kind: PointerDeviceKind.mouse,
+        );
+        await hoverGesture.addPointer(location: Offset.zero);
+        await hoverGesture.moveTo(tester.getCenter(find.text('Autumn Leaves')));
+        await tester.pumpAndSettle();
+        expect(find.byIcon(LucideIcons.play), findsWidgets);
+        await hoverGesture.moveTo(Offset.zero);
+        await tester.pumpAndSettle();
+        await hoverGesture.removePointer();
+
+        // Right-click table header to open columns overlay and enable Genre
+        await tester.tap(
+          find.byKey(const Key('up_next_table_header')),
+          buttons: kSecondaryMouseButton,
+          kind: PointerDeviceKind.mouse,
+        );
+        await tester.pumpAndSettle();
+        expect(find.byKey(const Key('up_next_columns_window')), findsOneWidget);
+
+        await tester.tap(find.byKey(const Key('up_next_col_checkbox_genre')));
+        await tester.pumpAndSettle();
+        expect(find.textContaining('Hard Bop'), findsOneWidget);
+
+        await tester.tap(find.byKey(const Key('up_next_columns_close_button')));
+        await tester.pumpAndSettle();
+        expect(find.byKey(const Key('up_next_columns_window')), findsNothing);
+
+        // Switch to Detail mode via preference
+        await prefs.setUpNextViewMode(TrackListViewMode.detail);
+        await tester.pumpAndSettle();
+        expect(prefs.upNextViewMode, TrackListViewMode.detail);
+        expect(find.text('Genre'), findsOneWidget);
+        expect(find.text('Hard Bop'), findsOneWidget);
+
+        // Hide header via preference and confirm right-clicking top header still opens menu
+        await prefs.setShowUpNextHeader(false);
+        await tester.pumpAndSettle();
+        expect(find.byKey(const Key('up_next_table_header')), findsNothing);
+
+        await tester.tap(
+          find.byKey(const Key('up_next_top_header')),
+          buttons: kSecondaryMouseButton,
+          kind: PointerDeviceKind.mouse,
+        );
+        await tester.pumpAndSettle();
+        expect(find.byKey(const Key('up_next_columns_window')), findsOneWidget);
+
+        // Reset restores defaults (Genre removed from queue rows)
+        await tester.tap(find.byKey(const Key('up_next_columns_reset_button')));
+        await tester.pumpAndSettle();
+        expect(find.textContaining('Hard Bop'), findsNothing);
+
+        // Close overlay and verify Detail and List modes inside NowPlayingView split pane at 2.0x text scaling
+        await tester.tap(find.byKey(const Key('up_next_columns_close_button')));
+        await tester.pumpAndSettle();
+
+        // Verify Detail and List modes inside NowPlayingView split pane (and narrow 266px UpNextTab pane) at 2.0x text scaling
+        tester.view.physicalSize = const Size(900, 600);
+        tester.view.devicePixelRatio = 1.0;
+        addTearDown(tester.view.resetPhysicalSize);
+        tester.platformDispatcher.textScaleFactorTestValue = 2.0;
+        addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+        final allColsTrack = Track(
+          id: 'trk-all',
+          title: 'Somethin Else',
+          artistName: 'Cannonball Adderley',
+          albumTitle: 'Somethin Else',
+          workTitle: 'Somethin Else Work',
+          genre: 'Hard Bop',
+          recordingYear: 1958,
+          trackNumber: 2,
+          iswc: 'T-123.456.789-0',
+          isrc: 'USBN15800001',
+          musicbrainzId: 'mb-somethin-else-1',
+          durationMs: 659000,
+          format: 'FLAC',
+          sampleRate: 96000,
+          bitDepth: 24,
+        );
+        controller.clearQueue();
+        controller.addAllToQueue([allColsTrack]);
+        await prefs.setUpNextVisibleColumns(
+          TrackColumn.values.map((c) => c.name).toSet(),
+        );
+        await prefs.setShowUpNextHeader(true);
+        await prefs.setUpNextViewMode(TrackListViewMode.detail);
+        await tester.pumpWidget(
+          _buildNowPlayingTest(
+            playbackController: controller,
+            preferencesService: prefs,
+          ),
+        );
+        await tester.pumpAndSettle();
+        expect(tester.takeException(), isNull);
+
+        await prefs.setUpNextViewMode(TrackListViewMode.list);
+        await tester.pumpAndSettle();
+        expect(tester.takeException(), isNull);
+        expect(find.textContaining('Trk 2'), findsOneWidget);
+
+        // Also stress-test UpNextTab standalone in a 266px narrow pane at 2.0x text scaling
+        await prefs.setUpNextViewMode(TrackListViewMode.detail);
+        await tester.pumpWidget(
+          ShadApp(
+            home: LyraDesignSystemScope(
+              factory: const ShadcnFactory(),
+              tokens: LyraThemeTokens.dark(),
+              themeModeNotifier: ValueNotifier(ThemeMode.dark),
+              child: Scaffold(
+                body: SizedBox(
+                  width: 266,
+                  height: 600,
+                  child: UpNextTab(
+                    playbackController: controller,
+                    preferencesService: prefs,
+                  ),
+                ),
+              ),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+        expect(tester.takeException(), isNull);
+
+        await prefs.setUpNextViewMode(TrackListViewMode.list);
+        await tester.pumpAndSettle();
+        expect(tester.takeException(), isNull);
+        expect(find.textContaining('Trk 2'), findsOneWidget);
+
+        // Ultra-narrow UpNextTab List pane (195px at 2.0x): omits Resolution badge & matching header cleanly
+        await tester.pumpWidget(
+          ShadApp(
+            home: LyraDesignSystemScope(
+              factory: const ShadcnFactory(),
+              tokens: LyraThemeTokens.dark(),
+              themeModeNotifier: ValueNotifier(ThemeMode.dark),
+              child: Scaffold(
+                body: SizedBox(
+                  width: 195,
+                  height: 600,
+                  child: UpNextTab(
+                    playbackController: controller,
+                    preferencesService: prefs,
+                  ),
+                ),
+              ),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+        expect(tester.takeException(), isNull);
+        expect(
+          find.descendant(
+            of: find.byKey(const Key('up_next_table_header')),
+            matching: find.text('Resolution'),
+          ),
+          findsNothing,
+        );
+        expect(
+          tester
+              .widget<Text>(
+                find.descendant(
+                  of: find.byKey(const Key('up_next_table_header')),
+                  matching: find.text('Cover'),
+                ),
+              )
+              .maxLines,
+          1,
+        );
       },
     );
   });

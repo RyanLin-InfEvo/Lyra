@@ -3,6 +3,7 @@
 
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart' show mapEquals;
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -27,6 +28,54 @@ enum TrackActivationMode {
     }
     return TrackActivationMode.doubleClick;
   }
+}
+
+/// Display layout mode for track lists (Tracks Library, Playlist Detail, Up Next Queue).
+enum TrackListViewMode {
+  /// Compact vertical list item (cover art on left, stacked title & metadata in middle, trailing duration/badges on right).
+  list,
+
+  /// Multi-column file-manager-style table row.
+  detail;
+
+  /// Parses a [TrackListViewMode] from a raw string, defaulting to [fallback].
+  static TrackListViewMode fromString(
+    String? value, {
+    TrackListViewMode fallback = TrackListViewMode.detail,
+  }) {
+    if (value == null || value.isEmpty) {
+      return fallback;
+    }
+    final normalized = value
+        .trim()
+        .toLowerCase()
+        .replaceAll('_', '')
+        .replaceAll('-', '');
+    if (normalized == 'list') {
+      return TrackListViewMode.list;
+    }
+    if (normalized == 'detail' ||
+        normalized == 'details' ||
+        normalized == 'table') {
+      return TrackListViewMode.detail;
+    }
+    for (final mode in TrackListViewMode.values) {
+      if (mode.name.toLowerCase() == normalized) {
+        return mode;
+      }
+    }
+    return fallback;
+  }
+}
+
+/// Target view selector for the Views & Layout settings section.
+enum ViewSettingsTarget {
+  tracks('Tracks Library'),
+  playlist('Playlist Detail'),
+  upNext('Up Next Queue');
+
+  final String label;
+  const ViewSettingsTarget(this.label);
 }
 
 /// Screen placement options for floating toast notifications.
@@ -110,6 +159,30 @@ abstract class PreferencesService extends ChangeNotifier {
   Set<String>? getPlaylistVisibleColumns();
   Future<void> setPlaylistVisibleColumns(Set<String> columns);
 
+  List<String>? getUpNextColumnOrder();
+  Future<void> setUpNextColumnOrder(List<String> columns);
+
+  Set<String>? getUpNextVisibleColumns();
+  Future<void> setUpNextVisibleColumns(Set<String> columns);
+
+  TrackListViewMode get trackViewMode;
+  Future<void> setTrackViewMode(TrackListViewMode mode);
+
+  TrackListViewMode get playlistViewMode;
+  Future<void> setPlaylistViewMode(TrackListViewMode mode);
+
+  TrackListViewMode get upNextViewMode;
+  Future<void> setUpNextViewMode(TrackListViewMode mode);
+
+  bool get showTrackHeader;
+  Future<void> setShowTrackHeader(bool show);
+
+  bool get showPlaylistHeader;
+  Future<void> setShowPlaylistHeader(bool show);
+
+  bool get showUpNextHeader;
+  Future<void> setShowUpNextHeader(bool show);
+
   Future<void> resetTableColumns();
 
   // Waveform visualization preferences
@@ -191,6 +264,14 @@ class SharedPreferencesService extends PreferencesService {
   static const String keyPlaylistColumnOrder = 'lyra_playlist_column_order';
   static const String keyPlaylistVisibleColumns =
       'lyra_playlist_visible_columns';
+  static const String keyUpNextColumnOrder = 'lyra_up_next_column_order';
+  static const String keyUpNextVisibleColumns = 'lyra_up_next_visible_columns';
+  static const String keyTrackViewMode = 'lyra_track_view_mode';
+  static const String keyPlaylistViewMode = 'lyra_playlist_view_mode';
+  static const String keyUpNextViewMode = 'lyra_up_next_view_mode';
+  static const String keyShowTrackHeader = 'lyra_show_track_header';
+  static const String keyShowPlaylistHeader = 'lyra_show_playlist_header';
+  static const String keyShowUpNextHeader = 'lyra_show_up_next_header';
   static const String keyShowNowPlayingWaveform =
       'lyra_show_now_playing_waveform';
   static const String keyShowInspectorWaveform = 'lyra_show_inspector_waveform';
@@ -446,6 +527,7 @@ class SharedPreferencesService extends PreferencesService {
 
   @override
   Future<void> setTrackColumnWidths(Map<String, double> widths) async {
+    if (mapEquals(trackColumnWidths, widths)) return;
     try {
       await _prefs.setString(keyTrackColumnWidths, jsonEncode(widths));
     } catch (_) {}
@@ -500,6 +582,141 @@ class SharedPreferencesService extends PreferencesService {
   }
 
   @override
+  List<String>? getUpNextColumnOrder() =>
+      _getStringListSafe(keyUpNextColumnOrder);
+
+  @override
+  Future<void> setUpNextColumnOrder(List<String> columns) async {
+    try {
+      await _prefs.setStringList(keyUpNextColumnOrder, columns);
+    } catch (_) {}
+    notifyListeners();
+  }
+
+  @override
+  Set<String>? getUpNextVisibleColumns() =>
+      _getStringListSafe(keyUpNextVisibleColumns)?.toSet();
+
+  @override
+  Future<void> setUpNextVisibleColumns(Set<String> columns) async {
+    try {
+      await _prefs.setStringList(keyUpNextVisibleColumns, columns.toList());
+    } catch (_) {}
+    notifyListeners();
+  }
+
+  TrackListViewMode _getViewModeSafe(
+    String key, {
+    TrackListViewMode fallback = TrackListViewMode.detail,
+  }) {
+    try {
+      final val = _prefs.get(key);
+      if (val is String) {
+        return TrackListViewMode.fromString(val, fallback: fallback);
+      }
+      return fallback;
+    } catch (_) {
+      return fallback;
+    }
+  }
+
+  @override
+  TrackListViewMode get trackViewMode =>
+      _getViewModeSafe(keyTrackViewMode, fallback: TrackListViewMode.detail);
+
+  @override
+  Future<void> setTrackViewMode(TrackListViewMode mode) async {
+    try {
+      await _prefs.setString(keyTrackViewMode, mode.name);
+    } catch (_) {}
+    notifyListeners();
+  }
+
+  @override
+  TrackListViewMode get playlistViewMode =>
+      _getViewModeSafe(keyPlaylistViewMode, fallback: TrackListViewMode.detail);
+
+  @override
+  Future<void> setPlaylistViewMode(TrackListViewMode mode) async {
+    try {
+      await _prefs.setString(keyPlaylistViewMode, mode.name);
+    } catch (_) {}
+    notifyListeners();
+  }
+
+  @override
+  TrackListViewMode get upNextViewMode =>
+      _getViewModeSafe(keyUpNextViewMode, fallback: TrackListViewMode.list);
+
+  @override
+  Future<void> setUpNextViewMode(TrackListViewMode mode) async {
+    try {
+      await _prefs.setString(keyUpNextViewMode, mode.name);
+    } catch (_) {}
+    notifyListeners();
+  }
+
+  @override
+  bool get showTrackHeader {
+    try {
+      final val = _prefs.get(keyShowTrackHeader);
+      if (val is bool) return val;
+      if (val is String) return val.toLowerCase() == 'true';
+      return true;
+    } catch (_) {
+      return true;
+    }
+  }
+
+  @override
+  Future<void> setShowTrackHeader(bool show) async {
+    try {
+      await _prefs.setBool(keyShowTrackHeader, show);
+    } catch (_) {}
+    notifyListeners();
+  }
+
+  @override
+  bool get showPlaylistHeader {
+    try {
+      final val = _prefs.get(keyShowPlaylistHeader);
+      if (val is bool) return val;
+      if (val is String) return val.toLowerCase() == 'true';
+      return true;
+    } catch (_) {
+      return true;
+    }
+  }
+
+  @override
+  Future<void> setShowPlaylistHeader(bool show) async {
+    try {
+      await _prefs.setBool(keyShowPlaylistHeader, show);
+    } catch (_) {}
+    notifyListeners();
+  }
+
+  @override
+  bool get showUpNextHeader {
+    try {
+      final val = _prefs.get(keyShowUpNextHeader);
+      if (val is bool) return val;
+      if (val is String) return val.toLowerCase() == 'true';
+      return true;
+    } catch (_) {
+      return true;
+    }
+  }
+
+  @override
+  Future<void> setShowUpNextHeader(bool show) async {
+    try {
+      await _prefs.setBool(keyShowUpNextHeader, show);
+    } catch (_) {}
+    notifyListeners();
+  }
+
+  @override
   Future<void> resetTableColumns() async {
     try {
       await _prefs.remove(keyTrackColumnOrder);
@@ -509,6 +726,8 @@ class SharedPreferencesService extends PreferencesService {
       await _prefs.remove(keyWorkVisibleColumns);
       await _prefs.remove(keyPlaylistColumnOrder);
       await _prefs.remove(keyPlaylistVisibleColumns);
+      await _prefs.remove(keyUpNextColumnOrder);
+      await _prefs.remove(keyUpNextVisibleColumns);
     } catch (_) {}
     notifyListeners();
   }
@@ -924,6 +1143,14 @@ class InMemoryPreferencesService extends PreferencesService {
   Set<String>? _workVisibleColumns;
   List<String>? _playlistColumnOrder;
   Set<String>? _playlistVisibleColumns;
+  List<String>? _upNextColumnOrder;
+  Set<String>? _upNextVisibleColumns;
+  TrackListViewMode _trackViewMode;
+  TrackListViewMode _playlistViewMode;
+  TrackListViewMode _upNextViewMode;
+  bool _showTrackHeader;
+  bool _showPlaylistHeader;
+  bool _showUpNextHeader;
   bool _showNowPlayingWaveform;
   bool _showInspectorWaveform;
   int _nowPlayingWaveformPoints;
@@ -956,6 +1183,14 @@ class InMemoryPreferencesService extends PreferencesService {
     Set<String>? workVisibleColumns,
     List<String>? playlistColumnOrder,
     Set<String>? playlistVisibleColumns,
+    List<String>? upNextColumnOrder,
+    Set<String>? upNextVisibleColumns,
+    TrackListViewMode trackViewMode = TrackListViewMode.detail,
+    TrackListViewMode playlistViewMode = TrackListViewMode.detail,
+    TrackListViewMode upNextViewMode = TrackListViewMode.list,
+    bool showTrackHeader = true,
+    bool showPlaylistHeader = true,
+    bool showUpNextHeader = true,
     bool showNowPlayingWaveform = true,
     bool showInspectorWaveform = true,
     int nowPlayingWaveformPoints = 140,
@@ -1002,6 +1237,18 @@ class InMemoryPreferencesService extends PreferencesService {
        _playlistVisibleColumns = playlistVisibleColumns != null
            ? Set<String>.from(playlistVisibleColumns)
            : null,
+       _upNextColumnOrder = upNextColumnOrder != null
+           ? List<String>.from(upNextColumnOrder)
+           : null,
+       _upNextVisibleColumns = upNextVisibleColumns != null
+           ? Set<String>.from(upNextVisibleColumns)
+           : null,
+       _trackViewMode = trackViewMode,
+       _playlistViewMode = playlistViewMode,
+       _upNextViewMode = upNextViewMode,
+       _showTrackHeader = showTrackHeader,
+       _showPlaylistHeader = showPlaylistHeader,
+       _showUpNextHeader = showUpNextHeader,
        _showNowPlayingWaveform = showNowPlayingWaveform,
        _showInspectorWaveform = showInspectorWaveform,
        _nowPlayingWaveformPoints = nowPlayingWaveformPoints.clamp(10, 1200),
@@ -1110,6 +1357,7 @@ class InMemoryPreferencesService extends PreferencesService {
 
   @override
   Future<void> setTrackColumnWidths(Map<String, double> widths) async {
+    if (mapEquals(_trackColumnWidths, widths)) return;
     _trackColumnWidths = Map<String, double>.from(widths);
     notifyListeners();
   }
@@ -1158,6 +1406,82 @@ class InMemoryPreferencesService extends PreferencesService {
   }
 
   @override
+  List<String>? getUpNextColumnOrder() => _upNextColumnOrder != null
+      ? List<String>.from(_upNextColumnOrder!)
+      : null;
+
+  @override
+  Future<void> setUpNextColumnOrder(List<String> columns) async {
+    _upNextColumnOrder = List<String>.from(columns);
+    notifyListeners();
+  }
+
+  @override
+  Set<String>? getUpNextVisibleColumns() => _upNextVisibleColumns != null
+      ? Set<String>.from(_upNextVisibleColumns!)
+      : null;
+
+  @override
+  Future<void> setUpNextVisibleColumns(Set<String> columns) async {
+    _upNextVisibleColumns = Set<String>.from(columns);
+    notifyListeners();
+  }
+
+  @override
+  TrackListViewMode get trackViewMode => _trackViewMode;
+
+  @override
+  Future<void> setTrackViewMode(TrackListViewMode mode) async {
+    _trackViewMode = mode;
+    notifyListeners();
+  }
+
+  @override
+  TrackListViewMode get playlistViewMode => _playlistViewMode;
+
+  @override
+  Future<void> setPlaylistViewMode(TrackListViewMode mode) async {
+    _playlistViewMode = mode;
+    notifyListeners();
+  }
+
+  @override
+  TrackListViewMode get upNextViewMode => _upNextViewMode;
+
+  @override
+  Future<void> setUpNextViewMode(TrackListViewMode mode) async {
+    _upNextViewMode = mode;
+    notifyListeners();
+  }
+
+  @override
+  bool get showTrackHeader => _showTrackHeader;
+
+  @override
+  Future<void> setShowTrackHeader(bool show) async {
+    _showTrackHeader = show;
+    notifyListeners();
+  }
+
+  @override
+  bool get showPlaylistHeader => _showPlaylistHeader;
+
+  @override
+  Future<void> setShowPlaylistHeader(bool show) async {
+    _showPlaylistHeader = show;
+    notifyListeners();
+  }
+
+  @override
+  bool get showUpNextHeader => _showUpNextHeader;
+
+  @override
+  Future<void> setShowUpNextHeader(bool show) async {
+    _showUpNextHeader = show;
+    notifyListeners();
+  }
+
+  @override
   Future<void> resetTableColumns() async {
     _trackColumnOrder = null;
     _trackVisibleColumns = null;
@@ -1166,6 +1490,8 @@ class InMemoryPreferencesService extends PreferencesService {
     _workVisibleColumns = null;
     _playlistColumnOrder = null;
     _playlistVisibleColumns = null;
+    _upNextColumnOrder = null;
+    _upNextVisibleColumns = null;
     notifyListeners();
   }
 

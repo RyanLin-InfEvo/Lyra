@@ -4,6 +4,7 @@
 import 'dart:async';
 import 'dart:math' as math;
 
+import 'package:flutter/foundation.dart' show listEquals, setEquals;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:shadcn_ui/shadcn_ui.dart';
@@ -12,12 +13,29 @@ import '../../core/models/waveform_data.dart';
 import '../../design_system/contracts/lyra_contracts.dart';
 import '../../design_system/factory/lyra_design_system_scope.dart';
 import '../../design_system/tokens/lyra_tokens.dart';
+import '../../design_system/widgets/lyra_badge.dart';
 import '../../design_system/widgets/lyra_button.dart';
 import '../../design_system/widgets/lyra_card.dart';
+import '../../design_system/widgets/lyra_checkbox.dart';
 import '../../design_system/widgets/lyra_settings_layout.dart';
 import '../../design_system/widgets/lyra_switch.dart';
 import '../../design_system/widgets/lyra_toast.dart';
+import '../../widgets/draggable_columns_overlay.dart';
+import '../models/track.dart';
+import '../player/views/components/up_next_tab.dart' show UpNextTab;
 import '../player/views/components/waveform_scrubber.dart';
+import '../playlists/playlist_detail_view.dart' show PlaylistDetailView;
+import '../tracks/tracks_view.dart'
+    show
+        TrackColumn,
+        TrackCoverThumbnail,
+        TrackViewModeToggle,
+        buildTrackListSubtitleChildren,
+        buildTrackListTrailingChildren,
+        buildTrackListTrailingHeaderLabels,
+        computeTrackListTrailingMetrics,
+        normalizeTrackColumnOrder,
+        normalizeTrackVisibleColumns;
 import 'services/preferences_service.dart';
 
 const double kNowPlayingReferenceWidth = 780.0;
@@ -86,7 +104,14 @@ const List<AccentColorOption> kAccentColorOptions = [
 ];
 
 /// Sub-navigation section identifiers.
-enum SettingsNavSection { appearance, waveform, interaction, shortcuts, debug }
+enum SettingsNavSection {
+  appearance,
+  views,
+  waveform,
+  interaction,
+  shortcuts,
+  debug,
+}
 
 /// Waveform settings target view.
 enum WaveformTarget { nowPlaying, inspector }
@@ -105,6 +130,20 @@ class _SettingsViewState extends State<SettingsView>
     with SingleTickerProviderStateMixin {
   SettingsNavSection _currentSection = SettingsNavSection.appearance;
   WaveformTarget _selectedTarget = WaveformTarget.nowPlaying;
+  ViewSettingsTarget _selectedViewTarget = ViewSettingsTarget.tracks;
+
+  late TrackListViewMode _trackViewMode;
+  late TrackListViewMode _playlistViewMode;
+  late TrackListViewMode _upNextViewMode;
+  late bool _showTrackHeader;
+  late bool _showPlaylistHeader;
+  late bool _showUpNextHeader;
+  late List<TrackColumn> _trackColumnOrder;
+  late Set<TrackColumn> _trackVisibleColumns;
+  late List<TrackColumn> _playlistColumnOrder;
+  late Set<TrackColumn> _playlistVisibleColumns;
+  late List<TrackColumn> _upNextColumnOrder;
+  late Set<TrackColumn> _upNextVisibleColumns;
 
   late bool _showNowPlayingWaveform;
   late bool _showInspectorWaveform;
@@ -189,6 +228,41 @@ class _SettingsViewState extends State<SettingsView>
     _toastShowProgressBar = prefs?.toastShowProgressBar ?? true;
     _toastDurationSeconds = prefs?.toastDurationSeconds ?? 10;
 
+    final colByName = {for (final col in TrackColumn.values) col.name: col};
+    List<TrackColumn>? parseOrder(List<String>? names) =>
+        names?.map((name) => colByName[name]).whereType<TrackColumn>().toList();
+    Set<TrackColumn>? parseVisible(Set<String>? names) =>
+        names?.map((name) => colByName[name]).whereType<TrackColumn>().toSet();
+
+    _trackViewMode = prefs?.trackViewMode ?? TrackListViewMode.detail;
+    _playlistViewMode = prefs?.playlistViewMode ?? TrackListViewMode.detail;
+    _upNextViewMode = prefs?.upNextViewMode ?? TrackListViewMode.list;
+    _showTrackHeader = prefs?.showTrackHeader ?? true;
+    _showPlaylistHeader = prefs?.showPlaylistHeader ?? true;
+    _showUpNextHeader = prefs?.showUpNextHeader ?? true;
+
+    _trackColumnOrder = normalizeTrackColumnOrder(
+      parseOrder(prefs?.getTrackColumnOrder()),
+    );
+    _trackVisibleColumns = normalizeTrackVisibleColumns(
+      parseVisible(prefs?.getTrackVisibleColumns()),
+      defaults: TrackColumn.defaultVisibleColumns,
+    );
+    _playlistColumnOrder = normalizeTrackColumnOrder(
+      parseOrder(prefs?.getPlaylistColumnOrder()),
+    );
+    _playlistVisibleColumns = normalizeTrackVisibleColumns(
+      parseVisible(prefs?.getPlaylistVisibleColumns()),
+      defaults: PlaylistDetailView.defaultVisibleColumns,
+    );
+    _upNextColumnOrder = normalizeTrackColumnOrder(
+      parseOrder(prefs?.getUpNextColumnOrder()),
+    );
+    _upNextVisibleColumns = normalizeTrackVisibleColumns(
+      parseVisible(prefs?.getUpNextVisibleColumns()),
+      defaults: UpNextTab.defaultVisibleColumns,
+    );
+
     final currentPts = _selectedTarget == WaveformTarget.nowPlaying
         ? _nowPlayingWaveformPoints
         : _inspectorWaveformPoints;
@@ -221,6 +295,40 @@ class _SettingsViewState extends State<SettingsView>
     final newToastShowProgressBar = prefs.toastShowProgressBar;
     final newToastDurationSeconds = prefs.toastDurationSeconds;
 
+    final colByName = {for (final col in TrackColumn.values) col.name: col};
+    List<TrackColumn>? parseOrder(List<String>? names) =>
+        names?.map((name) => colByName[name]).whereType<TrackColumn>().toList();
+    Set<TrackColumn>? parseVisible(Set<String>? names) =>
+        names?.map((name) => colByName[name]).whereType<TrackColumn>().toSet();
+
+    final newTrackViewMode = prefs.trackViewMode;
+    final newPlaylistViewMode = prefs.playlistViewMode;
+    final newUpNextViewMode = prefs.upNextViewMode;
+    final newShowTrackHeader = prefs.showTrackHeader;
+    final newShowPlaylistHeader = prefs.showPlaylistHeader;
+    final newShowUpNextHeader = prefs.showUpNextHeader;
+    final newTrackOrder = normalizeTrackColumnOrder(
+      parseOrder(prefs.getTrackColumnOrder()),
+    );
+    final newTrackVisible = normalizeTrackVisibleColumns(
+      parseVisible(prefs.getTrackVisibleColumns()),
+      defaults: TrackColumn.defaultVisibleColumns,
+    );
+    final newPlaylistOrder = normalizeTrackColumnOrder(
+      parseOrder(prefs.getPlaylistColumnOrder()),
+    );
+    final newPlaylistVisible = normalizeTrackVisibleColumns(
+      parseVisible(prefs.getPlaylistVisibleColumns()),
+      defaults: PlaylistDetailView.defaultVisibleColumns,
+    );
+    final newUpNextOrder = normalizeTrackColumnOrder(
+      parseOrder(prefs.getUpNextColumnOrder()),
+    );
+    final newUpNextVisible = normalizeTrackVisibleColumns(
+      parseVisible(prefs.getUpNextVisibleColumns()),
+      defaults: UpNextTab.defaultVisibleColumns,
+    );
+
     if (_showNowPlayingWaveform != newShowNowPlaying ||
         _showInspectorWaveform != newShowInspector ||
         _nowPlayingWaveformPoints != newNowPlayingPts ||
@@ -235,7 +343,19 @@ class _SettingsViewState extends State<SettingsView>
         _notificationPosition != newNotificationPosition ||
         _toastAutoDismiss != newToastAutoDismiss ||
         _toastShowProgressBar != newToastShowProgressBar ||
-        _toastDurationSeconds != newToastDurationSeconds) {
+        _toastDurationSeconds != newToastDurationSeconds ||
+        _trackViewMode != newTrackViewMode ||
+        _playlistViewMode != newPlaylistViewMode ||
+        _upNextViewMode != newUpNextViewMode ||
+        _showTrackHeader != newShowTrackHeader ||
+        _showPlaylistHeader != newShowPlaylistHeader ||
+        _showUpNextHeader != newShowUpNextHeader ||
+        !listEquals(_trackColumnOrder, newTrackOrder) ||
+        !setEquals(_trackVisibleColumns, newTrackVisible) ||
+        !listEquals(_playlistColumnOrder, newPlaylistOrder) ||
+        !setEquals(_playlistVisibleColumns, newPlaylistVisible) ||
+        !listEquals(_upNextColumnOrder, newUpNextOrder) ||
+        !setEquals(_upNextVisibleColumns, newUpNextVisible)) {
       setState(() {
         _showNowPlayingWaveform = newShowNowPlaying;
         _showInspectorWaveform = newShowInspector;
@@ -252,6 +372,18 @@ class _SettingsViewState extends State<SettingsView>
         _toastAutoDismiss = newToastAutoDismiss;
         _toastShowProgressBar = newToastShowProgressBar;
         _toastDurationSeconds = newToastDurationSeconds;
+        _trackViewMode = newTrackViewMode;
+        _playlistViewMode = newPlaylistViewMode;
+        _upNextViewMode = newUpNextViewMode;
+        _showTrackHeader = newShowTrackHeader;
+        _showPlaylistHeader = newShowPlaylistHeader;
+        _showUpNextHeader = newShowUpNextHeader;
+        _trackColumnOrder = newTrackOrder;
+        _trackVisibleColumns = newTrackVisible;
+        _playlistColumnOrder = newPlaylistOrder;
+        _playlistVisibleColumns = newPlaylistVisible;
+        _upNextColumnOrder = newUpNextOrder;
+        _upNextVisibleColumns = newUpNextVisible;
 
         final currentPts = _selectedTarget == WaveformTarget.nowPlaying
             ? _nowPlayingWaveformPoints
@@ -425,7 +557,7 @@ class _SettingsViewState extends State<SettingsView>
     return LyraSettingsLayout<SettingsNavSection>(
       title: 'Settings',
       sidebarWidth: 250.0,
-      contentMaxWidth: 1040.0,
+      contentMaxWidth: 1280.0,
       contentPadding: const EdgeInsets.symmetric(
         horizontal: LyraSpacing.xl,
         vertical: LyraSpacing.lg,
@@ -438,6 +570,12 @@ class _SettingsViewState extends State<SettingsView>
           label: 'Appearance',
           icon: LucideIcons.palette,
           builder: (context) => _buildAppearanceSection(context, tokens, scope),
+        ),
+        LyraSettingsSection<SettingsNavSection>(
+          id: SettingsNavSection.views,
+          label: 'Views & Layout',
+          icon: LucideIcons.layoutList,
+          builder: (context) => _buildViewsSection(context, tokens),
         ),
         LyraSettingsSection<SettingsNavSection>(
           id: SettingsNavSection.waveform,
@@ -680,6 +818,433 @@ class _SettingsViewState extends State<SettingsView>
           );
         }
       },
+    );
+  }
+
+  TrackListViewMode _viewModeForTarget(ViewSettingsTarget target) {
+    switch (target) {
+      case ViewSettingsTarget.tracks:
+        return _trackViewMode;
+      case ViewSettingsTarget.playlist:
+        return _playlistViewMode;
+      case ViewSettingsTarget.upNext:
+        return _upNextViewMode;
+    }
+  }
+
+  void _setViewModeForTarget(
+    ViewSettingsTarget target,
+    TrackListViewMode mode,
+  ) {
+    setState(() {
+      switch (target) {
+        case ViewSettingsTarget.tracks:
+          _trackViewMode = mode;
+          break;
+        case ViewSettingsTarget.playlist:
+          _playlistViewMode = mode;
+          break;
+        case ViewSettingsTarget.upNext:
+          _upNextViewMode = mode;
+          break;
+      }
+    });
+    switch (target) {
+      case ViewSettingsTarget.tracks:
+        widget.preferencesService?.setTrackViewMode(mode);
+        break;
+      case ViewSettingsTarget.playlist:
+        widget.preferencesService?.setPlaylistViewMode(mode);
+        break;
+      case ViewSettingsTarget.upNext:
+        widget.preferencesService?.setUpNextViewMode(mode);
+        break;
+    }
+  }
+
+  bool _showHeaderForTarget(ViewSettingsTarget target) {
+    switch (target) {
+      case ViewSettingsTarget.tracks:
+        return _showTrackHeader;
+      case ViewSettingsTarget.playlist:
+        return _showPlaylistHeader;
+      case ViewSettingsTarget.upNext:
+        return _showUpNextHeader;
+    }
+  }
+
+  Key _showHeaderSwitchKeyForTarget(ViewSettingsTarget target) {
+    switch (target) {
+      case ViewSettingsTarget.tracks:
+        return const Key('tracks_show_header_switch');
+      case ViewSettingsTarget.playlist:
+        return const Key('playlist_show_header_switch');
+      case ViewSettingsTarget.upNext:
+        return const Key('up_next_show_header_switch');
+    }
+  }
+
+  void _setShowHeaderForTarget(ViewSettingsTarget target, bool show) {
+    setState(() {
+      switch (target) {
+        case ViewSettingsTarget.tracks:
+          _showTrackHeader = show;
+          break;
+        case ViewSettingsTarget.playlist:
+          _showPlaylistHeader = show;
+          break;
+        case ViewSettingsTarget.upNext:
+          _showUpNextHeader = show;
+          break;
+      }
+    });
+    switch (target) {
+      case ViewSettingsTarget.tracks:
+        widget.preferencesService?.setShowTrackHeader(show);
+        break;
+      case ViewSettingsTarget.playlist:
+        widget.preferencesService?.setShowPlaylistHeader(show);
+        break;
+      case ViewSettingsTarget.upNext:
+        widget.preferencesService?.setShowUpNextHeader(show);
+        break;
+    }
+  }
+
+  List<TrackColumn> _columnOrderForTarget(ViewSettingsTarget target) {
+    switch (target) {
+      case ViewSettingsTarget.tracks:
+        return _trackColumnOrder;
+      case ViewSettingsTarget.playlist:
+        return _playlistColumnOrder;
+      case ViewSettingsTarget.upNext:
+        return _upNextColumnOrder;
+    }
+  }
+
+  void _setColumnOrderForTarget(
+    ViewSettingsTarget target,
+    List<TrackColumn> order,
+  ) {
+    setState(() {
+      switch (target) {
+        case ViewSettingsTarget.tracks:
+          _trackColumnOrder = order;
+          break;
+        case ViewSettingsTarget.playlist:
+          _playlistColumnOrder = order;
+          break;
+        case ViewSettingsTarget.upNext:
+          _upNextColumnOrder = order;
+          break;
+      }
+    });
+    final names = order.map((c) => c.name).toList();
+    switch (target) {
+      case ViewSettingsTarget.tracks:
+        widget.preferencesService?.setTrackColumnOrder(names);
+        break;
+      case ViewSettingsTarget.playlist:
+        widget.preferencesService?.setPlaylistColumnOrder(names);
+        break;
+      case ViewSettingsTarget.upNext:
+        widget.preferencesService?.setUpNextColumnOrder(names);
+        break;
+    }
+  }
+
+  Set<TrackColumn> _visibleColumnsForTarget(ViewSettingsTarget target) {
+    switch (target) {
+      case ViewSettingsTarget.tracks:
+        return _trackVisibleColumns;
+      case ViewSettingsTarget.playlist:
+        return _playlistVisibleColumns;
+      case ViewSettingsTarget.upNext:
+        return _upNextVisibleColumns;
+    }
+  }
+
+  Set<TrackColumn> _defaultVisibleForTarget(ViewSettingsTarget target) {
+    switch (target) {
+      case ViewSettingsTarget.tracks:
+        return TrackColumn.defaultVisibleColumns;
+      case ViewSettingsTarget.playlist:
+        return PlaylistDetailView.defaultVisibleColumns;
+      case ViewSettingsTarget.upNext:
+        return UpNextTab.defaultVisibleColumns;
+    }
+  }
+
+  void _setVisibleColumnsForTarget(
+    ViewSettingsTarget target,
+    Set<TrackColumn> visible,
+  ) {
+    setState(() {
+      switch (target) {
+        case ViewSettingsTarget.tracks:
+          _trackVisibleColumns = visible;
+          break;
+        case ViewSettingsTarget.playlist:
+          _playlistVisibleColumns = visible;
+          break;
+        case ViewSettingsTarget.upNext:
+          _upNextVisibleColumns = visible;
+          break;
+      }
+    });
+    final names = visible.map((c) => c.name).toSet();
+    switch (target) {
+      case ViewSettingsTarget.tracks:
+        widget.preferencesService?.setTrackVisibleColumns(names);
+        break;
+      case ViewSettingsTarget.playlist:
+        widget.preferencesService?.setPlaylistVisibleColumns(names);
+        break;
+      case ViewSettingsTarget.upNext:
+        widget.preferencesService?.setUpNextVisibleColumns(names);
+        break;
+    }
+  }
+
+  void _resetCurrentTargetColumns() {
+    final target = _selectedViewTarget;
+    final defaultOrder = List<TrackColumn>.from(TrackColumn.values);
+    final defaultVisible = Set<TrackColumn>.from(
+      _defaultVisibleForTarget(target),
+    );
+    _setColumnOrderForTarget(target, defaultOrder);
+    _setVisibleColumnsForTarget(target, defaultVisible);
+    if (target == ViewSettingsTarget.tracks) {
+      widget.preferencesService?.setTrackColumnWidths(const {});
+    }
+  }
+
+  Widget _buildViewsSection(BuildContext context, LyraThemeTokens tokens) {
+    final target = _selectedViewTarget;
+    final viewMode = _viewModeForTarget(target);
+    final columnOrder = _columnOrderForTarget(target);
+    final visibleColumns = _visibleColumnsForTarget(target);
+    final orderedVisibleColumns = columnOrder
+        .where(visibleColumns.contains)
+        .toList();
+    final showHeader = _showHeaderForTarget(target);
+
+    final controlsContent = Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _SettingRow(
+          title: 'Display Mode',
+          trailing: TrackViewModeToggle(
+            mode: viewMode,
+            onModeChanged: (mode) => _setViewModeForTarget(target, mode),
+            listButtonKey: const Key('settings_view_mode_list'),
+            detailButtonKey: const Key('settings_view_mode_detail'),
+          ),
+          tokens: tokens,
+        ),
+
+        const SizedBox(height: LyraSpacing.md),
+        _SettingRow(
+          title: 'Show Header Bar',
+          trailing: LyraSwitch(
+            key: _showHeaderSwitchKeyForTarget(target),
+            value: showHeader,
+            onChanged: (val) => _setShowHeaderForTarget(target, val),
+          ),
+          tokens: tokens,
+        ),
+
+        const SizedBox(height: LyraSpacing.lg),
+
+        Row(
+          children: [
+            Expanded(
+              child: Text(
+                'Displayed Attributes & Order',
+                style: LyraTypography.p(
+                  tokens,
+                ).copyWith(fontWeight: FontWeight.w600),
+              ),
+            ),
+            KeyedSubtree(
+              key: const Key('settings_views_reset_columns_button'),
+              child: LyraButton.ghost(
+                size: LyraButtonSize.sm,
+                onPressed: _resetCurrentTargetColumns,
+                child: Text(
+                  'Reset',
+                  style: LyraTypography.small(
+                    tokens,
+                  ).copyWith(color: tokens.textMuted),
+                ),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: LyraSpacing.sm),
+
+        Container(
+          height: 320.0,
+          decoration: BoxDecoration(
+            color: tokens.isDark ? LyraColors.charcoal900 : LyraColors.zinc50,
+            borderRadius: LyraRadius.mdRadius,
+            border: Border.all(color: tokens.border, width: 1.0),
+          ),
+          child: ReorderableListView.builder(
+            buildDefaultDragHandles: false,
+            padding: const EdgeInsets.all(LyraSpacing.xs),
+            itemCount: columnOrder.length,
+            onReorder: (oldIndex, newIndex) {
+              if (newIndex > oldIndex) {
+                newIndex -= 1;
+              }
+              final next = List<TrackColumn>.from(columnOrder);
+              final moved = next.removeAt(oldIndex);
+              next.insert(newIndex, moved);
+              _setColumnOrderForTarget(target, next);
+            },
+            proxyDecorator: (child, index, animation) =>
+                DraggableColumnsOverlay.proxyDecorator(
+                  child,
+                  index,
+                  animation,
+                  tokens,
+                ),
+            itemBuilder: (context, index) {
+              final col = columnOrder[index];
+              final isVisible = visibleColumns.contains(col);
+              final canToggle = !col.isMandatory;
+              return _ViewAttributeItem(
+                key: ValueKey('settings_col_item_${col.name}'),
+                index: index,
+                col: col,
+                isChecked: isVisible,
+                canToggle: canToggle,
+                onToggle: () {
+                  if (!canToggle) return;
+                  final next = Set<TrackColumn>.from(visibleColumns);
+                  if (next.contains(col)) {
+                    next.remove(col);
+                  } else {
+                    next.add(col);
+                  }
+                  _setVisibleColumnsForTarget(target, next);
+                },
+                tokens: tokens,
+              );
+            },
+          ),
+        ),
+      ],
+    );
+
+    final previewPanel = ViewLayoutPreviewCard(
+      key: const ValueKey('view_layout_preview_card'),
+      target: target,
+      viewMode: viewMode,
+      showHeader: showHeader,
+      orderedVisibleColumns: orderedVisibleColumns,
+      tokens: tokens,
+    );
+
+    return LyraCard(
+      padding: const EdgeInsets.all(LyraSpacing.lg),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(LucideIcons.layoutList, size: 20.0, color: tokens.primary),
+              const SizedBox(width: LyraSpacing.sm),
+              Flexible(
+                child: Text(
+                  'Views & Layout',
+                  style: LyraTypography.h3(tokens),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: LyraSpacing.lg),
+
+          SizedBox(
+            width: double.infinity,
+            child: ShadTabs<ViewSettingsTarget>(
+              value: target,
+              onChanged: (nextTarget) =>
+                  setState(() => _selectedViewTarget = nextTarget),
+              gap: 0,
+              tabs: const [
+                ShadTab(
+                  value: ViewSettingsTarget.tracks,
+                  padding: EdgeInsets.symmetric(horizontal: 8.0, vertical: 4.0),
+                  child: Flexible(
+                    child: Text(
+                      'Tracks Library',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                ),
+                ShadTab(
+                  value: ViewSettingsTarget.playlist,
+                  padding: EdgeInsets.symmetric(horizontal: 8.0, vertical: 4.0),
+                  child: Flexible(
+                    child: Text(
+                      'Playlist Detail',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                ),
+                ShadTab(
+                  value: ViewSettingsTarget.upNext,
+                  padding: EdgeInsets.symmetric(horizontal: 8.0, vertical: 4.0),
+                  child: Flexible(
+                    child: Text(
+                      'Up Next Queue',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: LyraSpacing.lg),
+          Container(height: 1.0, color: tokens.border),
+          const SizedBox(height: LyraSpacing.lg),
+
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final isWide = constraints.maxWidth >= 760.0;
+
+              if (isWide) {
+                return Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(flex: 4, child: controlsContent),
+                    const SizedBox(width: LyraSpacing.xl),
+                    Expanded(flex: 6, child: previewPanel),
+                  ],
+                );
+              } else {
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    controlsContent,
+                    const SizedBox(height: LyraSpacing.xl),
+                    Container(height: 1.0, color: tokens.border),
+                    const SizedBox(height: LyraSpacing.lg),
+                    previewPanel,
+                  ],
+                );
+              }
+            },
+          ),
+        ],
+      ),
     );
   }
 
@@ -1100,8 +1665,9 @@ class _SettingsViewState extends State<SettingsView>
                           onChanged: (val) {
                             final secs = val.round().clamp(1, 60);
                             setState(() => _toastDurationSeconds = secs);
-                            widget.preferencesService
-                                ?.setToastDurationSeconds(secs);
+                            widget.preferencesService?.setToastDurationSeconds(
+                              secs,
+                            );
                           },
                         ),
                       ),
@@ -1113,9 +1679,9 @@ class _SettingsViewState extends State<SettingsView>
                           '${_toastDurationSeconds}s',
                           style: LyraTypography.mono(tokens, fontSize: 12.0)
                               .copyWith(
-                            fontWeight: FontWeight.w600,
-                            color: tokens.text,
-                          ),
+                                fontWeight: FontWeight.w600,
+                                color: tokens.text,
+                              ),
                         ),
                       ),
                     ],
@@ -1244,8 +1810,9 @@ class _SettingsViewState extends State<SettingsView>
                   child: Text(
                     label,
                     style: LyraTypography.mono(tokens, fontSize: 10.0).copyWith(
-                      fontWeight:
-                          isSelected ? FontWeight.w700 : FontWeight.w500,
+                      fontWeight: isSelected
+                          ? FontWeight.w700
+                          : FontWeight.w500,
                       color: isSelected ? tokens.primary : tokens.textMuted,
                     ),
                   ),
@@ -1372,7 +1939,9 @@ class _SettingsViewState extends State<SettingsView>
           // 1. Floating SnackBars
           Text(
             'Floating Notification (SnackBar)',
-            style: LyraTypography.p(tokens).copyWith(fontWeight: FontWeight.w600),
+            style: LyraTypography.p(
+              tokens,
+            ).copyWith(fontWeight: FontWeight.w600),
           ),
           const SizedBox(height: LyraSpacing.xs),
           Text(
@@ -1401,9 +1970,9 @@ class _SettingsViewState extends State<SettingsView>
                           Expanded(
                             child: Text(
                               'Sample Error SnackBar: Failed to switch audio endpoint (Connection timeout).',
-                              style: LyraTypography.small(tokens).copyWith(
-                                color: tokens.destructiveForeground,
-                              ),
+                              style: LyraTypography.small(
+                                tokens,
+                              ).copyWith(color: tokens.destructiveForeground),
                             ),
                           ),
                         ],
@@ -1442,7 +2011,9 @@ class _SettingsViewState extends State<SettingsView>
           // 2. TradingView-Style Toast Stack (Non-blocking Overlay)
           Text(
             'Toast Stack Notification (TradingView Style)',
-            style: LyraTypography.p(tokens).copyWith(fontWeight: FontWeight.w600),
+            style: LyraTypography.p(
+              tokens,
+            ).copyWith(fontWeight: FontWeight.w600),
           ),
           const SizedBox(height: LyraSpacing.xs),
           Text(
@@ -1554,7 +2125,9 @@ class _SettingsViewState extends State<SettingsView>
           // 3. Contextual Inline Banners
           Text(
             'Contextual Inline Banner',
-            style: LyraTypography.p(tokens).copyWith(fontWeight: FontWeight.w600),
+            style: LyraTypography.p(
+              tokens,
+            ).copyWith(fontWeight: FontWeight.w600),
           ),
           const SizedBox(height: LyraSpacing.xs),
           Text(
@@ -1603,7 +2176,9 @@ class _SettingsViewState extends State<SettingsView>
                   });
                 },
                 child: Text(
-                  _showDebugInfoBanner ? 'Hide Info Banner' : 'Show Info Banner',
+                  _showDebugInfoBanner
+                      ? 'Hide Info Banner'
+                      : 'Show Info Banner',
                 ),
               ),
             ],
@@ -1733,11 +2308,7 @@ class _SettingsViewState extends State<SettingsView>
               ),
               child: Row(
                 children: [
-                  Icon(
-                    LucideIcons.info,
-                    size: 16.0,
-                    color: tokens.primary,
-                  ),
+                  Icon(LucideIcons.info, size: 16.0, color: tokens.primary),
                   const SizedBox(width: LyraSpacing.sm),
                   Expanded(
                     child: Text(
@@ -2309,7 +2880,9 @@ class _ThemeOptionCardState extends State<_ThemeOptionCard> {
             width: 130.0,
             padding: const EdgeInsets.all(LyraSpacing.md),
             decoration: BoxDecoration(
-              color: isDarkCard ? LyraColors.charcoal950 : const Color(0xFFFFFFFF),
+              color: isDarkCard
+                  ? LyraColors.charcoal950
+                  : const Color(0xFFFFFFFF),
               borderRadius: LyraRadius.mdRadius,
               border: _isFocused
                   ? tokens.focusedRingBorder(width: 2.0)
@@ -2347,7 +2920,9 @@ class _ThemeOptionCardState extends State<_ThemeOptionCard> {
                   style: TextStyle(
                     fontSize: 13.0,
                     fontWeight: FontWeight.w600,
-                    color: isDarkCard ? LyraColors.softWhite : LyraColors.zinc950,
+                    color: isDarkCard
+                        ? LyraColors.softWhite
+                        : LyraColors.zinc950,
                   ),
                 ),
               ],
@@ -2639,6 +3214,789 @@ class _KbdBadge extends StatelessWidget {
           tokens,
           fontSize: 11.0,
         ).copyWith(fontWeight: FontWeight.w600, color: tokens.text),
+      ),
+    );
+  }
+}
+
+class _ViewAttributeItem extends StatefulWidget {
+  final int index;
+  final TrackColumn col;
+  final bool isChecked;
+  final bool canToggle;
+  final VoidCallback onToggle;
+  final LyraThemeTokens tokens;
+
+  const _ViewAttributeItem({
+    super.key,
+    required this.index,
+    required this.col,
+    required this.isChecked,
+    required this.canToggle,
+    required this.onToggle,
+    required this.tokens,
+  });
+
+  @override
+  State<_ViewAttributeItem> createState() => _ViewAttributeItemState();
+}
+
+class _ViewAttributeItemState extends State<_ViewAttributeItem> {
+  bool _isHovered = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = widget.tokens;
+    return MouseRegion(
+      onEnter: (_) => setState(() => _isHovered = true),
+      onExit: (_) => setState(() => _isHovered = false),
+      child: Material(
+        color: const Color(0x00000000),
+        child: DecoratedBox(
+          decoration: BoxDecoration(
+            color: _isHovered
+                ? tokens.secondary.withValues(alpha: 0.45)
+                : const Color(0x00000000),
+            borderRadius: BorderRadius.circular(6.0),
+          ),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 6.0, vertical: 5.0),
+            child: Row(
+              children: [
+                ReorderableDragStartListener(
+                  index: widget.index,
+                  child: MouseRegion(
+                    cursor: SystemMouseCursors.grab,
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 4.0,
+                        vertical: 2.0,
+                      ),
+                      child: Icon(
+                        LucideIcons.gripVertical,
+                        size: 14.0,
+                        color: tokens.textMuted,
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 6.0),
+                Expanded(
+                  child: GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onTap: widget.canToggle ? widget.onToggle : null,
+                    child: Row(
+                      children: [
+                        LyraCheckbox(
+                          key: Key('settings_col_checkbox_${widget.col.name}'),
+                          value: widget.isChecked,
+                          enabled: widget.canToggle,
+                          onChanged: widget.canToggle
+                              ? (_) => widget.onToggle()
+                              : null,
+                        ),
+                        const SizedBox(width: 8.0),
+                        Expanded(
+                          child: Text(
+                            widget.col.label,
+                            style: LyraTypography.small(tokens).copyWith(
+                              color: widget.canToggle
+                                  ? tokens.text
+                                  : tokens.textMuted,
+                              fontWeight: widget.isChecked
+                                  ? FontWeight.w500
+                                  : FontWeight.normal,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                        if (!widget.canToggle) ...[
+                          const SizedBox(width: 4.0),
+                          Icon(
+                            LucideIcons.lock,
+                            size: 12.0,
+                            color: tokens.textMuted,
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+@visibleForTesting
+class ViewLayoutPreviewCard extends StatelessWidget {
+  final ViewSettingsTarget target;
+  final TrackListViewMode viewMode;
+  final bool showHeader;
+  final List<TrackColumn> orderedVisibleColumns;
+  final LyraThemeTokens tokens;
+
+  const ViewLayoutPreviewCard({
+    super.key,
+    required this.target,
+    required this.viewMode,
+    required this.showHeader,
+    required this.orderedVisibleColumns,
+    required this.tokens,
+  });
+
+  static const List<Track> _sampleTracks = [
+    Track(
+      id: 'preview-1',
+      title: 'Hotel California',
+      artistName: 'Eagles',
+      albumTitle: 'Hell Freezes Over',
+      workTitle: 'Hotel California (Acoustic)',
+      recordingYear: 1994,
+      durationMs: 432000,
+      format: 'FLAC',
+      sampleRate: 96000,
+      bitDepth: 24,
+      genre: 'Acoustic Rock',
+      trackNumber: 6,
+      isrc: 'USEE10001994',
+      iswc: 'T-070.854.123-4',
+      musicbrainzId: 'a1b2c3d4-0001',
+    ),
+    Track(
+      id: 'preview-2',
+      title: 'So What',
+      artistName: 'Miles Davis',
+      albumTitle: 'Kind of Blue',
+      workTitle: 'So What',
+      recordingYear: 1959,
+      durationMs: 562000,
+      format: 'FLAC',
+      sampleRate: 192000,
+      bitDepth: 24,
+      genre: 'Modal Jazz',
+      trackNumber: 1,
+      isrc: 'USSM15900101',
+      iswc: 'T-070.112.900-1',
+      musicbrainzId: 'b2c3d4e5-0002',
+    ),
+    Track(
+      id: 'preview-3',
+      title: 'Clair de Lune',
+      artistName: 'Claude Debussy',
+      albumTitle: 'Suite bergamasque',
+      workTitle: 'Suite bergamasque, L. 75: III',
+      recordingYear: 1905,
+      durationMs: 304000,
+      format: 'ALAC',
+      sampleRate: 44100,
+      bitDepth: 16,
+      genre: 'Classical',
+      trackNumber: 3,
+      isrc: 'FRZ010500033',
+      iswc: 'T-003.400.812-2',
+      musicbrainzId: 'c3d4e5f6-0003',
+    ),
+  ];
+
+  static double _detailColWidth(TrackColumn col) {
+    switch (col.name) {
+      case 'index':
+        return 40.0;
+      case 'cover':
+        return 52.0;
+      case 'year':
+        return 56.0;
+      case 'trackNumber':
+        return 48.0;
+      case 'duration':
+        return 64.0;
+      case 'iswc':
+      case 'isrc':
+        return 120.0;
+      case 'musicbrainzId':
+        return 160.0;
+      case 'title':
+        return 160.0;
+      case 'album':
+      case 'work':
+        return 128.0;
+      case 'resolution':
+        return 96.0;
+      case 'genre':
+        return 64.0;
+      default:
+        return col.width ?? 90.0;
+    }
+  }
+
+  double _requiredDetailWidth(
+    List<TrackColumn> cols, {
+    double textScale = 1.0,
+  }) {
+    if (cols.isEmpty) return 0.0;
+    final effectiveScale = math.max(1.0, textScale);
+    var w = target == ViewSettingsTarget.upNext ? 40.0 : 32.0;
+    for (var i = 0; i < cols.length; i++) {
+      final base = _detailColWidth(cols[i]);
+      w += cols[i] == TrackColumn.cover ? base : base * effectiveScale;
+      if (i > 0) w += 8.0;
+    }
+    return w;
+  }
+
+  Widget _buildHeader(List<TrackColumn> cols, double textScale) {
+    final horizontalPad = target == ViewSettingsTarget.upNext ? 20.0 : 16.0;
+    final headerStyle = LyraTypography.small(tokens).copyWith(
+      color: tokens.textMuted,
+      fontWeight: FontWeight.w600,
+      fontSize: 12.0,
+    );
+
+    if (viewMode == TrackListViewMode.list) {
+      final showIndex = cols.contains(TrackColumn.index);
+      final showCover = cols.contains(TrackColumn.cover);
+      final hasResolution = cols.contains(TrackColumn.resolution);
+      final hasDuration = cols.contains(TrackColumn.duration);
+      final hasTrailing = hasResolution || hasDuration;
+
+      return Container(
+        key: const Key('preview_table_header'),
+        padding: EdgeInsets.symmetric(horizontal: horizontalPad, vertical: 8.0),
+        decoration: BoxDecoration(
+          color: tokens.surfaceSecondary.withValues(alpha: 0.45),
+          border: Border(bottom: BorderSide(color: tokens.border, width: 1.0)),
+        ),
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            final indexWidth = showIndex
+                ? math.min(40.0 * textScale, constraints.maxWidth * 0.2)
+                : 0.0;
+            final leftFixedWidth =
+                indexWidth +
+                (showCover ? 52.0 : 0.0) +
+                (hasTrailing ? 12.0 : 0.0);
+            final metrics = computeTrackListTrailingMetrics(
+              availableRowWidth: constraints.maxWidth,
+              leftFixedWidth: leftFixedWidth,
+              hasResolution: hasResolution,
+              hasDuration: hasDuration,
+              textScale: textScale,
+            );
+            final trailingLabels = buildTrackListTrailingHeaderLabels(
+              orderedVisibleColumns: cols,
+              metrics: metrics,
+              style: headerStyle,
+            );
+
+            return Row(
+              children: [
+                if (showIndex)
+                  SizedBox(
+                    width: indexWidth,
+                    child: Align(
+                      alignment: Alignment.centerLeft,
+                      child: Text(
+                        '#',
+                        style: headerStyle,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  ),
+                if (showCover)
+                  SizedBox(
+                    width: 52.0,
+                    child: Padding(
+                      padding: const EdgeInsets.only(right: 12.0),
+                      child: Text(
+                        'Cover',
+                        style: headerStyle,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  ),
+                Expanded(
+                  child: Text(
+                    'Title & Details',
+                    style: headerStyle,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+                if (trailingLabels.isNotEmpty) ...[
+                  const SizedBox(width: 12.0),
+                  ...trailingLabels,
+                ],
+              ],
+            );
+          },
+        ),
+      );
+    }
+
+    return Container(
+      key: const Key('preview_table_header'),
+      padding: EdgeInsets.symmetric(horizontal: horizontalPad, vertical: 8.0),
+      decoration: BoxDecoration(
+        color: tokens.surfaceSecondary.withValues(alpha: 0.45),
+        border: Border(bottom: BorderSide(color: tokens.border, width: 1.0)),
+      ),
+      child: Row(
+        children: [
+          for (var i = 0; i < cols.length; i++) ...[
+            if (i > 0) const SizedBox(width: 8.0),
+            _buildDetailHeaderCell(cols[i], headerStyle, textScale),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDetailHeaderCell(
+    TrackColumn col,
+    TextStyle style,
+    double textScale,
+  ) {
+    final alignRight =
+        col == TrackColumn.duration ||
+        col == TrackColumn.year ||
+        col == TrackColumn.trackNumber;
+    final alignCenter = col == TrackColumn.index || col == TrackColumn.cover;
+    final label = Text(
+      col.headerLabel,
+      style: style,
+      maxLines: 1,
+      overflow: TextOverflow.ellipsis,
+      textAlign: alignRight
+          ? TextAlign.right
+          : (alignCenter ? TextAlign.center : TextAlign.left),
+    );
+    if (col.flex != null) {
+      return Expanded(flex: col.flex!, child: label);
+    }
+    return SizedBox(
+      width: col == TrackColumn.cover
+          ? _detailColWidth(col)
+          : _detailColWidth(col) * textScale,
+      child: alignCenter ? Center(child: label) : label,
+    );
+  }
+
+  Widget _buildPreviewRow(Track track, int index, double textScale) {
+    final isCurrent = index == 0;
+    final isUpNext = target == ViewSettingsTarget.upNext;
+    final rowMargin = isUpNext
+        ? const EdgeInsets.symmetric(horizontal: 8.0, vertical: 2.0)
+        : EdgeInsets.zero;
+    final rowDecoration = isUpNext
+        ? BoxDecoration(
+            color: isCurrent
+                ? tokens.secondary.withValues(alpha: 0.35)
+                : const Color(0x00000000),
+            borderRadius: LyraRadius.mdRadius,
+            border: isCurrent
+                ? Border.all(color: tokens.border, width: 1.0)
+                : null,
+          )
+        : BoxDecoration(
+            color: isCurrent
+                ? tokens.secondary.withValues(alpha: 0.3)
+                : const Color(0x00000000),
+            border: Border(
+              bottom: BorderSide(
+                color: tokens.border.withValues(alpha: 0.5),
+                width: 0.5,
+              ),
+            ),
+          );
+
+    if (viewMode == TrackListViewMode.list) {
+      final showIndex = orderedVisibleColumns.contains(TrackColumn.index);
+      final showCover = orderedVisibleColumns.contains(TrackColumn.cover);
+      final hasResolution = orderedVisibleColumns.contains(
+        TrackColumn.resolution,
+      );
+      final hasDuration = orderedVisibleColumns.contains(TrackColumn.duration);
+      final hasTrailing = hasResolution || hasDuration;
+      final subtitleStyle = LyraTypography.small(
+        tokens,
+      ).copyWith(color: tokens.textMuted, fontSize: 12.0);
+      final subtitleChildren = buildTrackListSubtitleChildren(
+        track,
+        orderedVisibleColumns,
+        subtitleStyle,
+      );
+
+      return Container(
+        constraints: const BoxConstraints(minHeight: 64.0),
+        margin: rowMargin,
+        padding: EdgeInsets.symmetric(
+          horizontal: isUpNext ? 12.0 : 16.0,
+          vertical: 10.0,
+        ),
+        decoration: rowDecoration,
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            final indexWidth = showIndex
+                ? math.min(40.0 * textScale, constraints.maxWidth * 0.2)
+                : 0.0;
+            final leftFixedWidth =
+                indexWidth +
+                (showCover ? 52.0 : 0.0) +
+                (hasTrailing ? 12.0 : 0.0);
+            final metrics = computeTrackListTrailingMetrics(
+              availableRowWidth: constraints.maxWidth,
+              leftFixedWidth: leftFixedWidth,
+              hasResolution: hasResolution,
+              hasDuration: hasDuration,
+              textScale: textScale,
+            );
+            final trailingChildren = buildTrackListTrailingChildren(
+              track: track,
+              orderedVisibleColumns: orderedVisibleColumns,
+              tokens: tokens,
+              maxBadgeWidth: metrics.maxBadgeWidth,
+              durationWidth: metrics.durationWidth,
+            );
+
+            return Row(
+              children: [
+                if (showIndex)
+                  SizedBox(
+                    width: indexWidth,
+                    child: Align(
+                      alignment: Alignment.centerLeft,
+                      child: isCurrent
+                          ? Icon(
+                              LucideIcons.volume2,
+                              size: 16.0,
+                              color: tokens.primary,
+                            )
+                          : Text(
+                              '${index + 1}',
+                              style: LyraTypography.small(tokens).copyWith(
+                                color: tokens.textMuted,
+                                fontSize: 12.0,
+                                fontFeatures: const [
+                                  FontFeature.tabularFigures(),
+                                ],
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                    ),
+                  ),
+                if (showCover)
+                  Padding(
+                    padding: const EdgeInsets.only(right: 12.0),
+                    child: TrackCoverThumbnail(
+                      track: track,
+                      isActive: isCurrent,
+                      size: 40.0,
+                    ),
+                  ),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      if (orderedVisibleColumns.contains(TrackColumn.title))
+                        Text(
+                          track.displayTitle,
+                          style: LyraTypography.p(tokens).copyWith(
+                            fontSize: 14.0,
+                            fontWeight: isCurrent
+                                ? FontWeight.w600
+                                : FontWeight.normal,
+                            color: isCurrent ? tokens.primary : tokens.text,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      if (subtitleChildren.isNotEmpty) ...[
+                        const SizedBox(height: 2.0),
+                        Row(children: subtitleChildren),
+                      ],
+                    ],
+                  ),
+                ),
+                if (trailingChildren.isNotEmpty) ...[
+                  const SizedBox(width: 12.0),
+                  ...trailingChildren,
+                ],
+              ],
+            );
+          },
+        ),
+      );
+    }
+
+    return Container(
+      constraints: const BoxConstraints(minHeight: 56.0),
+      margin: rowMargin,
+      padding: EdgeInsets.symmetric(
+        horizontal: isUpNext ? 12.0 : 16.0,
+        vertical: 8.0,
+      ),
+      decoration: rowDecoration,
+      child: Row(
+        children: [
+          for (var i = 0; i < orderedVisibleColumns.length; i++) ...[
+            if (i > 0) const SizedBox(width: 8.0),
+            _buildDetailCell(
+              orderedVisibleColumns[i],
+              track,
+              index,
+              isCurrent,
+              textScale,
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDetailCell(
+    TrackColumn col,
+    Track track,
+    int index,
+    bool isCurrent,
+    double textScale,
+  ) {
+    final mutedStyle = LyraTypography.small(
+      tokens,
+    ).copyWith(color: tokens.textMuted, fontSize: 12.0);
+    Widget cell;
+    switch (col.name) {
+      case 'index':
+        cell = Center(
+          child: isCurrent
+              ? Icon(LucideIcons.volume2, size: 16.0, color: tokens.primary)
+              : Text(
+                  '${index + 1}',
+                  style: mutedStyle.copyWith(
+                    fontFeatures: const [FontFeature.tabularFigures()],
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+        );
+        break;
+      case 'cover':
+        cell = Center(
+          child: TrackCoverThumbnail(
+            track: track,
+            isActive: isCurrent,
+            size: 36.0,
+            borderRadius: 4.0,
+          ),
+        );
+        break;
+      case 'title':
+        cell = Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              track.displayTitle,
+              style: LyraTypography.p(tokens).copyWith(
+                fontSize: 14.0,
+                fontWeight: isCurrent ? FontWeight.w600 : FontWeight.normal,
+                color: isCurrent ? tokens.primary : tokens.text,
+              ),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+            Text(
+              track.artist,
+              style: mutedStyle,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ],
+        );
+        break;
+      case 'album':
+        cell = Text(
+          track.album,
+          style: mutedStyle,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+        );
+        break;
+      case 'resolution':
+        cell = Align(
+          alignment: Alignment.centerLeft,
+          child: LyraBadge.outline(
+            padding: const EdgeInsets.symmetric(horizontal: 6.0, vertical: 2.0),
+            child: Text(
+              track.formattedQuality,
+              style: LyraTypography.small(
+                tokens,
+              ).copyWith(fontSize: 10.0, fontWeight: FontWeight.w600),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+        );
+        break;
+      case 'work':
+        cell = Text(
+          track.workTitle ?? '-',
+          style: mutedStyle,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+        );
+        break;
+      case 'year':
+        cell = Text(
+          track.year != null ? '${track.year}' : '-',
+          style: mutedStyle,
+          textAlign: TextAlign.right,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+        );
+        break;
+      case 'genre':
+        cell = Text(
+          track.genre ?? '-',
+          style: mutedStyle,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+        );
+        break;
+      case 'trackNumber':
+        cell = Text(
+          track.trackNumber != null ? '${track.trackNumber}' : '-',
+          style: mutedStyle,
+          textAlign: TextAlign.right,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+        );
+        break;
+      case 'iswc':
+        cell = Text(
+          track.iswc ?? '-',
+          style: LyraTypography.mono(
+            tokens,
+            fontSize: 11.0,
+          ).copyWith(color: tokens.textMuted),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+        );
+        break;
+      case 'isrc':
+        cell = Text(
+          track.isrc ?? '-',
+          style: LyraTypography.mono(
+            tokens,
+            fontSize: 11.0,
+          ).copyWith(color: tokens.textMuted),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+        );
+        break;
+      case 'musicbrainzId':
+        cell = Text(
+          track.musicBrainzId ?? '-',
+          style: LyraTypography.mono(
+            tokens,
+            fontSize: 11.0,
+          ).copyWith(color: tokens.textMuted),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+        );
+        break;
+      case 'duration':
+      default:
+        cell = Text(
+          track.formattedDuration,
+          style: mutedStyle.copyWith(
+            fontFeatures: const [FontFeature.tabularFigures()],
+          ),
+          textAlign: TextAlign.right,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+        );
+        break;
+    }
+
+    if (col.flex != null) {
+      return Expanded(flex: col.flex!, child: cell);
+    }
+    return SizedBox(
+      width: col == TrackColumn.cover
+          ? _detailColWidth(col)
+          : _detailColWidth(col) * textScale,
+      child: cell,
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return RepaintBoundary(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('Preview', style: LyraTypography.h3(tokens)),
+          const SizedBox(height: LyraSpacing.md),
+          Container(
+            clipBehavior: Clip.antiAlias,
+            decoration: BoxDecoration(
+              color: tokens.secondary.withValues(alpha: 0.25),
+              borderRadius: LyraRadius.lgRadius,
+              border: Border.all(color: tokens.border, width: 1.0),
+            ),
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                final isDetail = viewMode == TrackListViewMode.detail;
+                final textScale = math.max(
+                  1.0,
+                  MediaQuery.textScalerOf(context).scale(1.0),
+                );
+                final requiredWidth = isDetail
+                    ? _requiredDetailWidth(
+                        orderedVisibleColumns,
+                        textScale: textScale,
+                      )
+                    : 0.0;
+                final effectiveWidth = isDetail
+                    ? math.max(constraints.maxWidth, requiredWidth)
+                    : constraints.maxWidth;
+                final needsHScroll =
+                    isDetail && requiredWidth > constraints.maxWidth;
+
+                final inner = SizedBox(
+                  width: effectiveWidth,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      if (showHeader)
+                        _buildHeader(orderedVisibleColumns, textScale),
+                      for (var i = 0; i < _sampleTracks.length; i++)
+                        _buildPreviewRow(_sampleTracks[i], i, textScale),
+                    ],
+                  ),
+                );
+
+                if (needsHScroll) {
+                  return SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    child: inner,
+                  );
+                }
+                return inner;
+              },
+            ),
+          ),
+        ],
       ),
     );
   }

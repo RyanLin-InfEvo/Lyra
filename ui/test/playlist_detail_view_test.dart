@@ -3,6 +3,7 @@
 
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shadcn_ui/shadcn_ui.dart';
@@ -15,6 +16,7 @@ import 'package:ui/features/models/track.dart';
 import 'package:ui/features/player/controllers/playback_queue_controller.dart';
 import 'package:ui/features/playlists/playlist_detail_view.dart';
 import 'package:ui/features/settings/services/preferences_service.dart';
+import 'package:ui/features/tracks/tracks_view.dart' show TrackCoverThumbnail;
 
 Widget _buildPlaylistDetailTest(
   Widget child, {
@@ -609,8 +611,8 @@ void main() {
 
         expect(find.text('Play Now'), findsOneWidget);
 
-        // 2. Left click on Row 2 ('So What')
-        await tester.tap(find.text('So What'));
+        // 2. Left click on Row 2 ('So What' in Album column, clear of Row 1 menu)
+        await tester.tap(find.text(track2.album));
         await tester.pumpAndSettle();
 
         // Context menu should be dismissed immediately
@@ -1517,6 +1519,252 @@ void main() {
         await tester.tap(find.text(track2.title!));
         await tester.pumpAndSettle();
         expect(playedTrack?.id, equals(track2.id));
+      },
+    );
+
+    testWidgets(
+      'PlaylistDetailView supports Cover thumbnails and switching between Detail and List modes',
+      (tester) async {
+        final prefs = InMemoryPreferencesService();
+
+        await tester.pumpWidget(
+          _buildPlaylistDetailTest(
+            PlaylistDetailView(
+              playlist: testPlaylist,
+              tracks: const [track1, track2],
+              onBack: () {},
+              preferencesService: prefs,
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        expect(
+          find.byKey(const Key('playlist_view_mode_toggle_list')),
+          findsNothing,
+        );
+        expect(
+          find.byKey(const Key('playlist_view_mode_toggle_detail')),
+          findsNothing,
+        );
+        expect(
+          find.byKey(const Key('playlist_tracks_table_header')),
+          findsOneWidget,
+        );
+        expect(find.text('Cover'), findsOneWidget);
+        expect(find.byType(TrackCoverThumbnail), findsNWidgets(2));
+        expect(prefs.playlistViewMode, TrackListViewMode.detail);
+
+        await prefs.setPlaylistViewMode(TrackListViewMode.list);
+        await tester.pumpAndSettle();
+
+        expect(prefs.playlistViewMode, TrackListViewMode.list);
+        final listHeader = find.byKey(
+          const Key('playlist_tracks_table_header'),
+        );
+        expect(listHeader, findsOneWidget);
+        expect(
+          find.descendant(
+            of: listHeader,
+            matching: find.text('Title & Details'),
+          ),
+          findsOneWidget,
+        );
+        expect(
+          find.descendant(of: listHeader, matching: find.text('Album')),
+          findsNothing,
+        );
+        expect(find.byType(TrackCoverThumbnail), findsNWidgets(2));
+        expect(find.text('Eagles · Hell Freezes Over'), findsOneWidget);
+
+        await prefs.setPlaylistViewMode(TrackListViewMode.detail);
+        await tester.pumpAndSettle();
+        expect(prefs.playlistViewMode, TrackListViewMode.detail);
+
+        // Hiding header bar via preference hides table header while right-clicking playlist_view_header still opens columns overlay
+        await prefs.setShowPlaylistHeader(false);
+        await tester.pumpAndSettle();
+        expect(
+          find.byKey(const Key('playlist_tracks_table_header')),
+          findsNothing,
+        );
+
+        final headerCenter = tester.getCenter(
+          find.byKey(const Key('playlist_view_header')),
+        );
+        final headerRightClick = await tester.createGesture(
+          kind: PointerDeviceKind.mouse,
+          buttons: kSecondaryMouseButton,
+        );
+        await headerRightClick.addPointer(location: Offset.zero);
+        await headerRightClick.down(headerCenter);
+        await headerRightClick.up();
+        await headerRightClick.removePointer();
+        await tester.pumpAndSettle();
+        expect(
+          find.byKey(const Key('playlist_tracks_columns_window')),
+          findsOneWidget,
+        );
+
+        const richPlaylistTrack1 = Track(
+          id: 'trk-001',
+          title: 'Hotel California (Live on MTV 1994)',
+          artistName: 'Eagles',
+          albumTitle: 'Hell Freezes Over',
+          workTitle: 'HC Work',
+          recordingYear: 1994,
+          trackNumber: 6,
+          genre: 'Rock',
+          iswc: 'T-001',
+          isrc: 'US001',
+          musicbrainzId: 'mb-001',
+          durationMs: 432000,
+          format: 'FLAC',
+          sampleRate: 96000,
+          bitDepth: 24,
+        );
+
+        // Hover over track row in Detail and List modes shows play icon in # column
+        await tester.pumpWidget(
+          _buildPlaylistDetailTest(
+            PlaylistDetailView(
+              playlist: testPlaylist,
+              tracks: const [richPlaylistTrack1, track2],
+              onBack: () {},
+              preferencesService: prefs,
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        final hoverGesture = await tester.createGesture(
+          kind: PointerDeviceKind.mouse,
+        );
+        await hoverGesture.addPointer(location: Offset.zero);
+        addTearDown(hoverGesture.removePointer);
+
+        await hoverGesture.moveTo(
+          tester.getCenter(
+            find.byKey(const ValueKey('playlist_track_trk-001_0')),
+          ),
+        );
+        await tester.pumpAndSettle();
+        expect(find.byIcon(LucideIcons.play), findsWidgets);
+
+        await hoverGesture.moveTo(Offset.zero);
+        await tester.pumpAndSettle();
+
+        // Enable all 13 columns in Detail and List modes at 2.0x text scaling on 800x600 viewport
+        tester.platformDispatcher.textScaleFactorTestValue = 2.0;
+        addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+        await prefs.setShowPlaylistHeader(true);
+        await prefs.setPlaylistVisibleColumns(
+          TrackColumn.values.map((c) => c.name).toSet(),
+        );
+        await tester.pumpWidget(
+          _buildPlaylistDetailTest(
+            PlaylistDetailView(
+              playlist: testPlaylist,
+              tracks: const [richPlaylistTrack1, track2],
+              onBack: () {},
+              preferencesService: prefs,
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+        expect(tester.takeException(), isNull);
+        expect(
+          tester
+              .renderObject<RenderParagraph>(find.text('7:12'))
+              .didExceedMaxLines,
+          isFalse,
+        );
+
+        await prefs.setPlaylistViewMode(TrackListViewMode.list);
+        await tester.pumpAndSettle();
+        expect(tester.takeException(), isNull);
+        expect(find.textContaining('Trk 6'), findsOneWidget);
+
+        await hoverGesture.moveTo(
+          tester.getCenter(
+            find.byKey(const ValueKey('playlist_track_trk-001_0')),
+          ),
+        );
+        await tester.pumpAndSettle();
+        expect(find.byIcon(LucideIcons.play), findsWidgets);
+
+        await prefs.resetTableColumns();
+        await tester.pumpAndSettle();
+        expect(find.textContaining('Trk 6'), findsNothing);
+      },
+    );
+
+    testWidgets(
+      'PlaylistDetailView omits trailing headers when width is zero and prevents Detail vertical overflow at 2.0x scale',
+      (tester) async {
+        tester.view.physicalSize = const Size(600, 600);
+        tester.view.devicePixelRatio = 1.0;
+        addTearDown(tester.view.resetPhysicalSize);
+        tester.platformDispatcher.textScaleFactorTestValue = 2.0;
+        addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+
+        final prefs = InMemoryPreferencesService(
+          playlistViewMode: TrackListViewMode.detail,
+          showPlaylistHeader: true,
+          playlistVisibleColumns: TrackColumn.values.map((c) => c.name).toSet(),
+        );
+        const longTrack = Track(
+          id: 'pl-long-1',
+          title: 'Very Long Playlist Track Title For Detail Cell Ellipsis',
+          artistName: 'Very Long Orchestra Performer Name',
+          albumTitle: 'Complete Concert Recordings Anthology',
+          workTitle: 'Extended Symphonic Work Title Spanning Multiple Words',
+          genre: 'Contemporary Progressive Rock Fusion',
+          recordingYear: 2024,
+          trackNumber: 12,
+          iswc: 'T-999.888.777-6',
+          isrc: 'USRC12400999',
+          musicbrainzId: 'mb-playlist-very-long-identifier-1234',
+          durationMs: 425000,
+          format: 'FLAC',
+          sampleRate: 192000,
+          bitDepth: 24,
+        );
+
+        await tester.pumpWidget(
+          _buildPlaylistDetailTest(
+            PlaylistDetailView(
+              playlist: testPlaylist,
+              tracks: const [longTrack],
+              onBack: () {},
+              preferencesService: prefs,
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+        expect(tester.takeException(), isNull);
+
+        // Narrow List viewport (260px at 1.0x): omits Resolution badge & header cleanly without overflow
+        tester.platformDispatcher.textScaleFactorTestValue = 1.0;
+        await prefs.setPlaylistViewMode(TrackListViewMode.list);
+        await tester.pumpWidget(
+          _buildPlaylistDetailTest(
+            SizedBox(
+              width: 260,
+              height: 700,
+              child: PlaylistDetailView(
+                playlist: testPlaylist,
+                tracks: const [longTrack],
+                onBack: () {},
+                preferencesService: prefs,
+              ),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+        expect(tester.takeException(), isNull);
+        expect(find.text('Resolution'), findsNothing);
+        expect(tester.widget<Text>(find.text('Cover')).maxLines, 1);
       },
     );
   });

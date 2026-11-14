@@ -209,17 +209,23 @@ class DraggableColumnsOverlay extends StatelessWidget {
                                       ),
                                       child: Row(
                                         children: [
-                                          Text(
-                                            'COLUMNS',
-                                            style: LyraTypography.small(tokens)
-                                                .copyWith(
-                                                  fontSize: 11.0,
-                                                  fontWeight: FontWeight.w600,
-                                                  letterSpacing: 0.8,
-                                                  color: tokens.textMuted,
-                                                ),
+                                          Expanded(
+                                            child: Text(
+                                              'COLUMNS',
+                                              maxLines: 1,
+                                              overflow: TextOverflow.ellipsis,
+                                              style:
+                                                  LyraTypography.small(
+                                                    tokens,
+                                                  ).copyWith(
+                                                    fontSize: 11.0,
+                                                    fontWeight: FontWeight.w600,
+                                                    letterSpacing: 0.8,
+                                                    color: tokens.textMuted,
+                                                  ),
+                                            ),
                                           ),
-                                          const Spacer(),
+                                          const SizedBox(width: 8.0),
                                           MouseRegion(
                                             cursor: SystemMouseCursors.click,
                                             child: GestureDetector(

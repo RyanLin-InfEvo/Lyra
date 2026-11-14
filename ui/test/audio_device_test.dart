@@ -417,9 +417,7 @@ void main() {
 
         // Verify ConstrainedBox with maxHeight 280 exists
         final constrainedBoxFinder = find.byWidgetPredicate(
-          (w) =>
-              w is ConstrainedBox &&
-              w.constraints.maxHeight == 280.0,
+          (w) => w is ConstrainedBox && w.constraints.maxHeight == 280.0,
         );
         expect(constrainedBoxFinder, findsOneWidget);
 

@@ -37,8 +37,9 @@ class LyraHeaderBar extends StatelessWidget {
   Widget build(BuildContext context) {
     final scope = LyraDesignSystemScope.of(context);
     final tokens = scope.tokens;
-    final shortcutLabel =
-        defaultTargetPlatform == TargetPlatform.macOS ? '⌘B' : 'Ctrl+B';
+    final shortcutLabel = defaultTargetPlatform == TargetPlatform.macOS
+        ? '⌘B'
+        : 'Ctrl+B';
     final sidebarTooltip = 'Toggle Sidebar  $shortcutLabel';
 
     return Container(
@@ -56,10 +57,9 @@ class LyraHeaderBar extends StatelessWidget {
             maxLines: 1,
             softWrap: false,
             overflow: TextOverflow.ellipsis,
-            style: LyraTypography.h4(tokens).copyWith(
-              fontWeight: FontWeight.w600,
-              letterSpacing: -0.2,
-            ),
+            style: LyraTypography.h4(
+              tokens,
+            ).copyWith(fontWeight: FontWeight.w600, letterSpacing: -0.2),
           ),
 
           const SizedBox(width: LyraSpacing.sm),

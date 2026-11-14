@@ -70,12 +70,8 @@ void main() {
 
     test('dismissAll clears all active toasts and resets expanded state', () {
       final controller = LyraToastController();
-      controller.show(
-        LyraToast(id: 't1', title: '1', duration: null),
-      );
-      controller.show(
-        LyraToast(id: 't2', title: '2', duration: null),
-      );
+      controller.show(LyraToast(id: 't1', title: '1', duration: null));
+      controller.show(LyraToast(id: 't2', title: '2', duration: null));
       controller.setExpanded(true);
 
       expect(controller.toasts.length, 2);
@@ -167,19 +163,22 @@ void main() {
       },
     );
 
-    test('dismissing toasts in expanded mode resets isExpanded when length <= 1', () {
-      final controller = LyraToastController();
-      controller.show(LyraToast(id: 't1', title: '1'));
-      controller.show(LyraToast(id: 't2', title: '2'));
-      controller.toggleExpanded();
-      expect(controller.isExpanded, isTrue);
+    test(
+      'dismissing toasts in expanded mode resets isExpanded when length <= 1',
+      () {
+        final controller = LyraToastController();
+        controller.show(LyraToast(id: 't1', title: '1'));
+        controller.show(LyraToast(id: 't2', title: '2'));
+        controller.toggleExpanded();
+        expect(controller.isExpanded, isTrue);
 
-      controller.dismiss('t2', immediate: true);
-      expect(controller.toasts.length, 1);
-      expect(controller.isExpanded, isFalse);
+        controller.dismiss('t2', immediate: true);
+        expect(controller.toasts.length, 1);
+        expect(controller.isExpanded, isFalse);
 
-      controller.dispose();
-    });
+        controller.dispose();
+      },
+    );
   });
 
   group('LyraToastStack Widget Tests', () {
@@ -208,11 +207,15 @@ void main() {
         expect(find.byIcon(LucideIcons.check), findsOneWidget);
 
         // Single toast does not show "Show more" header
-        expect(find.byKey(const Key('toast_stack_toggle_button')), findsNothing);
+        expect(
+          find.byKey(const Key('toast_stack_toggle_button')),
+          findsNothing,
+        );
 
         // Dismiss individual toast
-        final dismissBtn =
-            find.byKey(const Key('toast_dismiss_t-success')).first;
+        final dismissBtn = find
+            .byKey(const Key('toast_dismiss_t-success'))
+            .first;
         expect(dismissBtn, findsOneWidget);
         await tester.tap(dismissBtn);
         await tester.pumpAndSettle();
@@ -222,68 +225,63 @@ void main() {
       },
     );
 
-    testWidgets(
-      'renders TradingView stacked deck when multiple toasts exist',
-      (tester) async {
-        final controller = LyraToastController();
-        await tester.pumpWidget(_buildToastTestApp(controller: controller));
+    testWidgets('renders TradingView stacked deck when multiple toasts exist', (
+      tester,
+    ) async {
+      final controller = LyraToastController();
+      await tester.pumpWidget(_buildToastTestApp(controller: controller));
 
-        controller.show(
-          LyraToast(
-            id: 't1',
-            title: 'First Notification',
-            autoDismiss: false,
-          ),
-        );
-        controller.show(
-          LyraToast(
-            id: 't2',
-            title: 'Second Notification',
-            tag: 'BTC/USD',
-            autoDismiss: false,
-          ),
-        );
-        await tester.pumpAndSettle();
+      controller.show(
+        LyraToast(id: 't1', title: 'First Notification', autoDismiss: false),
+      );
+      controller.show(
+        LyraToast(
+          id: 't2',
+          title: 'Second Notification',
+          tag: 'BTC/USD',
+          autoDismiss: false,
+        ),
+      );
+      await tester.pumpAndSettle();
 
-        // Top notification is visible
-        expect(find.text('Second Notification'), findsOneWidget);
-        expect(find.text('BTC/USD'), findsOneWidget);
+      // Top notification is visible
+      expect(find.text('Second Notification'), findsOneWidget);
+      expect(find.text('BTC/USD'), findsOneWidget);
 
-        // Header row with "Show more 2" and dismiss all 'X' button
-        expect(
-          find.byKey(const Key('toast_stack_toggle_button')),
-          findsOneWidget,
-        );
-        expect(find.text('Show more'), findsOneWidget);
-        expect(find.text('2'), findsOneWidget);
-        expect(
-          find.byKey(const Key('toast_stack_dismiss_all_button')).first,
-          findsOneWidget,
-        );
+      // Header row with "Show more 2" and dismiss all 'X' button
+      expect(
+        find.byKey(const Key('toast_stack_toggle_button')),
+        findsOneWidget,
+      );
+      expect(find.text('Show more'), findsOneWidget);
+      expect(find.text('2'), findsOneWidget);
+      expect(
+        find.byKey(const Key('toast_stack_dismiss_all_button')).first,
+        findsOneWidget,
+      );
 
-        // Tap "Show more 2" to expand stack
-        await tester.tap(find.byKey(const Key('toast_stack_toggle_button')));
-        await tester.pumpAndSettle();
+      // Tap "Show more 2" to expand stack
+      await tester.tap(find.byKey(const Key('toast_stack_toggle_button')));
+      await tester.pumpAndSettle();
 
-        expect(find.text('Show less'), findsOneWidget);
-        expect(find.text('First Notification'), findsOneWidget);
-        expect(find.text('Second Notification'), findsOneWidget);
+      expect(find.text('Show less'), findsOneWidget);
+      expect(find.text('First Notification'), findsOneWidget);
+      expect(find.text('Second Notification'), findsOneWidget);
 
-        // Tap "Show less 2" to collapse back
-        await tester.tap(find.byKey(const Key('toast_stack_toggle_button')));
-        await tester.pumpAndSettle();
-        expect(find.text('Show more'), findsOneWidget);
+      // Tap "Show less 2" to collapse back
+      await tester.tap(find.byKey(const Key('toast_stack_toggle_button')));
+      await tester.pumpAndSettle();
+      expect(find.text('Show more'), findsOneWidget);
 
-        // Tap Dismiss All button
-        await tester.tap(
-          find.byKey(const Key('toast_stack_dismiss_all_button')).first,
-        );
-        await tester.pumpAndSettle();
+      // Tap Dismiss All button
+      await tester.tap(
+        find.byKey(const Key('toast_stack_dismiss_all_button')).first,
+      );
+      await tester.pumpAndSettle();
 
-        expect(find.byType(LyraToastCard), findsNothing);
-        controller.dispose();
-      },
-    );
+      expect(find.byType(LyraToastCard), findsNothing);
+      controller.dispose();
+    });
 
     testWidgets('supports horizontal swipe to dismiss card', (tester) async {
       final controller = LyraToastController();

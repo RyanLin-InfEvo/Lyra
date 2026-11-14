@@ -3451,8 +3451,9 @@ void main() {
         expect(saveBtn.onPressed, isNull);
 
         // 2. Modify title -> dirty -> Save button must be enabled
-        final titleInput =
-            find.byKey(const Key('inspector_edit_title_input')).first;
+        final titleInput = find
+            .byKey(const Key('inspector_edit_title_input'))
+            .first;
         await tester.enterText(titleInput, 'Hotel California Modified');
         await tester.pumpAndSettle();
 
@@ -3467,8 +3468,9 @@ void main() {
         expect(saveBtn.onPressed, isNull);
 
         // 4. Modify artist -> dirty -> Save button enabled
-        final artistInput =
-            find.byKey(const Key('inspector_edit_artist_input')).first;
+        final artistInput = find
+            .byKey(const Key('inspector_edit_artist_input'))
+            .first;
         await tester.enterText(artistInput, 'Different Artist');
         await tester.pumpAndSettle();
 
@@ -3476,7 +3478,9 @@ void main() {
         expect(saveBtn.onPressed, isNotNull);
 
         // 5. Cancel editing -> discards immediately without modal
-        await tester.tap(find.byKey(const Key('inspector_cancel_button')).first);
+        await tester.tap(
+          find.byKey(const Key('inspector_cancel_button')).first,
+        );
         await tester.pumpAndSettle();
 
         expect(find.byKey(const Key('metadata_diff_dialog')), findsNothing);
@@ -3509,8 +3513,10 @@ void main() {
           await tester.pumpAndSettle();
         }
 
-        final switchBtnFinder =
-            find.widgetWithText(LyraButton, 'Set as Active Audio');
+        final switchBtnFinder = find.widgetWithText(
+          LyraButton,
+          'Set as Active Audio',
+        );
         if (switchBtnFinder.evaluate().isNotEmpty) {
           await tester.tap(switchBtnFinder.first);
           await tester.pumpAndSettle();
