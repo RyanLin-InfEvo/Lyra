@@ -1949,5 +1949,77 @@ void main() {
         );
       },
     );
+
+    testWidgets(
+      'Interaction and Debug sections omit redundant descriptions while keeping dynamic Track Activation explanation',
+      (tester) async {
+        final prefs = InMemoryPreferencesService();
+        await tester.pumpWidget(_buildSettingsTestApp(prefs));
+        await tester.pumpAndSettle();
+
+        await tester.tap(find.text('Interaction & Behavior'));
+        await tester.pumpAndSettle();
+
+        // Dynamic Track Activation description remains useful and updates on toggle
+        expect(
+          find.text(
+            'Single-click focuses and selects track; double-click or Enter begins playback.',
+          ),
+          findsOneWidget,
+        );
+        await tester.tap(find.text('Single-Click'));
+        await tester.pumpAndSettle();
+        expect(
+          find.text(
+            'Single-click immediately plays track; click playing track to toggle pause.',
+          ),
+          findsOneWidget,
+        );
+
+        // Redundant Interaction descriptions are removed
+        expect(
+          find.textContaining(
+            'Select screen corner where notifications appear',
+          ),
+          findsNothing,
+        );
+        expect(
+          find.textContaining(
+            'Automatically expire and dismiss notification cards',
+          ),
+          findsNothing,
+        );
+        expect(
+          find.textContaining('Display a linear progress countdown bar'),
+          findsNothing,
+        );
+        expect(
+          find.textContaining('Number of seconds before notification cards'),
+          findsNothing,
+        );
+
+        // Redundant Debug descriptions are removed
+        await tester.tap(find.text('Debug & Diagnostics'));
+        await tester.pumpAndSettle();
+        expect(
+          find.textContaining('Interactive testing workbench'),
+          findsNothing,
+        );
+        expect(
+          find.textContaining(
+            'Global floating notification anchored at the bottom',
+          ),
+          findsNothing,
+        );
+        expect(
+          find.textContaining('Non-blocking floating notification deck'),
+          findsNothing,
+        );
+        expect(
+          find.textContaining('Persistent in-place banner embedded directly'),
+          findsNothing,
+        );
+      },
+    );
   });
 }

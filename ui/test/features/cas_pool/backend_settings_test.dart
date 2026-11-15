@@ -1096,34 +1096,57 @@ void main() {
       },
     );
 
-    testWidgets('Card 2 subtitle and warning icon adhere to specifications', (
-      tester,
-    ) async {
-      tester.view.physicalSize = const Size(1280, 1000);
-      tester.view.devicePixelRatio = 1.0;
-      addTearDown(tester.view.resetPhysicalSize);
+    testWidgets(
+      'Card 2 omits redundant subtitle and warning icon adheres to specifications',
+      (tester) async {
+        tester.view.physicalSize = const Size(1280, 1000);
+        tester.view.devicePixelRatio = 1.0;
+        addTearDown(tester.view.resetPhysicalSize);
 
-      await tester.pumpWidget(
-        _buildBackendSettingsTabTest(controller: controller),
-      );
-      await tester.pumpAndSettle();
+        await tester.pumpWidget(
+          _buildBackendSettingsTabTest(controller: controller),
+        );
+        await tester.pumpAndSettle();
 
-      expect(
-        find.text(
-          'Output device selection, exclusive mode, hardware buffer frames, volume strategy, and resampler profiles.',
-        ),
-        findsOneWidget,
-      );
+        expect(
+          find.text('Audio Hardware & Bit-Perfect Engine'),
+          findsOneWidget,
+        );
+        expect(
+          find.text(
+            'Output device selection, exclusive mode, hardware buffer frames, volume strategy, and resampler profiles.',
+          ),
+          findsNothing,
+        );
+        expect(
+          find.text(
+            'Perform diagnostic verification, prune unreferenced blobs, or clear precomputed waveform caches.',
+          ),
+          findsNothing,
+        );
+        expect(
+          find.text(
+            'SQLite page cache, memory-mapped I/O, transaction timeouts, and write-ahead log thresholds.',
+          ),
+          findsNothing,
+        );
+        expect(
+          find.text(
+            'Multi-threaded audio scanning, metadata extraction, and waveform precomputation.',
+          ),
+          findsNothing,
+        );
 
-      controller.setBufferSize(256);
-      await tester.pumpAndSettle();
+        controller.setBufferSize(256);
+        await tester.pumpAndSettle();
 
-      final warningIconFinder = find.byIcon(LucideIcons.triangleAlert);
-      expect(warningIconFinder, findsOneWidget);
-      final warningIcon = tester.widget<Icon>(warningIconFinder);
-      final tokens = LyraThemeTokens.dark();
-      expect(warningIcon.color, equals(tokens.warning));
-    });
+        final warningIconFinder = find.byIcon(LucideIcons.triangleAlert);
+        expect(warningIconFinder, findsOneWidget);
+        final warningIcon = tester.widget<Icon>(warningIconFinder);
+        final tokens = LyraThemeTokens.dark();
+        expect(warningIcon.color, equals(tokens.warning));
+      },
+    );
 
     testWidgets(
       'SingleChildScrollView eliminates magic 120.0 padding for action bar clearance',

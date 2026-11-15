@@ -331,19 +331,9 @@ class _BackendSettingsTabState extends State<BackendSettingsTab> {
               ),
               const SizedBox(width: LyraSpacing.md),
               Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Storage & Cache Maintenance',
-                      style: LyraTypography.h4(tokens),
-                    ),
-                    const SizedBox(height: LyraSpacing.xs),
-                    Text(
-                      'Perform diagnostic verification, prune unreferenced blobs, or clear precomputed waveform caches.',
-                      style: LyraTypography.muted(tokens),
-                    ),
-                  ],
+                child: Text(
+                  'Storage & Cache Maintenance',
+                  style: LyraTypography.h4(tokens),
                 ),
               ),
             ],
@@ -556,19 +546,9 @@ class _BackendSettingsTabState extends State<BackendSettingsTab> {
               ),
               const SizedBox(width: LyraSpacing.md),
               Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Audio Hardware & Bit-Perfect Engine',
-                      style: LyraTypography.h4(tokens),
-                    ),
-                    const SizedBox(height: LyraSpacing.xs),
-                    Text(
-                      'Output device selection, exclusive mode, hardware buffer frames, volume strategy, and resampler profiles.',
-                      style: LyraTypography.muted(tokens),
-                    ),
-                  ],
+                child: Text(
+                  'Audio Hardware & Bit-Perfect Engine',
+                  style: LyraTypography.h4(tokens),
                 ),
               ),
             ],
@@ -746,19 +726,9 @@ class _BackendSettingsTabState extends State<BackendSettingsTab> {
               ),
               const SizedBox(width: LyraSpacing.md),
               Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Database Engine Tuning',
-                      style: LyraTypography.h4(tokens),
-                    ),
-                    const SizedBox(height: LyraSpacing.xs),
-                    Text(
-                      'SQLite page cache, memory-mapped I/O, transaction timeouts, and write-ahead log thresholds.',
-                      style: LyraTypography.muted(tokens),
-                    ),
-                  ],
+                child: Text(
+                  'Database Engine Tuning',
+                  style: LyraTypography.h4(tokens),
                 ),
               ),
             ],
@@ -967,19 +937,9 @@ class _BackendSettingsTabState extends State<BackendSettingsTab> {
               ),
               const SizedBox(width: LyraSpacing.md),
               Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Ingestion Pipeline',
-                      style: LyraTypography.h4(tokens),
-                    ),
-                    const SizedBox(height: LyraSpacing.xs),
-                    Text(
-                      'Multi-threaded audio scanning, metadata extraction, and waveform precomputation.',
-                      style: LyraTypography.muted(tokens),
-                    ),
-                  ],
+                child: Text(
+                  'Ingestion Pipeline',
+                  style: LyraTypography.h4(tokens),
                 ),
               ),
             ],

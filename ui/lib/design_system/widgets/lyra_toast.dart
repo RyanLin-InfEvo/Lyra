@@ -497,9 +497,10 @@ class LyraToastStack extends StatelessWidget {
     );
   }
 
-  final double width;
+  /// Maximum logical width for the toast stack on wide viewports.
+  final double maxWidth;
 
-  const LyraToastStack({super.key, this.width = 340.0});
+  const LyraToastStack({super.key, this.maxWidth = 420.0});
 
   @override
   Widget build(BuildContext context) {
@@ -510,9 +511,14 @@ class LyraToastStack extends StatelessWidget {
     if (toasts.isEmpty) return const SizedBox.shrink();
 
     final tokens = LyraDesignSystemScope.of(context).tokens;
+    final viewportWidth = MediaQuery.sizeOf(context).width;
+    final effectiveWidth = math.max(
+      180.0,
+      math.min(maxWidth, viewportWidth - 40.0),
+    );
 
     return SizedBox(
-      width: width,
+      width: effectiveWidth,
       child: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -570,24 +576,25 @@ class LyraToastStack extends StatelessWidget {
                   Text(
                     label,
                     style: LyraTypography.small(tokens).copyWith(
-                      fontSize: 11.0,
+                      fontSize: 12.0,
                       fontWeight: FontWeight.w500,
                       color: tokens.text,
                     ),
                   ),
-                  const SizedBox(width: 5.0),
+                  const SizedBox(width: 6.0),
                   Container(
                     width: 16.0,
                     height: 16.0,
                     decoration: BoxDecoration(
-                      shape: BoxShape.circle,
+                      borderRadius: BorderRadius.circular(9.0),
                       color: tokens.primary.withValues(alpha: 0.15),
                     ),
                     alignment: Alignment.center,
                     child: Text(
+                      // number of toasts
                       '$count',
                       style: LyraTypography.small(tokens).copyWith(
-                        fontSize: 10.0,
+                        fontSize: 11.5,
                         fontWeight: FontWeight.w700,
                         color: tokens.primary,
                       ),
@@ -1077,11 +1084,12 @@ class _LyraToastCardState extends State<LyraToastCard> {
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       Text(
+                        // Title
                         widget.toast.title,
                         style: LyraTypography.small(tokens).copyWith(
                           fontWeight: FontWeight.w600,
                           color: tokens.text,
-                          fontSize: 12.0,
+                          fontSize: 13.0,
                         ),
                         maxLines: 2,
                         overflow: TextOverflow.ellipsis,
@@ -1091,7 +1099,8 @@ class _LyraToastCardState extends State<LyraToastCard> {
                         const SizedBox(height: 4.0),
                         Wrap(
                           crossAxisAlignment: WrapCrossAlignment.center,
-                          spacing: 6.0,
+                          spacing: 8.0,
+                          runSpacing: 6.0,
                           children: [
                             if (widget.toast.tag != null)
                               Container(
@@ -1110,11 +1119,12 @@ class _LyraToastCardState extends State<LyraToastCard> {
                                   ),
                                 ),
                                 child: Text(
+                                  // Tag
                                   widget.toast.tag!,
                                   style:
                                       LyraTypography.mono(
                                         tokens,
-                                        fontSize: 10.5,
+                                        fontSize: 11,
                                       ).copyWith(
                                         color: tokens.text,
                                         fontWeight: FontWeight.w500,
@@ -1124,9 +1134,13 @@ class _LyraToastCardState extends State<LyraToastCard> {
                             if (widget.toast.message != null)
                               Text(
                                 widget.toast.message!,
-                                style: LyraTypography.muted(
-                                  tokens,
-                                ).copyWith(fontSize: 11.0),
+                                style: LyraTypography.muted(tokens).copyWith(
+                                  fontSize: 11.8,
+                                  height: 1.35,
+                                  color: tokens.isDark
+                                      ? tokens.text.withValues(alpha: 0.85)
+                                      : tokens.textMuted,
+                                ),
                                 maxLines: 2,
                                 overflow: TextOverflow.ellipsis,
                               ),

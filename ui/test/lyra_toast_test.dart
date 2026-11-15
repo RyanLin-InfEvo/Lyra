@@ -888,5 +888,142 @@ void main() {
         controller.dispose();
       },
     );
+
+    testWidgets(
+      'dark and light mode toast body text have legible size and WCAG contrast',
+      (tester) async {
+        for (final isDark in [true, false]) {
+          final controller = LyraToastController();
+          await tester.pumpWidget(
+            _buildToastTestApp(controller: controller, isDark: isDark),
+          );
+
+          controller.show(
+            LyraToast(
+              id: 'contrast-$isDark',
+              title: 'Metadata Updated',
+              tag: 'FLAC',
+              message: 'Track tags committed to CAS pool.',
+              autoDismiss: false,
+            ),
+          );
+          await tester.pumpAndSettle();
+
+          final titleWidget = tester.widget<Text>(
+            find.text('Metadata Updated'),
+          );
+          final messageWidget = tester.widget<Text>(
+            find.text('Track tags committed to CAS pool.'),
+          );
+          final tagWidget = tester.widget<Text>(find.text('FLAC'));
+
+          expect(titleWidget.style?.fontSize, greaterThanOrEqualTo(13.0));
+          expect(messageWidget.style?.fontSize, greaterThanOrEqualTo(11.5));
+          expect(tagWidget.style?.fontSize, greaterThanOrEqualTo(11.0));
+
+          final tagMessageWrap = tester.widget<Wrap>(
+            find.ancestor(
+              of: find.text('Track tags committed to CAS pool.'),
+              matching: find.byType(Wrap),
+            ),
+          );
+          expect(tagMessageWrap.spacing, greaterThanOrEqualTo(8.0));
+          expect(tagMessageWrap.runSpacing, greaterThanOrEqualTo(6.0));
+
+          final tokens = isDark
+              ? LyraThemeTokens.dark()
+              : LyraThemeTokens.light();
+          final fg = Color.alphaBlend(messageWidget.style!.color!, tokens.card);
+          final l1 = fg.computeLuminance();
+          final l2 = tokens.card.computeLuminance();
+          final contrast = l1 > l2
+              ? (l1 + 0.05) / (l2 + 0.05)
+              : (l2 + 0.05) / (l1 + 0.05);
+          expect(contrast, greaterThanOrEqualTo(isDark ? 7.0 : 4.5));
+
+          controller.dispose();
+        }
+      },
+    );
+
+    testWidgets(
+      'stack header label and multi-digit count badge remain legible without clipping',
+      (tester) async {
+        final controller = LyraToastController();
+        await tester.pumpWidget(
+          _buildToastTestApp(controller: controller, isDark: true),
+        );
+
+        for (var i = 1; i <= 12; i++) {
+          controller.show(
+            LyraToast(
+              id: 'multi-$i',
+              title: 'Notification $i',
+              autoDismiss: false,
+            ),
+          );
+        }
+        await tester.pumpAndSettle();
+
+        final labelWidget = tester.widget<Text>(find.text('Show more'));
+        final countWidget = tester.widget<Text>(find.text('12'));
+        expect(labelWidget.style?.fontSize, greaterThanOrEqualTo(12.0));
+        expect(countWidget.style?.fontSize, greaterThanOrEqualTo(11.0));
+        expect(tester.takeException(), isNull);
+
+        controller.dispose();
+      },
+    );
+
+    testWidgets(
+      'LyraToastStack caps width at 420px on wide viewports and shrinks cleanly on narrow viewports',
+      (tester) async {
+        // Wide desktop viewport: capped at 420.0
+        tester.view.physicalSize = const Size(1280, 800);
+        tester.view.devicePixelRatio = 1.0;
+        addTearDown(tester.view.resetPhysicalSize);
+        addTearDown(tester.view.resetDevicePixelRatio);
+
+        final wideController = LyraToastController();
+        await tester.pumpWidget(
+          _buildToastTestApp(controller: wideController, isDark: true),
+        );
+        wideController.show(
+          LyraToast(
+            id: 'wide-1',
+            title: 'Wide Viewport Toast',
+            message: 'Should cap at 420 logical pixels.',
+            autoDismiss: false,
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        final wideRect = tester.getRect(find.byType(LyraToastStack));
+        expect(wideRect.width, 420.0);
+        wideController.dispose();
+
+        // Narrow viewport (360px): shrinks to viewportWidth - 40.0 = 320.0 without overflow
+        tester.view.physicalSize = const Size(360, 640);
+        final narrowController = LyraToastController();
+        await tester.pumpWidget(
+          _buildToastTestApp(controller: narrowController, isDark: true),
+        );
+        narrowController.show(
+          LyraToast(
+            id: 'narrow-1',
+            title: 'Narrow Viewport Toast',
+            message: 'Should shrink to fit within 360px viewport.',
+            autoDismiss: false,
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        final narrowRect = tester.getRect(find.byType(LyraToastStack));
+        expect(narrowRect.width, 320.0);
+        expect(narrowRect.right, lessThanOrEqualTo(360.0));
+        expect(tester.takeException(), isNull);
+        narrowController.dispose();
+      },
+    );
   });
 }

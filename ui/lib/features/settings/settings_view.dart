@@ -1592,8 +1592,6 @@ class _SettingsViewState extends State<SettingsView>
 
           _SettingRow(
             title: 'Notification Placement',
-            description:
-                'Select screen corner where notifications appear. Click any quadrant to update placement and preview deck stacking.',
             trailing: _buildNotificationPlacementGrid(tokens),
             tokens: tokens,
           ),
@@ -1603,8 +1601,6 @@ class _SettingsViewState extends State<SettingsView>
 
           _SettingRow(
             title: 'Auto-dismiss notifications',
-            description:
-                'Automatically expire and dismiss notification cards after the configured timeout.',
             trailing: LyraSwitch(
               key: const Key('toast_auto_dismiss_switch'),
               value: _toastAutoDismiss,
@@ -1621,8 +1617,6 @@ class _SettingsViewState extends State<SettingsView>
 
           _SettingRow(
             title: 'Countdown progress bar',
-            description:
-                'Display a linear progress countdown bar at the bottom edge of active notification cards.',
             trailing: Opacity(
               opacity: _toastAutoDismiss ? 1.0 : 0.4,
               child: IgnorePointer(
@@ -1646,8 +1640,6 @@ class _SettingsViewState extends State<SettingsView>
 
           _SettingRow(
             title: 'Dismiss timeout',
-            description:
-                'Number of seconds before notification cards automatically expire (1 to 60 seconds).',
             trailing: Opacity(
               opacity: _toastAutoDismiss ? 1.0 : 0.4,
               child: IgnorePointer(
@@ -1929,11 +1921,6 @@ class _SettingsViewState extends State<SettingsView>
               Text('Debug & UI Diagnostics', style: LyraTypography.h3(tokens)),
             ],
           ),
-          const SizedBox(height: LyraSpacing.xs),
-          Text(
-            'Interactive testing workbench for transient and persistent notification patterns.',
-            style: LyraTypography.muted(tokens),
-          ),
           const SizedBox(height: LyraSpacing.lg),
 
           // 1. Floating SnackBars
@@ -1942,11 +1929,6 @@ class _SettingsViewState extends State<SettingsView>
             style: LyraTypography.p(
               tokens,
             ).copyWith(fontWeight: FontWeight.w600),
-          ),
-          const SizedBox(height: LyraSpacing.xs),
-          Text(
-            'Global floating notification anchored at the bottom of the window. Automatically dismisses after a timeout.',
-            style: LyraTypography.muted(tokens),
           ),
           const SizedBox(height: LyraSpacing.md),
           Wrap(
@@ -2014,11 +1996,6 @@ class _SettingsViewState extends State<SettingsView>
             style: LyraTypography.p(
               tokens,
             ).copyWith(fontWeight: FontWeight.w600),
-          ),
-          const SizedBox(height: LyraSpacing.xs),
-          Text(
-            'Non-blocking floating notification deck anchored at the chosen screen corner. Overlays sidebar and control bar without obscuring center playback controls. Stacks cards automatically with count and expand/collapse actions.',
-            style: LyraTypography.muted(tokens),
           ),
           const SizedBox(height: LyraSpacing.md),
           Wrap(
@@ -2128,11 +2105,6 @@ class _SettingsViewState extends State<SettingsView>
             style: LyraTypography.p(
               tokens,
             ).copyWith(fontWeight: FontWeight.w600),
-          ),
-          const SizedBox(height: LyraSpacing.xs),
-          Text(
-            'Persistent in-place banner embedded directly inside container workflows (such as the Audio Inspector drawer).',
-            style: LyraTypography.muted(tokens),
           ),
           const SizedBox(height: LyraSpacing.md),
           Wrap(
