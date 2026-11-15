@@ -5,6 +5,7 @@ import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../../features/settings/services/preferences_service.dart';
@@ -410,8 +411,92 @@ class LyraToaster {
   }
 }
 
+List<BoxShadow> _resolveToastShadows(
+  LyraThemeTokens tokens, {
+  bool isDeckLayer = false,
+}) {
+  if (!tokens.isDark) {
+    if (isDeckLayer) {
+      return [
+        BoxShadow(
+          color: Colors.black.withValues(alpha: 0.04),
+          blurRadius: 6.0,
+          offset: const Offset(0, 2),
+        ),
+      ];
+    }
+    return [
+      BoxShadow(
+        color: Colors.black.withValues(alpha: 0.06),
+        blurRadius: 10.0,
+        offset: const Offset(0, 3),
+      ),
+      BoxShadow(
+        color: Colors.black.withValues(alpha: 0.03),
+        blurRadius: 3.0,
+        offset: const Offset(0, 1),
+      ),
+    ];
+  }
+
+  if (isDeckLayer) {
+    return [
+      BoxShadow(
+        color: Colors.black.withValues(alpha: 0.22),
+        blurRadius: 6.0,
+        offset: const Offset(0, 2),
+      ),
+    ];
+  }
+  return [
+    BoxShadow(
+      color: Colors.black.withValues(alpha: 0.32),
+      blurRadius: 10.0,
+      offset: const Offset(0, 3),
+    ),
+  ];
+}
+
 /// TradingView-style stacked / expandable toast notification overlay.
 class LyraToastStack extends StatelessWidget {
+  static const double _shadowHorizontalInset = 16.0;
+  static const double _shadowTopInset = 14.0;
+  static const double _shadowBottomInset = 20.0;
+  static const double _collapsedBottomInset = 20.0;
+  static const double _expandedCardSpacing = 12.0;
+
+  @visibleForTesting
+  static ({List<Color> colors, List<double> stops}) buildScrollFadeGradient({
+    required bool fadeTop,
+    required bool fadeBottom,
+    required double height,
+    double fadeEdgeHeight = 16.0,
+  }) {
+    if (!fadeTop && !fadeBottom) {
+      return (
+        colors: const [Colors.white, Colors.white],
+        stops: const [0.0, 1.0],
+      );
+    }
+    final fadeFraction = height > 0
+        ? (fadeEdgeHeight / height).clamp(0.0, 0.45)
+        : 0.0;
+    return (
+      colors: [
+        if (fadeTop) Colors.transparent else Colors.white,
+        if (fadeTop) Colors.white,
+        if (fadeBottom) Colors.white,
+        if (fadeBottom) Colors.transparent else Colors.white,
+      ],
+      stops: [
+        0.0,
+        if (fadeTop) fadeFraction,
+        if (fadeBottom) 1.0 - fadeFraction,
+        1.0,
+      ],
+    );
+  }
+
   final double width;
 
   const LyraToastStack({super.key, this.width = 340.0});
@@ -433,10 +518,8 @@ class LyraToastStack extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           // Header Bar (Show more/less & Dismiss All) if multiple toasts exist
-          if (toasts.length > 1) ...[
+          if (toasts.length > 1)
             _buildHeaderBar(context, controller, tokens, toasts.length),
-            const SizedBox(height: 6.0),
-          ],
 
           // Content: Either collapsed deck of cards or expanded vertical list
           AnimatedSize(
@@ -462,7 +545,7 @@ class LyraToastStack extends StatelessWidget {
     final label = isExpanded ? 'Show less' : 'Show more';
 
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 4.0),
+      padding: const EdgeInsets.symmetric(horizontal: _shadowHorizontalInset),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.end,
         children: [
@@ -549,37 +632,45 @@ class LyraToastStack extends StatelessWidget {
     final hasSecond = toasts.length > 1;
     final hasThird = toasts.length > 2;
 
-    return Stack(
-      alignment: Alignment.bottomCenter,
-      clipBehavior: Clip.none,
-      children: [
-        // Layer 3 (deepest deck card)
-        if (hasThird)
-          Positioned(
-            left: 12.0,
-            right: 12.0,
-            bottom: -8.0,
-            child: _buildDummyDeckCard(tokens),
-          ),
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(
+        _shadowHorizontalInset,
+        _shadowTopInset,
+        _shadowHorizontalInset,
+        _collapsedBottomInset,
+      ),
+      child: Stack(
+        alignment: Alignment.bottomCenter,
+        clipBehavior: Clip.none,
+        children: [
+          // Layer 3 (deepest deck card)
+          if (hasThird)
+            Positioned(
+              left: 12.0,
+              right: 12.0,
+              bottom: -8.0,
+              child: _buildDummyDeckCard(tokens),
+            ),
 
-        // Layer 2 (middle deck card)
-        if (hasSecond)
-          Positioned(
-            left: 6.0,
-            right: 6.0,
-            bottom: -4.0,
-            child: _buildDummyDeckCard(tokens),
-          ),
+          // Layer 2 (middle deck card)
+          if (hasSecond)
+            Positioned(
+              left: 6.0,
+              right: 6.0,
+              bottom: -4.0,
+              child: _buildDummyDeckCard(tokens),
+            ),
 
-        // Layer 1 (frontmost card with entrance/exit animation & dismissible)
-        _AnimatedToastCard(
-          key: ValueKey('deck_${frontToast.id}'),
-          toast: frontToast,
-          controller: controller,
-          onDismiss: ({bool immediate = false}) =>
-              controller.dismiss(frontToast.id, immediate: immediate),
-        ),
-      ],
+          // Layer 1 (frontmost card with entrance/exit animation & dismissible)
+          _AnimatedToastCard(
+            key: ValueKey('deck_${frontToast.id}'),
+            toast: frontToast,
+            controller: controller,
+            onDismiss: ({bool immediate = false}) =>
+                controller.dismiss(frontToast.id, immediate: immediate),
+          ),
+        ],
+      ),
     );
   }
 
@@ -587,16 +678,12 @@ class LyraToastStack extends StatelessWidget {
     return Container(
       height: 48.0,
       decoration: BoxDecoration(
-        color: tokens.card.withValues(alpha: 0.85),
+        color: tokens.isDark
+            ? tokens.card.withValues(alpha: 0.85)
+            : tokens.card.withValues(alpha: 0.96),
         borderRadius: BorderRadius.circular(8.0),
         border: Border.all(color: tokens.border, width: 1.0),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.25),
-            blurRadius: 8.0,
-            offset: const Offset(0, 3),
-          ),
-        ],
+        boxShadow: _resolveToastShadows(tokens, isDeckLayer: true),
       ),
     );
   }
@@ -607,26 +694,155 @@ class LyraToastStack extends StatelessWidget {
     LyraThemeTokens tokens,
     List<LyraToast> toasts,
   ) {
-    return ConstrainedBox(
-      constraints: const BoxConstraints(maxHeight: 380.0),
-      child: SingleChildScrollView(
-        reverse: true, // Newest on top or bottom
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            for (int i = toasts.length - 1; i >= 0; i--) ...[
-              _AnimatedToastCard(
-                key: ValueKey('list_${toasts[i].id}'),
-                toast: toasts[i],
-                controller: controller,
-                onDismiss: ({bool immediate = false}) =>
-                    controller.dismiss(toasts[i].id, immediate: immediate),
-              ),
-              if (i > 0) const SizedBox(height: 8.0),
-            ],
+    return _ExpandedToastScrollView(
+      padding: const EdgeInsets.fromLTRB(
+        _shadowHorizontalInset,
+        _shadowTopInset,
+        _shadowHorizontalInset,
+        _shadowBottomInset,
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          for (int i = toasts.length - 1; i >= 0; i--) ...[
+            _AnimatedToastCard(
+              key: ValueKey('list_${toasts[i].id}'),
+              toast: toasts[i],
+              controller: controller,
+              onDismiss: ({bool immediate = false}) =>
+                  controller.dismiss(toasts[i].id, immediate: immediate),
+            ),
+            if (i > 0) const SizedBox(height: _expandedCardSpacing),
           ],
-        ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ExpandedToastScrollView extends StatefulWidget {
+  final EdgeInsetsGeometry padding;
+  final Widget child;
+
+  const _ExpandedToastScrollView({required this.padding, required this.child});
+
+  @override
+  State<_ExpandedToastScrollView> createState() =>
+      _ExpandedToastScrollViewState();
+}
+
+class _ExpandedToastScrollViewState extends State<_ExpandedToastScrollView> {
+  static const double _maxHeight = 400.0;
+  static const double _fadeEdgeHeight = 16.0;
+
+  late final ScrollController _scrollController;
+  bool _fadeTop = false;
+  bool _fadeBottom = false;
+  bool _pendingFadeSync = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _scrollController = ScrollController()..addListener(_handleScrollChanged);
+  }
+
+  @override
+  void dispose() {
+    _scrollController.removeListener(_handleScrollChanged);
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  void _handleScrollChanged() {
+    if (!_scrollController.hasClients ||
+        !_scrollController.position.hasContentDimensions) {
+      return;
+    }
+    _syncFadeFromMetrics(_scrollController.position);
+  }
+
+  bool _handleScrollMetricsNotification(
+    ScrollMetricsNotification notification,
+  ) {
+    if (notification.depth != 0) return false;
+    _syncFadeFromMetrics(notification.metrics);
+    return false;
+  }
+
+  void _syncFadeFromMetrics(ScrollMetrics metrics) {
+    // With reverse: true, extentAfter overflows above the top edge and
+    // extentBefore overflows below the bottom edge.
+    final nextFadeTop = metrics.extentAfter > 0.5;
+    final nextFadeBottom = metrics.extentBefore > 0.5;
+    if (nextFadeTop == _fadeTop && nextFadeBottom == _fadeBottom) return;
+
+    if (SchedulerBinding.instance.schedulerPhase ==
+        SchedulerPhase.persistentCallbacks) {
+      if (_pendingFadeSync) return;
+      _pendingFadeSync = true;
+      SchedulerBinding.instance.addPostFrameCallback((_) {
+        _pendingFadeSync = false;
+        if (!mounted) return;
+        if (_scrollController.hasClients &&
+            _scrollController.position.hasContentDimensions) {
+          final current = _scrollController.position;
+          final resolvedTop = current.extentAfter > 0.5;
+          final resolvedBottom = current.extentBefore > 0.5;
+          if (resolvedTop != _fadeTop || resolvedBottom != _fadeBottom) {
+            setState(() {
+              _fadeTop = resolvedTop;
+              _fadeBottom = resolvedBottom;
+            });
+          }
+        }
+      });
+      return;
+    }
+
+    setState(() {
+      _fadeTop = nextFadeTop;
+      _fadeBottom = nextFadeBottom;
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final maxHeight = math.min(
+      _maxHeight,
+      math.max(120.0, MediaQuery.sizeOf(context).height - 140.0),
+    );
+    final hasOverflowFade = _fadeTop || _fadeBottom;
+
+    final scrollView = ShaderMask(
+      blendMode: hasOverflowFade ? BlendMode.dstIn : BlendMode.dst,
+      shaderCallback: (Rect bounds) {
+        final gradient = LyraToastStack.buildScrollFadeGradient(
+          fadeTop: _fadeTop,
+          fadeBottom: _fadeBottom,
+          height: bounds.height,
+          fadeEdgeHeight: _fadeEdgeHeight,
+        );
+        return LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: gradient.colors,
+          stops: gradient.stops,
+        ).createShader(bounds);
+      },
+      child: SingleChildScrollView(
+        controller: _scrollController,
+        reverse: true, // Newest at bottom
+        padding: widget.padding,
+        child: widget.child,
+      ),
+    );
+
+    return ConstrainedBox(
+      constraints: BoxConstraints(maxHeight: maxHeight),
+      child: NotificationListener<ScrollMetricsNotification>(
+        onNotification: _handleScrollMetricsNotification,
+        child: scrollView,
       ),
     );
   }
@@ -825,13 +1041,7 @@ class _LyraToastCardState extends State<LyraToastCard> {
         color: tokens.card,
         borderRadius: BorderRadius.circular(8.0),
         border: Border.all(color: tokens.border, width: 1.0),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.35),
-            blurRadius: 14.0,
-            offset: const Offset(0, 4),
-          ),
-        ],
+        boxShadow: _resolveToastShadows(tokens),
       ),
       child: Stack(
         children: [

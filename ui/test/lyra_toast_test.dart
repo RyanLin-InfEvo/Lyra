@@ -13,11 +13,14 @@ import 'package:ui/features/settings/services/preferences_service.dart';
 
 Widget _buildToastTestApp({
   required LyraToastController controller,
+  bool isDark = true,
   Widget? child,
 }) {
-  final themeNotifier = ValueNotifier<ThemeMode>(ThemeMode.dark);
+  final themeNotifier = ValueNotifier<ThemeMode>(
+    isDark ? ThemeMode.dark : ThemeMode.light,
+  );
   const factory = ShadcnFactory();
-  final tokens = deriveLyraThemeTokens('zinc', true);
+  final tokens = deriveLyraThemeTokens('zinc', isDark);
 
   return ShadApp(
     debugShowCheckedModeBanner: false,
@@ -179,6 +182,85 @@ void main() {
         controller.dispose();
       },
     );
+
+    test(
+      'buildScrollFadeGradient handles all (fadeTop, fadeBottom) combinations',
+      () {
+        // (false, false): solid pass-through
+        final none = LyraToastStack.buildScrollFadeGradient(
+          fadeTop: false,
+          fadeBottom: false,
+          height: 200.0,
+        );
+        expect(none.colors, [Colors.white, Colors.white]);
+        expect(none.stops, [0.0, 1.0]);
+
+        // (true, false): top fade only (16 / 200 = 0.08)
+        final topOnly = LyraToastStack.buildScrollFadeGradient(
+          fadeTop: true,
+          fadeBottom: false,
+          height: 200.0,
+        );
+        expect(topOnly.colors, [
+          Colors.transparent,
+          Colors.white,
+          Colors.white,
+        ]);
+        expect(topOnly.stops.length, 3);
+        expect(topOnly.stops[0], 0.0);
+        expect(topOnly.stops[1], closeTo(0.08, 1e-6));
+        expect(topOnly.stops[2], 1.0);
+
+        // (true, true): both top and bottom fade
+        final both = LyraToastStack.buildScrollFadeGradient(
+          fadeTop: true,
+          fadeBottom: true,
+          height: 200.0,
+        );
+        expect(both.colors, [
+          Colors.transparent,
+          Colors.white,
+          Colors.white,
+          Colors.transparent,
+        ]);
+        expect(both.stops.length, 4);
+        expect(both.stops[0], 0.0);
+        expect(both.stops[1], closeTo(0.08, 1e-6));
+        expect(both.stops[2], closeTo(0.92, 1e-6));
+        expect(both.stops[3], 1.0);
+
+        // (false, true): bottom fade only
+        final bottomOnly = LyraToastStack.buildScrollFadeGradient(
+          fadeTop: false,
+          fadeBottom: true,
+          height: 200.0,
+        );
+        expect(bottomOnly.colors, [
+          Colors.white,
+          Colors.white,
+          Colors.transparent,
+        ]);
+        expect(bottomOnly.stops.length, 3);
+        expect(bottomOnly.stops[0], 0.0);
+        expect(bottomOnly.stops[1], closeTo(0.92, 1e-6));
+        expect(bottomOnly.stops[2], 1.0);
+
+        // Clamping when height is very small or zero
+        final tiny = LyraToastStack.buildScrollFadeGradient(
+          fadeTop: true,
+          fadeBottom: true,
+          height: 10.0,
+        );
+        expect(tiny.stops, [0.0, 0.45, 0.55, 1.0]);
+
+        final zero = LyraToastStack.buildScrollFadeGradient(
+          fadeTop: true,
+          fadeBottom: true,
+          height: 0.0,
+        );
+        expect(zero.stops, [0.0, 0.0, 1.0, 1.0]);
+      },
+    );
   });
 
   group('LyraToastStack Widget Tests', () {
@@ -308,5 +390,503 @@ void main() {
       expect(find.text('Swipeable Alert'), findsNothing);
       controller.dispose();
     });
+
+    testWidgets(
+      'light and dark mode apply theme-aware shadows to toast cards and deck layers',
+      (tester) async {
+        List<BoxShadow> cardShadows(String id) {
+          final container = tester.widget<Container>(
+            find.byKey(Key('toast_card_$id')),
+          );
+          final decoration = container.decoration as BoxDecoration;
+          return decoration.boxShadow ?? const [];
+        }
+
+        List<BoxDecoration> dummyDeckDecorations() {
+          final containers = tester.widgetList<Container>(
+            find.descendant(
+              of: find.byType(LyraToastStack),
+              matching: find.byType(Container),
+            ),
+          );
+          return containers
+              .where((c) => c.key == null && c.decoration is BoxDecoration)
+              .map((c) => c.decoration as BoxDecoration)
+              .where((d) => d.boxShadow != null && d.boxShadow!.isNotEmpty)
+              .toList();
+        }
+
+        // Light mode
+        final lightController = LyraToastController();
+        await tester.pumpWidget(
+          _buildToastTestApp(controller: lightController, isDark: false),
+        );
+        for (var i = 1; i <= 3; i++) {
+          lightController.show(
+            LyraToast(id: 'light-$i', title: 'Light $i', autoDismiss: false),
+          );
+        }
+        await tester.pumpAndSettle();
+
+        final lightCardShadows = cardShadows('light-3');
+        expect(lightCardShadows, isNotEmpty);
+        for (final shadow in lightCardShadows) {
+          expect(shadow.color.a, lessThanOrEqualTo(0.12));
+        }
+
+        final lightDeckDecorations = dummyDeckDecorations();
+        expect(lightDeckDecorations.length, 2);
+        for (final dec in lightDeckDecorations) {
+          expect(dec.color!.a, greaterThanOrEqualTo(0.90));
+          for (final shadow in dec.boxShadow!) {
+            expect(shadow.color.a, lessThanOrEqualTo(0.12));
+          }
+        }
+
+        // Expand in light mode
+        await tester.tap(find.byKey(const Key('toast_stack_toggle_button')));
+        await tester.pumpAndSettle();
+        for (var i = 1; i <= 3; i++) {
+          final shadows = cardShadows('light-$i');
+          expect(shadows, isNotEmpty);
+          for (final shadow in shadows) {
+            expect(shadow.color.a, lessThanOrEqualTo(0.12));
+          }
+        }
+        lightController.dispose();
+
+        // Dark mode
+        final darkController = LyraToastController();
+        await tester.pumpWidget(
+          _buildToastTestApp(controller: darkController, isDark: true),
+        );
+        for (var i = 1; i <= 3; i++) {
+          darkController.show(
+            LyraToast(id: 'dark-$i', title: 'Dark $i', autoDismiss: false),
+          );
+        }
+        await tester.pumpAndSettle();
+
+        final darkCardShadows = cardShadows('dark-3');
+        expect(darkCardShadows, isNotEmpty);
+        expect(darkCardShadows.first.color.a, greaterThanOrEqualTo(0.20));
+
+        final darkDeckDecorations = dummyDeckDecorations();
+        expect(darkDeckDecorations.length, 2);
+        for (final dec in darkDeckDecorations) {
+          expect(dec.boxShadow!.first.color.a, greaterThanOrEqualTo(0.20));
+        }
+
+        // Expand in dark mode
+        await tester.tap(find.byKey(const Key('toast_stack_toggle_button')));
+        await tester.pumpAndSettle();
+        for (var i = 1; i <= 3; i++) {
+          final shadows = cardShadows('dark-$i');
+          expect(shadows, isNotEmpty);
+          expect(shadows.first.color.a, greaterThanOrEqualTo(0.20));
+        }
+        darkController.dispose();
+      },
+    );
+
+    testWidgets(
+      'expanded list and collapsed deck reserve shadow gutters and inter-card spacing',
+      (tester) async {
+        final controller = LyraToastController();
+        await tester.pumpWidget(
+          _buildToastTestApp(controller: controller, isDark: false),
+        );
+        for (var i = 1; i <= 3; i++) {
+          controller.show(
+            LyraToast(id: 'g-$i', title: 'Toast $i', autoDismiss: false),
+          );
+        }
+        await tester.pumpAndSettle();
+
+        // AnimatedSize must clip during transitions so expanding content cannot
+        // paint over the header bar while steady-state shadows remain inside padding.
+        final animatedSize = tester.widget<AnimatedSize>(
+          find.descendant(
+            of: find.byType(LyraToastStack),
+            matching: find.byType(AnimatedSize),
+          ),
+        );
+        expect(animatedSize.clipBehavior, Clip.hardEdge);
+
+        // Collapsed deck enclosing Padding reserves horizontal & bottom shadow/deck room
+        final collapsedPadding = tester.widget<Padding>(
+          find
+              .descendant(
+                of: find.byType(AnimatedSize),
+                matching: find.byType(Padding),
+              )
+              .first,
+        );
+        final collapsedInsets = collapsedPadding.padding.resolve(
+          TextDirection.ltr,
+        );
+        expect(collapsedInsets.left, greaterThanOrEqualTo(16.0));
+        expect(collapsedInsets.right, greaterThanOrEqualTo(16.0));
+        expect(collapsedInsets.top, greaterThanOrEqualTo(14.0));
+        expect(collapsedInsets.bottom, 20.0);
+
+        // Expand stack
+        await tester.tap(find.byKey(const Key('toast_stack_toggle_button')));
+        await tester.pumpAndSettle();
+
+        final scrollView = tester.widget<SingleChildScrollView>(
+          find.descendant(
+            of: find.byType(LyraToastStack),
+            matching: find.byType(SingleChildScrollView),
+          ),
+        );
+        expect(scrollView.padding, isNotNull);
+        final scrollInsets = scrollView.padding!.resolve(TextDirection.ltr);
+        expect(scrollInsets.left, greaterThanOrEqualTo(16.0));
+        expect(scrollInsets.right, greaterThanOrEqualTo(16.0));
+        expect(scrollInsets.top, greaterThanOrEqualTo(14.0));
+        expect(scrollInsets.bottom, 20.0);
+
+        final listColumn = tester.widget<Column>(
+          find
+              .descendant(
+                of: find.byType(SingleChildScrollView),
+                matching: find.byType(Column),
+              )
+              .first,
+        );
+        final spacers = listColumn.children.whereType<SizedBox>().toList();
+        expect(spacers.length, 2);
+        for (final spacer in spacers) {
+          expect(spacer.height, greaterThanOrEqualTo(12.0));
+        }
+
+        controller.dispose();
+      },
+    );
+
+    testWidgets(
+      'mid-expand AnimatedSize clips and stays strictly below header bar',
+      (tester) async {
+        final controller = LyraToastController();
+        await tester.pumpWidget(_buildToastTestApp(controller: controller));
+
+        for (var i = 1; i <= 3; i++) {
+          controller.show(
+            LyraToast(id: 'm-$i', title: 'Toast $i', autoDismiss: false),
+          );
+        }
+        await tester.pumpAndSettle();
+
+        await tester.tap(find.byKey(const Key('toast_stack_toggle_button')));
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 50));
+
+        final animatedSize = tester.widget<AnimatedSize>(
+          find.descendant(
+            of: find.byType(LyraToastStack),
+            matching: find.byType(AnimatedSize),
+          ),
+        );
+        expect(animatedSize.clipBehavior, Clip.hardEdge);
+
+        final toggleRect = tester.getRect(
+          find.byKey(const Key('toast_stack_toggle_button')),
+        );
+        final animatedRect = tester.getRect(
+          find.descendant(
+            of: find.byType(LyraToastStack),
+            matching: find.byType(AnimatedSize),
+          ),
+        );
+        expect(toggleRect.bottom, lessThanOrEqualTo(animatedRect.top + 0.01));
+
+        await tester.pumpAndSettle();
+        controller.dispose();
+      },
+    );
+
+    testWidgets(
+      'preserves toast subtree state across overflow threshold without remounting ShaderMask',
+      (tester) async {
+        final controller = LyraToastController();
+        await tester.pumpWidget(_buildToastTestApp(controller: controller));
+
+        controller.show(
+          LyraToast(id: 't1', title: 'Toast 1', autoDismiss: false),
+        );
+        controller.show(
+          LyraToast(id: 't2', title: 'Toast 2', autoDismiss: false),
+        );
+        await tester.pumpAndSettle();
+
+        await tester.tap(find.byKey(const Key('toast_stack_toggle_button')));
+        await tester.pumpAndSettle();
+
+        double t1Opacity() {
+          final fade = tester.widget<FadeTransition>(
+            find
+                .descendant(
+                  of: find.byKey(const ValueKey('list_t1')),
+                  matching: find.byType(FadeTransition),
+                )
+                .first,
+          );
+          return fade.opacity.value;
+        }
+
+        expect(t1Opacity(), 1.0);
+
+        // Exceed _maxHeight while expanded so overflow fade activates
+        for (var i = 3; i <= 7; i++) {
+          controller.show(
+            LyraToast(
+              id: 't$i',
+              title: 'Toast $i',
+              message: 'Details for notification $i',
+              autoDismiss: false,
+            ),
+          );
+        }
+        await tester.pump();
+        expect(t1Opacity(), 1.0);
+        await tester.pump(const Duration(milliseconds: 16));
+        expect(t1Opacity(), 1.0);
+        await tester.pump(const Duration(milliseconds: 16));
+        expect(t1Opacity(), 1.0);
+
+        await tester.pumpAndSettle();
+
+        // Dismiss back below overflow threshold so overflow fade deactivates
+        for (var i = 3; i <= 7; i++) {
+          controller.dismiss('t$i', immediate: true);
+        }
+        await tester.pump();
+        expect(t1Opacity(), 1.0);
+        await tester.pump(const Duration(milliseconds: 16));
+        expect(t1Opacity(), 1.0);
+        await tester.pump(const Duration(milliseconds: 16));
+        expect(t1Opacity(), 1.0);
+
+        await tester.pumpAndSettle();
+        controller.dispose();
+      },
+    );
+
+    testWidgets(
+      'expanded list keeps ShaderMask mounted with dst/dstIn across scroll positions and disposes cleanly',
+      (tester) async {
+        final controller = LyraToastController();
+        await tester.pumpWidget(
+          _buildToastTestApp(controller: controller, isDark: false),
+        );
+
+        // 2 toasts fit without scrolling -> ShaderMask stays mounted as pass-through dst
+        controller.show(
+          LyraToast(id: 'f-1', title: 'Toast 1', autoDismiss: false),
+        );
+        controller.show(
+          LyraToast(id: 'f-2', title: 'Toast 2', autoDismiss: false),
+        );
+        await tester.pumpAndSettle();
+
+        await tester.tap(find.byKey(const Key('toast_stack_toggle_button')));
+        await tester.pumpAndSettle();
+
+        final shaderFinder = find.descendant(
+          of: find.byType(LyraToastStack),
+          matching: find.byType(ShaderMask),
+        );
+        expect(shaderFinder, findsOneWidget);
+        expect(
+          tester.widget<ShaderMask>(shaderFinder).blendMode,
+          BlendMode.dst,
+        );
+
+        // Add 5 more toasts (7 total) so expanded list overflows maxHeight
+        for (var i = 3; i <= 7; i++) {
+          controller.show(
+            LyraToast(
+              id: 'f-$i',
+              title: 'Toast $i',
+              message: 'Details for notification $i',
+              autoDismiss: false,
+            ),
+          );
+        }
+        await tester.pumpAndSettle();
+
+        expect(tester.takeException(), isNull);
+        expect(shaderFinder, findsOneWidget);
+        expect(
+          tester.widget<ShaderMask>(shaderFinder).blendMode,
+          BlendMode.dstIn,
+        );
+
+        // Verify scrolling at bottom (0.0), mid (60.0), and top (maxScrollExtent)
+        final scrollFinder = find.descendant(
+          of: find.byType(LyraToastStack),
+          matching: find.byType(SingleChildScrollView),
+        );
+        final scrollView = tester.widget<SingleChildScrollView>(scrollFinder);
+        final scrollController = scrollView.controller;
+        expect(scrollController, isNotNull);
+        final maxExtent = scrollController!.position.maxScrollExtent;
+        expect(maxExtent, greaterThan(60.0));
+        expect(scrollController.position.pixels, 0.0);
+
+        // Mid scroll (both top and bottom overflow)
+        scrollController.jumpTo(60.0);
+        await tester.pump();
+        await tester.pump();
+        expect(tester.takeException(), isNull);
+        expect(scrollController.position.pixels, 60.0);
+        expect(
+          tester.widget<ShaderMask>(shaderFinder).blendMode,
+          BlendMode.dstIn,
+        );
+
+        // Top scroll (maxScrollExtent -> only bottom overflows)
+        scrollController.jumpTo(maxExtent);
+        await tester.pump();
+        await tester.pump();
+        expect(tester.takeException(), isNull);
+        expect(scrollController.position.pixels, maxExtent);
+        expect(
+          tester.widget<ShaderMask>(shaderFinder).blendMode,
+          BlendMode.dstIn,
+        );
+
+        // Scroll back to 0.0
+        scrollController.jumpTo(0.0);
+        await tester.pumpAndSettle();
+        expect(scrollController.position.pixels, 0.0);
+
+        // Dismiss back down to 2 toasts: overflow disappears and ShaderMask switches back to dst
+        for (var i = 3; i <= 7; i++) {
+          controller.dismiss('f-$i', immediate: true);
+        }
+        await tester.pumpAndSettle();
+        expect(tester.takeException(), isNull);
+        expect(shaderFinder, findsOneWidget);
+        expect(
+          tester.widget<ShaderMask>(shaderFinder).blendMode,
+          BlendMode.dst,
+        );
+
+        // Verify clean unmount and disposal without controller leaks
+        await tester.pumpWidget(const SizedBox.shrink());
+        await tester.pumpAndSettle();
+        controller.dispose();
+      },
+    );
+
+    testWidgets(
+      'dark mode shadows have full tail clearance and bottom card has zero vertical jump on toggle',
+      (tester) async {
+        final controller = LyraToastController();
+        await tester.pumpWidget(
+          _buildToastTestApp(controller: controller, isDark: true),
+        );
+
+        controller.show(
+          LyraToast(id: 't1', title: 'First Toast', autoDismiss: false),
+        );
+        controller.show(
+          LyraToast(id: 't2', title: 'Second Toast', autoDismiss: false),
+        );
+        await tester.pumpAndSettle();
+
+        // Check dark mode primary shadow blurRadius <= 10.0 & deck blurRadius <= 6.0
+        final cardContainer = tester.widget<Container>(
+          find.byKey(const Key('toast_card_t2')),
+        );
+        final cardBoxShadows =
+            (cardContainer.decoration as BoxDecoration).boxShadow!;
+        expect(cardBoxShadows.first.blurRadius, lessThanOrEqualTo(10.0));
+
+        final deckContainers = tester
+            .widgetList<Container>(
+              find.descendant(
+                of: find.byType(LyraToastStack),
+                matching: find.byType(Container),
+              ),
+            )
+            .where((c) => c.key == null && c.decoration is BoxDecoration)
+            .map((c) => c.decoration as BoxDecoration)
+            .where((d) => d.boxShadow != null && d.boxShadow!.isNotEmpty)
+            .toList();
+        expect(deckContainers, isNotEmpty);
+        for (final dec in deckContainers) {
+          expect(dec.boxShadow!.first.blurRadius, lessThanOrEqualTo(6.0));
+        }
+
+        final collapsedBottomY = tester
+            .getRect(find.byKey(const Key('toast_card_t2')))
+            .bottom;
+
+        await tester.tap(find.byKey(const Key('toast_stack_toggle_button')));
+        await tester.pumpAndSettle();
+
+        final expandedBottomY = tester
+            .getRect(find.byKey(const Key('toast_card_t2')))
+            .bottom;
+        expect(expandedBottomY, closeTo(collapsedBottomY, 0.01));
+
+        controller.dispose();
+      },
+    );
+
+    testWidgets(
+      'short viewport caps expanded scroll maxHeight so toast stack fits without overflow',
+      (tester) async {
+        tester.view.physicalSize = const Size(800, 360);
+        tester.view.devicePixelRatio = 1.0;
+        addTearDown(tester.view.resetPhysicalSize);
+        addTearDown(tester.view.resetDevicePixelRatio);
+
+        final controller = LyraToastController();
+        await tester.pumpWidget(_buildToastTestApp(controller: controller));
+
+        for (var i = 1; i <= 7; i++) {
+          controller.show(
+            LyraToast(
+              id: 'short-$i',
+              title: 'Toast $i',
+              message: 'Details for notification $i',
+              autoDismiss: false,
+            ),
+          );
+        }
+        await tester.pumpAndSettle();
+
+        await tester.tap(find.byKey(const Key('toast_stack_toggle_button')));
+        await tester.pumpAndSettle();
+
+        expect(tester.takeException(), isNull);
+
+        final scrollConstrainedBox = tester.widget<ConstrainedBox>(
+          find
+              .ancestor(
+                of: find.descendant(
+                  of: find.byType(LyraToastStack),
+                  matching: find.byType(SingleChildScrollView),
+                ),
+                matching: find.byType(ConstrainedBox),
+              )
+              .first,
+        );
+        expect(
+          scrollConstrainedBox.constraints.maxHeight,
+          lessThanOrEqualTo(220.0),
+        );
+
+        final stackRect = tester.getRect(find.byType(LyraToastStack));
+        expect(stackRect.top, greaterThanOrEqualTo(0.0));
+        expect(stackRect.bottom, lessThanOrEqualTo(360.0));
+
+        controller.dispose();
+      },
+    );
   });
 }
