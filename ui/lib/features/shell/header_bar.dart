@@ -8,6 +8,7 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 import '../../design_system/contracts/lyra_contracts.dart';
 import '../../design_system/factory/lyra_design_system_scope.dart';
 import '../../design_system/tokens/lyra_tokens.dart';
+import '../../design_system/widgets/lyra_brand_logo.dart';
 import '../../design_system/widgets/lyra_button.dart';
 import '../../design_system/widgets/lyra_input.dart';
 import '../../design_system/widgets/lyra_tooltip.dart';
@@ -51,7 +52,9 @@ class LyraHeaderBar extends StatelessWidget {
       ),
       child: Row(
         children: [
-          // App Brand Title
+          // App Brand Mark + Title
+          const LyraBrandLogo(size: 26.0, borderRadius: 6.0),
+          const SizedBox(width: LyraSpacing.sm),
           Text(
             'Lyra',
             maxLines: 1,

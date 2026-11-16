@@ -1,0 +1,239 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg
+   viewBox="0 0 1280 720"
+   width="1280"
+   height="720"
+   fill="none"
+   version="1.1"
+   id="svg21"
+   xmlns="http://www.w3.org/2000/svg"
+   xmlns:svg="http://www.w3.org/2000/svg">
+  <!-- 純黑背景 -->
+  <rect
+     width="1280"
+     height="720"
+     fill="#000000"
+     id="rect1" />
+  <!-- 極簡瑞士網格基準線 -->
+  <line
+     x1="96"
+     y1="120"
+     x2="1184"
+     y2="120"
+     stroke="#1E293B"
+     stroke-width="1"
+     id="line1" />
+  <line
+     x1="96"
+     y1="600"
+     x2="1184"
+     y2="600"
+     stroke="#1E293B"
+     stroke-width="1"
+     id="line2" />
+  <!-- 左側：Lyra 深色幾何 L 琴弦標誌（1:1 比例置於 220x220 區域） -->
+  <g
+     transform="translate(110, 232)"
+     id="g3">
+    <!-- 幾何 L 主體 -->
+    <path
+       d="M24 20 H60 V184 H200 V220 H24 Z"
+       fill="#FFFFFF"
+       id="path2" />
+    <!-- 兩條冷銀平行琴弦 -->
+    <rect
+       x="78"
+       y="20"
+       width="14"
+       height="164"
+       fill="#D2D8E2"
+       id="rect2" />
+    <rect
+       x="108"
+       y="52"
+       width="14"
+       height="132"
+       fill="#D2D8E2"
+       id="rect3" />
+    <!-- 冰白四芒星拓撲節點 -->
+    <path
+       d="M162 22 L168 38 L184 44 L168 50 L162 66 L156 50 L140 44 L156 38 Z"
+       fill="#EFF1F5"
+       id="path3" />
+  </g>
+  <!-- 中左：品牌標題與技術副標 -->
+  <g
+     transform="translate(364, 336)"
+     id="g5">
+    <text
+       x="0"
+       y="0"
+       fill="#FFFFFF"
+       font-family="Space Grotesk, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif"
+       font-weight="700"
+       font-size="96"
+       letter-spacing="-2.88"
+       id="text3">Lyra</text>
+    <text
+       x="4"
+       y="48"
+       fill="#EFF1F5"
+       font-family="JetBrains Mono, ui-monospace, SFMono-Regular, Menlo, monospace"
+       font-weight="500"
+       font-size="20"
+       letter-spacing="2.8"
+       id="text4">LOCAL-FIRST MUSIC ASSET LIBRARY</text>
+    <text
+       x="4"
+       y="88"
+       fill="#D2D8E2"
+       font-family="JetBrains Mono, ui-monospace, SFMono-Regular, Menlo, monospace"
+       font-weight="500"
+       font-size="16"
+       letter-spacing="1.28"
+       id="text5">C++20 AUDIO ENGINE · CONTENT-ADDRESSED STORAGE</text>
+  </g>
+  <!-- 右側：無損音訊波形與星狀拓撲結構裝飾 -->
+  <g
+     transform="translate(910, 250)"
+     id="g21">
+    <!-- 拓撲連線 -->
+    <path
+       id="line5"
+       style="stroke:#334155;stroke-width:1.5"
+       d="m 180,30 50.96085,53.736655" />
+    <path
+       id="line6"
+       style="stroke:#334155;stroke-width:1.5"
+       d="M 180,30 106.63795,54.524176" />
+    <path
+       id="line7"
+       style="stroke:#334155;stroke-width:1.5"
+       d="m 230.96085,83.736655 59.75089,34.964415" />
+    <!-- 四芒星節點 -->
+    <path
+       d="M180 14 L184 26 L196 30 L184 34 L180 46 L176 34 L164 30 L176 26 Z"
+       fill="#EFF1F5"
+       id="path7" />
+    <circle
+       cx="230.74733"
+       cy="83.843414"
+       r="4"
+       fill="#FFFFFF"
+       id="circle7" />
+    <circle
+       cx="106.71345"
+       cy="54.599667"
+       r="3.5"
+       fill="#D2D8E2"
+       id="circle8" />
+    <circle
+       cx="290.07117"
+       cy="118.27402"
+       r="3.5"
+       fill="#D2D8E2"
+       id="circle9" />
+    <!-- 建築感垂直無損波形長條 -->
+    <rect
+       x="0"
+       y="130"
+       width="8"
+       height="60"
+       fill="#D2D8E2"
+       id="rect9" />
+    <rect
+       x="20"
+       y="95"
+       width="8"
+       height="95"
+       fill="#FFFFFF"
+       id="rect10" />
+    <rect
+       x="40"
+       y="115"
+       width="8"
+       height="75"
+       fill="#D2D8E2"
+       id="rect11" />
+    <rect
+       x="60"
+       y="70"
+       width="8"
+       height="120"
+       fill="#FFFFFF"
+       id="rect12" />
+    <rect
+       x="80"
+       y="105"
+       width="8"
+       height="85"
+       fill="#EFF1F5"
+       id="rect13" />
+    <rect
+       x="100"
+       y="85"
+       width="8"
+       height="105"
+       fill="#FFFFFF"
+       id="rect14" />
+    <rect
+       x="120"
+       y="120"
+       width="8"
+       height="70"
+       fill="#D2D8E2"
+       id="rect15" />
+    <rect
+       x="140"
+       y="60"
+       width="8"
+       height="130"
+       fill="#FFFFFF"
+       id="rect16" />
+    <rect
+       x="160"
+       y="100"
+       width="8"
+       height="90"
+       fill="#EFF1F5"
+       id="rect17" />
+    <rect
+       x="180"
+       y="110"
+       width="8"
+       height="80"
+       fill="#D2D8E2"
+       id="rect18" />
+    <rect
+       x="200"
+       y="85"
+       width="8"
+       height="105"
+       fill="#FFFFFF"
+       id="rect19" />
+    <rect
+       x="220"
+       y="125"
+       width="8"
+       height="65"
+       fill="#D2D8E2"
+       id="rect20" />
+    <rect
+       x="240"
+       y="140"
+       width="8"
+       height="50"
+       fill="#334155"
+       id="rect21" />
+  </g>
+  <!-- 底部 GitHub 倉庫路徑 -->
+  <text
+     x="110"
+     y="644"
+     fill="#D2D8E2"
+     font-family="JetBrains Mono, ui-monospace, SFMono-Regular, Menlo, monospace"
+     font-weight="500"
+     font-size="16"
+     letter-spacing="1.28"
+     id="text21">github.com/RyanLin-InfEvo/Lyra</text>
+</svg>

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 export 'widgets/lyra_badge.dart';
+export 'widgets/lyra_brand_logo.dart';
 export 'widgets/lyra_button.dart';
 export 'widgets/lyra_card.dart';
 export 'widgets/lyra_checkbox.dart';

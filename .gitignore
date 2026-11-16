@@ -25,7 +25,8 @@ ui/devtools_options.yaml
 
 # IDE Settings 
 # .vscode/
-docs/
+docs/*
+!docs/visual-designs/
 .worktrees/
 *.DS_Store
 core/compile_commands.json

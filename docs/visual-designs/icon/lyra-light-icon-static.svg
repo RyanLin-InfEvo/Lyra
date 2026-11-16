@@ -1,0 +1,79 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg
+   viewBox="0 0 512 512"
+   width="512"
+   height="512"
+   fill="none"
+   version="1.1"
+   id="svg3"
+   sodipodi:docname="lyra-light-icon-static.svg"
+   xml:space="preserve"
+   inkscape:version="1.4.4 (dcaf3e7d9e, 2026-05-05)"
+   xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
+   xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
+   xmlns="http://www.w3.org/2000/svg"
+   xmlns:svg="http://www.w3.org/2000/svg"
+   xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+   xmlns:cc="http://creativecommons.org/ns#"
+   xmlns:dc="http://purl.org/dc/elements/1.1/"><defs
+     id="defs3" /><sodipodi:namedview
+     id="namedview3"
+     pagecolor="#ffffff"
+     bordercolor="#000000"
+     borderopacity="0.25"
+     inkscape:showpageshadow="2"
+     inkscape:pageopacity="0.0"
+     inkscape:pagecheckerboard="0"
+     inkscape:deskcolor="#d1d1d1"
+     inkscape:zoom="1.1642403"
+     inkscape:cx="73.867914"
+     inkscape:cy="183.81086"
+     inkscape:window-width="2438"
+     inkscape:window-height="1299"
+     inkscape:window-x="0"
+     inkscape:window-y="0"
+     inkscape:window-maximized="1"
+     inkscape:current-layer="svg3" /><title
+     id="title1">Lyra Responsive Icon</title><style
+     id="style1">
+    /* Automatically hide 4-point star at small sizes (48px / Favicon) */
+    @media (max-width: 64px) {
+      .star-group {
+        display: none;
+      }
+    }
+  </style><!-- Background --><rect
+     width="512"
+     height="512"
+     fill="#000000"
+     id="rect1"
+     style="fill:#ffffff;fill-opacity:1" /><!-- Architectural L Monogram --><path
+     d="M136 102H180V366H376V406H136V102Z"
+     fill="#FFFFFF"
+     id="path1"
+     style="fill:#000000;fill-opacity:1" /><!-- Parallel Harp Strings --><rect
+     x="198"
+     y="102"
+     width="15"
+     height="264"
+     fill="#D2D8E2"
+     id="rect2"
+     style="fill-rule:nonzero;fill:#94a3b8;fill-opacity:1" /><rect
+     x="231"
+     y="140"
+     width="15"
+     height="226"
+     fill="#D2D8E2"
+     id="rect3"
+     style="fill-rule:nonzero;fill:#94a3b8;fill-opacity:1" /><!-- Four-Point Star Node (centered at 283, 124) --><g
+     class="star-group"
+     transform="translate(283, 124)"
+     id="g3"
+     style="fill:#475569;fill-opacity:1"><path
+       class="star-node"
+       d="M0 -21L6.2 -6.2L21 0L6.2 6.2L0 21L-6.2 6.2L-21 0L-6.2 -6.2Z"
+       fill="#D2D8E2"
+       id="path3"
+       style="fill:#475569;fill-opacity:1" /></g><metadata
+     id="metadata3"><rdf:RDF><cc:Work
+         rdf:about=""><dc:title>Lyra Responsive Icon</dc:title></cc:Work></rdf:RDF></metadata></svg>

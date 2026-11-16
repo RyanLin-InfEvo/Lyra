@@ -10,6 +10,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'design_system/factory/lyra_design_system_scope.dart';
 import 'design_system/factory/shadcn_factory.dart';
 import 'design_system/tokens/lyra_tokens.dart';
+import 'features/about/lyra_licenses.dart';
 import 'features/services/mock_music_service.dart';
 import 'features/settings/services/preferences_service.dart';
 import 'features/shell/app_shell.dart';
@@ -17,6 +18,7 @@ import 'platform/linux_storage.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  registerLyraLicenses();
   if (kIsWeb) {
     BrowserContextMenu.disableContextMenu();
   }

@@ -28,6 +28,7 @@ enum AppTab {
   tags,
   casStorage,
   settings,
+  about,
 }
 
 /// Collapsible desktop sidebar navigation with Library, Playlists, Tags, and System sections.
@@ -492,6 +493,14 @@ class _LyraSidebarState extends State<LyraSidebar>
                                           widget.onTabSelected(AppTab.settings);
                                         }
                                       : null,
+                                ),
+                                _buildNavItem(
+                                  context: context,
+                                  tokens: tokens,
+                                  tab: AppTab.about,
+                                  icon: LucideIcons.info,
+                                  label: 'About',
+                                  showExpandedContent: showExpandedContent,
                                 ),
                               ],
                             ),

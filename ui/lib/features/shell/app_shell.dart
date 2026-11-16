@@ -17,6 +17,7 @@ import '../../design_system/widgets/lyra_dialog.dart';
 import '../../design_system/widgets/lyra_input.dart';
 import '../../design_system/widgets/lyra_spinner.dart';
 import '../../design_system/widgets/lyra_toast.dart';
+import '../about/about_view.dart';
 import '../albums/album_detail_view.dart';
 import '../albums/albums_view.dart';
 import '../artists/artist_detail_view.dart';
@@ -2187,6 +2188,8 @@ class AppShellState extends State<AppShell> {
         return RepaintBoundary(
           child: SettingsView(preferencesService: widget.preferencesService),
         );
+      case AppTab.about:
+        return const RepaintBoundary(child: AboutView());
     }
   }
 

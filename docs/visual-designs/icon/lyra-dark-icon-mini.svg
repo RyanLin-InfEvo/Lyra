@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512" fill="none">
+  <title>Lyra Icon (Small / No Star)</title>
+  <!-- Background -->
+  <rect width="512" height="512" fill="#000000" />
+
+  <!-- Architectural L Monogram -->
+  <path d="M136 102H180V366H376V406H136V102Z" fill="#FFFFFF" />
+
+  <!-- Parallel Harp Strings -->
+  <rect x="195" y="102" width="18" height="264" fill="#D2D8E2" />
+  <rect x="228" y="140" width="18" height="226" fill="#D2D8E2" />
+</svg>
