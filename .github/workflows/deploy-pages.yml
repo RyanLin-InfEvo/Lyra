@@ -1,0 +1,49 @@
+# SPDX-FileCopyrightText: 2026 Tzu-Ting Lin
+#
+# SPDX-License-Identifier: AGPL-3.0-or-later
+
+name: Deploy UI Preview to Cloudflare Workers
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "ui/**"
+      - ".github/workflows/deploy-pages.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  deployments: write
+
+jobs:
+  deploy:
+    name: Build & Deploy Flutter Web
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: "3.41.9"
+          channel: "stable"
+          cache: true
+
+      - name: Install dependencies
+        working-directory: ui
+        run: flutter pub get
+
+      - name: Build Flutter Web
+        working-directory: ui
+        run: flutter build web --release
+
+      - name: Deploy to Cloudflare Workers
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: deploy --assets=ui/build/web --name=${{ vars.CLOUDFLARE_PAGES_PROJECT || 'lyra-ui-preview' }} --compatibility-date=2025-01-01
