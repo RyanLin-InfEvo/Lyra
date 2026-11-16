@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: 2026 Tzu-Ting Lin
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart' show Colors, Material, Tooltip;
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
@@ -76,14 +78,16 @@ class _LyraSelectState<T> extends State<LyraSelect<T>> {
     if (!widget.enabled || _overlayController.isShowing) return;
     _focusNode.unfocus();
     _overlayController.show();
+    if (mounted) setState(() {});
   }
 
-  void _close() {
+  void _close({bool restoreFocus = true}) {
     if (_overlayController.isShowing) {
       _overlayController.hide();
-      if (widget.enabled && mounted) {
+      if (restoreFocus && widget.enabled && mounted) {
         _focusNode.requestFocus();
       }
+      if (mounted) setState(() {});
     }
   }
 
@@ -179,11 +183,20 @@ class _LyraSelectState<T> extends State<LyraSelect<T>> {
       child: OverlayPortal(
         controller: _overlayController,
         overlayChildBuilder: (context) {
-          final effectiveWidth =
+          final viewportSize = MediaQuery.sizeOf(context);
+          final rawWidth =
               widget.popoverWidth ??
               ((_triggerWidth > 0 && _triggerWidth.isFinite)
                   ? _triggerWidth
                   : 200.0);
+          final effectiveWidth = math.min(
+            math.max(120.0, viewportSize.width - 24.0),
+            rawWidth,
+          );
+          final effectiveMaxHeight = math.min(
+            widget.maxHeight,
+            viewportSize.height * 0.45,
+          );
 
           return CompositedTransformFollower(
             link: _layerLink,
@@ -198,13 +211,14 @@ class _LyraSelectState<T> extends State<LyraSelect<T>> {
                 items: widget.items,
                 selectedValue: widget.value,
                 width: effectiveWidth,
-                maxHeight: widget.maxHeight,
+                maxHeight: effectiveMaxHeight,
                 tokens: tokens,
                 onSelect: (val) {
                   widget.onChanged?.call(val);
                   _close();
                 },
                 onClose: _close,
+                onTapOutside: () => _close(restoreFocus: false),
               ),
             ),
           );
@@ -251,36 +265,47 @@ class _LyraSelectState<T> extends State<LyraSelect<T>> {
                 vertical: 6.0,
               ),
               decoration: BoxDecoration(
-                color: (_isHovered || _isFocused)
+                color:
+                    (_isHovered || _isFocused || _overlayController.isShowing)
                     ? tokens.secondary
                     : tokens.secondary.withValues(alpha: 0.4),
                 borderRadius: LyraRadius.smRadius,
                 border: Border.all(
-                  color: (_isHovered || _isFocused)
-                      ? tokens.border
-                      : tokens.border.withValues(alpha: 0.6),
-                  width: _isFocused ? 1.5 : 1.0,
+                  color:
+                      (_isHovered || _isFocused || _overlayController.isShowing)
+                      ? tokens.controlBorderHover
+                      : tokens.controlBorder,
+                  width: 1.0,
                 ),
               ),
               child: Row(
                 mainAxisSize: MainAxisSize.min,
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      if (widget.showLeadingInTrigger &&
-                          selectedItem?.leading != null) ...[
-                        selectedItem!.leading!,
-                        const SizedBox(width: 8.0),
+                  Flexible(
+                    fit: FlexFit.loose,
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        if (widget.showLeadingInTrigger &&
+                            selectedItem?.leading != null) ...[
+                          selectedItem!.leading!,
+                          const SizedBox(width: 8.0),
+                        ],
+                        Flexible(
+                          fit: FlexFit.loose,
+                          child: Text(
+                            selectedItem?.label ?? widget.placeholder ?? '',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: LyraTypography.p(tokens).copyWith(
+                              fontWeight: FontWeight.w600,
+                              fontSize: 13.0,
+                            ),
+                          ),
+                        ),
                       ],
-                      Text(
-                        selectedItem?.label ?? widget.placeholder ?? '',
-                        style: LyraTypography.p(
-                          tokens,
-                        ).copyWith(fontWeight: FontWeight.w600, fontSize: 13.0),
-                      ),
-                    ],
+                    ),
                   ),
                   const SizedBox(width: 6.0),
                   Icon(
@@ -307,6 +332,7 @@ class _SelectMenuOverlay<T> extends StatefulWidget {
   final LyraThemeTokens tokens;
   final ValueChanged<T> onSelect;
   final VoidCallback onClose;
+  final VoidCallback? onTapOutside;
 
   const _SelectMenuOverlay({
     required this.tapRegionGroupId,
@@ -317,6 +343,7 @@ class _SelectMenuOverlay<T> extends StatefulWidget {
     required this.tokens,
     required this.onSelect,
     required this.onClose,
+    this.onTapOutside,
   });
 
   @override
@@ -383,7 +410,7 @@ class _SelectMenuOverlayState<T> extends State<_SelectMenuOverlay<T>>
 
     return TapRegion(
       groupId: widget.tapRegionGroupId,
-      onTapOutside: (_) => widget.onClose(),
+      onTapOutside: (_) => (widget.onTapOutside ?? widget.onClose)(),
       child: Focus(
         autofocus: true,
         onKeyEvent: (node, event) {
@@ -424,11 +451,11 @@ class _SelectMenuOverlayState<T> extends State<_SelectMenuOverlay<T>>
                   color: tokens.card,
                   borderRadius: LyraRadius.mdRadius,
                   border: Border.all(color: tokens.border, width: 1.0),
-                  boxShadow: [
+                  boxShadow: const [
                     BoxShadow(
-                      color: tokens.text.withValues(alpha: 0.12),
+                      color: Color(0x33000000),
                       blurRadius: 16,
-                      offset: const Offset(0, 6),
+                      offset: Offset(0, 6),
                     ),
                   ],
                 ),

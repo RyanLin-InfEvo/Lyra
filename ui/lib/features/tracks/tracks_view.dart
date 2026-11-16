@@ -28,6 +28,10 @@ import '../common/batch_action_toolbar.dart';
 import '../common/context_menu_coordinator.dart';
 import '../models/track.dart';
 import '../settings/services/preferences_service.dart';
+import 'track_filter_bar.dart';
+import 'track_filter_model.dart';
+
+export 'track_filter_model.dart';
 
 /// Columns available in the Tracks table.
 class TrackColumn {
@@ -706,6 +710,11 @@ class TracksView extends StatefulWidget {
   final Map<String, int>? audioVersionCounts;
   final String? filterLabel;
   final VoidCallback? onClearFilter;
+  final TrackFilterQuery? filterQuery;
+  final ValueChanged<TrackFilterQuery>? onFilterQueryChanged;
+  final bool? isFilterBuilderExpanded;
+  final ValueChanged<bool>? onFilterBuilderExpandedChanged;
+  final TrackFilterContext filterContext;
   final Set<TrackColumn>? visibleColumns;
   final ValueChanged<Set<TrackColumn>>? onVisibleColumnsChanged;
   final List<TrackColumn>? columnOrder;
@@ -741,6 +750,11 @@ class TracksView extends StatefulWidget {
     this.audioVersionCounts,
     this.filterLabel,
     this.onClearFilter,
+    this.filterQuery,
+    this.onFilterQueryChanged,
+    this.isFilterBuilderExpanded,
+    this.onFilterBuilderExpandedChanged,
+    this.filterContext = const TrackFilterContext.empty(),
     this.visibleColumns,
     this.onVisibleColumnsChanged,
     this.columnOrder,
@@ -774,6 +788,7 @@ class _TracksViewState extends State<TracksView> {
   final Set<String> _selectedTrackIds = {};
   String? _selectionAnchorId;
   bool _isModifierSelectionActive = false;
+  bool _isFilterBuilderExpanded = false;
 
   TrackActivationMode get _effectiveActivationMode =>
       widget.trackActivationMode ??
@@ -782,6 +797,8 @@ class _TracksViewState extends State<TracksView> {
 
   TrackListViewMode get _effectiveViewMode => widget.viewMode ?? _localViewMode;
   bool get _effectiveShowHeader => widget.showHeader ?? _localShowHeader;
+  bool get _effectiveFilterBuilderExpanded =>
+      widget.isFilterBuilderExpanded ?? _isFilterBuilderExpanded;
 
   void _handleSort(TrackColumn col) {
     if (col == TrackColumn.index || col == TrackColumn.cover) return;
@@ -1620,31 +1637,34 @@ class _TracksViewState extends State<TracksView> {
     );
   }
 
-  @override
-  Widget build(BuildContext context) {
-    final tokens = LyraDesignSystemScope.of(context).tokens;
-
-    if (widget.tracks.isEmpty) {
-      return Center(
+  Widget _buildEmptyState(
+    LyraThemeTokens tokens,
+    String? effectiveFilterLabel, {
+    VoidCallback? effectiveClearFilter,
+  }) {
+    return Center(
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.all(LyraSpacing.lg),
         child: Column(
+          mainAxisSize: MainAxisSize.min,
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             Icon(LucideIcons.searchX, size: 48.0, color: tokens.textMuted),
             const SizedBox(height: LyraSpacing.md),
             Text(
-              widget.filterLabel != null
+              effectiveFilterLabel != null
                   ? 'No matching tracks found'
                   : 'No tracks found',
               style: LyraTypography.h3(tokens),
             ),
             const SizedBox(height: LyraSpacing.xs),
             Text(
-              widget.filterLabel != null
-                  ? 'No tracks found matching "${widget.filterLabel}".'
+              effectiveFilterLabel != null
+                  ? 'No tracks found matching "$effectiveFilterLabel".'
                   : 'Try adjusting your search query or import new audio files.',
               style: LyraTypography.muted(tokens),
             ),
-            if (widget.filterLabel == null && widget.onImport != null) ...[
+            if (effectiveFilterLabel == null && widget.onImport != null) ...[
               const SizedBox(height: LyraSpacing.md),
               LyraButton.primary(
                 onPressed: widget.onImport,
@@ -1652,20 +1672,48 @@ class _TracksViewState extends State<TracksView> {
                 child: const Text('Import Audio'),
               ),
             ],
-            if (widget.filterLabel != null && widget.onClearFilter != null) ...[
+            if (effectiveFilterLabel != null &&
+                effectiveClearFilter != null) ...[
               const SizedBox(height: LyraSpacing.md),
               LyraButton.outline(
                 size: LyraButtonSize.sm,
-                onPressed: widget.onClearFilter,
+                onPressed: effectiveClearFilter,
                 leading: const Icon(LucideIcons.x, size: 14.0),
                 child: const Text('Clear filter'),
               ),
             ],
           ],
         ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = LyraDesignSystemScope.of(context).tokens;
+    final hasFilterBuilder = widget.onFilterQueryChanged != null;
+    final activeQuery = widget.filterQuery ?? const TrackFilterQuery();
+    final effectiveFilterLabel =
+        widget.filterLabel ??
+        (activeQuery.isActive
+            ? activeQuery.formatSummaryLabel(widget.filterContext)
+            : null);
+    final VoidCallback? effectiveClearFilter =
+        widget.onClearFilter ??
+        (activeQuery.isActive && hasFilterBuilder
+            ? () => widget.onFilterQueryChanged!(const TrackFilterQuery())
+            : null);
+
+    if (widget.tracks.isEmpty && !hasFilterBuilder) {
+      return _buildEmptyState(
+        tokens,
+        effectiveFilterLabel,
+        effectiveClearFilter: effectiveClearFilter,
       );
     }
 
+    final disableAnimations =
+        MediaQuery.maybeDisableAnimationsOf(context) ?? false;
     final displayTracks = _getDisplayTracks();
     final selectedTracks = widget.tracks
         .where((t) => _selectedTrackIds.contains(t.id))
@@ -1719,7 +1767,7 @@ class _TracksViewState extends State<TracksView> {
                               ],
                             ),
                           ),
-                          if (widget.filterLabel != null) ...[
+                          if (effectiveFilterLabel != null) ...[
                             const SizedBox(width: LyraSpacing.lg),
                             Flexible(
                               child: Container(
@@ -1728,11 +1776,11 @@ class _TracksViewState extends State<TracksView> {
                                 ),
                                 padding: EdgeInsets.only(
                                   left: 8.0,
-                                  top: widget.onClearFilter != null ? 2.0 : 4.0,
-                                  bottom: widget.onClearFilter != null
+                                  top: effectiveClearFilter != null ? 2.0 : 4.0,
+                                  bottom: effectiveClearFilter != null
                                       ? 2.0
                                       : 4.0,
-                                  right: widget.onClearFilter != null
+                                  right: effectiveClearFilter != null
                                       ? 3.0
                                       : 8.0,
                                 ),
@@ -1751,7 +1799,7 @@ class _TracksViewState extends State<TracksView> {
                                   children: [
                                     Flexible(
                                       child: Text(
-                                        widget.filterLabel!,
+                                        effectiveFilterLabel,
                                         maxLines: 1,
                                         overflow: TextOverflow.ellipsis,
                                         style: LyraTypography.small(tokens)
@@ -1762,10 +1810,10 @@ class _TracksViewState extends State<TracksView> {
                                             ),
                                       ),
                                     ),
-                                    if (widget.onClearFilter != null) ...[
+                                    if (effectiveClearFilter != null) ...[
                                       const SizedBox(width: 4.0),
                                       _FilterCloseButton(
-                                        onTap: widget.onClearFilter,
+                                        onTap: effectiveClearFilter,
                                         tokens: tokens,
                                       ),
                                     ],
@@ -1777,235 +1825,296 @@ class _TracksViewState extends State<TracksView> {
                         ],
                       ),
                     ),
+                    if (hasFilterBuilder) ...[
+                      const SizedBox(width: LyraSpacing.md),
+                      TrackFilterToggleButton(
+                        key: const Key('tracks_filter_toggle_button'),
+                        isExpanded: _effectiveFilterBuilderExpanded,
+                        activeRuleCount: activeQuery.activeRuleCount,
+                        onPressed: () {
+                          final next = !_effectiveFilterBuilderExpanded;
+                          if (widget.onFilterBuilderExpandedChanged != null) {
+                            widget.onFilterBuilderExpandedChanged!(next);
+                          } else {
+                            setState(() {
+                              _isFilterBuilderExpanded = next;
+                            });
+                          }
+                        },
+                      ),
+                    ],
                   ],
                 ),
               ),
             ),
 
-            // Table Header + Rows with Horizontal Scroll Support in Detail Mode
-            Expanded(
-              child: LayoutBuilder(
-                builder: (context, constraints) {
-                  final orderedVisible = [
-                    for (final col in _effectiveColumnOrder)
-                      if (_effectiveVisibleColumns.contains(col)) col,
-                  ];
-                  final isDetail =
-                      _effectiveViewMode == TrackListViewMode.detail;
-                  final textScale = math.max(
-                    1.0,
-                    MediaQuery.textScalerOf(context).scale(1.0),
-                  );
-                  final requiredWidth = isDetail
-                      ? _requiredDetailTableWidth(
-                          orderedVisible,
-                          textScale: textScale,
-                        )
-                      : 0.0;
-                  final effectiveWidth = isDetail
-                      ? math.max(constraints.maxWidth, requiredWidth)
-                      : constraints.maxWidth;
-                  final needsHorizontalScroll =
-                      isDetail && requiredWidth > constraints.maxWidth;
-
-                  final content = SizedBox(
-                    width: effectiveWidth,
-                    height: constraints.maxHeight,
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        DraggableColumnsOverlay(
-                          key: const Key('tracks_table_header_context_menu'),
-                          controller: _columnsOverlayController,
-                          positionNotifier: _columnsPositionNotifier,
-                          estimatedCardHeight:
-                              60.0 + _effectiveColumnOrder.length * 36.0,
-                          onReset: _resetColumns,
-                          cardKey: const Key('tracks_columns_window'),
-                          headerKey: const Key('tracks_columns_window_header'),
-                          resetKey: const Key('tracks_columns_reset_button'),
-                          closeKey: const Key('tracks_columns_close_button'),
-                          tokens: tokens,
-                          content: ReorderableListView.builder(
-                            shrinkWrap: true,
-                            physics: const ClampingScrollPhysics(),
-                            buildDefaultDragHandles: false,
-                            proxyDecorator: (child, index, animation) =>
-                                _proxyDecorator(
-                                  child,
-                                  index,
-                                  animation,
-                                  tokens,
-                                ),
-                            itemCount: _effectiveColumnOrder.length,
-                            onReorder: _onReorder,
-                            itemBuilder: (context, index) {
-                              final col = _effectiveColumnOrder[index];
-                              final isVisible = _effectiveVisibleColumns
-                                  .contains(col);
-                              final canToggle =
-                                  !col.isMandatory &&
-                                  (!isVisible ||
-                                      _effectiveVisibleColumns.length > 1);
-                              return _TrackColumnMenuItem(
-                                key: Key('track_col_menu_${col.name}'),
-                                index: index,
-                                col: col,
-                                isVisible: isVisible,
-                                canToggle: canToggle,
-                                tokens: tokens,
-                                onToggle: () => _toggleColumn(col),
-                              );
-                            },
+            if (hasFilterBuilder)
+              AnimatedSize(
+                duration: disableAnimations
+                    ? Duration.zero
+                    : const Duration(milliseconds: 220),
+                curve: Curves.easeInOutCubic,
+                alignment: Alignment.topCenter,
+                child: _effectiveFilterBuilderExpanded
+                    ? ConstrainedBox(
+                        constraints: BoxConstraints(
+                          maxHeight: math.max(
+                            140.0,
+                            MediaQuery.sizeOf(context).height * 0.44,
                           ),
-                          child: _effectiveShowHeader
-                              ? Container(
-                                  key: const Key('tracks_table_header'),
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: LyraSpacing.xl,
-                                    vertical: LyraSpacing.sm,
+                        ),
+                        child: SingleChildScrollView(
+                          child: TrackFilterBuilderPanel(
+                            query: activeQuery,
+                            filterContext: widget.filterContext,
+                            onQueryChanged: widget.onFilterQueryChanged!,
+                          ),
+                        ),
+                      )
+                    : const SizedBox.shrink(),
+              ),
+
+            if (widget.tracks.isEmpty)
+              Expanded(
+                child: _buildEmptyState(
+                  tokens,
+                  effectiveFilterLabel,
+                  effectiveClearFilter: effectiveClearFilter,
+                ),
+              )
+            else
+              // Table Header + Rows with Horizontal Scroll Support in Detail Mode
+              Expanded(
+                child: LayoutBuilder(
+                  builder: (context, constraints) {
+                    final orderedVisible = [
+                      for (final col in _effectiveColumnOrder)
+                        if (_effectiveVisibleColumns.contains(col)) col,
+                    ];
+                    final isDetail =
+                        _effectiveViewMode == TrackListViewMode.detail;
+                    final textScale = math.max(
+                      1.0,
+                      MediaQuery.textScalerOf(context).scale(1.0),
+                    );
+                    final requiredWidth = isDetail
+                        ? _requiredDetailTableWidth(
+                            orderedVisible,
+                            textScale: textScale,
+                          )
+                        : 0.0;
+                    final effectiveWidth = isDetail
+                        ? math.max(constraints.maxWidth, requiredWidth)
+                        : constraints.maxWidth;
+                    final needsHorizontalScroll =
+                        isDetail && requiredWidth > constraints.maxWidth;
+
+                    final content = SizedBox(
+                      width: effectiveWidth,
+                      height: constraints.maxHeight,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          DraggableColumnsOverlay(
+                            key: const Key('tracks_table_header_context_menu'),
+                            controller: _columnsOverlayController,
+                            positionNotifier: _columnsPositionNotifier,
+                            estimatedCardHeight:
+                                60.0 + _effectiveColumnOrder.length * 36.0,
+                            onReset: _resetColumns,
+                            cardKey: const Key('tracks_columns_window'),
+                            headerKey: const Key(
+                              'tracks_columns_window_header',
+                            ),
+                            resetKey: const Key('tracks_columns_reset_button'),
+                            closeKey: const Key('tracks_columns_close_button'),
+                            tokens: tokens,
+                            content: ReorderableListView.builder(
+                              shrinkWrap: true,
+                              physics: const ClampingScrollPhysics(),
+                              buildDefaultDragHandles: false,
+                              proxyDecorator: (child, index, animation) =>
+                                  _proxyDecorator(
+                                    child,
+                                    index,
+                                    animation,
+                                    tokens,
                                   ),
-                                  decoration: BoxDecoration(
-                                    color: tokens.background,
-                                    border: Border(
-                                      bottom: BorderSide(
-                                        color: tokens.border,
-                                        width: 1.0,
+                              itemCount: _effectiveColumnOrder.length,
+                              onReorder: _onReorder,
+                              itemBuilder: (context, index) {
+                                final col = _effectiveColumnOrder[index];
+                                final isVisible = _effectiveVisibleColumns
+                                    .contains(col);
+                                final canToggle =
+                                    !col.isMandatory &&
+                                    (!isVisible ||
+                                        _effectiveVisibleColumns.length > 1);
+                                return _TrackColumnMenuItem(
+                                  key: Key('track_col_menu_${col.name}'),
+                                  index: index,
+                                  col: col,
+                                  isVisible: isVisible,
+                                  canToggle: canToggle,
+                                  tokens: tokens,
+                                  onToggle: () => _toggleColumn(col),
+                                );
+                              },
+                            ),
+                            child: _effectiveShowHeader
+                                ? Container(
+                                    key: const Key('tracks_table_header'),
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: LyraSpacing.xl,
+                                      vertical: LyraSpacing.sm,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      color: tokens.background,
+                                      border: Border(
+                                        bottom: BorderSide(
+                                          color: tokens.border,
+                                          width: 1.0,
+                                        ),
                                       ),
                                     ),
-                                  ),
-                                  child: isDetail
-                                      ? Row(
-                                          children: [
-                                            for (final col in orderedVisible)
-                                              _buildHeaderCell(col, tokens),
-                                          ],
-                                        )
-                                      : _buildListHeaderRow(
-                                          tokens,
-                                          orderedVisible,
-                                        ),
-                                )
-                              : const SizedBox.shrink(),
-                        ),
-                        Expanded(
-                          child: GestureDetector(
-                            behavior: HitTestBehavior.translucent,
-                            onTap: () {
-                              if (_hasSelection) {
-                                setState(() {
-                                  _clearSelection();
-                                });
-                              }
-                            },
-                            child:
-                                NotificationListener<ScrollStartNotification>(
-                                  onNotification: (notification) {
-                                    LyraContextMenuCoordinator.hideActive();
-                                    return false;
-                                  },
-                                  child: ListView.builder(
-                                    padding: const EdgeInsets.symmetric(
-                                      vertical: LyraSpacing.xs,
-                                    ),
-                                    itemCount: displayTracks.length,
-                                    itemExtent: math.max(
-                                      _effectiveViewMode ==
-                                              TrackListViewMode.list
-                                          ? 64.0
-                                          : 56.0,
-                                      (_effectiveViewMode ==
-                                                  TrackListViewMode.list
-                                              ? 64.0
-                                              : 56.0) *
-                                          MediaQuery.textScalerOf(
-                                            context,
-                                          ).scale(1.0),
-                                    ),
-                                    itemBuilder: (context, index) {
-                                      final track = displayTracks[index];
-                                      final isCurrent =
-                                          widget.currentTrack?.id == track.id;
-                                      final isSelected = _selectedTrackIds
-                                          .contains(track.id);
-                                      final versionCount =
-                                          widget.audioVersionCounts?[track
-                                              .id] ??
-                                          widget.audioVersionCounts?[track
-                                              .pcmHash] ??
-                                          1;
-
-                                      final onInspectAudio =
-                                          widget.onInspectAudio != null
-                                          ? () => widget.onInspectAudio!(track)
-                                          : (widget.onInspectTrack != null
-                                                ? () => widget.onInspectTrack!(
-                                                    track,
-                                                  )
-                                                : null);
-
-                                      return _TrackRow(
-                                        key: ValueKey(track.id),
-                                        index: index + 1,
-                                        track: track,
-                                        viewMode: _effectiveViewMode,
-                                        columnWidths: _columnWidths,
-                                        isCurrent: isCurrent,
-                                        isPlaying:
-                                            isCurrent && widget.isPlaying,
-                                        isSelected: isSelected,
-                                        versionCount: versionCount,
-                                        columnOrder: _effectiveColumnOrder,
-                                        visibleColumns:
-                                            _effectiveVisibleColumns,
-                                        onTap: () => _handleTrackTap(
-                                          track,
-                                          displayTracks,
-                                        ),
-                                        onDoubleTap:
-                                            _effectiveActivationMode ==
-                                                TrackActivationMode.doubleClick
-                                            ? () =>
-                                                  widget.onTrackSelected(track)
-                                            : null,
-                                        onPlayNow: () =>
-                                            widget.onTrackSelected(track),
-                                        onPlayNext: widget.onPlayNext != null
-                                            ? () => widget.onPlayNext!(track)
-                                            : null,
-                                        onAddToQueue:
-                                            widget.onAddToQueue != null
-                                            ? () => widget.onAddToQueue!(track)
-                                            : null,
-                                        onAddToPlaylist:
-                                            widget.onAddToPlaylist != null
-                                            ? () =>
-                                                  widget.onAddToPlaylist!(track)
-                                            : null,
-                                        onInspectAudio: onInspectAudio,
-                                        onGoToAlbum: widget.onGoToAlbum,
-                                        onGoToArtist: widget.onGoToArtist,
-                                        tokens: tokens,
-                                      );
-                                    },
-                                  ),
-                                ),
+                                    child: isDetail
+                                        ? Row(
+                                            children: [
+                                              for (final col in orderedVisible)
+                                                _buildHeaderCell(col, tokens),
+                                            ],
+                                          )
+                                        : _buildListHeaderRow(
+                                            tokens,
+                                            orderedVisible,
+                                          ),
+                                  )
+                                : const SizedBox.shrink(),
                           ),
-                        ),
-                      ],
-                    ),
-                  );
+                          Expanded(
+                            child: GestureDetector(
+                              behavior: HitTestBehavior.translucent,
+                              onTap: () {
+                                if (_hasSelection) {
+                                  setState(() {
+                                    _clearSelection();
+                                  });
+                                }
+                              },
+                              child:
+                                  NotificationListener<ScrollStartNotification>(
+                                    onNotification: (notification) {
+                                      LyraContextMenuCoordinator.hideActive();
+                                      return false;
+                                    },
+                                    child: ListView.builder(
+                                      padding: const EdgeInsets.symmetric(
+                                        vertical: LyraSpacing.xs,
+                                      ),
+                                      itemCount: displayTracks.length,
+                                      itemExtent: math.max(
+                                        _effectiveViewMode ==
+                                                TrackListViewMode.list
+                                            ? 64.0
+                                            : 56.0,
+                                        (_effectiveViewMode ==
+                                                    TrackListViewMode.list
+                                                ? 64.0
+                                                : 56.0) *
+                                            MediaQuery.textScalerOf(
+                                              context,
+                                            ).scale(1.0),
+                                      ),
+                                      itemBuilder: (context, index) {
+                                        final track = displayTracks[index];
+                                        final isCurrent =
+                                            widget.currentTrack?.id == track.id;
+                                        final isSelected = _selectedTrackIds
+                                            .contains(track.id);
+                                        final versionCount =
+                                            widget.audioVersionCounts?[track
+                                                .id] ??
+                                            widget.audioVersionCounts?[track
+                                                .pcmHash] ??
+                                            1;
 
-                  if (needsHorizontalScroll) {
-                    return SingleChildScrollView(
-                      scrollDirection: Axis.horizontal,
-                      child: content,
+                                        final onInspectAudio =
+                                            widget.onInspectAudio != null
+                                            ? () =>
+                                                  widget.onInspectAudio!(track)
+                                            : (widget.onInspectTrack != null
+                                                  ? () =>
+                                                        widget.onInspectTrack!(
+                                                          track,
+                                                        )
+                                                  : null);
+
+                                        return _TrackRow(
+                                          key: ValueKey(track.id),
+                                          index: index + 1,
+                                          track: track,
+                                          viewMode: _effectiveViewMode,
+                                          columnWidths: _columnWidths,
+                                          isCurrent: isCurrent,
+                                          isPlaying:
+                                              isCurrent && widget.isPlaying,
+                                          isSelected: isSelected,
+                                          versionCount: versionCount,
+                                          columnOrder: _effectiveColumnOrder,
+                                          visibleColumns:
+                                              _effectiveVisibleColumns,
+                                          onTap: () => _handleTrackTap(
+                                            track,
+                                            displayTracks,
+                                          ),
+                                          onDoubleTap:
+                                              _effectiveActivationMode ==
+                                                  TrackActivationMode
+                                                      .doubleClick
+                                              ? () => widget.onTrackSelected(
+                                                  track,
+                                                )
+                                              : null,
+                                          onPlayNow: () =>
+                                              widget.onTrackSelected(track),
+                                          onPlayNext: widget.onPlayNext != null
+                                              ? () => widget.onPlayNext!(track)
+                                              : null,
+                                          onAddToQueue:
+                                              widget.onAddToQueue != null
+                                              ? () =>
+                                                    widget.onAddToQueue!(track)
+                                              : null,
+                                          onAddToPlaylist:
+                                              widget.onAddToPlaylist != null
+                                              ? () => widget.onAddToPlaylist!(
+                                                  track,
+                                                )
+                                              : null,
+                                          onInspectAudio: onInspectAudio,
+                                          onGoToAlbum: widget.onGoToAlbum,
+                                          onGoToArtist: widget.onGoToArtist,
+                                          tokens: tokens,
+                                        );
+                                      },
+                                    ),
+                                  ),
+                            ),
+                          ),
+                        ],
+                      ),
                     );
-                  }
-                  return content;
-                },
+
+                    if (needsHorizontalScroll) {
+                      return SingleChildScrollView(
+                        scrollDirection: Axis.horizontal,
+                        child: content,
+                      );
+                    }
+                    return content;
+                  },
+                ),
               ),
-            ),
           ],
         ),
 

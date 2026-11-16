@@ -21,6 +21,8 @@ import 'package:ui/design_system/tokens/lyra_tokens.dart';
 import 'package:ui/features/models/album.dart';
 import 'package:ui/features/models/artist.dart';
 import 'package:ui/features/models/audio.dart';
+import 'package:ui/features/albums/album_detail_view.dart';
+import 'package:ui/features/artists/artist_detail_view.dart';
 import 'package:ui/features/cas_pool/cas_view.dart';
 import 'package:ui/features/models/cas_object.dart';
 import 'package:ui/features/models/image_asset.dart';
@@ -658,16 +660,16 @@ void main() {
         expect(find.text('Albums'), findsWidgets);
         expect(find.text('Kind of Blue'), findsOneWidget);
 
-        // 6. Click an album to scope tracks
+        // 6. Click an album to open independent AlbumDetailView
         await tester.tap(find.text('Kind of Blue').first);
         await tester.pumpAndSettle();
-        expect(find.text('Tracks Library'), findsOneWidget);
+        expect(find.byType(AlbumDetailView), findsOneWidget);
         expect(
           find.descendant(
-            of: find.byType(TracksView),
-            matching: find.text('Album: Kind of Blue'),
+            of: find.byType(AlbumDetailView),
+            matching: find.text('Kind of Blue'),
           ),
-          findsOneWidget,
+          findsWidgets,
         );
 
         // 7. Click on Artists tab
@@ -676,16 +678,16 @@ void main() {
         expect(find.text('Artists'), findsWidgets);
         expect(find.text('Miles Davis'), findsWidgets);
 
-        // 8. Click an artist to scope tracks
+        // 8. Click an artist to open independent ArtistDetailView
         await tester.tap(find.text('Miles Davis').first);
         await tester.pumpAndSettle();
-        expect(find.text('Tracks Library'), findsOneWidget);
+        expect(find.byType(ArtistDetailView), findsOneWidget);
         expect(
           find.descendant(
-            of: find.byType(TracksView),
-            matching: find.text('Artist: Miles Davis'),
+            of: find.byType(ArtistDetailView),
+            matching: find.text('Miles Davis'),
           ),
-          findsOneWidget,
+          findsWidgets,
         );
 
         // 9. Click on Playlists tab header in sidebar

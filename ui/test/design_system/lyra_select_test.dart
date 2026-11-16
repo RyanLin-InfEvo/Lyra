@@ -344,5 +344,40 @@ void main() {
 
       expect(find.text('Option 2'), findsNothing); // overlay closed
     });
+
+    testWidgets(
+      'Dark mode idle trigger uses visible charcoal700 border instead of dim charcoal800',
+      (tester) async {
+        await tester.pumpWidget(
+          _buildSelectTestApp(
+            themeMode: ThemeMode.dark,
+            child: const LyraSelect<String>(
+              key: Key('dark_border_select'),
+              value: 'a',
+              items: [
+                LyraSelectItem(value: 'a', label: 'Alpha'),
+                LyraSelectItem(value: 'b', label: 'Beta'),
+              ],
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        final container = tester.widget<Container>(
+          find.descendant(
+            of: find.byKey(const Key('dark_border_select')),
+            matching: find.byWidgetPredicate(
+              (w) =>
+                  w is Container &&
+                  w.decoration is BoxDecoration &&
+                  (w.decoration! as BoxDecoration).border != null,
+            ),
+          ),
+        );
+        final border =
+            (container.decoration! as BoxDecoration).border! as Border;
+        expect(border.top.color, equals(LyraColors.charcoal700));
+      },
+    );
   });
 }

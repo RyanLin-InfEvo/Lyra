@@ -42,6 +42,9 @@ class Album {
   /// Optional custom placeholder or dominant color for UI rendering.
   final Color? _coverColor;
 
+  /// Timestamp when the album entity was added to the library.
+  final DateTime? createdAt;
+
   const Album({
     required this.id,
     required this.title,
@@ -57,6 +60,7 @@ class Album {
     this.totalDiscs,
     Color? coverColor,
     this.format = 'FLAC',
+    this.createdAt,
   }) : releaseYear = releaseYear ?? year,
        artistName = artistName ?? artist,
        totalTracks = totalTracks ?? trackCount,
@@ -101,6 +105,12 @@ class Album {
       return null;
     }
 
+    DateTime? parseDate(dynamic val) {
+      if (val is DateTime) return val;
+      if (val is String) return DateTime.tryParse(val);
+      return null;
+    }
+
     Color? parsedColor;
     final rawColor = json['cover_color'] ?? json['coverColor'];
     if (rawColor is int) {
@@ -138,6 +148,7 @@ class Album {
       totalDiscs: parseInt(json['total_discs'] ?? json['totalDiscs']),
       coverColor: parsedColor,
       format: json['format']?.toString() ?? 'FLAC',
+      createdAt: parseDate(json['created_at'] ?? json['createdAt']),
     );
   }
 
@@ -154,6 +165,7 @@ class Album {
       if (totalTracks != null) 'total_tracks': totalTracks,
       if (totalDiscs != null) 'total_discs': totalDiscs,
       if (format != null) 'format': format,
+      if (createdAt != null) 'created_at': createdAt!.toIso8601String(),
     };
   }
 
@@ -170,6 +182,7 @@ class Album {
     int? totalDiscs,
     Color? coverColor,
     String? format,
+    DateTime? createdAt,
   }) {
     return Album(
       id: id ?? this.id,
@@ -183,6 +196,7 @@ class Album {
       totalDiscs: totalDiscs ?? this.totalDiscs,
       coverColor: coverColor ?? _coverColor,
       format: format ?? this.format,
+      createdAt: createdAt ?? this.createdAt,
     );
   }
 
@@ -200,7 +214,8 @@ class Album {
         other.totalTracks == totalTracks &&
         other.totalDiscs == totalDiscs &&
         other.format == format &&
-        other._coverColor == _coverColor;
+        other._coverColor == _coverColor &&
+        other.createdAt == createdAt;
   }
 
   @override
@@ -216,6 +231,7 @@ class Album {
     totalDiscs,
     format,
     _coverColor,
+    createdAt,
   );
 
   @override
@@ -230,7 +246,8 @@ class Album {
         'coverArtHash: $coverArtHash, '
         'totalTracks: $totalTracks, '
         'totalDiscs: $totalDiscs, '
-        'format: $format'
+        'format: $format, '
+        'createdAt: $createdAt'
         ')';
   }
 }

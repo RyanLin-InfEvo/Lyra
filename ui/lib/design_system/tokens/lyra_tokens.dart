@@ -347,6 +347,14 @@ class LyraThemeTokens {
   /// Subtle semi-transparent border color.
   Color get borderSubtle => border.withValues(alpha: 0.5);
 
+  /// Visible hairline border for interactive controls (selects, token fields)
+  /// ensuring crisp separation on dark charcoal surfaces as well as light cards.
+  Color get controlBorder => isDark ? LyraColors.charcoal700 : border;
+
+  /// Hover/active hairline border for interactive controls.
+  Color get controlBorderHover =>
+      isDark ? primary.withValues(alpha: 0.28) : LyraColors.zinc300;
+
   /// Focused ring border with [ring] color.
   Border focusedRingBorder({double width = 1.5}) =>
       Border.all(color: ring, width: width);

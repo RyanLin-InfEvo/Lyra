@@ -12,12 +12,16 @@ import 'package:ui/design_system/tokens/lyra_tokens.dart';
 import 'package:ui/design_system/widgets/lyra_button.dart';
 import 'package:ui/design_system/widgets/lyra_dialog.dart';
 import 'package:ui/design_system/widgets/lyra_input.dart';
+import 'package:ui/features/albums/album_detail_view.dart';
 import 'package:ui/features/albums/albums_view.dart';
+import 'package:ui/features/artists/artist_detail_view.dart';
 import 'package:ui/features/artists/artists_view.dart';
 import 'package:ui/features/cas_pool/cas_view.dart';
 import 'package:ui/features/common/context_menu_coordinator.dart';
 import 'package:ui/features/inspector/asset_inspector_drawer.dart';
 import 'package:ui/features/player/views/now_playing_view.dart';
+import 'package:ui/features/models/album.dart';
+import 'package:ui/features/models/artist.dart';
 import 'package:ui/features/models/tag.dart';
 import 'package:ui/features/models/track.dart';
 import 'package:ui/features/models/work.dart';
@@ -30,6 +34,7 @@ import 'package:ui/features/shell/app_shell.dart';
 import 'package:ui/features/shell/header_bar.dart';
 import 'package:ui/features/shell/player_bar.dart';
 import 'package:ui/features/shell/sidebar.dart';
+import 'package:ui/features/tags/tag_detail_view.dart';
 import 'package:ui/features/tags/tags_view.dart';
 import 'package:ui/features/tracks/tracks_view.dart';
 import 'package:ui/features/works/works_view.dart';
@@ -43,6 +48,30 @@ class _TrackingPlaylistMusicService extends MockMusicService {
     addedTrackIds.add(trackId);
     await Future<void>.delayed(const Duration(milliseconds: 50));
     await super.addTrackToPlaylist(playlistId, trackId);
+  }
+}
+
+class _MutableCatalogMusicService extends MockMusicService {
+  final Set<String> removedAlbumIds = {};
+  final List<Artist> extraArtists = [];
+  final List<Track> extraTracks = [];
+
+  @override
+  Future<List<Album>> getAlbums({String? query}) async {
+    final base = await super.getAlbums(query: query);
+    return base.where((a) => !removedAlbumIds.contains(a.id)).toList();
+  }
+
+  @override
+  Future<List<Artist>> getArtists({String? query}) async {
+    final base = await super.getArtists(query: query);
+    return [...base, ...extraArtists];
+  }
+
+  @override
+  Future<List<Track>> getTracks({String? query}) async {
+    final base = await super.getTracks(query: query);
+    return [...base, ...extraTracks];
   }
 }
 
@@ -281,10 +310,12 @@ void main() {
 
       // Clear filter via X button
       await tester.tap(
-        find.descendant(
-          of: find.byType(TracksView),
-          matching: find.byIcon(LucideIcons.x),
-        ),
+        find
+            .descendant(
+              of: find.byType(TracksView),
+              matching: find.byIcon(LucideIcons.x),
+            )
+            .first,
       );
       await tester.pumpAndSettle();
       expect(
@@ -1003,7 +1034,7 @@ void main() {
   );
 
   testWidgets(
-    'AppShell AlbumsView navigation to TracksView scopes tracks cleanly without mutating search input',
+    'AppShell AlbumsView navigation opens AlbumDetailView without mutating search input',
     (tester) async {
       tester.view.physicalSize = const Size(1280, 800);
       tester.view.devicePixelRatio = 1.0;
@@ -1021,28 +1052,28 @@ void main() {
       await tester.tap(find.text('Hell Freezes Over'));
       await tester.pumpAndSettle();
 
-      // Should be in TracksView
-      expect(find.byType(TracksView), findsOneWidget);
+      // Should open independent AlbumDetailView
+      expect(find.byType(AlbumDetailView), findsOneWidget);
       expect(
         find.descendant(
-          of: find.byType(TracksView),
+          of: find.byType(AlbumDetailView),
+          matching: find.text('ALBUM'),
+        ),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(
+          of: find.byType(AlbumDetailView),
           matching: find.text('Hotel California (Live on MTV 1994)'),
         ),
         findsOneWidget,
       );
       expect(
         find.descendant(
-          of: find.byType(TracksView),
+          of: find.byType(AlbumDetailView),
           matching: find.text('So What'),
         ),
         findsNothing,
-      );
-      expect(
-        find.descendant(
-          of: find.byType(TracksView),
-          matching: find.text('Album: Hell Freezes Over'),
-        ),
-        findsOneWidget,
       );
 
       // Search controller must NOT be mutated
@@ -1051,42 +1082,16 @@ void main() {
       );
       expect(searchInput.controller.text, isEmpty);
 
-      // Clear filter via X button
-      await tester.tap(
-        find.descendant(
-          of: find.byType(TracksView),
-          matching: find.byIcon(LucideIcons.x),
-        ),
-      );
+      // Back button returns to AlbumsView grid
+      await tester.tap(find.byKey(const Key('album_detail_back_button')).first);
       await tester.pumpAndSettle();
-
-      // All tracks restored
-      expect(
-        find.descendant(
-          of: find.byType(TracksView),
-          matching: find.text('Hotel California (Live on MTV 1994)'),
-        ),
-        findsOneWidget,
-      );
-      expect(
-        find.descendant(
-          of: find.byType(TracksView),
-          matching: find.text('So What'),
-        ),
-        findsOneWidget,
-      );
-      expect(
-        find.descendant(
-          of: find.byType(TracksView),
-          matching: find.text('Album: Hell Freezes Over'),
-        ),
-        findsNothing,
-      );
+      expect(find.byType(AlbumsView), findsOneWidget);
+      expect(find.byType(AlbumDetailView), findsNothing);
     },
   );
 
   testWidgets(
-    'AppShell WorksView and ArtistsView navigation to TracksView scopes tracks cleanly',
+    'AppShell WorksView filters TracksView while ArtistsView opens ArtistDetailView with album shelf',
     (tester) async {
       tester.view.physicalSize = const Size(1280, 800);
       tester.view.devicePixelRatio = 1.0;
@@ -1095,7 +1100,7 @@ void main() {
       await tester.pumpWidget(_buildAppShellTest());
       await tester.pumpAndSettle();
 
-      // 1. Works navigation
+      // 1. Works navigation still filters TracksView
       await tester.tap(find.text('Works'));
       await tester.pumpAndSettle();
       expect(find.byType(WorksView), findsOneWidget);
@@ -1132,7 +1137,7 @@ void main() {
       );
       expect(searchInput.controller.text, isEmpty);
 
-      // 2. Artists navigation
+      // 2. Artists navigation opens ArtistDetailView with albums shelf + tracks
       await tester.tap(find.text('Artists'));
       await tester.pumpAndSettle();
       expect(find.byType(ArtistsView), findsOneWidget);
@@ -1140,35 +1145,49 @@ void main() {
       await tester.tap(find.text('Miles Davis'));
       await tester.pumpAndSettle();
 
-      expect(find.byType(TracksView), findsOneWidget);
+      expect(find.byType(ArtistDetailView), findsOneWidget);
+      expect(find.byKey(const Key('artist_albums_shelf')), findsOneWidget);
       expect(
         find.descendant(
-          of: find.byType(TracksView),
+          of: find.byKey(const Key('artist_albums_shelf')),
+          matching: find.text('Kind of Blue'),
+        ),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(
+          of: find.byType(ArtistDetailView),
           matching: find.text('So What'),
         ),
         findsOneWidget,
       );
       expect(
         find.descendant(
-          of: find.byType(TracksView),
+          of: find.byType(ArtistDetailView),
           matching: find.text('Blue in Green'),
         ),
         findsOneWidget,
       );
       expect(
         find.descendant(
-          of: find.byType(TracksView),
+          of: find.byType(ArtistDetailView),
           matching: find.text('Hotel California (Live on MTV 1994)'),
         ),
         findsNothing,
       );
-      expect(
+
+      // Clicking Kind of Blue inside artist albums shelf opens AlbumDetailView and returns back to ArtistDetailView
+      await tester.tap(
         find.descendant(
-          of: find.byType(TracksView),
-          matching: find.text('Artist: Miles Davis'),
+          of: find.byKey(const Key('artist_albums_shelf')),
+          matching: find.text('Kind of Blue'),
         ),
-        findsOneWidget,
       );
+      await tester.pumpAndSettle();
+      expect(find.byType(AlbumDetailView), findsOneWidget);
+      await tester.tap(find.byKey(const Key('album_detail_back_button')).first);
+      await tester.pumpAndSettle();
+      expect(find.byType(ArtistDetailView), findsOneWidget);
 
       // Search text still empty
       searchInput = tester.widget<EditableText>(
@@ -1176,11 +1195,11 @@ void main() {
       );
       expect(searchInput.controller.text, isEmpty);
 
-      // 3. Clicking Tracks in sidebar clears scoped filter
+      // 3. Clicking Tracks in sidebar opens unfiltered TracksView
       await tester.tap(find.text('Tracks'));
       await tester.pumpAndSettle();
 
-      expect(find.text('Artist: Miles Davis'), findsNothing);
+      expect(find.byType(TracksView), findsOneWidget);
       expect(
         find.descendant(
           of: find.byType(TracksView),
@@ -2635,7 +2654,7 @@ void main() {
     );
 
     testWidgets(
-      'TracksView context menu Go to Album and Go to Artist filter tracks and update view',
+      'TracksView context menu Go to Album and Go to Artist open independent detail pages',
       (tester) async {
         tester.view.physicalSize = const Size(1280, 800);
         tester.view.devicePixelRatio = 1.0;
@@ -2659,17 +2678,20 @@ void main() {
         await tester.tap(find.text('Go to Album'));
         await tester.pumpAndSettle();
 
-        // Filter token in header should show "Album: Hell Freezes Over"
-        expect(find.text('Album: Hell Freezes Over'), findsOneWidget);
+        expect(find.byType(AlbumDetailView), findsOneWidget);
+        expect(
+          find.descendant(
+            of: find.byType(AlbumDetailView),
+            matching: find.text('Hell Freezes Over'),
+          ),
+          findsWidgets,
+        );
 
-        // Clear filter by tapping X on badge
-        await tester.tap(find.byIcon(LucideIcons.x).first);
+        // Return to Tracks tab, right-click and choose Go to Artist
+        await tester.tap(find.text('Tracks'));
         await tester.pumpAndSettle();
-        expect(find.text('Album: Hell Freezes Over'), findsNothing);
-
-        // Right-click and choose Go to Artist
         await tester.tap(
-          trackFinder,
+          find.text('Hotel California (Live on MTV 1994)').first,
           buttons: kSecondaryMouseButton,
           kind: PointerDeviceKind.mouse,
         );
@@ -2679,12 +2701,19 @@ void main() {
         await tester.tap(find.text('Go to Artist'));
         await tester.pumpAndSettle();
 
-        expect(find.text('Artist: Eagles'), findsOneWidget);
+        expect(find.byType(ArtistDetailView), findsOneWidget);
+        expect(
+          find.descendant(
+            of: find.byType(ArtistDetailView),
+            matching: find.text('Eagles'),
+          ),
+          findsWidgets,
+        );
       },
     );
 
     testWidgets(
-      'navigating to Album/Artist from UpNextTab collapses NowPlayingView, clears sidebar selection, and filters tracks',
+      'navigating to Album/Artist from UpNextTab collapses NowPlayingView, clears sidebar selection, and opens AlbumDetailView',
       (tester) async {
         tester.view.physicalSize = const Size(1280, 800);
         tester.view.devicePixelRatio = 1.0;
@@ -2749,21 +2778,25 @@ void main() {
         // Sidebar selection for Tag must be cleared
         expect(find.text('Tag: Audiophile'), findsNothing);
 
-        // TracksView is visible and filtered to 'Album: Kind of Blue'
-        expect(find.byType(TracksView), findsOneWidget);
-        expect(find.text('Album: Kind of Blue'), findsOneWidget);
-
-        // 'So What' matches, while 'Hotel California' does not and is filtered out of TracksView
+        // AlbumDetailView is visible for 'Kind of Blue' with 'So What'
+        expect(find.byType(AlbumDetailView), findsOneWidget);
         expect(
           find.descendant(
-            of: find.byType(TracksView),
+            of: find.byType(AlbumDetailView),
+            matching: find.text('Kind of Blue'),
+          ),
+          findsWidgets,
+        );
+        expect(
+          find.descendant(
+            of: find.byType(AlbumDetailView),
             matching: find.text('So What'),
           ),
           findsOneWidget,
         );
         expect(
           find.descendant(
-            of: find.byType(TracksView),
+            of: find.byType(AlbumDetailView),
             matching: find.text('Hotel California (Live on MTV 1994)'),
           ),
           findsNothing,
@@ -3071,7 +3104,7 @@ void main() {
     );
 
     testWidgets(
-      'AppShell clears _selectedTagId when switching away from tracks and tapping tag from TagsView always switches to tracks view and filters',
+      'AppShell clears _selectedTagId when switching tabs, opens TagDetailView from TagsView, and can jump to Tracks filter',
       (tester) async {
         tester.view.physicalSize = const Size(1280, 800);
         tester.view.devicePixelRatio = 1.0;
@@ -3080,7 +3113,7 @@ void main() {
         await tester.pumpWidget(_buildAppShellTest());
         await tester.pumpAndSettle();
 
-        // 1. In tracks view, tap Audiophile tag to select it
+        // 1. Tap Audiophile tag in sidebar -> instant quick-filter in TracksView
         await tester.tap(find.text('Audiophile'));
         await tester.pumpAndSettle();
         expect(find.byType(TracksView), findsOneWidget);
@@ -3091,6 +3124,14 @@ void main() {
           ),
           findsOneWidget,
         );
+        expect(find.text('0 tracks'), findsNothing);
+        expect(
+          find.descendant(
+            of: find.byType(TracksView),
+            matching: find.text('So What'),
+          ),
+          findsOneWidget,
+        );
 
         // 2. Switch away to Tags tab via onTabSelected
         final sidebar = tester.widget<LyraSidebar>(find.byType(LyraSidebar));
@@ -3098,7 +3139,7 @@ void main() {
         await tester.pumpAndSettle();
         expect(find.byType(TagsView), findsOneWidget);
 
-        // 3. Tap Audiophile tag in TagsView
+        // 3. Tap Audiophile tag in TagsView -> opens independent TagDetailView
         await tester.tap(
           find.descendant(
             of: find.byType(TagsView),
@@ -3107,7 +3148,20 @@ void main() {
         );
         await tester.pumpAndSettle();
 
-        // 4. Must switch back to TracksView with filter active, NOT stay in TagsView / deselect!
+        expect(find.byType(TagDetailView), findsOneWidget);
+        expect(
+          find.descendant(
+            of: find.byType(TagDetailView),
+            matching: find.text('TAG'),
+          ),
+          findsOneWidget,
+        );
+
+        // 4. Clicking 'Filter in Tracks' jumps to TracksView filtered by this tag
+        await tester.tap(
+          find.byKey(const Key('tag_filter_in_tracks_button')).first,
+        );
+        await tester.pumpAndSettle();
         expect(find.byType(TracksView), findsOneWidget);
         expect(
           find.descendant(
@@ -3116,11 +3170,19 @@ void main() {
           ),
           findsOneWidget,
         );
+        expect(find.text('0 tracks'), findsNothing);
+        expect(
+          find.descendant(
+            of: find.byType(TracksView),
+            matching: find.text('So What'),
+          ),
+          findsOneWidget,
+        );
       },
     );
 
     testWidgets(
-      'AppShell empty or whitespace tag names do not match every track in catalog',
+      'AppShell empty or whitespace tag names open TagDetailView with zero matching tracks',
       (tester) async {
         tester.view.physicalSize = const Size(1280, 800);
         tester.view.devicePixelRatio = 1.0;
@@ -3140,15 +3202,42 @@ void main() {
         await tester.pumpAndSettle();
         expect(find.byType(TagsView), findsOneWidget);
 
-        // In TagsView, find the empty tag ('Untitled Tag') and tap it
-        expect(find.text('Untitled Tag'), findsOneWidget);
-        await tester.tap(find.text('Untitled Tag'));
+        // In TagsView, scroll to find the empty tag ('Untitled Tag') and tap it
+        final untitledInTags = find.descendant(
+          of: find.byType(TagsView),
+          matching: find.text('Untitled Tag'),
+        );
+        await tester.scrollUntilVisible(
+          untitledInTags,
+          200.0,
+          scrollable: find.descendant(
+            of: find.byType(GridView),
+            matching: find.byType(Scrollable),
+          ),
+        );
+        // Ensure card is scrolled clear of the bottom PlayerBar before tapping.
+        await tester.drag(
+          find.descendant(
+            of: find.byType(GridView),
+            matching: find.byType(Scrollable),
+          ),
+          const Offset(0, -150),
+        );
+        await tester.pumpAndSettle();
+        expect(untitledInTags, findsOneWidget);
+        await tester.tap(untitledInTags);
         await tester.pumpAndSettle();
 
-        // Switched to TracksView with filter
-        expect(find.byType(TracksView), findsOneWidget);
+        // Opened TagDetailView with empty state
+        expect(find.byType(TagDetailView), findsOneWidget);
+        expect(find.text('No tracks with this tag'), findsOneWidget);
 
-        // Empty tag name must NOT match every track in catalog
+        // Clicking 'Filter in Tracks' switches to TracksView with zero matches
+        await tester.tap(
+          find.byKey(const Key('tag_filter_in_tracks_button')).first,
+        );
+        await tester.pumpAndSettle();
+        expect(find.byType(TracksView), findsOneWidget);
         expect(find.text('No matching tracks found'), findsOneWidget);
         expect(
           find.descendant(
@@ -3745,6 +3834,448 @@ void main() {
 
         expect(prefs.setTrackColumnWidthsCalls, 2);
         expect(prefs.trackColumnWidths.containsKey('title'), isFalse);
+      },
+    );
+
+    testWidgets(
+      'AppShell syncs sidebar tag filter into Tracks Filter Builder and Clear All resets sidebar selection',
+      (tester) async {
+        tester.view.physicalSize = const Size(1280, 800);
+        tester.view.devicePixelRatio = 1.0;
+        addTearDown(tester.view.resetPhysicalSize);
+
+        await tester.pumpWidget(_buildAppShellTest());
+        await tester.pumpAndSettle();
+
+        // 1. Tap Audiophile in sidebar -> jumps to TracksView and syncs _trackFilterQuery
+        await tester.tap(find.text('Audiophile'));
+        await tester.pumpAndSettle();
+        expect(find.byType(TracksView), findsOneWidget);
+        expect(find.text('0 tracks'), findsNothing);
+        expect(
+          find.descendant(
+            of: find.byType(TracksView),
+            matching: find.text('So What'),
+          ),
+          findsOneWidget,
+        );
+
+        // Expand Tracks Filter Builder Panel and verify Audiophile rule is populated
+        await tester.tap(find.byKey(const Key('tracks_filter_toggle_button')));
+        await tester.pumpAndSettle();
+        expect(
+          find.byKey(const Key('track_filter_builder_panel')),
+          findsOneWidget,
+        );
+        expect(
+          find.descendant(
+            of: find.byKey(const Key('track_filter_builder_panel')),
+            matching: find.text('Audiophile'),
+          ),
+          findsOneWidget,
+        );
+
+        // 2. Tap Hi-Res in sidebar -> updates both sidebar selectedTagIds and filter panel
+        await tester.tap(find.text('Hi-Res'));
+        await tester.pumpAndSettle();
+        final sidebarAfterSecondTag = tester.widget<LyraSidebar>(
+          find.byType(LyraSidebar),
+        );
+        expect(sidebarAfterSecondTag.selectedTagIds, {'tag-001', 'tag-002'});
+        expect(
+          find.descendant(
+            of: find.byKey(const Key('track_filter_builder_panel')),
+            matching: find.text('Hi-Res'),
+          ),
+          findsOneWidget,
+        );
+
+        // 3. Clear All inside Tracks Filter Builder Panel clears sidebar tag selection
+        await tester.tap(
+          find.byKey(const Key('track_filter_clear_all_button')).first,
+        );
+        await tester.pumpAndSettle();
+        final sidebarAfterClear = tester.widget<LyraSidebar>(
+          find.byType(LyraSidebar),
+        );
+        expect(sidebarAfterClear.selectedTagIds, isEmpty);
+        expect(sidebarAfterClear.selectedTagId, isNull);
+      },
+    );
+
+    testWidgets(
+      'AppShell preserves virtual-artist return target across Artist -> Album -> Back navigation',
+      (tester) async {
+        tester.view.physicalSize = const Size(1280, 800);
+        tester.view.devicePixelRatio = 1.0;
+        addTearDown(tester.view.resetPhysicalSize);
+
+        // Provide a track whose artist ("Pink Floyd") has NO Artist record,
+        // so Go to Artist creates a virtual-artist:pink floyd transient record.
+        await tester.pumpWidget(_buildAppShellTest());
+        await tester.pumpAndSettle();
+
+        // Right-click "Time" row (Pink Floyd / The Dark Side of the Moon) -> Go to Artist
+        await tester.tap(find.text('Tracks').first);
+        await tester.pumpAndSettle();
+        await tester.tap(
+          find
+              .descendant(
+                of: find.byType(TracksView),
+                matching: find.text('Time'),
+              )
+              .last,
+          buttons: kSecondaryMouseButton,
+        );
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('Go to Artist').last);
+        await tester.pumpAndSettle();
+
+        expect(find.byType(ArtistDetailView), findsOneWidget);
+        expect(
+          find.descendant(
+            of: find.byType(ArtistDetailView),
+            matching: find.text('Pink Floyd'),
+          ),
+          findsWidgets,
+        );
+
+        // Open an album card from ArtistDetailView (via album column or context menu inside artist view)
+        // Navigate to "The Dark Side of the Moon" via right-click Go to Album inside ArtistDetailView
+        await tester.tap(
+          find
+              .descendant(
+                of: find.byType(ArtistDetailView),
+                matching: find.text('Time'),
+              )
+              .last,
+          buttons: kSecondaryMouseButton,
+        );
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('Go to Album').last);
+        await tester.pumpAndSettle();
+
+        expect(find.byType(AlbumDetailView), findsOneWidget);
+        expect(
+          find.descendant(
+            of: find.byType(AlbumDetailView),
+            matching: find.text('Pink Floyd'),
+          ),
+          findsWidgets,
+        );
+
+        // Back button should say 'Pink Floyd' and return to ArtistDetailView
+        await tester.tap(
+          find.byKey(const Key('album_detail_back_button')).first,
+        );
+        await tester.pumpAndSettle();
+        expect(find.byType(ArtistDetailView), findsOneWidget);
+        expect(find.byType(AlbumDetailView), findsNothing);
+      },
+    );
+
+    testWidgets(
+      'AppShell preserves Tracks filter query and panel state across tab navigation and cleans up deleted tags',
+      (tester) async {
+        tester.view.physicalSize = const Size(1280, 800);
+        tester.view.devicePixelRatio = 1.0;
+        addTearDown(tester.view.resetPhysicalSize);
+
+        final mockMusicService = _MutableCatalogMusicService();
+        await tester.pumpWidget(_buildAppShellTest(service: mockMusicService));
+        await tester.pumpAndSettle();
+
+        final shellState = tester.state<AppShellState>(find.byType(AppShell));
+
+        // 1. Expand Filter Builder in TracksView and set a multi-condition filter (Format=FLAC)
+        await tester.tap(find.byKey(const Key('tracks_filter_toggle_button')));
+        await tester.pumpAndSettle();
+        expect(
+          find.byKey(const Key('track_filter_builder_panel')),
+          findsOneWidget,
+        );
+
+        final tracksView = tester.widget<TracksView>(find.byType(TracksView));
+        tracksView.onFilterQueryChanged?.call(
+          const TrackFilterQuery(
+            groups: [
+              TrackFilterGroup(
+                id: 'g-persist',
+                rules: [
+                  TrackFilterRule(
+                    id: 'r-persist',
+                    field: TrackFilterField.format,
+                    operator: TrackFilterOperator.isAnyOf,
+                    values: ['FLAC'],
+                  ),
+                ],
+              ),
+            ],
+          ),
+        );
+        await tester.pumpAndSettle();
+        expect(shellState.trackFilterQuery.isActive, isTrue);
+
+        // 2. Switch across Albums, a Playlist, Tags, and back to Tracks -> filter query & panel stay preserved
+        await tester.tap(find.text('Albums').first);
+        await tester.pumpAndSettle();
+        expect(find.byType(AlbumsView), findsOneWidget);
+
+        await tester.tap(find.text('Late Night Jazz').first);
+        await tester.pumpAndSettle();
+        expect(find.byType(PlaylistDetailView), findsOneWidget);
+        final sidebarOnPlaylist = tester.widget<LyraSidebar>(
+          find.byType(LyraSidebar),
+        );
+        expect(sidebarOnPlaylist.selectedTagIds, isEmpty);
+
+        await tester.tap(find.text('Tags').first);
+        await tester.pumpAndSettle();
+        expect(find.byType(TagsView), findsOneWidget);
+
+        await tester.tap(find.text('Tracks').first);
+        await tester.pumpAndSettle();
+        expect(find.byType(TracksView), findsOneWidget);
+        expect(shellState.trackFilterQuery.isActive, isTrue);
+        expect(shellState.trackFilterQuery.groups.length, 1);
+        expect(
+          find.byKey(const Key('track_filter_builder_panel')),
+          findsOneWidget,
+        );
+
+        // Clear filter before testing sidebar multi-tag deletion cleanup
+        await tester.tap(
+          find.byKey(const Key('track_filter_clear_all_button')).first,
+        );
+        await tester.pumpAndSettle();
+        expect(shellState.trackFilterQuery.isActive, isFalse);
+
+        // 3. Multi-tag delete cleanup: keep Hi-Res when Audiophile is deleted
+        await tester.tap(find.text('Audiophile'));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('Hi-Res'));
+        await tester.pumpAndSettle();
+        expect(shellState.selectedTagIds, {'tag-001', 'tag-002'});
+        expect(shellState.activeTrackFilter?.label, 'Tags: Audiophile, Hi-Res');
+
+        await mockMusicService.deleteTag('tag-001');
+        await shellState.reloadCatalogForTesting();
+        await tester.pumpAndSettle();
+
+        expect(shellState.selectedTagIds, {'tag-002'});
+        expect(shellState.trackFilterQuery.referencedTagIds, {'tag-002'});
+        expect(shellState.activeTrackFilter?.label, 'Tag: Hi-Res');
+      },
+    );
+
+    testWidgets(
+      'AppShell preserves sidebar tag sync across Go to Album / Settings and selects hidden tag from non-Tracks tabs',
+      (tester) async {
+        tester.view.physicalSize = const Size(1280, 800);
+        tester.view.devicePixelRatio = 1.0;
+        addTearDown(tester.view.resetPhysicalSize);
+
+        await tester.pumpWidget(_buildAppShellTest());
+        await tester.pumpAndSettle();
+
+        final shellState = tester.state<AppShellState>(find.byType(AppShell));
+
+        // 1. Activate Audiophile tag filter on Tracks
+        await tester.tap(find.text('Audiophile'));
+        await tester.pumpAndSettle();
+        expect(shellState.selectedTagIds, {'tag-001'});
+
+        // 2. Navigate via Go to Album -> returns to Tracks -> filter and sidebar tag sync stay intact
+        await tester.tap(
+          find.text('Hotel California (Live on MTV 1994)').first,
+          buttons: kSecondaryMouseButton,
+        );
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('Go to Album').last);
+        await tester.pumpAndSettle();
+        expect(find.byType(AlbumDetailView), findsOneWidget);
+
+        await tester.tap(find.text('Tracks').first);
+        await tester.pumpAndSettle();
+        expect(find.byType(TracksView), findsOneWidget);
+        expect(shellState.trackFilterQuery.referencedTagIds, {'tag-001'});
+        expect(shellState.selectedTagIds, {'tag-001'});
+
+        // 3. Navigate to Settings and back -> filter stays intact
+        await tester.tap(find.text('Settings').first);
+        await tester.pumpAndSettle();
+        expect(find.byType(SettingsView), findsOneWidget);
+
+        await tester.tap(find.text('Tracks').first);
+        await tester.pumpAndSettle();
+        expect(shellState.trackFilterQuery.referencedTagIds, {'tag-001'});
+        expect(shellState.selectedTagIds, {'tag-001'});
+
+        // 4. Switch to Albums (Audiophile pill hidden/unselected in sidebar), then tap Audiophile ->
+        // must activate Audiophile and jump back to Tracks instead of toggling it OFF on Albums.
+        await tester.tap(find.text('Albums').first);
+        await tester.pumpAndSettle();
+        expect(find.byType(AlbumsView), findsOneWidget);
+
+        await tester.tap(find.text('Audiophile'));
+        await tester.pumpAndSettle();
+        expect(find.byType(TracksView), findsOneWidget);
+        expect(shellState.selectedTagIds, {'tag-001'});
+        expect(shellState.trackFilterQuery.referencedTagIds, {'tag-001'});
+      },
+    );
+
+    testWidgets(
+      'AppShell reconciles removed detail entity on catalog reload and prevents non-ASCII artist substring false match',
+      (tester) async {
+        tester.view.physicalSize = const Size(1280, 800);
+        tester.view.devicePixelRatio = 1.0;
+        addTearDown(tester.view.resetPhysicalSize);
+
+        final mockMusicService = _MutableCatalogMusicService();
+        await tester.pumpWidget(_buildAppShellTest(service: mockMusicService));
+        await tester.pumpAndSettle();
+
+        final shellState = tester.state<AppShellState>(find.byType(AppShell));
+
+        // 1. Open Kind of Blue album detail, then simulate album removal on catalog reload
+        await tester.tap(find.text('Albums').first);
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('Kind of Blue').first);
+        await tester.pumpAndSettle();
+        expect(find.byType(AlbumDetailView), findsOneWidget);
+        expect(shellState.selectedAlbumId, isNotNull);
+
+        mockMusicService.removedAlbumIds.add(shellState.selectedAlbumId!);
+        await shellState.reloadCatalogForTesting();
+        await tester.pumpAndSettle();
+
+        expect(find.byType(AlbumDetailView), findsNothing);
+        expect(shellState.selectedAlbumId, isNull);
+
+        // 2. Non-ASCII artist boundary check: artist "r" must NOT match track artist "Björk"
+        mockMusicService.extraArtists.add(Artist(id: 'art-short-r', name: 'r'));
+        mockMusicService.extraTracks.add(
+          Track(
+            id: 'trk-bjork',
+            title: 'Hyperballad',
+            artistName: 'Björk',
+            albumTitle: 'Post',
+            durationMs: const Duration(minutes: 5, seconds: 21).inMilliseconds,
+          ),
+        );
+        await shellState.reloadCatalogForTesting();
+        await tester.pumpAndSettle();
+
+        await tester.tap(find.text('Artists').first);
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('r').first);
+        await tester.pumpAndSettle();
+        expect(find.byType(ArtistDetailView), findsOneWidget);
+        expect(
+          find.descendant(
+            of: find.byType(ArtistDetailView),
+            matching: find.text('Hyperballad'),
+          ),
+          findsNothing,
+        );
+      },
+    );
+
+    testWidgets(
+      'AppShell catalog reload preserves Work filter, preserves compound OR builder queries on tag delete, and prunes isNoneOf deleted tags',
+      (tester) async {
+        tester.view.physicalSize = const Size(1280, 800);
+        tester.view.devicePixelRatio = 1.0;
+        addTearDown(tester.view.resetPhysicalSize);
+
+        final mockMusicService = _MutableCatalogMusicService();
+        await tester.pumpWidget(_buildAppShellTest(service: mockMusicService));
+        await tester.pumpAndSettle();
+
+        final shellState = tester.state<AppShellState>(find.byType(AppShell));
+
+        // 1. Work filter survives _loadCatalog()
+        await tester.tap(find.text('Works').first);
+        await tester.pumpAndSettle();
+        final worksView = tester.widget<WorksView>(find.byType(WorksView));
+        final firstWork = worksView.works.first;
+        worksView.onWorkSelected?.call(firstWork);
+        await tester.pumpAndSettle();
+
+        expect(shellState.activeTrackFilter?.label, 'Work: ${firstWork.title}');
+        await shellState.reloadCatalogForTesting();
+        await tester.pumpAndSettle();
+        expect(shellState.activeTrackFilter?.label, 'Work: ${firstWork.title}');
+
+        // 2. Compound FilterBuilder OR query stays intact (no synthetic _activeTrackFilter) when a referenced tag is deleted
+        final tracksView = tester.widget<TracksView>(find.byType(TracksView));
+        tracksView.onFilterQueryChanged?.call(
+          const TrackFilterQuery(
+            groups: [
+              TrackFilterGroup(
+                id: 'g1',
+                rules: [
+                  TrackFilterRule(
+                    id: 'r1',
+                    field: TrackFilterField.tag,
+                    operator: TrackFilterOperator.isAnyOf,
+                    values: ['tag-001', 'tag-002'],
+                  ),
+                ],
+              ),
+              TrackFilterGroup(
+                id: 'g2',
+                rules: [
+                  TrackFilterRule(
+                    id: 'r2',
+                    field: TrackFilterField.format,
+                    operator: TrackFilterOperator.isAnyOf,
+                    values: ['FLAC'],
+                  ),
+                ],
+              ),
+            ],
+          ),
+        );
+        await tester.pumpAndSettle();
+        expect(shellState.activeTrackFilter, isNull);
+
+        await mockMusicService.deleteTag('tag-001');
+        await shellState.reloadCatalogForTesting();
+        await tester.pumpAndSettle();
+
+        // Crucially, _activeTrackFilter must remain null so Group 2 (Format=FLAC) is not masked
+        expect(shellState.activeTrackFilter, isNull);
+        expect(shellState.trackFilterQuery.groups.length, 2);
+        expect(shellState.trackFilterQuery.referencedTagIds, {'tag-002'});
+
+        // 3. Tag isNoneOf rule referencing a deleted tag is also pruned on reload
+        final tracksView2 = tester.widget<TracksView>(find.byType(TracksView));
+        tracksView2.onFilterQueryChanged?.call(
+          const TrackFilterQuery(
+            groups: [
+              TrackFilterGroup(
+                id: 'g-none',
+                rules: [
+                  TrackFilterRule(
+                    id: 'r-none',
+                    field: TrackFilterField.tag,
+                    operator: TrackFilterOperator.isNoneOf,
+                    values: ['tag-002'],
+                  ),
+                ],
+              ),
+            ],
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        await mockMusicService.deleteTag('tag-002');
+        await shellState.reloadCatalogForTesting();
+        await tester.pumpAndSettle();
+
+        expect(shellState.trackFilterQuery.isActive, isFalse);
       },
     );
   });

@@ -1064,14 +1064,14 @@ class _TagCapsuleItemState extends State<_TagCapsuleItem> {
 
     final backgroundColor = isSelected
         ? (_isHovered
-              ? tokens.primary.withValues(alpha: 0.22)
-              : tokens.primary.withValues(alpha: 0.15))
+              ? tokens.primary.withValues(alpha: tokens.isDark ? 0.22 : 0.10)
+              : tokens.primary.withValues(alpha: tokens.isDark ? 0.15 : 0.06))
         : ((_isHovered || _isFocused)
               ? tokens.secondary
               : tokens.secondary.withValues(alpha: 0.35));
 
     final borderColor = isSelected
-        ? tokens.primary.withValues(alpha: 0.65)
+        ? tokens.primary.withValues(alpha: tokens.isDark ? 0.65 : 0.28)
         : ((_isHovered || _isFocused)
               ? tokens.border
               : tokens.border.withValues(alpha: 0.6));

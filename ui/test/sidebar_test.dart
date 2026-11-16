@@ -1527,6 +1527,46 @@ void main() {
       expect(find.text('jazz'), findsOneWidget);
     },
   );
+
+  testWidgets(
+    'Selected sidebar tag capsule uses softer tint and border in Light Mode',
+    (tester) async {
+      final lightTokens = LyraThemeTokens.light();
+      await tester.pumpWidget(
+        _buildSidebarTest(
+          themeNotifier: ValueNotifier<ThemeMode>(ThemeMode.light),
+          tags: const [
+            Tag(id: 't-1', name: 'genre/ambient', category: 'genre'),
+          ],
+          selectedTagId: 't-1',
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final capsuleContainer = tester.widget<AnimatedContainer>(
+        find
+            .ancestor(
+              of: find.text('ambient'),
+              matching: find.byWidgetPredicate(
+                (w) =>
+                    w is AnimatedContainer &&
+                    w.decoration is BoxDecoration &&
+                    (w.decoration! as BoxDecoration).borderRadius != null,
+              ),
+            )
+            .first,
+      );
+      final decoration = capsuleContainer.decoration! as BoxDecoration;
+      expect(
+        decoration.color,
+        equals(lightTokens.primary.withValues(alpha: 0.06)),
+      );
+      expect(
+        (decoration.border! as Border).top.color,
+        equals(lightTokens.primary.withValues(alpha: 0.28)),
+      );
+    },
+  );
 }
 
 class _MutatingTagsHost extends StatefulWidget {

@@ -258,51 +258,58 @@ class MockMusicService implements MusicService {
   ];
 
   final List<Artist> _artists = [
-    const Artist(
+    Artist(
       id: 'art-001',
       name: 'Miles Davis',
       role: 'Composer / Trumpet',
       musicbrainzId: '561d854a-6a28-4aa7-8c99-323e6ce46c2a',
       spotifyId: '0kbYTNQb4Pb1rYvBk69HG8',
+      createdAt: DateTime(2026, 1, 5),
     ),
-    const Artist(
+    Artist(
       id: 'art-002',
       name: 'Eagles',
       role: 'Rock Band',
       musicbrainzId: 'f4a31f0a-51dd-4fa7-986d-3095c40c5ed9',
       spotifyId: '0ECwFtbIWEVNwjlrfc6xoL',
+      createdAt: DateTime(2026, 1, 8),
     ),
-    const Artist(
+    Artist(
       id: 'art-003',
       name: 'Daft Punk',
       role: 'Electronic Duo',
       musicbrainzId: '056e4f3e-d505-4dad-8ec1-d04f521cbb56',
       spotifyId: '4tZwfgrHOc3mvqYxwDOiq0',
+      createdAt: DateTime(2026, 1, 12),
     ),
-    const Artist(
+    Artist(
       id: 'art-004',
       name: 'Pink Floyd',
       role: 'Progressive Rock',
       musicbrainzId: '83d91898-d30c-47c0-b424-9592e8b9b412',
       spotifyId: '0k17h0D3J5VfsdmQ1iZtE9',
+      createdAt: DateTime(2026, 1, 15),
     ),
-    const Artist(
+    Artist(
       id: 'art-005',
       name: 'Herbert von Karajan',
       role: 'Conductor',
       musicbrainzId: 'd2dda26a-9204-406a-a996-fb9d95d4293b',
+      createdAt: DateTime(2026, 1, 18),
     ),
-    const Artist(
+    Artist(
       id: 'art-006',
       name: 'Steely Dan',
       role: 'Jazz Rock Ensemble',
       musicbrainzId: '9b28a9b2-3850-4ff6-8b2b-4ec404b85c18',
+      createdAt: DateTime(2026, 1, 22),
     ),
-    const Artist(
+    Artist(
       id: 'art-007',
       name: 'Dire Straits',
       role: 'Rock Band',
       musicbrainzId: '614e3804-7d34-41d9-8777-7da44f627049',
+      createdAt: DateTime(2026, 1, 25),
     ),
   ];
 
@@ -331,13 +338,43 @@ class MockMusicService implements MusicService {
     ),
   ];
 
-  static const List<Tag> defaultTags = [
-    Tag(id: 'tag-001', name: 'Audiophile', category: 'quality'),
-    Tag(id: 'tag-002', name: 'Hi-Res', category: 'quality'),
-    Tag(id: 'tag-003', name: 'DSD', category: 'format'),
-    Tag(id: 'tag-004', name: 'Direct Stream', category: 'source'),
-    Tag(id: 'tag-005', name: 'Live Recording', category: 'type'),
-    Tag(id: 'tag-006', name: 'Reference Master', category: 'quality'),
+  static final List<Tag> defaultTags = [
+    Tag(
+      id: 'tag-001',
+      name: 'Audiophile',
+      category: 'quality',
+      createdAt: DateTime(2026, 1, 3),
+    ),
+    Tag(
+      id: 'tag-002',
+      name: 'Hi-Res',
+      category: 'quality',
+      createdAt: DateTime(2026, 1, 4),
+    ),
+    Tag(
+      id: 'tag-003',
+      name: 'DSD',
+      category: 'format',
+      createdAt: DateTime(2026, 1, 6),
+    ),
+    Tag(
+      id: 'tag-004',
+      name: 'Direct Stream',
+      category: 'source',
+      createdAt: DateTime(2026, 1, 9),
+    ),
+    Tag(
+      id: 'tag-005',
+      name: 'Live Recording',
+      category: 'type',
+      createdAt: DateTime(2026, 1, 11),
+    ),
+    Tag(
+      id: 'tag-006',
+      name: 'Reference Master',
+      category: 'quality',
+      createdAt: DateTime(2026, 1, 14),
+    ),
   ];
 
   late final List<Tag> _tags;
@@ -346,15 +383,16 @@ class MockMusicService implements MusicService {
     _tags = tags != null ? List<Tag>.from(tags) : List<Tag>.from(defaultTags);
   }
 
-  final List<Album> _albums = const [
+  final List<Album> _albums = [
     Album(
       id: 'alb-001',
       title: 'Kind of Blue',
       artist: 'Miles Davis',
       year: 1959,
       trackCount: 5,
-      coverColor: Color(0xFF1E3A8A), // Deep Blue
+      coverColor: const Color(0xFF1E3A8A), // Deep Blue
       format: 'FLAC 24/192',
+      createdAt: DateTime(2026, 1, 5),
     ),
     Album(
       id: 'alb-002',
@@ -362,8 +400,9 @@ class MockMusicService implements MusicService {
       artist: 'Eagles',
       year: 1994,
       trackCount: 15,
-      coverColor: Color(0xFF78350F), // Warm Amber
+      coverColor: const Color(0xFF78350F), // Warm Amber
       format: 'FLAC 24/96',
+      createdAt: DateTime(2026, 1, 8),
     ),
     Album(
       id: 'alb-003',
@@ -371,8 +410,9 @@ class MockMusicService implements MusicService {
       artist: 'Pink Floyd',
       year: 1973,
       trackCount: 10,
-      coverColor: Color(0xFF0F172A), // Slate Black
+      coverColor: const Color(0xFF0F172A), // Slate Black
       format: 'WAV 24/96',
+      createdAt: DateTime(2026, 1, 15),
     ),
     Album(
       id: 'alb-004',
@@ -380,8 +420,9 @@ class MockMusicService implements MusicService {
       artist: 'Daft Punk',
       year: 2013,
       trackCount: 13,
-      coverColor: Color(0xFF475569), // Metallic Slate
+      coverColor: const Color(0xFF475569), // Metallic Slate
       format: 'FLAC 24/88.2',
+      createdAt: DateTime(2026, 1, 12),
     ),
     Album(
       id: 'alb-005',
@@ -389,8 +430,9 @@ class MockMusicService implements MusicService {
       artist: 'Steely Dan',
       year: 1977,
       trackCount: 7,
-      coverColor: Color(0xFF14532D), // Deep Emerald
+      coverColor: const Color(0xFF14532D), // Deep Emerald
       format: 'FLAC 24/96',
+      createdAt: DateTime(2026, 1, 22),
     ),
     Album(
       id: 'alb-006',
@@ -398,8 +440,9 @@ class MockMusicService implements MusicService {
       artist: 'Berliner Philharmoniker',
       year: 1963,
       trackCount: 36,
-      coverColor: Color(0xFF831843), // Crimson
+      coverColor: const Color(0xFF831843), // Crimson
       format: 'FLAC 24/96',
+      createdAt: DateTime(2026, 1, 18),
     ),
   ];
 

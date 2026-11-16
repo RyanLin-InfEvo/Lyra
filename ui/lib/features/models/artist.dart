@@ -26,6 +26,9 @@ class Artist {
   /// YouTube Music Artist / Channel ID.
   final String? ytmId;
 
+  /// Timestamp when the artist entity was added to the library.
+  final DateTime? createdAt;
+
   const Artist({
     required this.id,
     required this.name,
@@ -33,6 +36,7 @@ class Artist {
     this.role,
     this.spotifyId,
     this.ytmId,
+    this.createdAt,
   });
 
   /// Safe display name with fallback.
@@ -46,6 +50,12 @@ class Artist {
 
   /// Creates an [Artist] instance from a JSON map.
   factory Artist.fromJson(Map<String, dynamic> json) {
+    DateTime? parseDate(dynamic val) {
+      if (val is DateTime) return val;
+      if (val is String) return DateTime.tryParse(val);
+      return null;
+    }
+
     return Artist(
       id: json['id']?.toString() ?? '',
       name:
@@ -57,6 +67,7 @@ class Artist {
       role: json['role']?.toString(),
       spotifyId: (json['spotify_id'] ?? json['spotifyId'])?.toString(),
       ytmId: (json['ytm_id'] ?? json['ytmId'])?.toString(),
+      createdAt: parseDate(json['created_at'] ?? json['createdAt']),
     );
   }
 
@@ -69,6 +80,7 @@ class Artist {
       if (role != null) 'role': role,
       if (spotifyId != null) 'spotify_id': spotifyId,
       if (ytmId != null) 'ytm_id': ytmId,
+      if (createdAt != null) 'created_at': createdAt!.toIso8601String(),
     };
   }
 
@@ -80,6 +92,7 @@ class Artist {
     String? role,
     String? spotifyId,
     String? ytmId,
+    DateTime? createdAt,
   }) {
     return Artist(
       id: id ?? this.id,
@@ -88,6 +101,7 @@ class Artist {
       role: role ?? this.role,
       spotifyId: spotifyId ?? this.spotifyId,
       ytmId: ytmId ?? this.ytmId,
+      createdAt: createdAt ?? this.createdAt,
     );
   }
 
@@ -100,12 +114,13 @@ class Artist {
         other.musicbrainzId == musicbrainzId &&
         other.role == role &&
         other.spotifyId == spotifyId &&
-        other.ytmId == ytmId;
+        other.ytmId == ytmId &&
+        other.createdAt == createdAt;
   }
 
   @override
   int get hashCode =>
-      Object.hash(id, name, musicbrainzId, role, spotifyId, ytmId);
+      Object.hash(id, name, musicbrainzId, role, spotifyId, ytmId, createdAt);
 
   @override
   String toString() {
@@ -115,7 +130,8 @@ class Artist {
         'musicbrainzId: $musicbrainzId, '
         'role: $role, '
         'spotifyId: $spotifyId, '
-        'ytmId: $ytmId'
+        'ytmId: $ytmId, '
+        'createdAt: $createdAt'
         ')';
   }
 }
