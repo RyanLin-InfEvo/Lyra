@@ -15,28 +15,32 @@ vcpkg_installed/
 *.gch
 .cache/
 
-# Flutter Build Artifacts
+# Flutter
 ui/build/
 ui/.dart_tool/
 ui/.flutter-plugins
 ui/.flutter-plugins-dependencies
-
 ui/devtools_options.yaml
 
-# IDE Settings 
+# Dev env
 # .vscode/
+# .editorconfig
 docs/*
 !docs/visual-designs/
 .worktrees/
-*.DS_Store
+Lyra.code-workspace
 core/compile_commands.json
 compile_commands.json
 .clangd
-# .editorconfig
 # .clang-format
-Lyra.code-workspace
 
-# DB
+
+# File System
+*.DS_Store
+.directory
+
+
+# SQLite
 *.mwb.bak
 *.db
 *.db-shm
@@ -46,6 +50,12 @@ Lyra.code-workspace
 test_run
 __pycache__/
 core/tests/manual_api_request_test.py
-.directory
 lyra_storage/
 *.old
+
+# Agents
+.agents/skills/
+.agents/plugins/
+
+# Images_temp*
+lyra*.png
