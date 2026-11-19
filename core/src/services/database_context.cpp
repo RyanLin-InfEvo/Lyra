@@ -309,6 +309,42 @@ void SqliteDatabaseContext::init_schema() {
     m_db.exec("CREATE INDEX IF NOT EXISTS idx_EntityImages_image_hash ON Entity_Images (image_hash);");
 
     m_db.exec(R"(
+        CREATE TABLE IF NOT EXISTS Tag (
+          id TEXT NOT NULL,
+          name TEXT NOT NULL,
+          category TEXT NOT NULL DEFAULT 'general',
+          created_at TEXT DEFAULT (datetime('now')),
+          PRIMARY KEY (id),
+          CONSTRAINT fk_Tag_Entity
+            FOREIGN KEY (id)
+            REFERENCES Entity (id)
+            ON DELETE CASCADE
+            ON UPDATE CASCADE
+        );
+    )");
+
+    m_db.exec(R"(
+        CREATE TABLE IF NOT EXISTS Entity_Tag (
+          entity_id TEXT NOT NULL,
+          tag_id TEXT NOT NULL,
+          PRIMARY KEY (entity_id, tag_id),
+          CONSTRAINT fk_EntityTag_Entity
+            FOREIGN KEY (entity_id)
+            REFERENCES Entity (id)
+            ON DELETE CASCADE
+            ON UPDATE CASCADE,
+          CONSTRAINT fk_EntityTag_Tag
+            FOREIGN KEY (tag_id)
+            REFERENCES Tag (id)
+            ON DELETE CASCADE
+            ON UPDATE CASCADE
+        );
+    )");
+
+    m_db.exec("CREATE INDEX IF NOT EXISTS idx_Tag_name ON Tag (name);");
+    m_db.exec("CREATE INDEX IF NOT EXISTS idx_Entity_Tag_tag_id ON Entity_Tag (tag_id);");
+
+    m_db.exec(R"(
         CREATE TRIGGER IF NOT EXISTS trg_Album_updated_at
         AFTER UPDATE ON Album
         BEGIN
@@ -343,6 +379,14 @@ void SqliteDatabaseContext::init_schema() {
     m_db.exec(R"(
         CREATE TRIGGER IF NOT EXISTS trg_Playlist_updated_at
         AFTER UPDATE ON Playlist
+        BEGIN
+          UPDATE Entity SET updated_at = datetime('now') WHERE id = NEW.id;
+        END;
+    )");
+
+    m_db.exec(R"(
+        CREATE TRIGGER IF NOT EXISTS trg_Tag_updated_at
+        AFTER UPDATE ON Tag
         BEGIN
           UPDATE Entity SET updated_at = datetime('now') WHERE id = NEW.id;
         END;

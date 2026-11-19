@@ -43,6 +43,7 @@ set(CPP
     src/services/repositories/sqlite/sqlite_audio_repository.cpp
     src/services/repositories/sqlite/sqlite_image_repository.cpp
     src/services/repositories/sqlite/sqlite_playlist_repository.cpp
+    src/services/repositories/sqlite/sqlite_tag_repository.cpp
     src/services/repositories/sqlite/sqlite_track_repository.cpp
     src/services/repositories/sqlite/sqlite_work_repository.cpp
     src/utils/uuid_generator.cpp
@@ -62,6 +63,7 @@ set(CPP
     src/controllers/track_controller.cpp
     src/controllers/work_controller.cpp
     src/controllers/playlist_controller.cpp
+    src/controllers/tag_controller.cpp
     src/services/audio_sinks/null_audio_sink.cpp
     src/services/audio_sinks/local_audio_sink.cpp
     src/services/audio_decoder.cpp
@@ -172,4 +174,8 @@ if(BUILD_TESTING)
     add_executable(audio_device_info_test tests/audio_device_info_test.cpp)
     target_link_libraries(audio_device_info_test PRIVATE lyra_core nlohmann_json::nlohmann_json fmt::fmt)
     target_include_directories(audio_device_info_test PRIVATE include src)
+
+    add_executable(tag_repository_test tests/tag_repository_test.cpp)
+    target_link_libraries(tag_repository_test PRIVATE lyra_core nlohmann_json::nlohmann_json fmt::fmt SQLiteCpp)
+    target_include_directories(tag_repository_test PRIVATE include src)
 endif()

@@ -12,6 +12,7 @@
 #include "../models/audio.h"
 #include "../models/image.h"
 #include "../models/playlist.h"
+#include "../models/tag.h"
 #include "../models/track.h"
 #include "../models/work.h"
 #include "sqlite_helper.h"
@@ -27,6 +28,7 @@ Album map_album(SQLite::Statement &query);
 Artist map_artist(SQLite::Statement &query);
 Work map_work(SQLite::Statement &query);
 Playlist map_playlist(SQLite::Statement &query);
+Tag map_tag(SQLite::Statement &query);
 Image map_image(SQLite::Statement &query);
 
 template <typename T>
@@ -65,6 +67,11 @@ inline Work map<Work>(SQLite::Statement &query) {
 template <>
 inline Playlist map<Playlist>(SQLite::Statement &query) {
     return map_playlist(query);
+}
+
+template <>
+inline Tag map<Tag>(SQLite::Statement &query) {
+    return map_tag(query);
 }
 
 template <>
