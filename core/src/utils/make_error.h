@@ -21,6 +21,7 @@ enum class ErrorType {
     AlbumNotFound,
     WorkNotFound,
     PlaylistNotFound,
+    TagNotFound,
     AssetNotFound,
     AudioNotFound,
     UnknownCommand,

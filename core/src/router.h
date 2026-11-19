@@ -25,6 +25,7 @@ class IAssetRepository;
 class IAudioRepository;
 class IImageRepository;
 class IPlaylistRepository;
+class ITagRepository;
 class ITrackRepository;
 class IWorkRepository;
 
@@ -33,6 +34,7 @@ class ArtistController;
 class AssetController;
 class AudioController;
 class PlaylistController;
+class TagController;
 class TrackController;
 class WorkController;
 
@@ -135,6 +137,14 @@ class Router {
     json handleSystemGetConfig(const json &p);
     json handleSystemSetConfig(const json &p);
 
+    // Tag Handlers
+    json handleTagList(const json &p);
+    json handleTagCreate(const json &p);
+    json handleTagDelete(const json &p);
+    json handleTagAssign(const json &p);
+    json handleTagRemove(const json &p);
+    json handleTagGetEntityTags(const json &p);
+
     // Dependencies
     std::string m_storage_root;
     std::unique_ptr<IDatabaseContext> m_db_context;
@@ -145,6 +155,7 @@ class Router {
     std::unique_ptr<IAudioRepository> m_audio_repo;
     std::unique_ptr<IImageRepository> m_image_repo;
     std::unique_ptr<IPlaylistRepository> m_playlist_repo;
+    std::unique_ptr<ITagRepository> m_tag_repo;
     std::unique_ptr<ITrackRepository> m_track_repo;
     std::unique_ptr<IWorkRepository> m_work_repo;
 
@@ -153,6 +164,7 @@ class Router {
     std::unique_ptr<AssetController> m_asset_controller;
     std::unique_ptr<AudioController> m_audio_controller;
     std::unique_ptr<PlaylistController> m_playlist_controller;
+    std::unique_ptr<TagController> m_tag_controller;
     std::unique_ptr<TrackController> m_track_controller;
     std::unique_ptr<WorkController> m_work_controller;
     std::unique_ptr<AudioEngine> m_audio_engine;

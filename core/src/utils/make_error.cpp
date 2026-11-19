@@ -47,6 +47,8 @@ std::pair<int, std::string> ApiResponse::getErrorMapping(ErrorType type) {
             return {404, "WorkNotFound"};
         case ErrorType::PlaylistNotFound:
             return {404, "PlaylistNotFound"};
+        case ErrorType::TagNotFound:
+            return {404, "TagNotFound"};
         case ErrorType::AssetNotFound:
             return {404, "AssetNotFound"};
         case ErrorType::AudioNotFound:

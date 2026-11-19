@@ -91,6 +91,15 @@ Playlist map_playlist(SQLite::Statement &query) {
     return playlist;
 }
 
+Tag map_tag(SQLite::Statement &query) {
+    Tag tag;
+    tag.id = query.getColumn("id").getString();
+    tag.name = query.getColumn("name").getString();
+    tag.category = SqliteHelper::get_safe<std::string>(query, "category", "general");
+    tag.created_at = SqliteHelper::get_optional<std::string>(query, "created_at");
+    return tag;
+}
+
 Image map_image(SQLite::Statement &query) {
     Image img;
     img.image_hash = query.getColumn("image_hash").getString();

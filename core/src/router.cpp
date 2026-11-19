@@ -15,6 +15,7 @@
 #include "controllers/asset_controller.h"
 #include "controllers/audio_controller.h"
 #include "controllers/playlist_controller.h"
+#include "controllers/tag_controller.h"
 #include "controllers/track_controller.h"
 #include "controllers/work_controller.h"
 #include "models/relation_types.h"
@@ -32,6 +33,7 @@
 #include "services/repositories/sqlite/sqlite_audio_repository.h"
 #include "services/repositories/sqlite/sqlite_image_repository.h"
 #include "services/repositories/sqlite/sqlite_playlist_repository.h"
+#include "services/repositories/sqlite/sqlite_tag_repository.h"
 #include "services/repositories/sqlite/sqlite_track_repository.h"
 #include "services/repositories/sqlite/sqlite_work_repository.h"
 #include "services/waveform_service.h"
@@ -135,6 +137,7 @@ Router::Router(const std::string &db_path) {
     m_audio_repo = std::make_unique<SqliteAudioRepository>(*m_db_context);
     m_image_repo = std::make_unique<SqliteImageRepository>(*m_db_context);
     m_playlist_repo = std::make_unique<SqlitePlaylistRepository>(*m_db_context);
+    m_tag_repo = std::make_unique<SqliteTagRepository>(*m_db_context);
     m_track_repo = std::make_unique<SqliteTrackRepository>(*m_db_context);
     m_work_repo = std::make_unique<SqliteWorkRepository>(*m_db_context);
 
@@ -145,6 +148,7 @@ Router::Router(const std::string &db_path) {
     m_asset_controller = std::make_unique<AssetController>(*m_asset_repo, m_storage_root);
     m_audio_controller = std::make_unique<AudioController>(*m_audio_repo);
     m_playlist_controller = std::make_unique<PlaylistController>(*m_playlist_repo);
+    m_tag_controller = std::make_unique<TagController>(*m_tag_repo);
     m_track_controller = std::make_unique<TrackController>(*m_track_repo);
     m_work_controller = std::make_unique<WorkController>(*m_work_repo);
     m_audio_engine = std::make_unique<AudioEngine>();
@@ -284,6 +288,14 @@ void Router::init_handlers() {
     // System Config endpoints
     m_handlers["system.get_config"] = [this](const json &p) { return handleSystemGetConfig(p); };
     m_handlers["system.set_config"] = [this](const json &p) { return handleSystemSetConfig(p); };
+
+    // Tag endpoints
+    m_handlers["tag.list"] = [this](const json &p) { return handleTagList(p); };
+    m_handlers["tag.create"] = [this](const json &p) { return handleTagCreate(p); };
+    m_handlers["tag.delete"] = [this](const json &p) { return handleTagDelete(p); };
+    m_handlers["tag.assign"] = [this](const json &p) { return handleTagAssign(p); };
+    m_handlers["tag.remove"] = [this](const json &p) { return handleTagRemove(p); };
+    m_handlers["tag.get_entity_tags"] = [this](const json &p) { return handleTagGetEntityTags(p); };
 }
 
 
@@ -1835,6 +1847,179 @@ json Router::handleSystemSetConfig(const json &p) {
         return res.error();
     }
     return ApiResponse::success(*res);
+}
+
+// --- Tag Handlers ---
+
+json Router::handleTagList(const json &params) {
+    auto parse_res = parse_pagination(params);
+    if (!parse_res) {
+        return parse_res.error();
+    }
+    auto cat_err = JsonValidator::validate(params, {{"category", Type::String, false}});
+    if (cat_err) {
+        return *cat_err;
+    }
+
+    std::optional<std::string> category = std::nullopt;
+    if (auto opt_cat = JsonHelper::get_optional<std::string>(params, "category")) {
+        size_t start = opt_cat->find_first_not_of(" \t\r\n");
+        if (start == std::string::npos) {
+            return ApiResponse::error({ErrorType::InvalidValue, "Value of key 'category' should not be blank."});
+        }
+        size_t end = opt_cat->find_last_not_of(" \t\r\n");
+        category = opt_cat->substr(start, end - start + 1);
+    }
+
+    const auto &p = parse_res.value();
+    auto res = m_tag_controller->list(p.offset, p.limit, p.search, category);
+    if (res) {
+        return ApiResponse::success(res.value());
+    }
+    return ApiResponse::error({ErrorType::DatabaseError, res.error()});
+}
+
+json Router::handleTagCreate(const json &params) {
+    auto err = JsonValidator::validate(params, {{"name", Type::String, true},
+                                                {"category", Type::String, false}});
+    if (err) return *err;
+
+    std::string raw_name = params["name"].get<std::string>();
+    size_t name_start = raw_name.find_first_not_of(" \t\r\n");
+    if (name_start == std::string::npos) {
+        return ApiResponse::error({ErrorType::InvalidValue, "Value of key 'name' should not be blank."});
+    }
+    size_t name_end = raw_name.find_last_not_of(" \t\r\n");
+
+    Tag tag;
+    tag.name = raw_name.substr(name_start, name_end - name_start + 1);
+    if (auto opt_cat = JsonHelper::get_optional<std::string>(params, "category")) {
+        size_t cat_start = opt_cat->find_first_not_of(" \t\r\n");
+        if (cat_start == std::string::npos) {
+            return ApiResponse::error({ErrorType::InvalidValue, "Value of key 'category' should not be blank."});
+        }
+        size_t cat_end = opt_cat->find_last_not_of(" \t\r\n");
+        tag.category = opt_cat->substr(cat_start, cat_end - cat_start + 1);
+    } else {
+        tag.category = "general";
+    }
+
+    auto res = m_tag_controller->create(tag);
+    if (res) {
+        json response;
+        response["code"] = 201;
+        response["data"] = tag;
+        response["message"] = "Create Tag success.";
+        return response;
+    }
+    return ApiResponse::error({ErrorType::DatabaseError, res.error()});
+}
+
+json Router::handleTagDelete(const json &params) {
+    auto err = JsonValidator::validate(params, {{"id", Type::String, true, StringFormat::UUID}});
+    if (err) return *err;
+
+    std::string id = params["id"].get<std::string>();
+    auto res = m_tag_controller->delete_tag(id);
+    if (res) {
+        json response = ApiResponse::success({{"id", id}});
+        response["message"] = "Delete Tag success.";
+        return response;
+    }
+    if (res.error().find("Tag not found") != std::string::npos) {
+        return ApiResponse::error({ErrorType::TagNotFound, res.error()});
+    }
+    return ApiResponse::error({ErrorType::DatabaseError, res.error()});
+}
+
+namespace {
+
+tl::expected<std::optional<std::string>, json> parse_optional_tag_entity_type(const json &params) {
+    auto opt_type = JsonHelper::get_optional<std::string>(params, "entity_type");
+    if (opt_type.has_value()) {
+        if (*opt_type != "track" && *opt_type != "album" && *opt_type != "artist" &&
+            *opt_type != "work" && *opt_type != "playlist") {
+            return tl::unexpected(ApiResponse::error({ErrorType::InvalidValue, "Invalid entity_type: " + *opt_type}));
+        }
+    }
+    return opt_type;
+}
+
+} // namespace
+
+json Router::handleTagAssign(const json &params) {
+    auto err = JsonValidator::validate(params, {{"entity_id", Type::String, true, StringFormat::UUID},
+                                                {"tag_id", Type::String, true, StringFormat::UUID},
+                                                {"entity_type", Type::String, false}});
+    if (err) return *err;
+
+    auto entity_type = parse_optional_tag_entity_type(params);
+    if (!entity_type) return entity_type.error();
+
+    std::string entity_id = params["entity_id"].get<std::string>();
+    std::string tag_id = params["tag_id"].get<std::string>();
+    auto res = m_tag_controller->assign_to_entity(entity_id, tag_id, *entity_type);
+    if (res) {
+        json response;
+        response["code"] = 201;
+        response["data"] = {{"entity_id", entity_id}, {"tag_id", tag_id}};
+        response["message"] = "Assign Tag success.";
+        return response;
+    }
+    std::string err_msg = res.error();
+    if (err_msg.find("Entity not found") != std::string::npos) {
+        return ApiResponse::error({ErrorType::NotFound, err_msg});
+    }
+    if (err_msg.find("Tag not found") != std::string::npos) {
+        return ApiResponse::error({ErrorType::TagNotFound, err_msg});
+    }
+    return ApiResponse::error({ErrorType::DatabaseError, err_msg});
+}
+
+json Router::handleTagRemove(const json &params) {
+    auto err = JsonValidator::validate(params, {{"entity_id", Type::String, true, StringFormat::UUID},
+                                                {"tag_id", Type::String, true, StringFormat::UUID},
+                                                {"entity_type", Type::String, false}});
+    if (err) return *err;
+
+    auto entity_type = parse_optional_tag_entity_type(params);
+    if (!entity_type) return entity_type.error();
+
+    std::string entity_id = params["entity_id"].get<std::string>();
+    std::string tag_id = params["tag_id"].get<std::string>();
+    auto res = m_tag_controller->remove_from_entity(entity_id, tag_id, *entity_type);
+    if (res) {
+        json response = ApiResponse::success({{"entity_id", entity_id}, {"tag_id", tag_id}});
+        response["message"] = "Remove Tag success.";
+        return response;
+    }
+    std::string err_msg = res.error();
+    if (err_msg.find("Entity not found") != std::string::npos) {
+        return ApiResponse::error({ErrorType::NotFound, err_msg});
+    }
+    if (err_msg.find("Relation not found") != std::string::npos) {
+        return ApiResponse::error({ErrorType::RelationNotFound, "Relation between Entity and Tag not found."});
+    }
+    return ApiResponse::error({ErrorType::DatabaseError, err_msg});
+}
+
+json Router::handleTagGetEntityTags(const json &params) {
+    auto err = JsonValidator::validate(params, {{"entity_id", Type::String, true, StringFormat::UUID},
+                                                {"entity_type", Type::String, false}});
+    if (err) return *err;
+
+    auto entity_type = parse_optional_tag_entity_type(params);
+    if (!entity_type) return entity_type.error();
+
+    std::string entity_id = params["entity_id"].get<std::string>();
+    auto res = m_tag_controller->get_entity_tags(entity_id, *entity_type);
+    if (res) {
+        return ApiResponse::success(res.value());
+    }
+    if (res.error().find("Entity not found") != std::string::npos) {
+        return ApiResponse::error({ErrorType::NotFound, res.error()});
+    }
+    return ApiResponse::error({ErrorType::DatabaseError, res.error()});
 }
 
 json Router::route(const json &request) {
