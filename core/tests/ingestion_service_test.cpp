@@ -11,6 +11,7 @@
 #include "../src/services/repositories/sqlite/sqlite_asset_repository.h"
 #include "../src/services/repositories/sqlite/sqlite_audio_repository.h"
 #include "../src/services/repositories/sqlite/sqlite_image_repository.h"
+#include "../src/services/repositories/sqlite/sqlite_source_data_repository.h"
 #include "../src/services/repositories/sqlite/sqlite_track_repository.h"
 #include "../src/utils/storage_helper.h"
 #include <cassert>
@@ -74,8 +75,9 @@ bool test_ingest_asset_workflow(const std::string &temp_dir) {
     SqliteAudioRepository audio_repo(ctx);
     SqliteTrackRepository track_repo(ctx);
     SqliteImageRepository image_repo(ctx);
+    SqliteSourceDataRepository source_data_repo(ctx);
 
-    IngestionService service(ctx, asset_repo, audio_repo, artist_repo, album_repo, track_repo, temp_dir, &image_repo);
+    IngestionService service(ctx, asset_repo, audio_repo, artist_repo, album_repo, track_repo, temp_dir, &image_repo, &source_data_repo);
 
     std::string wav_path = (std::filesystem::path(temp_dir) / "test_ingest.wav").string();
     write_dummy_wav(wav_path, 1.0, 44100, 2);
@@ -93,6 +95,18 @@ bool test_ingest_asset_workflow(const std::string &temp_dir) {
     assert(!file_hash.empty());
     assert(!pcm_hash.empty());
 
+    // 1b. Verify Source_Data auto-recorded
+    auto sd_res = source_data_repo.get_by_asset(file_hash);
+    if (!sd_res.has_value()) {
+        std::cerr << "Expected Source_Data after ingest_asset: " << sd_res.error() << std::endl;
+        return false;
+    }
+    assert(!sd_res.value().id.empty());
+    assert(sd_res.value().file_hash == file_hash);
+    assert(sd_res.value().source_type.empty());
+    assert(sd_res.value().original_path == wav_path);
+    assert(!sd_res.value().created_at.empty());
+
     // 2. Verify CAS file exists
     auto cas_path = utils::StorageHelper::resolve_cas_path(temp_dir, file_hash, ".wav");
     if (!std::filesystem::exists(cas_path)) {
@@ -100,7 +114,7 @@ bool test_ingest_asset_workflow(const std::string &temp_dir) {
         return false;
     }
 
-    // 3. Verify deduplication
+    // 3. Verify deduplication (and no duplicate Source_Data created)
     auto dup_res = service.ingest_asset(wav_path);
     if (!dup_res.has_value()) {
         std::cerr << "Duplicate ingest_asset failed: " << dup_res.error() << std::endl;
@@ -108,6 +122,8 @@ bool test_ingest_asset_workflow(const std::string &temp_dir) {
     }
     assert(dup_res.value().asset.file_hash == file_hash);
     assert(dup_res.value().metadata["pcm_hash"].get<std::string>() == pcm_hash);
+    auto sd_list = source_data_repo.list_by_asset(file_hash);
+    assert(sd_list.has_value() && sd_list.value().size() == 1);
 
     // 4. Non-existent file test
     auto non_existent_res = service.ingest_asset((std::filesystem::path(temp_dir) / "non_existent.wav").string());
@@ -128,8 +144,9 @@ bool test_import_track_workflow(const std::string &temp_dir) {
     SqliteAudioRepository audio_repo(ctx);
     SqliteTrackRepository track_repo(ctx);
     SqliteImageRepository image_repo(ctx);
+    SqliteSourceDataRepository source_data_repo(ctx);
 
-    IngestionService service(ctx, asset_repo, audio_repo, artist_repo, album_repo, track_repo, temp_dir, &image_repo);
+    IngestionService service(ctx, asset_repo, audio_repo, artist_repo, album_repo, track_repo, temp_dir, &image_repo, &source_data_repo);
 
     std::string wav_path = (std::filesystem::path(temp_dir) / "my_track_song.wav").string();
     write_dummy_wav(wav_path, 1.5, 44100, 2);
@@ -156,6 +173,60 @@ bool test_import_track_workflow(const std::string &temp_dir) {
     }
     assert(track_res.value().pcm_hash == val.pcm_hash);
     assert(track_res.value().title.value_or("") == "my_track_song");
+
+    // Verify Source_Data auto-recorded for imported track's asset
+    auto assets_res = asset_repo.get_assets_by_audio(val.pcm_hash);
+    assert(assets_res.has_value() && !assets_res.value().empty());
+    auto sd_res = source_data_repo.get_by_asset(assets_res.value()[0]);
+    if (!sd_res.has_value()) {
+        std::cerr << "Expected Source_Data after import_track: " << sd_res.error() << std::endl;
+        return false;
+    }
+    assert(sd_res.value().source_type.empty());
+    assert(sd_res.value().original_path == wav_path);
+    assert(sd_res.value().note.empty());
+    assert(!sd_res.value().created_at.empty());
+
+    // Custom source_type & note via ingest_asset
+    std::string cd_wav_path = (std::filesystem::path(temp_dir) / "cd_rip_song.wav").string();
+    write_dummy_wav(cd_wav_path, 1.2, 44100, 2);
+    auto custom_ingest_res = service.ingest_asset(cd_wav_path, "  CD RIP  ", "EAC v1.6 lossless rip");
+    if (!custom_ingest_res.has_value()) {
+        std::cerr << "Custom ingest_asset failed: " << custom_ingest_res.error() << std::endl;
+        return false;
+    }
+    auto cd_sd_res = source_data_repo.get_by_asset(custom_ingest_res.value().asset.file_hash);
+    assert(cd_sd_res.has_value());
+    assert(cd_sd_res.value().source_type == "CD RIP");
+    assert(cd_sd_res.value().note == "EAC v1.6 lossless rip");
+    assert(cd_sd_res.value().original_path == cd_wav_path);
+
+    // Blank source_type falls back to empty (stored as SQL NULL)
+    std::string blank_wav_path = (std::filesystem::path(temp_dir) / "blank_source_type.wav").string();
+    write_dummy_wav(blank_wav_path, 1.3, 44100, 2);
+    auto blank_ingest_res = service.ingest_asset(blank_wav_path, "   ", "Fallback note");
+    assert(blank_ingest_res.has_value());
+    auto blank_sd_res = source_data_repo.get_by_asset(blank_ingest_res.value().asset.file_hash);
+    assert(blank_sd_res.has_value());
+    assert(blank_sd_res.value().source_type.empty());
+    assert(blank_sd_res.value().note == "Fallback note");
+
+    // Custom source_type & note via import_track
+    std::string yt_wav_path = (std::filesystem::path(temp_dir) / "yt_music_song.wav").string();
+    write_dummy_wav(yt_wav_path, 1.4, 44100, 2);
+    TrackImportRequest custom_req;
+    custom_req.source_path = yt_wav_path;
+    custom_req.source_type = "YouTube Music";
+    custom_req.note = "Downloaded via yt-dlp";
+    auto custom_import_res = service.import_track(custom_req);
+    assert(custom_import_res.has_value());
+    auto yt_assets_res = asset_repo.get_assets_by_audio(custom_import_res.value().pcm_hash);
+    assert(yt_assets_res.has_value() && !yt_assets_res.value().empty());
+    auto yt_sd_res = source_data_repo.get_by_asset(yt_assets_res.value()[0]);
+    assert(yt_sd_res.has_value());
+    assert(yt_sd_res.value().source_type == "YouTube Music");
+    assert(yt_sd_res.value().note == "Downloaded via yt-dlp");
+    assert(yt_sd_res.value().original_path == yt_wav_path);
 
     return true;
 }

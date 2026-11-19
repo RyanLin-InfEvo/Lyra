@@ -12,6 +12,7 @@
 #include "../models/audio.h"
 #include "../models/image.h"
 #include "../models/playlist.h"
+#include "../models/source_data.h"
 #include "../models/tag.h"
 #include "../models/track.h"
 #include "../models/work.h"
@@ -30,6 +31,7 @@ Work map_work(SQLite::Statement &query);
 Playlist map_playlist(SQLite::Statement &query);
 Tag map_tag(SQLite::Statement &query);
 Image map_image(SQLite::Statement &query);
+SourceData map_source_data(SQLite::Statement &query);
 
 template <typename T>
 T map(SQLite::Statement &query);
@@ -77,6 +79,11 @@ inline Tag map<Tag>(SQLite::Statement &query) {
 template <>
 inline Image map<Image>(SQLite::Statement &query) {
     return map_image(query);
+}
+
+template <>
+inline SourceData map<SourceData>(SQLite::Statement &query) {
+    return map_source_data(query);
 }
 
 } // namespace SqliteMappers
