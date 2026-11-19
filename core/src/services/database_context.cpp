@@ -345,6 +345,25 @@ void SqliteDatabaseContext::init_schema() {
     m_db.exec("CREATE INDEX IF NOT EXISTS idx_Entity_Tag_tag_id ON Entity_Tag (tag_id);");
 
     m_db.exec(R"(
+        CREATE TABLE IF NOT EXISTS Source_Data (
+          id TEXT NOT NULL,
+          file_hash TEXT NOT NULL,
+          source_type TEXT NULL DEFAULT NULL,
+          original_path TEXT NULL DEFAULT NULL,
+          created_at TEXT DEFAULT (datetime('now')),
+          note TEXT NULL DEFAULT NULL,
+          PRIMARY KEY (id),
+          CONSTRAINT fk_SourceData_Asset
+            FOREIGN KEY (file_hash)
+            REFERENCES Asset (file_hash)
+            ON DELETE CASCADE
+            ON UPDATE CASCADE
+        );
+    )");
+
+    m_db.exec("CREATE INDEX IF NOT EXISTS idx_SourceData_file_hash ON Source_Data (file_hash);");
+
+    m_db.exec(R"(
         CREATE TRIGGER IF NOT EXISTS trg_Album_updated_at
         AFTER UPDATE ON Album
         BEGIN

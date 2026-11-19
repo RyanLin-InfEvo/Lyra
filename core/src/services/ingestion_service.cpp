@@ -21,6 +21,7 @@
 #include "../models/asset.h"
 #include "../models/audio.h"
 #include "../models/relation_types.h"
+#include "../models/source_data.h"
 #include "../models/track.h"
 #include "../services/database_context.h"
 #include "../services/repositories/i_album_repository.h"
@@ -28,6 +29,7 @@
 #include "../services/repositories/i_asset_repository.h"
 #include "../services/repositories/i_audio_repository.h"
 #include "../services/repositories/i_image_repository.h"
+#include "../services/repositories/i_source_data_repository.h"
 #include "../services/repositories/i_track_repository.h"
 #include "../utils/audio_helper.h"
 #include "../utils/sha256.h"
@@ -161,7 +163,8 @@ IngestionService::IngestionService(
     IAlbumRepository &album_repo,
     ITrackRepository &track_repo,
     const std::string &storage_root,
-    IImageRepository *image_repo)
+    IImageRepository *image_repo,
+    ISourceDataRepository *source_data_repo)
     : m_db_context(db_context),
       m_asset_repo(asset_repo),
       m_audio_repo(audio_repo),
@@ -169,9 +172,13 @@ IngestionService::IngestionService(
       m_album_repo(album_repo),
       m_track_repo(track_repo),
       m_storage_root(storage_root),
-      m_image_repo(image_repo) {}
+      m_image_repo(image_repo),
+      m_source_data_repo(source_data_repo) {}
 
-tl::expected<AssetIngestResult, std::string> IngestionService::ingest_asset(const std::string &source_path) {
+tl::expected<AssetIngestResult, std::string> IngestionService::ingest_asset(
+    const std::string &source_path,
+    const std::string &source_type,
+    const std::string &note) { // Locally
     const std::string ext = std::filesystem::path(source_path).extension().string();
     const std::filesystem::path temp_path = utils::StorageHelper::generate_temp_path(m_storage_root, ext);
 
@@ -286,12 +293,37 @@ tl::expected<AssetIngestResult, std::string> IngestionService::ingest_asset(cons
     audio.integrated_loudness = 0.0;
     audio.true_peak = 0.0;
 
+    auto tx = m_db_context.begin_transaction();
     auto insert_res = m_asset_repo.insert_asset_with_audio(asset, audio);
     if (!insert_res.has_value()) {
         // Rollback, clean up orphaned CAS file on database failure
         utils::StorageHelper::remove_file(target_path);
         return tl::unexpected("Failed to insert asset and audio: " + insert_res.error());
     }
+
+    if (m_source_data_repo) {
+        std::string resolved_source_type = source_type;
+        size_t st_start = resolved_source_type.find_first_not_of(" \t\r\n");
+        if (st_start == std::string::npos) {
+            resolved_source_type = "";
+        } else {
+            size_t st_end = resolved_source_type.find_last_not_of(" \t\r\n");
+            resolved_source_type = resolved_source_type.substr(st_start, st_end - st_start + 1);
+        }
+
+        SourceData source_data;
+        source_data.id = UuidGenerator::generate_v4();
+        source_data.file_hash = file_hash;
+        source_data.source_type = resolved_source_type;
+        source_data.original_path = source_path;
+        source_data.note = note;
+        auto sd_res = m_source_data_repo->insert(source_data);
+        if (!sd_res.has_value()) {
+            utils::StorageHelper::remove_file(target_path);
+            return tl::unexpected("Failed to insert source data: " + sd_res.error());
+        }
+    }
+    tx->commit();
 
     std::optional<std::string> cover_image_hash = std::nullopt;
     std::optional<std::string> cover_file_hash = std::nullopt;
@@ -374,7 +406,7 @@ tl::expected<TrackImportResult, std::string> IngestionService::import_track(cons
     auto tx = m_db_context.begin_transaction();
 
     // 3. Ingest asset
-    auto ingest_res = ingest_asset(request.source_path);
+    auto ingest_res = ingest_asset(request.source_path, request.source_type, request.note);
     if (!ingest_res) {
         return tl::unexpected("Asset ingestion failed: " + ingest_res.error());
     }

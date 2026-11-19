@@ -28,6 +28,7 @@ class IArtistRepository;
 class IAlbumRepository;
 class ITrackRepository;
 class IImageRepository;
+class ISourceDataRepository;
 
 struct AssetIngestResult {
     Asset asset;
@@ -38,6 +39,8 @@ struct AssetIngestResult {
 
 struct TrackImportRequest {
     std::string source_path;
+    std::string source_type = "";
+    std::string note = "";
 };
 
 struct TrackImportResult {
@@ -59,9 +62,13 @@ class IngestionService {
         IAlbumRepository &album_repo,
         ITrackRepository &track_repo,
         const std::string &storage_root,
-        IImageRepository *image_repo = nullptr);
+        IImageRepository *image_repo = nullptr,
+        ISourceDataRepository *source_data_repo = nullptr);
 
-    tl::expected<AssetIngestResult, std::string> ingest_asset(const std::string &source_path);
+    tl::expected<AssetIngestResult, std::string> ingest_asset(
+        const std::string &source_path,
+        const std::string &source_type = "",
+        const std::string &note = "");
     tl::expected<TrackImportResult, std::string> import_track(const TrackImportRequest &request);
 
   private:
@@ -73,6 +80,7 @@ class IngestionService {
     ITrackRepository &m_track_repo;
     std::string m_storage_root;
     IImageRepository *m_image_repo;
+    ISourceDataRepository *m_source_data_repo;
 };
 
 } // namespace lyra

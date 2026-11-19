@@ -113,5 +113,16 @@ Image map_image(SQLite::Statement &query) {
     return img;
 }
 
+SourceData map_source_data(SQLite::Statement &query) {
+    SourceData sd;
+    sd.id = query.getColumn("id").getString();
+    sd.file_hash = query.getColumn("file_hash").getString();
+    sd.source_type = SqliteHelper::get_safe<std::string>(query, "source_type", "");
+    sd.original_path = SqliteHelper::get_safe<std::string>(query, "original_path", "");
+    sd.created_at = SqliteHelper::get_safe<std::string>(query, "created_at", "");
+    sd.note = SqliteHelper::get_safe<std::string>(query, "note", "");
+    return sd;
+}
+
 } // namespace SqliteMappers
 } // namespace lyra

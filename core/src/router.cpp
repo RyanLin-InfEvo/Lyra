@@ -15,6 +15,7 @@
 #include "controllers/asset_controller.h"
 #include "controllers/audio_controller.h"
 #include "controllers/playlist_controller.h"
+#include "controllers/source_data_controller.h"
 #include "controllers/tag_controller.h"
 #include "controllers/track_controller.h"
 #include "controllers/work_controller.h"
@@ -33,6 +34,7 @@
 #include "services/repositories/sqlite/sqlite_audio_repository.h"
 #include "services/repositories/sqlite/sqlite_image_repository.h"
 #include "services/repositories/sqlite/sqlite_playlist_repository.h"
+#include "services/repositories/sqlite/sqlite_source_data_repository.h"
 #include "services/repositories/sqlite/sqlite_tag_repository.h"
 #include "services/repositories/sqlite/sqlite_track_repository.h"
 #include "services/repositories/sqlite/sqlite_work_repository.h"
@@ -137,6 +139,7 @@ Router::Router(const std::string &db_path) {
     m_audio_repo = std::make_unique<SqliteAudioRepository>(*m_db_context);
     m_image_repo = std::make_unique<SqliteImageRepository>(*m_db_context);
     m_playlist_repo = std::make_unique<SqlitePlaylistRepository>(*m_db_context);
+    m_source_data_repo = std::make_unique<SqliteSourceDataRepository>(*m_db_context);
     m_tag_repo = std::make_unique<SqliteTagRepository>(*m_db_context);
     m_track_repo = std::make_unique<SqliteTrackRepository>(*m_db_context);
     m_work_repo = std::make_unique<SqliteWorkRepository>(*m_db_context);
@@ -148,6 +151,7 @@ Router::Router(const std::string &db_path) {
     m_asset_controller = std::make_unique<AssetController>(*m_asset_repo, m_storage_root);
     m_audio_controller = std::make_unique<AudioController>(*m_audio_repo);
     m_playlist_controller = std::make_unique<PlaylistController>(*m_playlist_repo);
+    m_source_data_controller = std::make_unique<SourceDataController>(*m_source_data_repo);
     m_tag_controller = std::make_unique<TagController>(*m_tag_repo);
     m_track_controller = std::make_unique<TrackController>(*m_track_repo);
     m_work_controller = std::make_unique<WorkController>(*m_work_repo);
@@ -160,7 +164,8 @@ Router::Router(const std::string &db_path) {
         *m_album_repo,
         *m_track_repo,
         m_storage_root,
-        m_image_repo.get());
+        m_image_repo.get(),
+        m_source_data_repo.get());
     m_cover_art_service = std::make_unique<CoverArtService>(
         *m_image_repo,
         *m_track_repo,
@@ -296,6 +301,10 @@ void Router::init_handlers() {
     m_handlers["tag.assign"] = [this](const json &p) { return handleTagAssign(p); };
     m_handlers["tag.remove"] = [this](const json &p) { return handleTagRemove(p); };
     m_handlers["tag.get_entity_tags"] = [this](const json &p) { return handleTagGetEntityTags(p); };
+
+    // SourceData endpoints
+    m_handlers["source_data.get_by_asset"] = [this](const json &p) { return handleSourceDataGetByAsset(p); };
+    m_handlers["source_data.create"] = [this](const json &p) { return handleSourceDataCreate(p); };
 }
 
 
@@ -500,11 +509,19 @@ json Router::handleListTracks(const json &params) {
 }
 
 json Router::handleImportTrack(const json &params) {
-    auto err = JsonValidator::validate(params, {{"source_path", Type::String, true}});
+    auto err = JsonValidator::validate(params, {{"source_path", Type::String, true},
+                                                {"source_type", Type::String, false},
+                                                {"note", Type::String, false}});
     if (err) return *err;
 
     TrackImportRequest req;
     req.source_path = params["source_path"].get<std::string>();
+    if (params.contains("source_type") && !params["source_type"].is_null()) {
+        req.source_type = params["source_type"].get<std::string>();
+    }
+    if (params.contains("note") && !params["note"].is_null()) {
+        req.note = params["note"].get<std::string>();
+    }
 
     auto res = m_ingestion_service->import_track(req);
     if (!res) return ApiResponse::error({ErrorType::InvalidValue, res.error()});
@@ -674,10 +691,21 @@ json Router::handleListAssets(const json &params) {
 }
 
 json Router::handleIngestAsset(const json &params) {
-    auto err = JsonValidator::validate(params, {{"source_path", Type::String, true}});
+    auto err = JsonValidator::validate(params, {{"source_path", Type::String, true},
+                                                {"source_type", Type::String, false},
+                                                {"note", Type::String, false}});
     if (err) return *err;
 
-    auto res = m_ingestion_service->ingest_asset(params["source_path"].get<std::string>());
+    std::string source_type = "";
+    if (params.contains("source_type") && !params["source_type"].is_null()) {
+        source_type = params["source_type"].get<std::string>();
+    }
+    std::string note = "";
+    if (params.contains("note") && !params["note"].is_null()) {
+        note = params["note"].get<std::string>();
+    }
+
+    auto res = m_ingestion_service->ingest_asset(params["source_path"].get<std::string>(), source_type, note);
     if (res) {
         json data;
         const auto &ingest_val = res.value();
@@ -2018,6 +2046,87 @@ json Router::handleTagGetEntityTags(const json &params) {
     }
     if (res.error().find("Entity not found") != std::string::npos) {
         return ApiResponse::error({ErrorType::NotFound, res.error()});
+    }
+    return ApiResponse::error({ErrorType::DatabaseError, res.error()});
+}
+
+// --- SourceData Handlers ---
+
+json Router::handleSourceDataGetByAsset(const json &params) {
+    auto err = JsonValidator::validate(params, {{"file_hash", Type::String, true}});
+    if (err) return *err;
+
+    // Input string post processing to remove leading/trailing " \t\r\n"
+    std::string raw_hash = params["file_hash"].get<std::string>();
+    size_t start = raw_hash.find_first_not_of(" \t\r\n");
+    if (start == std::string::npos) {
+        return ApiResponse::error({ErrorType::InvalidValue, "Value of key 'file_hash' should not be blank."});
+    }
+    size_t end = raw_hash.find_last_not_of(" \t\r\n");
+    std::string file_hash = raw_hash.substr(start, end - start + 1);
+    //
+
+
+    // Call & response
+    auto res = m_source_data_controller->get_by_asset(file_hash);
+    if (res) {
+        return ApiResponse::success(res.value());
+    }
+    if (res.error().find("Asset not found") != std::string::npos) {
+        return ApiResponse::error({ErrorType::AssetNotFound, res.error()});
+    }
+    if (res.error().find("SourceData not found") != std::string::npos) {
+        return ApiResponse::error({ErrorType::NotFound, res.error()});
+    }
+    return ApiResponse::error({ErrorType::DatabaseError, res.error()});
+}
+
+json Router::handleSourceDataCreate(const json &params) {
+    auto err = JsonValidator::validate(params, {{"file_hash", Type::String, true}});
+    if (err) return *err;
+
+    // Input string post processing to remove leading/trailing " \t\r\n"
+    std::string raw_hash = params["file_hash"].get<std::string>();
+    size_t hash_start = raw_hash.find_first_not_of(" \t\r\n");
+    if (hash_start == std::string::npos) {
+        return ApiResponse::error({ErrorType::InvalidValue, "Value of key 'file_hash' should not be blank."});
+    }
+    size_t hash_end = raw_hash.find_last_not_of(" \t\r\n");
+    //
+
+
+    // prepare SourceData source_data
+    SourceData source_data;
+    source_data.file_hash = raw_hash.substr(hash_start, hash_end - hash_start + 1);
+
+    auto parse_optional_string = [&](const char *key, std::string &target) -> std::optional<json> {
+        if (params.contains(key) && !params[key].is_null()) {
+            if (!params[key].is_string()) {
+                return ApiResponse::error(
+                    {ErrorType::InvalidValue, std::string("Value of key '") + key + "' is not a expected type."});
+            }
+            target = params[key].get<std::string>();
+        }
+        return std::nullopt;
+    };
+
+    if (auto e = parse_optional_string("source_type", source_data.source_type)) return *e;
+    if (auto e = parse_optional_string("original_path", source_data.original_path)) return *e;
+    if (auto e = parse_optional_string("note", source_data.note)) return *e;
+    //
+
+
+    // Call & response
+    auto res = m_source_data_controller->create(source_data);
+    if (res) {
+        json response;
+        response["code"] = 201;
+        response["data"] = source_data;
+        response["message"] = "Create SourceData success.";
+        return response;
+    }
+    if (res.error().find("Asset not found") != std::string::npos) {
+        return ApiResponse::error({ErrorType::AssetNotFound, res.error()});
     }
     return ApiResponse::error({ErrorType::DatabaseError, res.error()});
 }

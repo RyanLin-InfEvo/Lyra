@@ -5,6 +5,7 @@
  */
 
 #pragma once
+#include <nlohmann/json.hpp>
 #include <string>
 
 namespace lyra {
@@ -17,5 +18,7 @@ struct SourceData {
     std::string created_at = "";
     std::string note = "";
 };
+
+NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(SourceData, id, file_hash, source_type, original_path, created_at, note)
 
 } // namespace lyra
