@@ -11,8 +11,10 @@
 #include <cstdint>
 #include <filesystem>
 #include <fstream>
+#include <iostream>
 #include <string>
 #include <unordered_map>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 
@@ -31,6 +33,7 @@
 #include "../services/repositories/i_image_repository.h"
 #include "../services/repositories/i_source_data_repository.h"
 #include "../services/repositories/i_track_repository.h"
+#include "../services/text_service.h"
 #include "../utils/audio_helper.h"
 #include "../utils/sha256.h"
 #include "../utils/storage_helper.h"
@@ -164,7 +167,8 @@ IngestionService::IngestionService(
     ITrackRepository &track_repo,
     const std::string &storage_root,
     IImageRepository *image_repo,
-    ISourceDataRepository *source_data_repo)
+    ISourceDataRepository *source_data_repo,
+    TextService *text_service)
     : m_db_context(db_context),
       m_asset_repo(asset_repo),
       m_audio_repo(audio_repo),
@@ -173,7 +177,8 @@ IngestionService::IngestionService(
       m_track_repo(track_repo),
       m_storage_root(storage_root),
       m_image_repo(image_repo),
-      m_source_data_repo(source_data_repo) {}
+      m_source_data_repo(source_data_repo),
+      m_text_service(text_service) {}
 
 tl::expected<AssetIngestResult, std::string> IngestionService::ingest_asset(
     const std::string &source_path,
@@ -580,8 +585,41 @@ tl::expected<TrackImportResult, std::string> IngestionService::import_track(cons
         }
     }
 
-    // 11. Commit transaction
+    // 11. Commit transaction and release RAII guard before post-commit lyrics step
     tx->commit();
+    tx.reset();
+
+    // 12. Post-commit non-blocking embedded lyrics extraction (never reads sibling .lrc files)
+    std::vector<Text> imported_texts;
+    if (request.import_embedded_lyrics && m_text_service && !tags.embedded_lyrics.empty()) {
+        std::unordered_set<std::string> seen_text_hashes;
+        for (const auto &lyr : tags.embedded_lyrics) {
+            try {
+                SaveTextRequest text_req;
+                text_req.entity_id = track.id;
+                text_req.role = "lyrics";
+                text_req.content = lyr.content;
+                text_req.format = TextService::detect_lyrics_format(lyr.content);
+                if (!lyr.language.empty()) {
+                    text_req.language = lyr.language;
+                }
+                auto save_res = m_text_service->save_text(text_req);
+                if (save_res.has_value()) {
+                    if (seen_text_hashes.insert(save_res->text.text_hash).second) {
+                        imported_texts.push_back(save_res->text);
+                    }
+                } else {
+                    std::cerr << "[WARN] Embedded lyrics save skipped for track " << track.id
+                              << ": " << save_res.error().message << "\n";
+                }
+            } catch (const std::exception &e) {
+                std::cerr << "[WARN] Embedded lyrics save threw exception for track " << track.id
+                          << ": " << e.what() << "\n";
+            } catch (...) {
+                std::cerr << "[WARN] Embedded lyrics save threw unknown exception for track " << track.id << "\n";
+            }
+        }
+    }
 
     TrackImportResult res;
     res.track_id = track.id;
@@ -590,6 +628,7 @@ tl::expected<TrackImportResult, std::string> IngestionService::import_track(cons
     if (!artist_id.empty()) res.artist_id = artist_id;
     if (!album_id.empty()) res.album_id = album_id;
     res.cover_image_hash = ingest_res.value().cover_image_hash;
+    res.imported_texts = std::move(imported_texts);
 
     return res;
 }

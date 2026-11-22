@@ -6,28 +6,28 @@
 
 #pragma once
 
-#include <string>
-#include <vector>
 #include <filesystem>
+#include <string>
 #include <tl/expected.hpp>
+#include <vector>
 
 namespace lyra {
 namespace utils {
 
 class TempCleanup {
-public:
+  public:
     explicit TempCleanup(std::filesystem::path path);
     ~TempCleanup();
     void dismiss();
     void force_cleanup();
 
-private:
+  private:
     std::filesystem::path m_path;
     bool m_active = true;
 };
 
 class StorageHelper {
-public:
+  public:
     // CAS directory resolving:
     // Resolves the directory storage_root/objects/xx/yy where xx and yy are the first 2 and second 2 hex characters of the file_hash.
     static std::filesystem::path resolve_cas_dir(const std::string &storage_root, const std::string &file_hash);
@@ -47,6 +47,10 @@ public:
     // Moves temp_path to target_path (creating target parent dir if needed).
     // Uses rename, and falls back to copy & delete on failure.
     static tl::expected<void, std::string> move_to_cas(const std::filesystem::path &temp_path, const std::filesystem::path &target_path);
+
+    // Atomically publishes temp_path to target_path ONLY if target_path does not already exist.
+    // Returns true if this call created target_path, false if target_path already existed.
+    static tl::expected<bool, std::string> move_to_cas_if_absent(const std::filesystem::path &temp_path, const std::filesystem::path &target_path);
 
     // Directory scanning:
     // Finds a file in a target directory that starts with the given file_hash prefix.

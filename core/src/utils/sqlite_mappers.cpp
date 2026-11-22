@@ -124,5 +124,18 @@ SourceData map_source_data(SQLite::Statement &query) {
     return sd;
 }
 
+Text map_text(SQLite::Statement &query) {
+    Text text;
+    text.text_hash = query.getColumn("text_hash").getString();
+    text.file_hash = query.getColumn("file_hash").getString();
+    text.language = SqliteHelper::get_safe<std::string>(query, "language", "");
+    text.encoding = SqliteHelper::get_safe<std::string>(query, "encoding", "utf-8");
+    text.format = SqliteHelper::get_safe<std::string>(query, "format", "");
+    if (SqliteHelper::has_column(query, "role") && !query.isColumnNull("role")) {
+        text.role = query.getColumn("role").getString();
+    }
+    return text;
+}
+
 } // namespace SqliteMappers
 } // namespace lyra

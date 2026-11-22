@@ -330,6 +330,184 @@ bool test_month_and_day() {
     return true;
 }
 
+bool test_string_format_utf8_and_control_chars() {
+    std::cout << "Running test_string_format_utf8_and_control_chars..." << std::endl;
+
+    auto assert_invalid_value = [](const std::optional<json> &err, const std::string &label) -> bool {
+        if (!err.has_value()) {
+            std::cerr << "FAILED (" << label << "): expected error, got success" << std::endl;
+            return false;
+        }
+        if (err->value("code", 0) != 400) {
+            std::cerr << "FAILED (" << label << "): expected code 400, got " << err->dump() << std::endl;
+            return false;
+        }
+        if (!err->contains("error") || !(*err)["error"].is_object() ||
+            (*err)["error"].value("type", "") != "InvalidValue") {
+            std::cerr << "FAILED (" << label << "): expected InvalidValue, got " << err->dump() << std::endl;
+            return false;
+        }
+        return true;
+    };
+
+    // 1. StringFormat::SingleLineText
+    std::vector<ValidationRule> single_rules = {
+        {"label", Type::String, true, StringFormat::SingleLineText}};
+    for (const std::string &valid : {
+             std::string("zh-TW"),
+             std::string("繁體中文 🎵"),
+             std::string("\xC2\xA0"),
+             std::string("\xF0\x9F\x91\xA8\xE2\x80\x8D\xF0\x9F\x91\xA9\xE2\x80\x8D\xF0\x9F\x91\xA7\xE2\x80\x8D\xF0\x9F\x91\xA6"),
+         }) {
+        json p = {{"label", valid}};
+        auto err = JsonValidator::validate(p, single_rules);
+        if (err.has_value()) {
+            std::cerr << "SingleLineText rejected valid input: " << err->dump() << std::endl;
+            return false;
+        }
+    }
+    const std::vector<std::pair<std::string, std::string>> bad_single = {
+        {"NUL", std::string("a\0b", 3)},
+        {"tab", "a\tb"},
+        {"LF", "a\nb"},
+        {"CR", "a\rb"},
+        {"SOH", "a\x01"
+                "b"},
+        {"ESC", "a\x1b"
+                "b"},
+        {"DEL", "a\x7f"
+                "b"},
+        {"C1_0080", "a\xC2\x80"
+                    "b"},
+        {"C1_0085", "a\xC2\x85"
+                    "b"},
+        {"C1_009F", "a\xC2\x9F"
+                    "b"},
+        {"invalid_byte", "\xFF"},
+        {"overlong_3byte", "\xE0\x9F\xBF"},
+        {"surrogate", "\xED\xA0\x80"},
+        {"above_max_codepoint", "\xF4\x90\x80\x80"},
+        {"truncated_3byte", "\xE0\xA0"},
+    };
+    for (const auto &[name, val] : bad_single) {
+        json p = {{"label", val}};
+        if (!assert_invalid_value(JsonValidator::validate(p, single_rules), "SingleLineText/" + name)) {
+            return false;
+        }
+    }
+
+    // 2. StringFormat::MultilineText
+    std::vector<ValidationRule> multi_rules = {
+        {"body", Type::String, true, StringFormat::MultilineText}};
+    for (const std::string &valid : {
+             std::string("line1\tword\nline2\r\nline3\rline4"),
+             std::string("\xEF\xBB\xBF\xC2\xA0\xF0\x9F\x91\xA8\xE2\x80\x8D\xF0\x9F\x91\xA9"),
+         }) {
+        json p = {{"body", valid}};
+        auto err = JsonValidator::validate(p, multi_rules);
+        if (err.has_value()) {
+            std::cerr << "MultilineText rejected valid input: " << err->dump() << std::endl;
+            return false;
+        }
+    }
+    const std::vector<std::pair<std::string, std::string>> bad_multi = {
+        {"NUL", std::string("a\0b", 3)},
+        {"SOH", "a\x01"
+                "b"},
+        {"VT", "a\x0b"
+               "b"},
+        {"FF", "a\x0c"
+               "b"},
+        {"ESC", "a\x1b"
+                "b"},
+        {"DEL", "a\x7f"
+                "b"},
+        {"C1_0080", "a\xC2\x80"
+                    "b"},
+        {"C1_0085", "a\xC2\x85"
+                    "b"},
+        {"C1_0092", "a\xC2\x92"
+                    "b"},
+        {"C1_009F", "a\xC2\x9F"
+                    "b"},
+        {"invalid_byte", "\xFF"},
+        {"truncated_3byte", "\xE0\xA0"},
+    };
+    for (const auto &[name, val] : bad_multi) {
+        json p = {{"body", val}};
+        if (!assert_invalid_value(JsonValidator::validate(p, multi_rules), "MultilineText/" + name)) {
+            return false;
+        }
+    }
+
+    // 3. Empty string rejected for SingleLineText and MultilineText
+    if (!assert_invalid_value(JsonValidator::validate(json{{"label", ""}}, single_rules), "SingleLineText/empty")) {
+        return false;
+    }
+    if (!assert_invalid_value(JsonValidator::validate(json{{"body", ""}}, multi_rules), "MultilineText/empty")) {
+        return false;
+    }
+
+    // 4. Wrong JSON types rejected safely (type_valid before get_ref)
+    for (const json &wrong : {json(123), json(true), json::array(), json::object()}) {
+        if (!assert_invalid_value(JsonValidator::validate(json{{"label", wrong}}, single_rules),
+                                  "SingleLineText/wrong_type")) {
+            return false;
+        }
+        if (!assert_invalid_value(JsonValidator::validate(json{{"body", wrong}}, multi_rules),
+                                  "MultilineText/wrong_type")) {
+            return false;
+        }
+    }
+
+    // 5. Combined min_length / max_length with SingleLineText and MultilineText
+    std::vector<ValidationRule> bounded_single = {
+        {"label", Type::String, true, StringFormat::SingleLineText, 2, 5}};
+    if (JsonValidator::validate(json{{"label", "ok"}}, bounded_single).has_value()) {
+        std::cerr << "Bounded SingleLineText rejected valid input" << std::endl;
+        return false;
+    }
+    if (!assert_invalid_value(JsonValidator::validate(json{{"label", "a"}}, bounded_single),
+                              "BoundedSingle/too_short")) {
+        return false;
+    }
+    if (!assert_invalid_value(JsonValidator::validate(json{{"label", "a\x1b"
+                                                                     "b"}},
+                                                      bounded_single),
+                              "BoundedSingle/control_char")) {
+        return false;
+    }
+    std::vector<ValidationRule> bounded_multi = {
+        {"body", Type::String, true, StringFormat::MultilineText, 3, 10}};
+    if (JsonValidator::validate(json{{"body", "a\nb\tc"}}, bounded_multi).has_value()) {
+        std::cerr << "Bounded MultilineText rejected valid input" << std::endl;
+        return false;
+    }
+    if (!assert_invalid_value(JsonValidator::validate(json{{"body", "01234567890"}}, bounded_multi),
+                              "BoundedMulti/too_long")) {
+        return false;
+    }
+    if (!assert_invalid_value(JsonValidator::validate(json{{"body", "a\x0b"
+                                                                    "bc"}},
+                                                      bounded_multi),
+                              "BoundedMulti/control_char")) {
+        return false;
+    }
+
+    // 6. StringFormat::Any remains unchanged (non-breaking for endpoints outside this commit)
+    std::vector<ValidationRule> any_rules = {{"raw", Type::String, true, StringFormat::Any}};
+    for (const std::string &legacy : {std::string("a\nb"), std::string("a\x1b"
+                                                                       "b")}) {
+        json p = {{"raw", legacy}};
+        if (JsonValidator::validate(p, any_rules).has_value()) {
+            std::cerr << "StringFormat::Any behavior unexpectedly changed" << std::endl;
+            return false;
+        }
+    }
+
+    return true;
+}
+
 int main() {
     if (!test_boolean()) return 1;
     if (!test_array()) return 1;
@@ -338,6 +516,7 @@ int main() {
     if (!test_number()) return 1;
     if (!test_invalid_json_format()) return 1;
     if (!test_month_and_day()) return 1;
+    if (!test_string_format_utf8_and_control_chars()) return 1;
 
     std::cout << "ALL_TESTS_PASSED" << std::endl;
     return 0;

@@ -26,7 +26,9 @@ enum class JsonFieldType { String,
                            Object };
 
 enum class StringFormat { Any,
-                          UUID }; // ISWC, musicbrainz_id etc
+                          UUID,
+                          SingleLineText,
+                          MultilineText }; // ISWC, musicbrainz_id etc
 
 // define validation rule
 struct ValidationRule {

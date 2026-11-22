@@ -364,6 +364,45 @@ void SqliteDatabaseContext::init_schema() {
     m_db.exec("CREATE INDEX IF NOT EXISTS idx_SourceData_file_hash ON Source_Data (file_hash);");
 
     m_db.exec(R"(
+        CREATE TABLE IF NOT EXISTS Text (
+          text_hash TEXT NOT NULL,
+          file_hash TEXT NOT NULL,
+          language TEXT NULL DEFAULT NULL,
+          encoding TEXT NULL DEFAULT 'utf-8',
+          format TEXT NOT NULL CHECK( format IN ('lrc', 'txt', 'srt', 'ttml') ),
+          PRIMARY KEY (text_hash),
+          CONSTRAINT fk_Text_Asset
+            FOREIGN KEY (file_hash)
+            REFERENCES Asset (file_hash)
+            ON DELETE CASCADE
+            ON UPDATE CASCADE
+        );
+    )");
+
+    m_db.exec(R"(
+        CREATE TABLE IF NOT EXISTS Entity_Text (
+          entity_id TEXT NOT NULL,
+          text_hash TEXT NOT NULL,
+          role TEXT NOT NULL CHECK( role IN ('lyrics', 'lyrics_translation', 'lyrics_transliteration', 'description', 'biography', 'liner_notes', 'credits', 'review', 'trivia', 'other') ),
+          PRIMARY KEY (entity_id, text_hash),
+          CONSTRAINT fk_EntityText_Text
+            FOREIGN KEY (text_hash)
+            REFERENCES Text (text_hash)
+            ON DELETE CASCADE
+            ON UPDATE CASCADE,
+          CONSTRAINT fk_EntityText_Entity
+            FOREIGN KEY (entity_id)
+            REFERENCES Entity (id)
+            ON DELETE CASCADE
+            ON UPDATE CASCADE
+        );
+    )");
+
+    m_db.exec("CREATE INDEX IF NOT EXISTS idx_Text_file_hash ON Text (file_hash);");
+    m_db.exec("CREATE INDEX IF NOT EXISTS idx_EntityText_text_hash ON Entity_Text (text_hash);");
+    m_db.exec("CREATE INDEX IF NOT EXISTS idx_EntityText_entity_role ON Entity_Text (entity_id, role, text_hash);");
+
+    m_db.exec(R"(
         CREATE TRIGGER IF NOT EXISTS trg_Album_updated_at
         AFTER UPDATE ON Album
         BEGIN

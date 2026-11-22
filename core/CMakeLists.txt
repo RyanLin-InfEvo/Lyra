@@ -45,10 +45,12 @@ set(CPP
     src/services/repositories/sqlite/sqlite_playlist_repository.cpp
     src/services/repositories/sqlite/sqlite_source_data_repository.cpp
     src/services/repositories/sqlite/sqlite_tag_repository.cpp
+    src/services/repositories/sqlite/sqlite_text_repository.cpp
     src/services/repositories/sqlite/sqlite_track_repository.cpp
     src/services/repositories/sqlite/sqlite_work_repository.cpp
     src/utils/uuid_generator.cpp
     src/utils/json_validator.cpp
+    src/utils/utf8_helper.cpp
     src/utils/sha256.cpp
     src/utils/sqlite_helper.cpp
     src/utils/sqlite_mappers.cpp
@@ -72,6 +74,7 @@ set(CPP
     src/services/audio_engine.cpp
     src/services/ingestion_service.cpp
     src/services/cover_art_service.cpp
+    src/services/text_service.cpp
     src/services/waveform_service.cpp
     src/services/audio_scorer.cpp
     src/services/playback_service.cpp
@@ -184,4 +187,8 @@ if(BUILD_TESTING)
     add_executable(source_data_repository_test tests/source_data_repository_test.cpp)
     target_link_libraries(source_data_repository_test PRIVATE lyra_core nlohmann_json::nlohmann_json fmt::fmt SQLiteCpp)
     target_include_directories(source_data_repository_test PRIVATE include src)
+
+    add_executable(text_service_test tests/text_service_test.cpp)
+    target_link_libraries(text_service_test PRIVATE lyra_core nlohmann_json::nlohmann_json fmt::fmt SQLiteCpp)
+    target_include_directories(text_service_test PRIVATE include src)
 endif()

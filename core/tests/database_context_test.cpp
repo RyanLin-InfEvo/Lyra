@@ -399,6 +399,62 @@ bool test_schema_indexes(const std::string &db_path) {
     }
 }
 
+bool test_post_commit_before_scope_exit_starts_fresh_top_level_tx(const std::string &db_path) {
+    try {
+        SqliteDatabaseContext ctx(db_path);
+        auto &db = ctx.get_db();
+
+        TableCleaner cleaner{db, "test_post_commit"};
+        db.exec("CREATE TABLE IF NOT EXISTS test_post_commit (id INTEGER PRIMARY KEY, val TEXT);");
+        db.exec("DELETE FROM test_post_commit;");
+
+        SQLite::Database reader(db_path, SQLite::OPEN_READONLY);
+
+        // 1. Commit tx1 while keeping tx1 alive in scope!
+        auto tx1 = ctx.begin_transaction();
+        db.exec("INSERT INTO test_post_commit (id, val) VALUES (1, 'first');");
+        tx1->commit();
+
+        // 2. Start tx2 while tx1 is still in scope. If m_depth leaked == 1, tx2 would open SAVEPOINT sp_1
+        // instead of BEGIN IMMEDIATE + COMMIT + wal_checkpoint(PASSIVE), and visibility to reader would fail.
+        {
+            auto tx2 = ctx.begin_transaction();
+            db.exec("INSERT INTO test_post_commit (id, val) VALUES (2, 'second');");
+            tx2->commit();
+        }
+
+        // Reader must immediately see id=2 before tx1 goes out of scope.
+        {
+            SQLite::Statement q(reader, "SELECT COUNT(*) FROM test_post_commit WHERE id = 2;");
+            if (!q.executeStep() || q.getColumn(0).getInt() != 1) {
+                std::cerr << "test_post_commit FAILED: reader did not see tx2 committed row (m_depth leaked!)\n";
+                return false;
+            }
+        }
+
+        // 3. Also ensure rolling back tx3 while tx1 is still in scope does NOT roll back tx1,
+        // and starting tx3 uses BEGIN IMMEDIATE (no active SQLite transaction leaked).
+        {
+            auto tx3 = ctx.begin_transaction();
+            db.exec("INSERT INTO test_post_commit (id, val) VALUES (3, 'rolled_back');");
+            // let tx3 roll back without commit
+        }
+        {
+            SQLite::Statement q1(db, "SELECT COUNT(*) FROM test_post_commit WHERE id = 1;");
+            SQLite::Statement q3(db, "SELECT COUNT(*) FROM test_post_commit WHERE id = 3;");
+            if (!q1.executeStep() || q1.getColumn(0).getInt() != 1 ||
+                !q3.executeStep() || q3.getColumn(0).getInt() != 0) {
+                std::cerr << "test_post_commit FAILED: tx3 rollback corrupted committed state\n";
+                return false;
+            }
+        }
+        return true;
+    } catch (const std::exception &e) {
+        std::cerr << "test_post_commit failed with unexpected exception: " << e.what() << "\n";
+        return false;
+    }
+}
+
 int main(int argc, char *argv[]) {
     if (argc < 2) {
         std::cerr << "Usage: " << argv[0] << " <db_path>\n";
@@ -409,45 +465,51 @@ int main(int argc, char *argv[]) {
 
     bool all_passed = true;
 
-    std::cout << "[1/7] Running test_basic_transaction..." << std::endl;
+    std::cout << "[1/8] Running test_basic_transaction..." << std::endl;
     if (!test_basic_transaction(db_path1)) {
         std::cerr << "test_basic_transaction FAILED\n";
         all_passed = false;
     }
 
-    std::cout << "[2/7] Running test_savepoint_rollback..." << std::endl;
+    std::cout << "[2/8] Running test_savepoint_rollback..." << std::endl;
     if (!test_savepoint_rollback(db_path1)) {
         std::cerr << "test_savepoint_rollback FAILED\n";
         all_passed = false;
     }
 
-    std::cout << "[3/7] Running test_nested_savepoint_rollback_and_commit..." << std::endl;
+    std::cout << "[3/8] Running test_nested_savepoint_rollback_and_commit..." << std::endl;
     if (!test_nested_savepoint_rollback_and_commit(db_path1)) {
         std::cerr << "test_nested_savepoint_rollback_and_commit FAILED\n";
         all_passed = false;
     }
 
-    std::cout << "[4/7] Running test_context_isolation..." << std::endl;
+    std::cout << "[4/8] Running test_context_isolation..." << std::endl;
     if (!test_context_isolation(db_path1, db_path2)) {
         std::cerr << "test_context_isolation FAILED\n";
         all_passed = false;
     }
 
-    std::cout << "[5/7] Running test_wal_checkpoint_visibility..." << std::endl;
+    std::cout << "[5/8] Running test_wal_checkpoint_visibility..." << std::endl;
     if (!test_wal_checkpoint_visibility(db_path1)) {
         std::cerr << "test_wal_checkpoint_visibility FAILED\n";
         all_passed = false;
     }
 
-    std::cout << "[6/7] Running test_with_transaction..." << std::endl;
+    std::cout << "[6/8] Running test_with_transaction..." << std::endl;
     if (!test_with_transaction(db_path1)) {
         std::cerr << "test_with_transaction FAILED\n";
         all_passed = false;
     }
 
-    std::cout << "[7/7] Running test_schema_indexes..." << std::endl;
+    std::cout << "[7/8] Running test_schema_indexes..." << std::endl;
     if (!test_schema_indexes(db_path1)) {
         std::cerr << "test_schema_indexes FAILED\n";
+        all_passed = false;
+    }
+
+    std::cout << "[8/8] Running test_post_commit_before_scope_exit_starts_fresh_top_level_tx..." << std::endl;
+    if (!test_post_commit_before_scope_exit_starts_fresh_top_level_tx(db_path1)) {
+        std::cerr << "test_post_commit_before_scope_exit_starts_fresh_top_level_tx FAILED\n";
         all_passed = false;
     }
 

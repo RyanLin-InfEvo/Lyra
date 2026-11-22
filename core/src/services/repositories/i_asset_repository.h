@@ -18,8 +18,10 @@ class IAssetRepository {
     virtual ~IAssetRepository() = default;
 
     virtual tl::expected<void, std::string> insert(const Asset &asset) = 0;
+    virtual tl::expected<void, std::string> insert_if_absent(const Asset &asset) = 0;
     virtual tl::expected<void, std::string> update(const AssetUpdate &update_data) = 0;
     virtual tl::expected<Asset, std::string> get(const std::string &file_hash) = 0;
+    virtual tl::expected<bool, std::string> exists(const std::string &file_hash) = 0;
     virtual tl::expected<PaginatedResult<Asset>, std::string> list(
         int offset, int limit, const std::optional<std::string> &search) = 0;
 

@@ -36,8 +36,10 @@
 #include "services/repositories/sqlite/sqlite_playlist_repository.h"
 #include "services/repositories/sqlite/sqlite_source_data_repository.h"
 #include "services/repositories/sqlite/sqlite_tag_repository.h"
+#include "services/repositories/sqlite/sqlite_text_repository.h"
 #include "services/repositories/sqlite/sqlite_track_repository.h"
 #include "services/repositories/sqlite/sqlite_work_repository.h"
+#include "services/text_service.h"
 #include "services/waveform_service.h"
 #include "utils/audio_helper.h"
 #include "utils/json_helper.h"
@@ -141,6 +143,7 @@ Router::Router(const std::string &db_path) {
     m_playlist_repo = std::make_unique<SqlitePlaylistRepository>(*m_db_context);
     m_source_data_repo = std::make_unique<SqliteSourceDataRepository>(*m_db_context);
     m_tag_repo = std::make_unique<SqliteTagRepository>(*m_db_context);
+    m_text_repo = std::make_unique<SqliteTextRepository>(*m_db_context);
     m_track_repo = std::make_unique<SqliteTrackRepository>(*m_db_context);
     m_work_repo = std::make_unique<SqliteWorkRepository>(*m_db_context);
 
@@ -156,6 +159,11 @@ Router::Router(const std::string &db_path) {
     m_track_controller = std::make_unique<TrackController>(*m_track_repo);
     m_work_controller = std::make_unique<WorkController>(*m_work_repo);
     m_audio_engine = std::make_unique<AudioEngine>();
+    m_text_service = std::make_unique<TextService>(
+        *m_db_context,
+        *m_asset_repo,
+        *m_text_repo,
+        m_storage_root);
     m_ingestion_service = std::make_unique<IngestionService>(
         *m_db_context,
         *m_asset_repo,
@@ -165,7 +173,8 @@ Router::Router(const std::string &db_path) {
         *m_track_repo,
         m_storage_root,
         m_image_repo.get(),
-        m_source_data_repo.get());
+        m_source_data_repo.get(),
+        m_text_service.get());
     m_cover_art_service = std::make_unique<CoverArtService>(
         *m_image_repo,
         *m_track_repo,
@@ -305,6 +314,12 @@ void Router::init_handlers() {
     // SourceData endpoints
     m_handlers["source_data.get_by_asset"] = [this](const json &p) { return handleSourceDataGetByAsset(p); };
     m_handlers["source_data.create"] = [this](const json &p) { return handleSourceDataCreate(p); };
+
+    // Text & Lyrics endpoints
+    m_handlers["text.save"] = [this](const json &p) { return handleTextSave(p); };
+    m_handlers["text.get"] = [this](const json &p) { return handleTextGet(p); };
+    m_handlers["text.get_entity_texts"] = [this](const json &p) { return handleTextGetEntityTexts(p); };
+    m_handlers["text.unlink"] = [this](const json &p) { return handleTextUnlink(p); };
 }
 
 
@@ -511,10 +526,22 @@ json Router::handleListTracks(const json &params) {
     return ApiResponse::error({ErrorType::DatabaseError, res.error()});
 }
 
+/**
+ * @brief Handles 'ImportTrack' to ingest an audio file into CAS and create Track/Artist/Album metadata.
+ *
+ * UI Usage Notes:
+ * - Pre-import toggle: Pass `"import_embedded_lyrics": true|false` (defaults to `true`) to match the UI
+ *   import dialog checkbox for whether embedded audio tag lyrics should be imported automatically.
+ * - Sibling `.lrc` sidecar files on disk are intentionally NOT scanned by Core; UI should handle sidecar
+ *   discovery/encoding conversion and call `text.save` after user confirmation.
+ * - Post-import undo: `data.imported_texts` lists every `Text` metadata record auto-attached during import
+ *   (may be empty). UI can display a toast/banner and let the user remove any unwanted item via `text.unlink`.
+ */
 json Router::handleImportTrack(const json &params) {
     if (auto err = JsonValidator::validate(params, {{"source_path", Type::String, true},
                                                     {"source_type", Type::String, false},
-                                                    {"note", Type::String, false}});
+                                                    {"note", Type::String, false},
+                                                    {"import_embedded_lyrics", Type::Boolean, false}});
         err) return *err;
 
     TrackImportRequest req;
@@ -524,6 +551,9 @@ json Router::handleImportTrack(const json &params) {
     }
     if (params.contains("note") && !params["note"].is_null()) {
         req.note = params["note"].get<std::string>();
+    }
+    if (params.contains("import_embedded_lyrics") && !params["import_embedded_lyrics"].is_null()) {
+        req.import_embedded_lyrics = params["import_embedded_lyrics"].get<bool>();
     }
 
     auto res = m_ingestion_service->import_track(req);
@@ -537,6 +567,12 @@ json Router::handleImportTrack(const json &params) {
     if (val.artist_id.has_value()) response_data["artist_id"] = *val.artist_id;
     if (val.album_id.has_value()) response_data["album_id"] = *val.album_id;
     if (val.cover_image_hash.has_value()) response_data["cover_image_hash"] = *val.cover_image_hash;
+
+    json imported_texts_json = json::array();
+    for (const auto &t : val.imported_texts) {
+        imported_texts_json.push_back(t);
+    }
+    response_data["imported_texts"] = std::move(imported_texts_json);
 
     return ApiResponse::success(response_data);
 }
@@ -2148,6 +2184,208 @@ json Router::handleSourceDataCreate(const json &params) {
         return ApiResponse::error({ErrorType::AssetNotFound, res.error()});
     }
     return ApiResponse::error({ErrorType::DatabaseError, res.error()});
+}
+
+// --- Text & Lyrics Handlers ---
+
+namespace {
+
+tl::expected<std::optional<std::string>, json> get_optional_string_param(const json &params, const char *key) {
+    if (!params.contains(key) || params[key].is_null()) {
+        return std::nullopt;
+    }
+    if (!params[key].is_string()) {
+        return tl::unexpected(ApiResponse::error(
+            {ErrorType::InvalidValue, std::string("Value of key '") + key + "' is not a expected type."}));
+    }
+    return params[key].get<std::string>();
+}
+
+} // namespace
+
+/**
+ * @brief Handles 'text.save' to store UTF-8 text into CAS or attach an existing Text record to an entity.
+ *
+ * UI Usage Notes:
+ * - Exclusive payload modes (XOR):
+ *   1) Content mode: provide `entity_id`, `role`, `content` (UTF-8), `format` (`lrc|txt|srt|ttml`),
+ *      and optional `language`. Core normalizes `\r\n`/`\r` -> `\n` before hashing & storing to CAS.
+ *   2) Attach mode: provide `entity_id`, `role`, and `text_hash` (do NOT pass `format` or `language`).
+ * - Additive semantics: Existing associations with the same `(role, language)` are preserved, not overwritten.
+ * - Response includes `data.existing_same_slot_count`: if `> 0`, UI should inform the user that other text
+ *   entries already exist for the same `(role, language)` and offer checkboxes to remove old ones via `text.unlink`.
+ * - Control-character validation: Core rejects any C0/C1 control characters in `content` other than `\t`, `\n`, `\r`
+ *   (and never silently strips them). UI should proactively detect invisible control characters when importing `.lrc`/`.txt`
+ *   files or pasting from clipboard and prompt the user to clean or normalize them before calling `text.save`.
+ */
+json Router::handleTextSave(const json &params) {
+    if (auto err = JsonValidator::validate(params, {{"entity_id", Type::String, true, StringFormat::UUID},
+                                                    {"role", Type::String, true},
+                                                    {"content", Type::String, false},
+                                                    {"text_hash", Type::String, false},
+                                                    {"format", Type::String, false}});
+        err) return *err;
+
+    if (!m_text_service) {
+        return ApiResponse::error({ErrorType::DatabaseError, "Text service not available"});
+    }
+
+    auto lang_res = get_optional_string_param(params, "language");
+    if (!lang_res) return lang_res.error();
+
+    SaveTextRequest req;
+    req.entity_id = params["entity_id"].get<std::string>();
+    req.role = params["role"].get<std::string>();
+    if (params.contains("content") && !params["content"].is_null()) {
+        req.content = params["content"].get<std::string>();
+    }
+    if (params.contains("text_hash") && !params["text_hash"].is_null()) {
+        req.text_hash = params["text_hash"].get<std::string>();
+    }
+    if (params.contains("format") && !params["format"].is_null()) {
+        req.format = params["format"].get<std::string>();
+    }
+    req.language = std::move(*lang_res);
+
+    auto res = m_text_service->save_text(req);
+    if (!res) {
+        return ApiResponse::error(res.error());
+    }
+
+    json data = res->text;
+    data["existing_same_slot_count"] = res->existing_same_slot_count;
+
+    json response;
+    response["code"] = 201;
+    response["data"] = std::move(data);
+    response["message"] = "Save Text success.";
+    return response;
+}
+
+/**
+ * @brief Handles 'text.get' to retrieve a single text payload (including UTF-8 `content`).
+ *
+ * UI Usage Notes:
+ * - Exclusive lookup modes (XOR):
+ *   1) Direct lookup: pass `text_hash` (must NOT include `role` or `language`). Always unambiguous.
+ *   2) Entity lookup: pass `entity_id` with optional `role` and `language` filters.
+ * - Ambiguity protection: In `entity_id` mode, if multiple matching records exist, Core returns HTTP 409 `Conflict`.
+ *   When receiving `Conflict`, UI should call `text.get_entity_texts` to list metadata variants (language/role/hash)
+ *   and then fetch the user's chosen variant via `text.get({ "text_hash": ... })`.
+ */
+json Router::handleTextGet(const json &params) {
+    if (auto err = JsonValidator::validate(params, {{"text_hash", Type::String, false},
+                                                    {"entity_id", Type::String, false, StringFormat::UUID},
+                                                    {"role", Type::String, false}});
+        err) return *err;
+
+    if (!m_text_service) {
+        return ApiResponse::error({ErrorType::DatabaseError, "Text service not available"});
+    }
+
+    const bool has_hash = params.contains("text_hash") && !params["text_hash"].is_null();
+    const bool has_entity = params.contains("entity_id") && !params["entity_id"].is_null();
+    if (!has_hash && !has_entity) {
+        return ApiResponse::error({ErrorType::MissingParameter, "Must provide either 'text_hash' or 'entity_id'."});
+    }
+    if (has_hash && has_entity) {
+        return ApiResponse::error({ErrorType::InvalidValue, "Cannot provide both 'text_hash' and 'entity_id'."});
+    }
+
+    tl::expected<TextContentResult, Error> res = tl::unexpected(Error{ErrorType::DatabaseError, ""});
+    if (has_hash) { // Direct lookup
+        if ((params.contains("role") && !params["role"].is_null()) ||
+            (params.contains("language") && !params["language"].is_null())) {
+            return ApiResponse::error({ErrorType::InvalidValue,
+                                       "Cannot specify 'role' or 'language' when querying by 'text_hash'."});
+        }
+        res = m_text_service->get_text_by_hash(params["text_hash"].get<std::string>());
+    } else { // Entity lookup
+        std::optional<std::string> role = std::nullopt;
+        if (params.contains("role") && !params["role"].is_null()) {
+            role = params["role"].get<std::string>();
+        }
+
+        auto lang_res = get_optional_string_param(params, "language");
+        if (!lang_res) return lang_res.error();
+
+        res = m_text_service->get_entity_text(
+            params["entity_id"].get<std::string>(), role, *lang_res);
+    }
+
+    if (!res) {
+        return ApiResponse::error(res.error());
+    }
+
+    json data = res->text;
+    data["content"] = res->content;
+    return ApiResponse::success(data);
+}
+
+/**
+ * @brief Handles 'text.get_entity_texts' to list text metadata records linked to an entity (without file content).
+ *
+ * UI Usage Notes:
+ * - Use to inspect all available text versions/languages/roles on a Track/Album/Artist/Work/Playlist before
+ *   fetching specific content with `text.get({ "text_hash": ... })`, or to render a cleanup dialog after `text.save`
+ *   reports `existing_same_slot_count > 0`.
+ */
+json Router::handleTextGetEntityTexts(const json &params) {
+    if (auto err = JsonValidator::validate(params, {{"entity_id", Type::String, true, StringFormat::UUID},
+                                                    {"role", Type::String, false}});
+        err) return *err;
+
+    if (!m_text_service) {
+        return ApiResponse::error({ErrorType::DatabaseError, "Text service not available"});
+    }
+
+    std::optional<std::string> role = std::nullopt;
+    if (params.contains("role") && !params["role"].is_null()) {
+        role = params["role"].get<std::string>();
+    }
+
+    auto lang_res = get_optional_string_param(params, "language");
+    if (!lang_res) return lang_res.error();
+
+    auto res = m_text_service->get_entity_texts(
+        params["entity_id"].get<std::string>(), role, *lang_res);
+    if (!res) {
+        return ApiResponse::error(res.error());
+    }
+
+    json arr = json::array();
+    for (const auto &item : res.value()) {
+        arr.push_back(item);
+    }
+    return ApiResponse::success(arr);
+}
+
+/**
+ * @brief Handles 'text.unlink' to remove the association between an entity and a Text record.
+ *
+ * UI Usage Notes:
+ * - Use when the user confirms deleting an older duplicate text entry (after `text.save` reports
+ *   `existing_same_slot_count > 0`) or opts to undo/remove an auto-imported embedded lyric from `ImportTrack`.
+ */
+json Router::handleTextUnlink(const json &params) {
+    if (auto err = JsonValidator::validate(params, {{"entity_id", Type::String, true, StringFormat::UUID},
+                                                    {"text_hash", Type::String, true}});
+        err) return *err;
+
+    if (!m_text_service) {
+        return ApiResponse::error({ErrorType::DatabaseError, "Text service not available"});
+    }
+
+    const std::string entity_id = params["entity_id"].get<std::string>();
+    const std::string text_hash = params["text_hash"].get<std::string>();
+    auto res = m_text_service->unlink_entity_text(entity_id, text_hash);
+    if (!res) {
+        return ApiResponse::error(res.error());
+    }
+
+    json response = ApiResponse::success({{"entity_id", entity_id}, {"text_hash", text_hash}});
+    response["message"] = "Unlink Text success.";
+    return response;
 }
 
 json Router::route(const json &request) {

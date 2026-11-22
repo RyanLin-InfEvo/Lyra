@@ -19,6 +19,11 @@ struct Asset;
 
 namespace utils {
 
+struct EmbeddedLyricsTag {
+    std::string content;
+    std::string language;
+};
+
 struct MediaMetadata {
     double duration = 0.0;
     int sample_rate = 0;
@@ -32,6 +37,7 @@ struct MediaMetadata {
     std::optional<std::string> album;
     std::optional<std::string> date;
     std::optional<std::string> track;
+    std::vector<EmbeddedLyricsTag> embedded_lyrics;
 };
 
 struct AudioQualityInfo {

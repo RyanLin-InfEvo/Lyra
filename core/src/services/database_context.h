@@ -104,6 +104,7 @@ class SqliteDatabaseContext : public IDatabaseContext {
         }
 
         ~SqliteTransaction() {
+            if (!m_active) return;
             if (!m_committed) {
                 try {
                     if (m_savepoint_name.empty()) {
@@ -116,11 +117,12 @@ class SqliteDatabaseContext : public IDatabaseContext {
                     // Critical: Destructors must not throw.
                 }
             }
+            m_active = false;
             m_depth--;
         }
 
         void commit() override {
-            if (m_committed) return;
+            if (!m_active || m_committed) return;
             if (m_savepoint_name.empty()) {
                 m_db.exec("COMMIT;");
                 try {
@@ -131,6 +133,8 @@ class SqliteDatabaseContext : public IDatabaseContext {
                 m_db.exec("RELEASE SAVEPOINT " + m_savepoint_name + ";");
             }
             m_committed = true;
+            m_active = false;
+            m_depth--;
         }
 
       private:
@@ -138,6 +142,7 @@ class SqliteDatabaseContext : public IDatabaseContext {
         int &m_depth;
         std::string m_savepoint_name;
         bool m_committed = false;
+        bool m_active = true;
     };
 };
 

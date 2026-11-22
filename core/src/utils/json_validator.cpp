@@ -10,6 +10,7 @@
 
 #include "json_validator.h"
 #include "make_error.h"
+#include "utf8_helper.h"
 
 namespace lyra {
 
@@ -85,7 +86,7 @@ std::optional<json> JsonValidator::validate(const json &params,
             if (rule.expected_type == JsonFieldType::String) {
 
                 // Get string value
-                std::string str_val = params[rule.key].get<std::string>();
+                const std::string &str_val = params[rule.key].get_ref<const std::string &>();
 
                 // Check length if
                 // 1. too short
@@ -99,11 +100,21 @@ std::optional<json> JsonValidator::validate(const json &params,
                                                "Value of key '" + current_path + "' is too long. Max length is " + std::to_string(rule.max_length.value())});
                 }
 
-                // Check string format : UUID
+                // Check string format
                 if (rule.string_format == StringFormat::UUID) {
                     if (!is_valid_uuid(str_val)) {
                         return ApiResponse::error({ErrorType::InvalidValue,
                                                    "Value of key '" + current_path + "' is not a vaild UUID."});
+                    }
+                } else if (rule.string_format == StringFormat::SingleLineText) {
+                    if (!utils::is_valid_utf8(str_val) || utils::contains_control_chars(str_val, false)) {
+                        return ApiResponse::error({ErrorType::InvalidValue,
+                                                   "Value of key '" + current_path + "' must be valid UTF-8 without control characters."});
+                    }
+                } else if (rule.string_format == StringFormat::MultilineText) {
+                    if (!utils::is_valid_utf8(str_val) || utils::contains_control_chars(str_val, true)) {
+                        return ApiResponse::error({ErrorType::InvalidValue,
+                                                   "Value of key '" + current_path + "' must be valid UTF-8 without control characters other than tab, LF, or CR."});
                     }
                 }
             } // TODO: If min_length.has_value() or max_length.has_value() but rule.expected_type != JsonFieldType::String, return error
@@ -136,9 +147,8 @@ std::optional<json> JsonValidator::validate(const json &params,
             }
 
 
-
             // Check: if string is empty
-            if (rule.expected_type == JsonFieldType::String && params[rule.key].get<std::string>().empty()) {
+            if (rule.expected_type == JsonFieldType::String && params[rule.key].get_ref<const std::string &>().empty()) {
                 return ApiResponse::error({ErrorType::InvalidValue,
                                            "Value of key '" + current_path + "' should not be empty."});
             }

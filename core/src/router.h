@@ -27,6 +27,7 @@ class IImageRepository;
 class IPlaylistRepository;
 class ISourceDataRepository;
 class ITagRepository;
+class ITextRepository;
 class ITrackRepository;
 class IWorkRepository;
 
@@ -45,6 +46,7 @@ class IngestionService;
 class CoverArtService;
 class PlaybackService;
 class ConfigurationService;
+class TextService;
 struct CoverResolutionResult;
 
 class Router {
@@ -151,6 +153,12 @@ class Router {
     json handleSourceDataGetByAsset(const json &p);
     json handleSourceDataCreate(const json &p);
 
+    // Text Handlers
+    json handleTextSave(const json &p);
+    json handleTextGet(const json &p);
+    json handleTextGetEntityTexts(const json &p);
+    json handleTextUnlink(const json &p);
+
     // Dependencies
     std::string m_storage_root;
     std::unique_ptr<IDatabaseContext> m_db_context;
@@ -163,6 +171,7 @@ class Router {
     std::unique_ptr<IPlaylistRepository> m_playlist_repo;
     std::unique_ptr<ISourceDataRepository> m_source_data_repo;
     std::unique_ptr<ITagRepository> m_tag_repo;
+    std::unique_ptr<ITextRepository> m_text_repo;
     std::unique_ptr<ITrackRepository> m_track_repo;
     std::unique_ptr<IWorkRepository> m_work_repo;
 
@@ -176,6 +185,7 @@ class Router {
     std::unique_ptr<TrackController> m_track_controller;
     std::unique_ptr<WorkController> m_work_controller;
     std::unique_ptr<AudioEngine> m_audio_engine;
+    std::unique_ptr<TextService> m_text_service;
     std::unique_ptr<IngestionService> m_ingestion_service;
     std::unique_ptr<CoverArtService> m_cover_art_service;
     std::unique_ptr<PlaybackService> m_playback_service;

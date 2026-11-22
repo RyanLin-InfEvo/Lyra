@@ -17,6 +17,7 @@
 #include "../models/artist.h"
 #include "../models/asset.h"
 #include "../models/audio.h"
+#include "../models/text.h"
 #include "../models/track.h"
 
 namespace lyra {
@@ -29,6 +30,7 @@ class IAlbumRepository;
 class ITrackRepository;
 class IImageRepository;
 class ISourceDataRepository;
+class TextService;
 
 struct AssetIngestResult {
     Asset asset;
@@ -41,6 +43,7 @@ struct TrackImportRequest {
     std::string source_path;
     std::string source_type = "";
     std::string note = "";
+    bool import_embedded_lyrics = true;
 };
 
 struct TrackImportResult {
@@ -50,6 +53,7 @@ struct TrackImportResult {
     std::optional<std::string> artist_id = std::nullopt;
     std::optional<std::string> album_id = std::nullopt;
     std::optional<std::string> cover_image_hash = std::nullopt;
+    std::vector<Text> imported_texts;
 };
 
 class IngestionService {
@@ -63,7 +67,8 @@ class IngestionService {
         ITrackRepository &track_repo,
         const std::string &storage_root,
         IImageRepository *image_repo = nullptr,
-        ISourceDataRepository *source_data_repo = nullptr);
+        ISourceDataRepository *source_data_repo = nullptr,
+        TextService *text_service = nullptr);
 
     tl::expected<AssetIngestResult, std::string> ingest_asset(
         const std::string &source_path,
@@ -81,6 +86,7 @@ class IngestionService {
     std::string m_storage_root;
     IImageRepository *m_image_repo;
     ISourceDataRepository *m_source_data_repo;
+    TextService *m_text_service;
 };
 
 } // namespace lyra

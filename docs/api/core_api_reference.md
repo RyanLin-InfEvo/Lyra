@@ -29,6 +29,7 @@ SPDX-License-Identifier: AGPL-3.0-or-later
   - [3.6 Audio 聲學實體領域](#36-audio-聲學實體領域)
   - [3.7 Track-Artist 演出關聯領域](#37-track-artist-演出關聯領域)
   - [3.8 Cover Art 封面圖像領域](#38-cover-art-封面圖像領域)
+  - [3.9 Text & Entity_Text 文本與歌詞領域](#39-text--entity_text-文本與歌詞領域)
 - [4. 音訊播放引擎指令 (Audio Engine Controls)](#4-音訊播放引擎指令-audio-engine-controls)
 - [5. 事件推送規格 (Event Callbacks)](#5-事件推送規格-event-callbacks)
 
@@ -128,7 +129,8 @@ void lyra_register_event_callback(LyraEventCallback callback, void *user_data);
 | **400** | `InvalidValue` | 參數格式錯誤、型別不匹配或欄位數值無效。 |
 | **400** | `MissingParameter` | 缺少執行該指令所必需的參數。 |
 | **400** | `InvalidCommandFormat` | 請求信封格式錯誤，缺少 `command` 欄位或型別不為字串。 |
-| **400** | `OutOfRange` | 數值超出限制區間（如分頁 limit、起訖年份順序錯誤）。 |
+| **400** | `OutOfRange` | 數值超出限制區間（如分頁 limit、起訖年份順序錯誤、文本超過 2 MiB）。 |
+| **400** | `OperationFailed` | 伺服器端檔案系統讀寫或資源操作失敗。 |
 | **404** | `TrackNotFound` | 找不到指定 `id` 的曲目。 |
 | **404** | `ArtistNotFound` | 找不到指定 `id` 的演出者。 |
 | **404** | `AlbumNotFound` | 找不到指定 `id` 的專輯。 |
@@ -139,7 +141,7 @@ void lyra_register_event_callback(LyraEventCallback callback, void *user_data);
 | **404** | `RelationNotFound` | 找不到指定的實體關聯（如 Track-Artist 或 Playlist-Track 關聯）。 |
 | **404** | `UnknownCommand` | 核心路由器未註冊該指令名稱。 |
 | **404** | `NotFound` | 通用資源未找到（如實體存在但無任何封面）。 |
-| **409** | `Conflict` | 違反唯一性約束（如重複的 ISWC 代碼）。 |
+| **409** | `Conflict` | 違反唯一性約束（如重複的 ISWC 代碼），或 `text.get` 實體查詢符合多筆結果產生歧義。 |
 | **500** | `DatabaseError` | 資料庫執行異常或系統錯誤。 |
 
 ---
@@ -175,7 +177,7 @@ void lyra_register_event_callback(LyraEventCallback callback, void *user_data);
 
 ## 2. 指令索引 (Command Index)
 
-Lyra 核心路由器支援全量 60 個指令，分類如下：
+本索引列出本手冊涵蓋之 64 個領域與播放引擎指令（另有 `system.*`、`tag.*`、`source_data.*` 等擴充指令）：
 
 | # | 領域分類 | 指令名稱 (Command) | 說明 |
 | :---: | :--- | :--- | :--- |
@@ -226,19 +228,23 @@ Lyra 核心路由器支援全量 60 個指令，分類如下：
 | 45 | Cover Art | `GetArtistCover` | 解析演出者頭像路徑（含專輯回退機制） |
 | 46 | Cover Art | `GetPlaylistCover` | 解析播放清單封面路徑（含曲目回退機制） |
 | 47 | Cover Art | `GetEntityImages` | 取得實體關聯之所有圖像資產清單 |
-| 48 | Audio Engine | `audio.play` | 起播指定音訊來源 |
-| 49 | Audio Engine | `audio.pause` | 暫停當前播放 |
-| 50 | Audio Engine | `audio.resume` | 恢復播放 |
-| 51 | Audio Engine | `audio.seek` | 跳轉播放進度 |
-| 52 | Audio Engine | `audio.stop` | 停止播放並重置進度 |
-| 53 | Audio Engine | `audio.set_volume` | 設定軟體輸出音量 |
-| 54 | Audio Engine | `audio.get_state` | 取得播放引擎即時狀態快照 |
-| 55 | Audio Engine | `audio.preload_next` | 預載下一首曲目（無縫切換） |
-| 56 | Audio Engine | `audio.queue_next` | 預載下一首曲目（`preload_next` 同義別名） |
-| 57 | Audio Engine | `audio.list_devices` | 列舉本機可用音訊輸出設備清單 |
-| 58 | Audio Engine | `audio.set_output_device` | 切換實體音訊輸出設備 |
-| 59 | Audio Engine | `audio.compare_versions` | 比對音訊版本規格並推薦母帶版本 |
-| 60 | Audio Engine | `audio.get_waveform` | 取得時域波形峰值與 RMS 數據 |
+| 48 | Text / Lyrics | `text.save` | 儲存 UTF-8 文本至 CAS 或掛載既有 `text_hash` 至實體 |
+| 49 | Text / Lyrics | `text.get` | 取得單筆文本內容（支援 `text_hash` 精準查詢或實體條件查詢，多筆歧義回 `409 Conflict`） |
+| 50 | Text / Lyrics | `text.get_entity_texts` | 列舉實體關聯之所有文本中繼資料（不含檔案內容） |
+| 51 | Text / Lyrics | `text.unlink` | 解除實體與特定文本之關聯（用於刪除舊版本或撤銷自動匯入） |
+| 52 | Audio Engine | `audio.play` | 起播指定音訊來源 |
+| 53 | Audio Engine | `audio.pause` | 暫停當前播放 |
+| 54 | Audio Engine | `audio.resume` | 恢復播放 |
+| 55 | Audio Engine | `audio.seek` | 跳轉播放進度 |
+| 56 | Audio Engine | `audio.stop` | 停止播放並重置進度 |
+| 57 | Audio Engine | `audio.set_volume` | 設定軟體輸出音量 |
+| 58 | Audio Engine | `audio.get_state` | 取得播放引擎即時狀態快照 |
+| 59 | Audio Engine | `audio.preload_next` | 預載下一首曲目（無縫切換） |
+| 60 | Audio Engine | `audio.queue_next` | 預載下一首曲目（`preload_next` 同義別名） |
+| 61 | Audio Engine | `audio.list_devices` | 列舉本機可用音訊輸出設備清單 |
+| 62 | Audio Engine | `audio.set_output_device` | 切換實體音訊輸出設備 |
+| 63 | Audio Engine | `audio.compare_versions` | 比對音訊版本規格並推薦母帶版本 |
+| 64 | Audio Engine | `audio.get_waveform` | 取得時域波形峰值與 RMS 數據 |
 
 ---
 
@@ -399,20 +405,28 @@ Lyra 核心路由器支援全量 60 個指令，分類如下：
 ---
 
 #### `ImportTrack`
-執行音訊檔案匯入管線，完成中繼資料抽取、CAS 儲存、聲學特徵計算與資料庫實體建立。
+執行音訊檔案匯入管線，完成中繼資料抽取、CAS 儲存、聲學特徵計算、資料庫實體建立，以及可選的內嵌歌詞擷取。
 
 **匯入處理流程**
-1. 讀取音訊來源檔案，抽取中繼資料標籤與內嵌封面。
-2. 計算檔案 SHA-256 雜湊，將檔案寫入 CAS 物件庫目錄。
+1. 讀取音訊來源檔案，抽取中繼資料標籤、內嵌封面，以及（當 `import_embedded_lyrics` 為 `true` 時）內嵌歌詞 tag（支援 `lyrics`、`unsyncedlyrics`、`syncedlyrics` 及帶語系後綴的 ID3v2 tag 如 `lyrics-eng`、`lyrics-jpn`）。
+2. 計算檔案 SHA-256 雜湊，將檔案寫入 CAS 物件庫目錄，並自動記錄 `Source_Data` 來源追蹤。
 3. 解碼音訊計算 PCM SHA-256 雜湊與聲學規格（取樣率、聲道數、長度、響度）。
-4. 在單一交易內建立 Asset 與 Audio 記錄、查重或建立 Artist 與 Album、建立 Track 實體並綁定關聯與封面。
-5. 回傳建立結果與對應識別碼。
+4. 在單一交易內建立 `Asset` 與 `Audio` 記錄、查重或建立 `Artist` 與 `Album`、建立 `Track` 實體並綁定關聯與封面。
+5. 主交易完成後，若啟用 `import_embedded_lyrics` 且有內嵌歌詞，以**非阻斷**方式依序呼叫 `TextService` 自動偵測 `lrc` / `txt` 格式、正規化換行並綁定至新 `Track`（歌詞寫入失敗絕不影響音軌匯入）；結果列於 `data.imported_texts`。
+
+> **給 UI 的使用說明 (Pre-import Toggle & Post-import Undo)**
+> - **事前勾選開關**：匯入對話框可提供「自動讀取音軌內嵌歌詞」核取方塊，對應傳入 `import_embedded_lyrics`（預設 `true`）。若使用者取消勾選，請傳入 `false`。
+> - **同目錄 `.lrc` sidecar 檔案責任歸屬**：Core **刻意不掃描**音訊檔同目錄下的 `.lrc` 檔案（考量沙盒檔案存取權限、Big5/Shift-JIS 編碼確認與使用者交互）。同目錄 `.lrc` 請由 UI 掃描並轉為 UTF-8 後，讓使用者預覽確認再呼叫 `text.save`。
+> - **事後通知與一鍵撤銷**：匯入完成後檢查 `data.imported_texts`；若非空，UI 可提示「已自動匯入內嵌歌詞」，若使用者不願保留，直接針對該 `text_hash` 呼叫 `text.unlink` 即可解除關聯。
 
 **Request 參數**
 
 | 欄位 | 型別 | 必填 | 邊界與說明 |
 | :--- | :--- | :---: | :--- |
 | `source_path` | `string` | 是 | 本機音訊檔案絕對路徑。 |
+| `source_type` | `string` | 否 | 來源類型標記（如 `"cd_rip"`, `"digital_download"`）。 |
+| `note` | `string` | 否 | 匯入來源備註。 |
+| `import_embedded_lyrics` | `boolean` | 否 | 是否自動匯入音訊檔內嵌歌詞 tag（預設 `true`）。 |
 
 **Response 範例 (`code: 200`)**
 ```json
@@ -424,12 +438,22 @@ Lyra 核心路由器支援全量 60 個指令，分類如下：
     "title": "Nocturne in E-flat major, Op. 9, No. 2",
     "artist_id": "3a4b5c6d-7e8f-9a0b-1c2d-3e4f5a6b7c8d",
     "album_id": "f1e2d3c4-b5a6-9870-1234-56789abcdef0",
-    "cover_image_hash": "b2c3d4e5f6a17890123456789abcdef0123456789abcdef0123456789abcdef1"
+    "cover_image_hash": "b2c3d4e5f6a17890123456789abcdef0123456789abcdef0123456789abcdef1",
+    "imported_texts": [
+      {
+        "text_hash": "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08",
+        "file_hash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "language": "jpn",
+        "encoding": "utf-8",
+        "format": "lrc",
+        "role": "lyrics"
+      }
+    ]
   }
 }
 ```
 
-**常見 Error Types**：`MissingParameter`, `InvalidValue`（檔案不存在或格式無法解碼）
+**常見 Error Types**：`MissingParameter`, `InvalidValue`（檔案不存在、參數型別不符或格式無法解碼）
 
 ---
 
@@ -1540,6 +1564,184 @@ Audio 代表解碼後的 Raw PCM 聲學特徵。多版本管理採用單層星�
 ```
 
 **常見 Error Types**：`NotFound`, `DatabaseError`
+
+---
+
+### 3.9 Text & Entity_Text 文本與歌詞領域
+
+本領域負責儲存與查詢關聯至任何核心實體（`track`、`album`、`artist`、`work`、`playlist`）的純文字／時間軸文本資產（歌詞、翻譯、羅馬音、簡介、唱片內頁說明等）。
+
+#### 核心資料模型與設計契約 (UI 開發者必讀)
+1. **三層去重與不可變模型**：
+   - **物理檔案層 (`Asset` + `objects/`)**：Core 在寫入前會統一將換行符號 `\r\n` 與孤立 `\r` 正規化為 `\n`，再以正規化後的 UTF-8 bytes 計算 `file_hash = SHA-256(utf8_bytes)`。若相同位元組已存在於 CAS，不會重複寫入磁碟。
+   - **邏輯文本層 (`Text`)**：`text_hash = SHA-256(format + "\0" + language + "\0" + utf8_bytes)`。每份 `Text` 記錄**完全不可變**，且 `Text.language` 是語系資訊的唯一權威來源（SSOT）。
+   - **關聯層 (`Entity_Text`)**：僅儲存 `(entity_id, text_hash, role)`。同一實體可掛載多份文本（例如原文歌詞、中文翻譯、多版本 LRC）。
+2. **合法列舉值**：
+   - `format`：`"lrc"`, `"txt"`, `"srt"`, `"ttml"`
+   - `role`：`"lyrics"`, `"lyrics_translation"`, `"lyrics_transliteration"`, `"description"`, `"biography"`, `"liner_notes"`, `"credits"`, `"review"`, `"trivia"`, `"other"`
+3. **字元編碼與大小限制**：
+   - Core 僅接受合法的 **UTF-8** 字串，單筆內容上限為 **2 MiB**。
+   - `content` 僅允許 `\t`、`\n`、`\r` 三種空白控制字元，嚴格拒絕其餘 C0/C1 控制字元（`U+0000–U+001F`、`U+007F`、`U+0080–U+009F`），且 Core 不會靜默刪改內容（以確保寫入前的雜湊計算透明）。
+   - **UI 實作指引**：若 UI 從使用者本機讀取 `.lrc` / `.txt`（可能為 Big5、GBK、Shift-JIS、UTF-16），或從 PDF／Word／網頁剪貼簿貼上歌詞（可能夾帶 `\x0B`/`\x0C` 或 CP1252 誤轉產生的 `U+0080–U+009F`），請先在 UI 層完成轉碼與不可見控制字元偵測，並提示使用者清理或轉為換行、預覽確認後再呼叫 `text.save`。
+
+---
+
+#### `text.save`
+將 UTF-8 文本寫入 CAS 並關聯至目標實體，或將既有的 `text_hash` 直接掛載到另一個實體。
+
+> **重要行為：保留既有項目（不自動覆蓋）**  
+> 呼叫 `text.save` 存入相同 `(role, language)` 的新版本歌詞（不同 `text_hash`）時，Core **不會自動刪除舊項目**，而是保留舊關聯並新增這筆關聯，並在回應中回傳 `existing_same_slot_count`（若針對**完全相同 `(entity_id, text_hash)`** 重新呼叫並指定不同 `role`，則會更新該筆關聯的 `role`）。  
+> **UI 實作指引**：當 `existing_same_slot_count > 0` 時，UI 應提示使用者「此曲目／實體已存在其他同語言與類型的歌詞／文本」，並可透過 `text.get_entity_texts` 列出舊項目讓使用者勾選是否呼叫 `text.unlink` 刪除。
+
+**Request 參數（互斥二選一模式）**
+
+| 欄位 | 型別 | 必填 | 邊界與說明 |
+| :--- | :--- | :---: | :--- |
+| `entity_id` | `string` | 是 | 目標實體 UUID（Track, Album, Artist, Work, Playlist；不支援 `Tag`）。 |
+| `role` | `string` | 是 | 文本角色，見上方合法 `role` 列舉值。 |
+| `content` | `string` | 條件必填 | UTF-8 文本內容（自動剝除開頭 BOM 並將 `\r\n`/`\r` 正規化為 `\n`；不可全空白，不可含 `\t`/`\n`/`\r` 以外之 C0/C1 控制字元，上限 2 MiB）。**與 `text_hash` 互斥**（不可同時傳或皆不傳）。 |
+| `format` | `string` | 條件必填 | 傳入 `content` 時**必填**（`"lrc"`, `"txt"`, `"srt"`, `"ttml"`）；傳入 `text_hash` 時**不可傳入**。 |
+| `language` | `string` | 否 | 語系標籤（如 `"zh-TW"`, `"jpn"`, `"eng"`；有效 UTF-8、無控制字元、上限 64 bytes），省略、`null` 或空字串皆正規化為 `""`。傳入 `text_hash` 時**不可傳入**。 |
+| `text_hash` | `string` | 條件必填 | 既有的 `Text.text_hash`，用於將同一份文本跨實體掛載。**與 `content` 互斥**；不可同時帶 `format` 或 `language`。 |
+
+**Response 範例 (`code: 201`)**
+```json
+{
+  "code": 201,
+  "data": {
+    "text_hash": "5d41402abc4b2a76b9719d911017c592...",
+    "file_hash": "e3b0c44298fc1c149afbf4c8996fb924...",
+    "language": "zh-TW",
+    "encoding": "utf-8",
+    "format": "lrc",
+    "role": "lyrics",
+    "existing_same_slot_count": 1
+  },
+  "message": "Save Text success."
+}
+```
+
+**常見 Error Types**：`MissingParameter`, `InvalidValue`（XOR 衝突、非法 `format`/`role`、`language` 不合法、空白內容、非法 UTF-8 或含不允許之控制字元）, `OutOfRange`（超過 2 MiB）, `OperationFailed`（CAS 寫入失敗）, `NotFound`（`entity_id` 或 `text_hash` 不存在）, `DatabaseError`
+
+---
+
+#### `text.get`
+讀取單筆文本的中繼資料與完整 UTF-8 `content` 內容。
+
+> **UI 實作指引 (409 歧義保護)**  
+> - 若已知 `text_hash`（例如從清單選取），請直接傳 `{"text_hash": "..."}`，保證零歧義且不可再帶 `role` / `language`。  
+> - 若以 `{"entity_id": "..."}` 查詢，可省略 `role` 與 `language`（適合只有單一歌詞的曲目）。一旦該實體符合條件的文本**超過 1 筆**，Core 會拒絕隨機挑選並回傳 **`409 Conflict`**。UI 收到 `Conflict` 時，應呼叫 `text.get_entity_texts` 取得多筆中繼資料列表供選擇，再以選定的 `text_hash` 呼叫 `text.get`。
+
+**Request 參數（互斥二選一模式）**
+
+| 欄位 | 型別 | 必填 | 邊界與說明 |
+| :--- | :--- | :---: | :--- |
+| `text_hash` | `string` | 條件必填 | 精準讀取指定 `Text` 內容。**與 `entity_id` 互斥**；不可同時傳入 `role` 或 `language`。 |
+| `entity_id` | `string` | 條件必填 | 依實體 UUID 查詢單筆文本。**與 `text_hash` 互斥**。 |
+| `role` | `string` | 否 | 僅適用於 `entity_id` 模式，依角色篩選。 |
+| `language` | `string` | 否 | 僅適用於 `entity_id` 模式，依語系篩選；省略或 `null` 表示不過濾，傳入 `""` 則精準篩選未標記語系（`language == ""`）的項目。 |
+
+**Response 範例 (`code: 200`)**
+```json
+{
+  "code": 200,
+  "data": {
+    "text_hash": "5d41402abc4b2a76b9719d911017c592...",
+    "file_hash": "e3b0c44298fc1c149afbf4c8996fb924...",
+    "language": "zh-TW",
+    "encoding": "utf-8",
+    "format": "lrc",
+    "role": "lyrics",
+    "content": "[00:12.30]第一句歌詞\n[00:18.50]第二句歌詞"
+  }
+}
+```
+*註：以 `text_hash` 直接查詢時，`data.role` 會是 `null`（因為同一份 `Text` 可能以不同角色掛載於不同實體）。*
+
+**常見 Error Types**：`MissingParameter`, `InvalidValue`, `OutOfRange`, `OperationFailed`（檔案讀取失敗或 CAS 內容損毀）, `NotFound`（實體、`text_hash` 或符合條件的項目為 0 筆）, `Conflict` (`409`，符合條件超過 1 筆), `AssetNotFound`（CAS 實體檔遺失）, `DatabaseError`
+
+---
+
+#### `text.get_entity_texts`
+列舉實體關聯之所有文本**中繼資料清單**（不含 `content` 內容，適合用於渲染語言/版本選單或刪除確認清單）。
+
+**Request 參數**
+
+| 欄位 | 型別 | 必填 | 邊界與說明 |
+| :--- | :--- | :---: | :--- |
+| `entity_id` | `string` | 是 | 目標實體 UUID。 |
+| `role` | `string` | 否 | 依角色過濾。 |
+| `language` | `string` | 否 | 依語系過濾；省略或 `null` 表示不過濾，傳入 `""` 則精準篩選未標記語系（`language == ""`）的項目。 |
+
+**Response 範例 (`code: 200`)**
+```json
+{
+  "code": 200,
+  "data": [
+    {
+      "text_hash": "5d41402abc4b2a76b9719d911017c592...",
+      "file_hash": "e3b0c44298fc1c149afbf4c8996fb924...",
+      "language": "jpn",
+      "encoding": "utf-8",
+      "format": "lrc",
+      "role": "lyrics"
+    },
+    {
+      "text_hash": "7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d...",
+      "file_hash": "11223344556677889900aabbccddeeff...",
+      "language": "zh-TW",
+      "encoding": "utf-8",
+      "format": "lrc",
+      "role": "lyrics_translation"
+    }
+  ]
+}
+```
+
+**常見 Error Types**：`MissingParameter`, `InvalidValue`, `NotFound`（`entity_id` 不存在）, `DatabaseError`
+
+---
+
+#### `text.unlink`
+解除特定實體與 `Text` 之間的關聯（移除 `Entity_Text` 記錄）。
+
+**Request 參數**
+
+| 欄位 | 型別 | 必填 | 邊界與說明 |
+| :--- | :--- | :---: | :--- |
+| `entity_id` | `string` | 是 | 目標實體 UUID。 |
+| `text_hash` | `string` | 是 | 欲解除關聯之文本 `text_hash`。 |
+
+**Response 範例 (`code: 200`)**
+```json
+{
+  "code": 200,
+  "data": {
+    "entity_id": "7b8a1c9e-2d3f-4e5a-8b1c-9d0e1f2a3b4c",
+    "text_hash": "5d41402abc4b2a76b9719d911017c592..."
+  },
+  "message": "Unlink Text success."
+}
+```
+
+**常見 Error Types**：`MissingParameter`, `InvalidValue`, `NotFound`（`entity_id` 不存在）, `RelationNotFound`（該實體未關聯此 `text_hash`）, `DatabaseError`
+
+---
+
+#### UI 串接典型流程速查 (Integration Playbooks)
+
+1. **播放頁載入歌詞 (`NowPlayingView`)**：
+   - 先呼叫 `text.get({ "entity_id": trackId, "role": "lyrics" })`。
+   - **回傳 `200`**：直接把 `data.content` 交給 `LyricsData.fromLrc(content)` 解析渲染（`lrc` / `txt` 皆相容）。
+   - **回傳 `404 NotFound`**：顯示無歌詞空狀態（或讓使用者手動匯入 `.lrc`）。
+   - **回傳 `409 Conflict`**：代表該曲目有多份不同語言或版本的歌詞；立即改呼叫 `text.get_entity_texts({ "entity_id": trackId, "role": "lyrics" })`，依使用者偏好語系（或彈出切換選單）挑出 `text_hash`，再呼叫 `text.get({ "text_hash": selectedHash })`。
+2. **使用者編輯歌詞或手動匯入本地 `.lrc` sidecar**：
+   - 若使用者選擇本地 `.lrc` 檔，由 UI 掃描同目錄並先處理編碼（確保合法 UTF-8）後預覽確認。
+   - 呼叫 `text.save({ "entity_id": trackId, "role": "lyrics", "format": "lrc", "language": "zh-TW", "content": utf8Text })`。
+   - 檢查回傳 `data.existing_same_slot_count`：若 `> 0`，呼叫 `text.get_entity_texts({ "entity_id": trackId, "role": "lyrics", "language": "zh-TW" })` 列出既有項目，彈出確認讓使用者勾選是否以 `text.unlink` 移除舊版。
+3. **匯入音訊檔 (`ImportTrack`) 與內嵌歌詞控制**：
+   - 匯入面板提供「匯入音檔內嵌歌詞」勾選框，呼叫 `ImportTrack({ "source_path": path, "import_embedded_lyrics": userChecked })`。
+   - 若回傳的 `data.imported_texts` 非空，UI 可在匯入通知中顯示已自動附加的歌詞語言與格式，並提供「移除」按鈕直接呼叫 `text.unlink` 撤銷。
 
 ---
 

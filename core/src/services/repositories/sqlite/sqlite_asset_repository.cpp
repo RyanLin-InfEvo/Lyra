@@ -42,6 +42,35 @@ tl::expected<void, std::string> SqliteAssetRepository::insert(const Asset &asset
     return {};
 }
 
+tl::expected<void, std::string> SqliteAssetRepository::insert_if_absent(const Asset &asset) {
+    try {
+        return m_context.with_transaction([&]() -> tl::expected<void, std::string> {
+            auto &db = m_context.get_db();
+            SQLite::Statement query(
+                db,
+                "INSERT INTO Asset (file_hash, mime_type, asset_type, file_size, created_at) "
+                "VALUES (?, ?, ?, ?, datetime('now')) "
+                "ON CONFLICT(file_hash) DO NOTHING");
+            query.bind(1, asset.file_hash);
+            if (asset.mime_type.empty()) {
+                query.bind(2);
+            } else {
+                query.bind(2, asset.mime_type);
+            }
+            if (asset.asset_type.empty()) {
+                query.bind(3);
+            } else {
+                query.bind(3, asset.asset_type);
+            }
+            query.bind(4, asset.file_size);
+            query.exec();
+            return {};
+        });
+    } catch (const std::exception &e) {
+        return tl::unexpected(e.what());
+    }
+}
+
 tl::expected<void, std::string> SqliteAssetRepository::update(const AssetUpdate &data) {
     try {
         auto transaction = m_context.begin_transaction();
@@ -104,6 +133,19 @@ tl::expected<Asset, std::string> SqliteAssetRepository::get(const std::string &f
             return *asset;
         }
         return tl::unexpected("Asset not found.");
+    } catch (const std::exception &e) {
+        return tl::unexpected(e.what());
+    }
+}
+
+tl::expected<bool, std::string> SqliteAssetRepository::exists(const std::string &file_hash) {
+    try {
+        auto &db = m_context.get_db();
+        SQLite::Statement query(db, "SELECT 1 FROM Asset WHERE file_hash = ?");
+        query.bind(1, file_hash);
+        bool found = query.executeStep();
+        query.reset();
+        return found;
     } catch (const std::exception &e) {
         return tl::unexpected(e.what());
     }

@@ -6,11 +6,11 @@
 
 #include "../src/utils/storage_helper.h"
 #include <cassert>
+#include <filesystem>
 #include <fstream>
 #include <iostream>
 #include <string>
 #include <vector>
-#include <filesystem>
 
 using namespace lyra::utils;
 
@@ -151,6 +151,84 @@ bool test_move_to_cas_and_dismiss(const std::string &temp_dir) {
     if (std::filesystem::exists(cas_path)) {
         std::cerr << "File still exists after remove_file" << std::endl;
         return false;
+    }
+
+    // Stray files sharing prefix without '.' delimiter must NOT match
+    {
+        std::filesystem::create_directories(cas_dir);
+        std::filesystem::path stray_underscore = cas_dir / (hash + "_stray");
+        std::filesystem::path stray_extra = cas_dir / (hash + "extra.txt");
+        {
+            std::ofstream f1(stray_underscore);
+            f1 << "stray1";
+            std::ofstream f2(stray_extra);
+            f2 << "stray2";
+        }
+        auto stray_res = StorageHelper::find_file_by_prefix(cas_dir, hash);
+        std::filesystem::remove(stray_underscore);
+        std::filesystem::remove(stray_extra);
+        if (stray_res.has_value()) {
+            std::cerr << "find_file_by_prefix falsely matched stray prefix file: " << stray_res.value() << std::endl;
+            return false;
+        }
+    }
+
+    // [MED-2] Empty prefix in find_file_by_prefix must fail (must not match dotfiles like .tmp_foo)
+    {
+        std::filesystem::create_directories(cas_dir);
+        std::filesystem::path dotfile = cas_dir / ".tmp_foo";
+        {
+            std::ofstream f(dotfile);
+            f << "dot";
+        }
+        auto empty_prefix_res = StorageHelper::find_file_by_prefix(cas_dir, "");
+        std::filesystem::remove(dotfile);
+        if (empty_prefix_res.has_value()) {
+            std::cerr << "find_file_by_prefix(\"\") falsely matched: " << empty_prefix_res.value() << std::endl;
+            return false;
+        }
+    }
+
+    // [MED-2] move_to_cas_if_absent: first publish returns true, duplicate returns false and preserves original
+    {
+        auto target = StorageHelper::resolve_cas_path(temp_dir, hash, ".txt");
+        auto tmp1 = StorageHelper::generate_temp_path(temp_dir, ".txt");
+        std::filesystem::create_directories(tmp1.parent_path());
+        {
+            std::ofstream f(tmp1, std::ios::binary);
+            f << "original_cas_payload";
+        }
+        auto r1 = StorageHelper::move_to_cas_if_absent(tmp1, target);
+        if (!r1.has_value() || !r1.value()) {
+            std::cerr << "move_to_cas_if_absent first publish should return true" << std::endl;
+            return false;
+        }
+        if (std::filesystem::exists(tmp1) || !std::filesystem::exists(target)) {
+            std::cerr << "move_to_cas_if_absent first publish file state invalid" << std::endl;
+            return false;
+        }
+
+        auto tmp2 = StorageHelper::generate_temp_path(temp_dir, ".txt");
+        {
+            std::ofstream f(tmp2, std::ios::binary);
+            f << "overwrite_attempt";
+        }
+        auto r2 = StorageHelper::move_to_cas_if_absent(tmp2, target);
+        if (!r2.has_value() || r2.value()) {
+            std::cerr << "move_to_cas_if_absent duplicate publish should return false" << std::endl;
+            return false;
+        }
+        if (std::filesystem::exists(tmp2)) {
+            std::cerr << "move_to_cas_if_absent should delete redundant temp file on duplicate" << std::endl;
+            return false;
+        }
+        std::ifstream verify(target, std::ios::binary);
+        std::string content((std::istreambuf_iterator<char>(verify)), std::istreambuf_iterator<char>());
+        if (content != "original_cas_payload") {
+            std::cerr << "move_to_cas_if_absent clobbered existing target! Got: " << content << std::endl;
+            return false;
+        }
+        StorageHelper::remove_file(target);
     }
 
     return true;

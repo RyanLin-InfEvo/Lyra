@@ -9,6 +9,7 @@
 #include "process_runner.h"
 #include "sha256.h"
 #include <algorithm>
+#include <array>
 #include <cctype>
 #include <filesystem>
 #include <fstream>
@@ -16,6 +17,7 @@
 #include <iostream>
 #include <nlohmann/json.hpp>
 #include <sstream>
+#include <string_view>
 
 namespace lyra {
 namespace utils {
@@ -110,6 +112,423 @@ std::optional<std::string> get_tag(const nlohmann::json &json_data, const std::s
     return std::nullopt;
 }
 
+bool is_ascii_alpha(char c) {
+    return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z');
+}
+
+std::string to_ascii_lower(std::string_view s) {
+    std::string out(s);
+    for (char &c : out) {
+        if (c >= 'A' && c <= 'Z') {
+            c = static_cast<char>(c - 'A' + 'a');
+        }
+    }
+    return out;
+}
+
+std::string to_ascii_upper(std::string_view s) {
+    std::string out(s);
+    for (char &c : out) {
+        if (c >= 'a' && c <= 'z') {
+            c = static_cast<char>(c - 'a' + 'A');
+        }
+    }
+    return out;
+}
+
+std::string trim_ascii(std::string_view s) {
+    size_t start = s.find_first_not_of(" \t\r\n");
+    if (start == std::string_view::npos) {
+        return "";
+    }
+    size_t end = s.find_last_not_of(" \t\r\n");
+    return std::string(s.substr(start, end - start + 1));
+}
+
+bool is_all_ascii_alpha(std::string_view s) {
+    if (s.empty()) return false;
+    for (char c : s) {
+        if (!is_ascii_alpha(c)) return false;
+    }
+    return true;
+}
+
+// Sorted ISO 639-1 (183), ISO 639-2/3 + Sinitic (512; excludes und/xxx/zxx), and ISO 15924 (226)
+// allowlists derived from iso-codes 4.20.1 so metadata hyphens (e.g., "web-link", "eng-live") are not
+// misparsed as language tags.
+constexpr std::array<std::string_view, 183> ISO_639_1_CODES = {
+    "aa", "ab", "ae", "af", "ak", "am", "an", "ar", "as", "av", "ay", "az", "ba", "be", "bg", "bi",
+    "bm", "bn", "bo", "br", "bs", "ca", "ce", "ch", "co", "cr", "cs", "cu", "cv", "cy", "da", "de",
+    "dv", "dz", "ee", "el", "en", "eo", "es", "et", "eu", "fa", "ff", "fi", "fj", "fo", "fr", "fy",
+    "ga", "gd", "gl", "gn", "gu", "gv", "ha", "he", "hi", "ho", "hr", "ht", "hu", "hy", "hz", "ia",
+    "id", "ie", "ig", "ii", "ik", "io", "is", "it", "iu", "ja", "jv", "ka", "kg", "ki", "kj", "kk",
+    "kl", "km", "kn", "ko", "kr", "ks", "ku", "kv", "kw", "ky", "la", "lb", "lg", "li", "ln", "lo",
+    "lt", "lu", "lv", "mg", "mh", "mi", "mk", "ml", "mn", "mr", "ms", "mt", "my", "na", "nb", "nd",
+    "ne", "ng", "nl", "nn", "no", "nr", "nv", "ny", "oc", "oj", "om", "or", "os", "pa", "pi", "pl",
+    "ps", "pt", "qu", "rm", "rn", "ro", "ru", "rw", "sa", "sc", "sd", "se", "sg", "si", "sk", "sl",
+    "sm", "sn", "so", "sq", "sr", "ss", "st", "su", "sv", "sw", "ta", "te", "tg", "th", "ti", "tk",
+    "tl", "tn", "to", "tr", "ts", "tt", "tw", "ty", "ug", "uk", "ur", "uz", "ve", "vi", "vo", "wa",
+    "wo", "xh", "yi", "yo", "za", "zh", "zu"};
+
+constexpr std::array<std::string_view, 512> ISO_639_2_3_CODES = {
+    "aar", "abk", "ace", "ach", "ada", "ady", "afa", "afh", "afr", "ain", "aka", "akk", "alb", "ale",
+    "alg", "alt", "amh", "ang", "anp", "apa", "ara", "arc", "arg", "arm", "arn", "arp", "art", "arw",
+    "asm", "ast", "ath", "aus", "ava", "ave", "awa", "aym", "aze", "bad", "bai", "bak", "bal", "bam",
+    "ban", "baq", "bas", "bat", "bej", "bel", "bem", "ben", "ber", "bho", "bih", "bik", "bin", "bis",
+    "bla", "bnt", "bod", "bos", "bra", "bre", "btk", "bua", "bug", "bul", "bur", "byn", "cad", "cai",
+    "car", "cat", "cau", "ceb", "cel", "ces", "cha", "chb", "che", "chg", "chi", "chk", "chm", "chn",
+    "cho", "chp", "chr", "chu", "chv", "chy", "cmc", "cmn", "cnr", "cop", "cor", "cos", "cpe", "cpf",
+    "cpp", "cre", "crh", "crp", "csb", "cus", "cym", "cze", "dak", "dan", "dar", "day", "del", "den",
+    "deu", "dgr", "din", "div", "doi", "dra", "dsb", "dua", "dum", "dut", "dyu", "dzo", "efi", "egy",
+    "eka", "ell", "elx", "eng", "enm", "epo", "est", "eus", "ewe", "ewo", "fan", "fao", "fas", "fat",
+    "fij", "fil", "fin", "fiu", "fon", "fra", "fre", "frm", "fro", "frr", "frs", "fry", "ful", "fur",
+    "gaa", "gan", "gay", "gba", "gem", "geo", "ger", "gez", "gil", "gla", "gle", "glg", "glv", "gmh",
+    "goh", "gon", "gor", "got", "grb", "grc", "gre", "grn", "gsw", "guj", "gwi", "hai", "hak", "hat",
+    "hau", "haw", "heb", "her", "hil", "him", "hin", "hit", "hmn", "hmo", "hrv", "hsb", "hsn", "hun",
+    "hup", "hye", "iba", "ibo", "ice", "ido", "iii", "ijo", "iku", "ile", "ilo", "ina", "inc", "ind",
+    "ine", "inh", "ipk", "ira", "iro", "isl", "ita", "jav", "jbo", "jpn", "jpr", "jrb", "kaa", "kab",
+    "kac", "kal", "kam", "kan", "kar", "kas", "kat", "kau", "kaw", "kaz", "kbd", "kha", "khi", "khm",
+    "kho", "kik", "kin", "kir", "kmb", "kok", "kom", "kon", "kor", "kos", "kpe", "krc", "krl", "kro",
+    "kru", "kua", "kum", "kur", "kut", "lad", "lah", "lam", "lao", "lat", "lav", "lez", "lim", "lin",
+    "lit", "lol", "loz", "ltz", "lua", "lub", "lug", "lui", "lun", "luo", "lus", "lzh", "mac", "mad",
+    "mag", "mah", "mai", "mak", "mal", "man", "mao", "map", "mar", "mas", "may", "mdf", "mdr", "men",
+    "mga", "mic", "min", "mis", "mkd", "mkh", "mlg", "mlt", "mnc", "mni", "mno", "moh", "mon", "mos",
+    "mri", "msa", "mul", "mun", "mus", "mwl", "mwr", "mya", "myn", "myv", "nah", "nai", "nan", "nap",
+    "nau", "nav", "nbl", "nde", "ndo", "nds", "nep", "new", "nia", "nic", "niu", "nld", "nno", "nob",
+    "nog", "non", "nor", "nqo", "nso", "nub", "nwc", "nya", "nym", "nyn", "nyo", "nzi", "oci", "oji",
+    "ori", "orm", "osa", "oss", "ota", "oto", "paa", "pag", "pal", "pam", "pan", "pap", "pau", "peo",
+    "per", "phi", "phn", "pli", "pol", "pon", "por", "pra", "pro", "pus", "que", "raj", "rap", "rar",
+    "roa", "roh", "rom", "ron", "rum", "run", "rup", "rus", "sad", "sag", "sah", "sai", "sal", "sam",
+    "san", "sas", "sat", "scn", "sco", "sel", "sem", "sga", "sgn", "shn", "sid", "sin", "sio", "sit",
+    "sla", "slk", "slo", "slv", "sma", "sme", "smi", "smj", "smn", "smo", "sms", "sna", "snd", "snk",
+    "sog", "som", "son", "sot", "spa", "sqi", "srd", "srn", "srp", "srr", "ssa", "ssw", "suk", "sun",
+    "sus", "sux", "swa", "swe", "syc", "syr", "tah", "tai", "tam", "tat", "tel", "tem", "ter", "tet",
+    "tgk", "tgl", "tha", "tib", "tig", "tir", "tiv", "tkl", "tlh", "tli", "tmh", "tog", "ton", "tpi",
+    "tsi", "tsn", "tso", "tuk", "tum", "tup", "tur", "tut", "tvl", "twi", "tyv", "udm", "uga", "uig",
+    "ukr", "umb", "urd", "uzb", "vai", "ven", "vie", "vol", "vot", "wak", "wal", "war", "was", "wel",
+    "wen", "wln", "wol", "wuu", "xal", "xho", "yao", "yap", "yid", "yor", "ypk", "yue", "zap", "zbl",
+    "zen", "zgh", "zha", "zho", "znd", "zul", "zun", "zza"};
+
+constexpr std::array<std::string_view, 226> ISO_15924_SCRIPTS = {
+    "adlm", "afak", "aghb", "ahom", "arab", "aran", "armi", "armn", "avst", "bali", "bamu", "bass",
+    "batk", "beng", "berf", "bhks", "blis", "bopo", "brah", "brai", "bugi", "buhd", "cakm", "cans",
+    "cari", "cham", "cher", "chis", "chrs", "cirt", "copt", "cpmn", "cprt", "cyrl", "cyrs", "deva",
+    "diak", "dogr", "dsrt", "dupl", "egyd", "egyh", "egyp", "elba", "elym", "ethi", "gara", "geok",
+    "geor", "glag", "gong", "gonm", "goth", "gran", "grek", "gujr", "gukh", "guru", "hanb", "hang",
+    "hani", "hano", "hans", "hant", "hatr", "hebr", "hira", "hluw", "hmng", "hmnp", "hntl", "hrkt",
+    "hung", "inds", "ital", "jamo", "java", "jpan", "jurc", "kali", "kana", "kawi", "khar", "khmr",
+    "khoj", "kitl", "kits", "knda", "kore", "kpel", "krai", "kthi", "lana", "laoo", "latf", "latg",
+    "latn", "leke", "lepc", "limb", "lina", "linb", "lisu", "loma", "lyci", "lydi", "mahj", "maka",
+    "mand", "mani", "marc", "maya", "medf", "mend", "merc", "mero", "mlym", "modi", "mong", "moon",
+    "mroo", "mtei", "mult", "mymr", "nagm", "nand", "narb", "nbat", "newa", "nkdb", "nkgb", "nkoo",
+    "nshu", "ogam", "olck", "onao", "orkh", "orya", "osge", "osma", "ougr", "palm", "pauc", "pcun",
+    "pelm", "perm", "phag", "phli", "phlp", "phlv", "phnx", "piqd", "plrd", "prti", "psin", "qaaa",
+    "qabx", "ranj", "rjng", "rohg", "roro", "runr", "samr", "sara", "sarb", "saur", "seal", "sgnw",
+    "shaw", "shrd", "shui", "sidd", "sidt", "sind", "sinh", "sogd", "sogo", "sora", "soyo", "sund",
+    "sunu", "sylo", "syrc", "syre", "syrj", "syrn", "tagb", "takr", "tale", "talu", "taml", "tang",
+    "tavt", "tayo", "telu", "teng", "tfng", "tglg", "thaa", "thai", "tibt", "tirh", "tnsa", "todr",
+    "tols", "toto", "tutg", "ugar", "vaii", "visp", "vith", "wara", "wcho", "wole", "xpeo", "xsux",
+    "yezi", "yiii", "zanb", "zinh", "zmth", "zsye", "zsym", "zxxx", "zyyy", "zzzz"};
+
+constexpr std::array<std::string_view, 249> ISO_3166_1_REGIONS = {
+    "ad", "ae", "af", "ag", "ai", "al", "am", "ao", "aq", "ar", "as", "at", "au", "aw", "ax", "az",
+    "ba", "bb", "bd", "be", "bf", "bg", "bh", "bi", "bj", "bl", "bm", "bn", "bo", "bq", "br", "bs",
+    "bt", "bv", "bw", "by", "bz", "ca", "cc", "cd", "cf", "cg", "ch", "ci", "ck", "cl", "cm", "cn",
+    "co", "cr", "cu", "cv", "cw", "cx", "cy", "cz", "de", "dj", "dk", "dm", "do", "dz", "ec", "ee",
+    "eg", "eh", "er", "es", "et", "fi", "fj", "fk", "fm", "fo", "fr", "ga", "gb", "gd", "ge", "gf",
+    "gg", "gh", "gi", "gl", "gm", "gn", "gp", "gq", "gr", "gs", "gt", "gu", "gw", "gy", "hk", "hm",
+    "hn", "hr", "ht", "hu", "id", "ie", "il", "im", "in", "io", "iq", "ir", "is", "it", "je", "jm",
+    "jo", "jp", "ke", "kg", "kh", "ki", "km", "kn", "kp", "kr", "kw", "ky", "kz", "la", "lb", "lc",
+    "li", "lk", "lr", "ls", "lt", "lu", "lv", "ly", "ma", "mc", "md", "me", "mf", "mg", "mh", "mk",
+    "ml", "mm", "mn", "mo", "mp", "mq", "mr", "ms", "mt", "mu", "mv", "mw", "mx", "my", "mz", "na",
+    "nc", "ne", "nf", "ng", "ni", "nl", "no", "np", "nr", "nu", "nz", "om", "pa", "pe", "pf", "pg",
+    "ph", "pk", "pl", "pm", "pn", "pr", "ps", "pt", "pw", "py", "qa", "re", "ro", "rs", "ru", "rw",
+    "sa", "sb", "sc", "sd", "se", "sg", "sh", "si", "sj", "sk", "sl", "sm", "sn", "so", "sr", "ss",
+    "st", "sv", "sx", "sy", "sz", "tc", "td", "tf", "tg", "th", "tj", "tk", "tl", "tm", "tn", "to",
+    "tr", "tt", "tv", "tw", "tz", "ua", "ug", "um", "us", "uy", "uz", "va", "vc", "ve", "vg", "vi",
+    "vn", "vu", "wf", "ws", "ye", "yt", "za", "zm", "zw"};
+
+constexpr std::array<std::string_view, 31> UN_M49_REGIONS = {
+    "001", "002", "003", "005", "009", "011", "013", "014", "015", "017", "018", "019", "021", "029", "030", "034",
+    "035", "039", "053", "054", "057", "061", "142", "143", "145", "150", "151", "154", "155", "202", "419"};
+
+constexpr std::array<std::string_view, 8> ZH_EXTLANG_CODES = {
+    "cmn", "gan", "hak", "hsn", "lzh", "nan", "wuu", "yue"};
+
+constexpr std::array<std::string_view, 7> BCP47_LYRICS_VARIANTS = {
+    "alalc97", "hepburn", "jyutping", "pehoeji", "pinyin", "tailo", "wadegile"};
+
+template <size_t N>
+constexpr bool is_strictly_sorted(const std::array<std::string_view, N> &arr) {
+    for (size_t i = 1; i < N; ++i) {
+        if (!(arr[i - 1] < arr[i])) return false;
+    }
+    return true;
+}
+
+static_assert(is_strictly_sorted(ISO_639_1_CODES), "ISO_639_1_CODES must be strictly sorted");
+static_assert(is_strictly_sorted(ISO_639_2_3_CODES), "ISO_639_2_3_CODES must be strictly sorted");
+static_assert(is_strictly_sorted(ISO_15924_SCRIPTS), "ISO_15924_SCRIPTS must be strictly sorted");
+static_assert(is_strictly_sorted(ISO_3166_1_REGIONS), "ISO_3166_1_REGIONS must be strictly sorted");
+static_assert(is_strictly_sorted(UN_M49_REGIONS), "UN_M49_REGIONS must be strictly sorted");
+static_assert(is_strictly_sorted(ZH_EXTLANG_CODES), "ZH_EXTLANG_CODES must be strictly sorted");
+static_assert(is_strictly_sorted(BCP47_LYRICS_VARIANTS), "BCP47_LYRICS_VARIANTS must be strictly sorted");
+
+bool is_iso639_1(std::string_view code) {
+    return std::binary_search(ISO_639_1_CODES.begin(), ISO_639_1_CODES.end(), code);
+}
+
+bool is_iso639_2_or_3(std::string_view code) {
+    return std::binary_search(ISO_639_2_3_CODES.begin(), ISO_639_2_3_CODES.end(), code);
+}
+
+bool is_iso15924_script(std::string_view code) {
+    return std::binary_search(ISO_15924_SCRIPTS.begin(), ISO_15924_SCRIPTS.end(), code);
+}
+
+bool is_iso3166_1_region(std::string_view code) {
+    return std::binary_search(ISO_3166_1_REGIONS.begin(), ISO_3166_1_REGIONS.end(), code);
+}
+
+bool is_un_m49_region(std::string_view code) {
+    return std::binary_search(UN_M49_REGIONS.begin(), UN_M49_REGIONS.end(), code);
+}
+
+bool is_zh_extlang(std::string_view code) {
+    return std::binary_search(ZH_EXTLANG_CODES.begin(), ZH_EXTLANG_CODES.end(), code);
+}
+
+bool is_bcp47_lyrics_variant(std::string_view code) {
+    return std::binary_search(BCP47_LYRICS_VARIANTS.begin(), BCP47_LYRICS_VARIANTS.end(), code);
+}
+
+std::optional<std::string> parse_strict_bcp47(std::string_view tag_part) {
+    if (tag_part.empty()) {
+        return std::nullopt;
+    }
+
+    std::vector<std::string_view> tokens;
+    size_t start = 0;
+    while (start <= tag_part.size()) {
+        size_t sep = tag_part.find('-', start);
+        if (sep == std::string_view::npos) {
+            tokens.push_back(tag_part.substr(start));
+            break;
+        }
+        tokens.push_back(tag_part.substr(start, sep - start));
+        start = sep + 1;
+    }
+
+    if (tokens.empty()) {
+        return std::nullopt;
+    }
+    for (std::string_view tok : tokens) {
+        if (tok.empty()) {
+            return std::nullopt;
+        }
+    }
+
+    const std::string_view primary = tokens[0];
+    if (tokens.size() == 1 && (primary == "und" || primary == "xxx")) {
+        return std::string("");
+    }
+
+    const bool valid_primary = (primary.size() == 2 && is_iso639_1(primary)) ||
+                               (primary.size() == 3 && is_iso639_2_or_3(primary));
+    if (!valid_primary) {
+        return std::nullopt;
+    }
+    if (tokens.size() == 1) {
+        return std::string(primary);
+    }
+
+    bool saw_extlang = false;
+    bool saw_script = false;
+    bool saw_region = false;
+    bool saw_variant = false;
+    std::string canonical(primary);
+    for (size_t i = 1; i < tokens.size(); ++i) {
+        const std::string_view tok = tokens[i];
+        if (!saw_extlang && !saw_script && !saw_region && !saw_variant &&
+            primary == "zh" && tok.size() == 3 && is_zh_extlang(tok)) {
+            saw_extlang = true;
+            canonical += "-";
+            canonical += tok;
+        } else if (!saw_script && !saw_region && !saw_variant &&
+                   tok.size() == 4 && is_all_ascii_alpha(tok) && is_iso15924_script(tok)) {
+            saw_script = true;
+            std::string script(tok);
+            script[0] = static_cast<char>(script[0] - 'a' + 'A');
+            canonical += "-" + script;
+        } else if (!saw_region && !saw_variant &&
+                   ((tok.size() == 2 && is_iso3166_1_region(tok)) ||
+                    (tok.size() == 3 && is_un_m49_region(tok)))) {
+            saw_region = true;
+            canonical += "-";
+            canonical += is_all_ascii_alpha(tok) ? to_ascii_upper(tok) : std::string(tok);
+        } else if (!saw_variant && is_bcp47_lyrics_variant(tok)) {
+            saw_variant = true;
+            canonical += "-";
+            canonical += tok;
+        } else {
+            return std::nullopt;
+        }
+    }
+
+    return canonical;
+}
+
+std::optional<std::string> parse_lyrics_tag_language(std::string_view raw_suffix, bool allow_uslt_fallback) {
+    // 1. FFmpeg USLT with NUL/space-only language and empty description -> "lyrics-" / "lyrics-   "
+    if (trim_ascii(raw_suffix).empty()) {
+        return allow_uslt_fallback ? std::optional<std::string>("") : std::nullopt;
+    }
+
+    const std::string lower_raw = to_ascii_lower(raw_suffix);
+    const std::string trimmed = trim_ascii(lower_raw);
+
+    // 2. Strict BCP-47 across whole tag suffix (Vorbis/MP4, e.g., "zh-tw", "cmn-hant-tw", "eng", "und", "xxx")
+    if (auto bcp47 = parse_strict_bcp47(trimmed); bcp47.has_value()) {
+        return bcp47;
+    }
+
+    // 3. Real FFmpeg ID3v2 USLT format: "lyrics-<desc>-<lang>" (or "lyrics-<desc>-" / "lyrics-<desc>-   ")
+    if (allow_uslt_fallback) {
+        if (const size_t last_dash = lower_raw.rfind('-'); last_dash != std::string::npos && last_dash > 0) {
+            const std::string_view tail_raw(lower_raw.data() + last_dash + 1, lower_raw.size() - last_dash - 1);
+            const std::string tail = trim_ascii(tail_raw);
+            if (tail.empty() || tail == "xxx" || tail == "und") {
+                return std::string("");
+            }
+            if (tail == "zxx") {
+                return std::nullopt;
+            }
+            if ((tail.size() == 3 && is_all_ascii_alpha(tail) && is_iso639_2_or_3(tail)) ||
+                (tail.size() == 2 && is_all_ascii_alpha(tail) && is_iso639_1(tail))) {
+                return tail;
+            }
+        }
+    }
+
+    // 4. Colon description fallback (e.g., "lyrics-en:us")
+    if (const size_t colon = trimmed.find(':'); colon != std::string::npos) {
+        const std::string prefix = trim_ascii(std::string_view(trimmed).substr(0, colon));
+        if (auto bcp47 = parse_strict_bcp47(prefix); bcp47.has_value()) {
+            return bcp47;
+        }
+    }
+
+    return std::nullopt;
+}
+
+bool is_id3_container_format(std::string_view format_name) {
+    static constexpr const char *ID3_FORMATS[] = {
+        "aac", "aiff", "dsf", "mp3", "mpc", "mpc8", "tta", "wav"};
+    size_t start = 0;
+    while (start <= format_name.size()) {
+        size_t sep = format_name.find(',', start);
+        const std::string_view raw_tok = (sep == std::string_view::npos)
+                                             ? format_name.substr(start)
+                                             : format_name.substr(start, sep - start);
+        const std::string tok = to_ascii_lower(trim_ascii(raw_tok));
+        for (const char *id3_fmt : ID3_FORMATS) {
+            if (tok == id3_fmt) {
+                return true;
+            }
+        }
+        if (sep == std::string_view::npos) {
+            break;
+        }
+        start = sep + 1;
+    }
+    return false;
+}
+
+void collect_lyrics_from_tags_obj(
+    const nlohmann::json &tags_obj,
+    std::vector<EmbeddedLyricsTag> &out,
+    bool container_supports_id3_uslt) {
+    if (!tags_obj.is_object()) {
+        return;
+    }
+
+    static constexpr const char *PREFIXES[] = {
+        "lyrics-",
+        "lyrics:",
+        "unsyncedlyrics-",
+        "unsyncedlyrics:",
+        "syncedlyrics-",
+        "syncedlyrics:",
+    };
+
+    for (auto it = tags_obj.begin(); it != tags_obj.end(); ++it) {
+        if (!it.value().is_string()) {
+            continue;
+        }
+        const std::string &val = it.value().get_ref<const std::string &>();
+        if (val.find_first_not_of(" \t\r\n") == std::string::npos) {
+            continue;
+        }
+
+        const std::string key = to_ascii_lower(it.key());
+        std::optional<std::string> language;
+
+        if (key == "lyrics" || key == "unsyncedlyrics" || key == "syncedlyrics") {
+            language = "";
+        } else {
+            for (const char *prefix : PREFIXES) {
+                const std::string_view pfx(prefix);
+                const bool allow_uslt_fallback = container_supports_id3_uslt && (pfx == "lyrics-");
+                const bool matches_prefix =
+                    (allow_uslt_fallback ? key.size() >= pfx.size() : key.size() > pfx.size()) &&
+                    key.compare(0, pfx.size(), pfx) == 0;
+                if (matches_prefix) {
+                    language = parse_lyrics_tag_language(std::string_view(key).substr(pfx.size()), allow_uslt_fallback);
+                    break;
+                }
+            }
+        }
+
+        if (!language.has_value()) {
+            continue;
+        }
+
+        bool duplicate = false;
+        for (const auto &existing : out) {
+            if (existing.language == *language && existing.content == val) {
+                duplicate = true;
+                break;
+            }
+        }
+        if (!duplicate) {
+            out.push_back(EmbeddedLyricsTag{val, *language});
+        }
+    }
+}
+
+std::vector<EmbeddedLyricsTag> extract_embedded_lyrics(const nlohmann::json &json_data) {
+    std::vector<EmbeddedLyricsTag> lyrics;
+    if (json_data.contains("format") && json_data["format"].is_object()) {
+        const auto &fmt = json_data["format"];
+        auto format_name = get_json_string(fmt, "format_name");
+        const bool container_supports_id3_uslt = format_name.has_value() && is_id3_container_format(*format_name);
+        if (fmt.contains("tags") && fmt["tags"].is_object()) {
+            collect_lyrics_from_tags_obj(fmt["tags"], lyrics, container_supports_id3_uslt);
+        }
+    }
+    if (json_data.contains("streams") && json_data["streams"].is_array()) {
+        for (const auto &stream : json_data["streams"]) {
+            auto codec_type = get_json_string(stream, "codec_type");
+            if (codec_type && *codec_type == "audio") {
+                if (stream.contains("tags") && stream["tags"].is_object()) {
+                    collect_lyrics_from_tags_obj(stream["tags"], lyrics, false);
+                }
+            }
+        }
+    }
+    return lyrics;
+}
+
 } // namespace
 
 tl::expected<std::string, std::string> AudioHelper::calculate_pcm_hash(const std::string &filepath) {
@@ -142,7 +561,7 @@ tl::expected<MediaMetadata, std::string> AudioHelper::extract_metadata(const std
 
     std::vector<std::string> args = {
         "ffprobe", "-v", "error",
-        "-show_entries", "format=duration,tags",
+        "-show_entries", "format=format_name,duration,tags",
         "-show_entries", "format_tags",
         "-show_entries", "stream=sample_rate,channels,duration,disposition,width,height,codec_name,codec_type,tags:disposition=attached_pic",
         "-show_entries", "stream_tags",
@@ -219,6 +638,7 @@ tl::expected<MediaMetadata, std::string> AudioHelper::extract_metadata(const std
     metadata.album = get_tag(json_data, "album");
     metadata.date = get_tag(json_data, "date");
     metadata.track = get_tag(json_data, "track");
+    metadata.embedded_lyrics = extract_embedded_lyrics(json_data);
 
     return metadata;
 }

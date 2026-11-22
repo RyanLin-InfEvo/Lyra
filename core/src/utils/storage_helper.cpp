@@ -6,7 +6,11 @@
 
 #include "storage_helper.h"
 #include "uuid_generator.h"
+#include <cerrno>
 #include <system_error>
+#ifndef _WIN32
+#include <unistd.h>
+#endif
 
 namespace lyra {
 namespace utils {
@@ -95,19 +99,124 @@ tl::expected<void, std::string> StorageHelper::move_to_cas(const std::filesystem
     return {};
 }
 
+tl::expected<bool, std::string> StorageHelper::move_to_cas_if_absent(
+    const std::filesystem::path &temp_path,
+    const std::filesystem::path &target_path) {
+    namespace fs = std::filesystem;
+    std::error_code ec;
+    fs::create_directories(target_path.parent_path(), ec);
+    if (ec) {
+        return tl::unexpected("Failed to create target directories: " + ec.message());
+    }
+
+#ifndef _WIN32
+    auto is_hardlink_unsupported = [](int e) {
+        return e == EPERM || e == EOPNOTSUPP || e == ENOTSUP || e == ENOSYS;
+    };
+
+    if (::link(temp_path.c_str(), target_path.c_str()) == 0) {
+        fs::remove(temp_path, ec);
+        return true;
+    }
+
+    int err = errno;
+    if (err == EEXIST) {
+        fs::remove(temp_path, ec);
+        return false;
+    }
+
+    if (err == EXDEV) {
+        const fs::path sibling_temp = target_path.parent_path() / (".tmp_" + UuidGenerator::generate_v4());
+        TempCleanup sibling_cleanup{sibling_temp};
+        fs::copy_file(temp_path, sibling_temp, fs::copy_options::overwrite_existing, ec);
+        if (ec) {
+            return tl::unexpected("Failed to stage cross-device temp file for CAS: " + ec.message());
+        }
+        if (::link(sibling_temp.c_str(), target_path.c_str()) == 0) {
+            fs::remove(temp_path, ec);
+            return true;
+        }
+        err = errno;
+        if (err == EEXIST) {
+            fs::remove(temp_path, ec);
+            return false;
+        }
+        if (is_hardlink_unsupported(err)) {
+            bool already_exists = fs::exists(target_path, ec);
+            if (ec) {
+                return tl::unexpected("Failed to inspect CAS target path: " + ec.message());
+            }
+            if (already_exists) {
+                fs::remove(temp_path, ec);
+                return false;
+            }
+            fs::rename(sibling_temp, target_path, ec);
+            if (ec) {
+                return tl::unexpected("Failed to rename staged CAS file: " + ec.message());
+            }
+            sibling_cleanup.dismiss();
+            fs::remove(temp_path, ec);
+            return true;
+        }
+        return tl::unexpected("Failed to link staged CAS file: " + std::error_code(err, std::generic_category()).message());
+    }
+
+    if (is_hardlink_unsupported(err)) {
+        bool already_exists = fs::exists(target_path, ec);
+        if (ec) {
+            return tl::unexpected("Failed to inspect CAS target path: " + ec.message());
+        }
+        if (already_exists) {
+            fs::remove(temp_path, ec);
+            return false;
+        }
+        auto move_res = move_to_cas(temp_path, target_path);
+        if (!move_res) {
+            return tl::unexpected(move_res.error());
+        }
+        return true;
+    }
+
+    return tl::unexpected("Failed to publish file to CAS: " + std::error_code(err, std::generic_category()).message());
+#else
+    bool already_exists = fs::exists(target_path, ec);
+    if (ec) {
+        return tl::unexpected("Failed to inspect CAS target path: " + ec.message());
+    }
+    if (already_exists) {
+        fs::remove(temp_path, ec);
+        return false;
+    }
+    auto move_res = move_to_cas(temp_path, target_path);
+    if (!move_res) {
+        return tl::unexpected(move_res.error());
+    }
+    return true;
+#endif
+}
+
 tl::expected<std::string, std::string> StorageHelper::find_file_by_prefix(const std::filesystem::path &dir, const std::string &prefix) {
     namespace fs = std::filesystem;
-    if (!fs::exists(dir)) {
+    if (prefix.empty()) {
+        return tl::unexpected("Prefix must not be empty");
+    }
+    std::error_code ec;
+    if (!fs::exists(dir, ec)) {
+        if (ec) {
+            return tl::unexpected("Failed to inspect directory '" + dir.string() + "': " + ec.message());
+        }
         return tl::unexpected("Directory not found: " + dir.string());
     }
 
     try {
         for (const auto &entry : fs::directory_iterator(dir)) {
-            if (!entry.is_regular_file()) {
+            if (!entry.is_regular_file(ec) || ec) {
+                ec.clear();
                 continue;
             }
             if (std::string filename = entry.path().filename().string();
-                filename.rfind(prefix, 0) == 0) {
+                filename.rfind(prefix, 0) == 0 &&
+                (filename.size() == prefix.size() || filename[prefix.size()] == '.')) {
                 return entry.path().string();
             }
         }
@@ -121,7 +230,11 @@ tl::expected<std::string, std::string> StorageHelper::find_file_by_prefix(const 
 tl::expected<void, std::string> StorageHelper::remove_file(const std::filesystem::path &path) {
     namespace fs = std::filesystem;
     std::error_code ec;
-    if (fs::exists(path)) {
+    bool exists = fs::exists(path, ec);
+    if (ec) {
+        return tl::unexpected("Failed to inspect file: " + ec.message());
+    }
+    if (exists) {
         fs::remove(path, ec);
         if (ec) {
             return tl::unexpected("Failed to remove file: " + ec.message());
