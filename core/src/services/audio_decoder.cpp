@@ -222,18 +222,18 @@ uint32_t AudioDecoder::read_pcm_frames(float *out_buffer, uint32_t max_frames) {
     uint8_t channels = m_impl->channels;
 
     while (!m_impl->eof_reached) {
-        size_t avail_samples = m_impl->fifo_buffer.size() - m_impl->fifo_read_offset;
-        if (avail_samples >= static_cast<size_t>(max_frames) * channels) {
+        if (size_t avail_samples = m_impl->fifo_buffer.size() - m_impl->fifo_read_offset;
+            avail_samples >= static_cast<size_t>(max_frames) * channels) {
             break;
         }
 
-        int ret = av_read_frame(m_impl->fmt_ctx, m_impl->packet);
-        if (ret < 0) {
+        if (int ret = av_read_frame(m_impl->fmt_ctx, m_impl->packet);
+            ret < 0) {
             // End of stream or error - flush decoder
             avcodec_send_packet(m_impl->codec_ctx, nullptr);
             while (true) {
-                int r = avcodec_receive_frame(m_impl->codec_ctx, m_impl->frame);
-                if (r < 0) break;
+                if (int r = avcodec_receive_frame(m_impl->codec_ctx, m_impl->frame);
+                    r < 0) break;
 
                 int64_t delay = swr_get_delay(m_impl->swr_ctx, m_impl->codec_ctx->sample_rate);
                 int max_out_samples = static_cast<int>(av_rescale_rnd(
@@ -263,21 +263,21 @@ uint32_t AudioDecoder::read_pcm_frames(float *out_buffer, uint32_t max_frames) {
 
             // Flush resampler
             int64_t remaining_delay = swr_get_delay(m_impl->swr_ctx, m_impl->codec_ctx->sample_rate);
-            int max_flush_samples = static_cast<int>(av_rescale_rnd(
-                remaining_delay,
-                m_impl->sample_rate,
-                m_impl->codec_ctx->sample_rate,
-                AV_ROUND_UP));
-            if (max_flush_samples > 0) {
+            if (int max_flush_samples = static_cast<int>(av_rescale_rnd(
+                    remaining_delay,
+                    m_impl->sample_rate,
+                    m_impl->codec_ctx->sample_rate,
+                    AV_ROUND_UP));
+                max_flush_samples > 0) {
                 std::vector<float> converted(max_flush_samples * channels);
                 uint8_t *out_data[1] = {reinterpret_cast<uint8_t *>(converted.data())};
-                int out_samples = swr_convert(
-                    m_impl->swr_ctx,
-                    out_data,
-                    max_flush_samples,
-                    nullptr,
-                    0);
-                if (out_samples > 0) {
+                if (int out_samples = swr_convert(
+                        m_impl->swr_ctx,
+                        out_data,
+                        max_flush_samples,
+                        nullptr,
+                        0);
+                    out_samples > 0) {
                     m_impl->fifo_buffer.insert(
                         m_impl->fifo_buffer.end(),
                         converted.begin(),
@@ -290,8 +290,8 @@ uint32_t AudioDecoder::read_pcm_frames(float *out_buffer, uint32_t max_frames) {
         }
 
         if (m_impl->packet->stream_index == m_impl->audio_stream_idx) {
-            int send_ret = avcodec_send_packet(m_impl->codec_ctx, m_impl->packet);
-            if (send_ret >= 0) {
+            if (int send_ret = avcodec_send_packet(m_impl->codec_ctx, m_impl->packet);
+                send_ret >= 0) {
                 while (true) {
                     int recv_ret = avcodec_receive_frame(m_impl->codec_ctx, m_impl->frame);
                     if (recv_ret == AVERROR(EAGAIN) || recv_ret == AVERROR_EOF) {

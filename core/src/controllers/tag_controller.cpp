@@ -15,12 +15,10 @@ tl::expected<void, std::string> TagController::create(Tag &tag) {
     if (tag.category.empty()) {
         tag.category = "general";
     }
-    auto res = m_repo.insert(tag);
-    if (!res) {
+    if (auto res = m_repo.insert(tag); !res) {
         return res;
     }
-    auto created = m_repo.get(tag.id);
-    if (created) {
+    if (auto created = m_repo.get(tag.id); created) {
         tag = *created;
     }
     return {};

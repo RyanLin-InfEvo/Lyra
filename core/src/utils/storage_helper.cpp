@@ -106,8 +106,8 @@ tl::expected<std::string, std::string> StorageHelper::find_file_by_prefix(const 
             if (!entry.is_regular_file()) {
                 continue;
             }
-            std::string filename = entry.path().filename().string();
-            if (filename.rfind(prefix, 0) == 0) {
+            if (std::string filename = entry.path().filename().string();
+                filename.rfind(prefix, 0) == 0) {
                 return entry.path().string();
             }
         }

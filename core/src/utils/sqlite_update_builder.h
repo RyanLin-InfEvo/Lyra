@@ -219,8 +219,7 @@ class SqliteUpdateBuilder {
                 m_where_binder(query, bind_idx++);
             }
 
-            int affected_rows = query.exec();
-            if (affected_rows == 0) {
+            if (int affected_rows = query.exec(); affected_rows == 0) {
                 return tl::unexpected(m_not_found_message.empty()
                                           ? (m_table_name + " ID not found.")
                                           : m_not_found_message);

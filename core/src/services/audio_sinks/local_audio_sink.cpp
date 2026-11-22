@@ -499,8 +499,8 @@ bool LocalAudioSinkImpl::set_output_device(const std::string &device_id) {
             m_state->target_device_id = old_id;   // fallback
             m_state->target_device_id_str = old_str;
             m_playing = was_playing;
-            bool rollback_ok = reconfigure_device_unlocked(!was_playing);
-            if (!rollback_ok) {
+            if (bool rollback_ok = reconfigure_device_unlocked(!was_playing);
+                !rollback_ok) {
                 m_playing = false;
             }
             return false;
@@ -532,8 +532,8 @@ bool LocalAudioSinkImpl::set_buffer_size_frames(uint32_t frames) {
         if (!reconfigure_device_unlocked(true)) {
             m_state->buffer_size_frames = old_frames;
             m_playing = was_playing;
-            bool rollback_ok = reconfigure_device_unlocked(!was_playing);
-            if (!rollback_ok) {
+            if (bool rollback_ok = reconfigure_device_unlocked(!was_playing);
+                !rollback_ok) {
                 m_playing = false;
             }
             return false;
@@ -562,8 +562,8 @@ bool LocalAudioSinkImpl::set_exclusive_mode(bool exclusive) {
         if (!reconfigure_device_unlocked(true)) {
             m_state->exclusive_mode = old_mode;
             m_playing = was_playing;
-            bool rollback_ok = reconfigure_device_unlocked(!was_playing);
-            if (!rollback_ok) {
+            if (bool rollback_ok = reconfigure_device_unlocked(!was_playing);
+                !rollback_ok) {
                 m_playing = false;
             }
             return false;

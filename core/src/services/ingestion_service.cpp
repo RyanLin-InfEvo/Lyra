@@ -184,8 +184,8 @@ tl::expected<AssetIngestResult, std::string> IngestionService::ingest_asset(
 
     utils::TempCleanup cleanup{temp_path};
 
-    auto copy_res = utils::StorageHelper::copy_to_temp(source_path, temp_path);
-    if (!copy_res.has_value()) {
+    if (auto copy_res = utils::StorageHelper::copy_to_temp(source_path, temp_path);
+        !copy_res.has_value()) {
         return tl::unexpected(copy_res.error());
     }
 
@@ -196,8 +196,8 @@ tl::expected<AssetIngestResult, std::string> IngestionService::ingest_asset(
     }
 
     // Check if asset already exists in database
-    auto existing_asset_res = m_asset_repo.get(file_hash);
-    if (existing_asset_res.has_value()) {
+    if (auto existing_asset_res = m_asset_repo.get(file_hash);
+        existing_asset_res.has_value()) {
         auto pcm_hashes_res = m_asset_repo.get_audio_by_asset(file_hash);
         if (!pcm_hashes_res.has_value()) {
             return tl::unexpected("Failed to query audio relations: " + pcm_hashes_res.error());
@@ -247,8 +247,8 @@ tl::expected<AssetIngestResult, std::string> IngestionService::ingest_asset(
     uintmax_t file_size = size_res.value();
 
     // Move file to deterministic CAS location
-    auto move_res = utils::StorageHelper::move_to_cas(temp_path, target_path);
-    if (!move_res.has_value()) {
+    if (auto move_res = utils::StorageHelper::move_to_cas(temp_path, target_path);
+        !move_res.has_value()) {
         return tl::unexpected(move_res.error());
     }
     cleanup.dismiss();
@@ -271,8 +271,7 @@ tl::expected<AssetIngestResult, std::string> IngestionService::ingest_asset(
         {".aif", "audio/x-aiff"}};
 
     std::string mime_type = "audio/octet-stream";
-    auto mime_it = MIME_MAP.find(lower_ext);
-    if (mime_it != MIME_MAP.end()) {
+    if (auto mime_it = MIME_MAP.find(lower_ext); mime_it != MIME_MAP.end()) {
         mime_type = mime_it->second;
     }
 
@@ -294,8 +293,8 @@ tl::expected<AssetIngestResult, std::string> IngestionService::ingest_asset(
     audio.true_peak = 0.0;
 
     auto tx = m_db_context.begin_transaction();
-    auto insert_res = m_asset_repo.insert_asset_with_audio(asset, audio);
-    if (!insert_res.has_value()) {
+    if (auto insert_res = m_asset_repo.insert_asset_with_audio(asset, audio);
+        !insert_res.has_value()) {
         // Rollback, clean up orphaned CAS file on database failure
         utils::StorageHelper::remove_file(target_path);
         return tl::unexpected("Failed to insert asset and audio: " + insert_res.error());
@@ -303,8 +302,8 @@ tl::expected<AssetIngestResult, std::string> IngestionService::ingest_asset(
 
     if (m_source_data_repo) {
         std::string resolved_source_type = source_type;
-        size_t st_start = resolved_source_type.find_first_not_of(" \t\r\n");
-        if (st_start == std::string::npos) {
+        if (size_t st_start = resolved_source_type.find_first_not_of(" \t\r\n");
+            st_start == std::string::npos) {
             resolved_source_type = "";
         } else {
             size_t st_end = resolved_source_type.find_last_not_of(" \t\r\n");
@@ -317,8 +316,8 @@ tl::expected<AssetIngestResult, std::string> IngestionService::ingest_asset(
         source_data.source_type = resolved_source_type;
         source_data.original_path = source_path;
         source_data.note = note;
-        auto sd_res = m_source_data_repo->insert(source_data);
-        if (!sd_res.has_value()) {
+        if (auto sd_res = m_source_data_repo->insert(source_data);
+            !sd_res.has_value()) {
             utils::StorageHelper::remove_file(target_path);
             return tl::unexpected("Failed to insert source data: " + sd_res.error());
         }
@@ -353,12 +352,12 @@ tl::expected<AssetIngestResult, std::string> IngestionService::ingest_asset(
                 img_out.close();
 
                 const std::filesystem::path img_target_path = utils::StorageHelper::resolve_cas_path(m_storage_root, img_hash, img_ext);
-                auto img_move_res = utils::StorageHelper::move_to_cas(img_temp_path, img_target_path);
-                if (img_move_res.has_value()) {
+                if (auto img_move_res = utils::StorageHelper::move_to_cas(img_temp_path, img_target_path);
+                    img_move_res.has_value()) {
                     img_cleanup.dismiss();
 
-                    auto existing_img_asset = m_asset_repo.get(img_hash);
-                    if (!existing_img_asset.has_value()) {
+                    if (auto existing_img_asset = m_asset_repo.get(img_hash);
+                        !existing_img_asset.has_value()) {
                         Asset img_asset;
                         img_asset.file_hash = img_hash;
                         img_asset.mime_type = img_mime;
@@ -368,8 +367,8 @@ tl::expected<AssetIngestResult, std::string> IngestionService::ingest_asset(
                     }
 
                     if (m_image_repo) {
-                        auto existing_img_rec = m_image_repo->get(img_hash);
-                        if (!existing_img_rec.has_value()) {
+                        if (auto existing_img_rec = m_image_repo->get(img_hash);
+                            !existing_img_rec.has_value()) {
                             Image img_rec;
                             img_rec.image_hash = img_hash;
                             img_rec.file_hash = img_hash;
@@ -436,8 +435,7 @@ tl::expected<TrackImportResult, std::string> IngestionService::import_track(cons
             Artist artist;
             artist.id = UuidGenerator::generate_v4();
             artist.name = artist_name;
-            auto res = m_artist_repo.insert(artist);
-            if (!res) {
+            if (auto res = m_artist_repo.insert(artist); !res) {
                 return tl::unexpected("Failed to create artist: " + res.error());
             }
             artist_id = artist.id;
@@ -458,8 +456,7 @@ tl::expected<TrackImportResult, std::string> IngestionService::import_track(cons
             Album album;
             album.id = UuidGenerator::generate_v4();
             album.title = album_title;
-            auto res = m_album_repo.insert(album);
-            if (!res) {
+            if (auto res = m_album_repo.insert(album); !res) {
                 return tl::unexpected("Failed to create album: " + res.error());
             }
             album_id = album.id;
@@ -513,8 +510,7 @@ tl::expected<TrackImportResult, std::string> IngestionService::import_track(cons
     track.recording_day = recording_day;
     track.duration = static_cast<uint32_t>(duration_sec * 1000.0);
 
-    auto create_track_res = m_track_repo.insert(track);
-    if (!create_track_res) {
+    if (auto create_track_res = m_track_repo.insert(track); !create_track_res) {
         return tl::unexpected("Failed to create track: " + create_track_res.error());
     }
 
@@ -525,8 +521,8 @@ tl::expected<TrackImportResult, std::string> IngestionService::import_track(cons
         artist_params.artist_id = artist_id;
         artist_params.role = ArtistRole::Main;
         artist_params.position = 1;
-        auto link_artist_res = m_track_repo.add_artist(artist_params);
-        if (!link_artist_res) {
+        if (auto link_artist_res = m_track_repo.add_artist(artist_params);
+            !link_artist_res) {
             return tl::unexpected("Failed to link artist to track: " + link_artist_res.error());
         }
     }
@@ -557,8 +553,8 @@ tl::expected<TrackImportResult, std::string> IngestionService::import_track(cons
         album_params.track_id = track.id;
         album_params.album_id = album_id;
         album_params.position = position;
-        auto link_album_res = m_track_repo.add_album(album_params);
-        if (!link_album_res) {
+        if (auto link_album_res = m_track_repo.add_album(album_params);
+            !link_album_res) {
             return tl::unexpected("Failed to link album to track: " + link_album_res.error());
         }
     }
@@ -566,8 +562,8 @@ tl::expected<TrackImportResult, std::string> IngestionService::import_track(cons
     // 10. Link Cover Image if present
     if (ingest_res.value().cover_image_hash.has_value() && m_image_repo) {
         const std::string &cover_hash = *ingest_res.value().cover_image_hash;
-        auto link_track_img = m_image_repo->link_entity(track.id, cover_hash, "front");
-        if (!link_track_img) {
+        if (auto link_track_img = m_image_repo->link_entity(track.id, cover_hash, "front");
+            !link_track_img) {
             return tl::unexpected("Failed to link cover image to track: " + link_track_img.error());
         }
         if (!album_id.empty()) {
@@ -576,8 +572,8 @@ tl::expected<TrackImportResult, std::string> IngestionService::import_track(cons
                 return tl::unexpected("Failed to query album images: " + existing_images.error());
             }
             if (existing_images.value().empty()) {
-                auto link_album_img = m_image_repo->link_entity(album_id, cover_hash, "front");
-                if (!link_album_img) {
+                if (auto link_album_img = m_image_repo->link_entity(album_id, cover_hash, "front");
+                    !link_album_img) {
                     return tl::unexpected("Failed to link cover image to album: " + link_album_img.error());
                 }
             }

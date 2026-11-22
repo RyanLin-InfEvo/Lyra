@@ -521,8 +521,8 @@ bool AudioEngine::set_output_device(const std::string &device_id) {
             return true;
         }
         if (LYRA_SINK_HAS_CAP(m_sink, set_output_device)) {
-            int res = m_sink->set_output_device(m_sink, normalized_id.c_str());
-            if (res != 0) {
+            if (int res = m_sink->set_output_device(m_sink, normalized_id.c_str());
+                res != 0) {
                 if (res == -2 && m_state == AudioEngineState::PLAYING) {
                     m_state = AudioEngineState::STOPPED;
                     m_pump_running = false;
@@ -580,8 +580,8 @@ bool AudioEngine::set_buffer_size_frames(uint32_t frames) {
     {
         std::lock_guard<std::recursive_mutex> lock(m_mutex);
         if (LYRA_SINK_HAS_CAP(m_sink, set_buffer_size_frames)) {
-            int res = m_sink->set_buffer_size_frames(m_sink, frames);
-            if (res != 0) {
+            if (int res = m_sink->set_buffer_size_frames(m_sink, frames);
+                res != 0) {
                 if (res == -2 && m_state == AudioEngineState::PLAYING) {
                     m_state = AudioEngineState::STOPPED;
                     m_pump_running = false;
@@ -623,8 +623,8 @@ bool AudioEngine::set_exclusive_mode(bool exclusive) {
     {
         std::lock_guard<std::recursive_mutex> lock(m_mutex);
         if (LYRA_SINK_HAS_CAP(m_sink, set_exclusive_mode)) {
-            int res = m_sink->set_exclusive_mode(m_sink, exclusive ? 1 : 0);
-            if (res != 0) {
+            if (int res = m_sink->set_exclusive_mode(m_sink, exclusive ? 1 : 0);
+                res != 0) {
                 if (res == -2 && m_state == AudioEngineState::PLAYING) {
                     m_state = AudioEngineState::STOPPED;
                     m_pump_running = false;
@@ -994,8 +994,8 @@ void AudioEngine::pump_loop() {
                     new_spec.channels = m_channels;
                     new_spec.format = LYRA_AUDIO_FORMAT_F32;
 
-                    int open_res = (LYRA_SINK_HAS_CAP(m_sink, open)) ? m_sink->open(m_sink, &new_spec) : -1;
-                    if (open_res != 0) {
+                    if (int open_res = (LYRA_SINK_HAS_CAP(m_sink, open)) ? m_sink->open(m_sink, &new_spec) : -1;
+                        open_res != 0) {
                         m_pump_running = false;
                         m_state = AudioEngineState::STOPPED;
                         m_last_error = AudioEngineError::DeviceUnavailable;
@@ -1007,8 +1007,8 @@ void AudioEngine::pump_loop() {
                         if (LYRA_SINK_HAS_CAP(m_sink, set_volume)) {
                             m_sink->set_volume(m_sink, m_volume);
                         }
-                        int start_res = (LYRA_SINK_HAS_CAP(m_sink, start)) ? m_sink->start(m_sink) : 0;
-                        if (start_res != 0) {
+                        if (int start_res = (LYRA_SINK_HAS_CAP(m_sink, start)) ? m_sink->start(m_sink) : 0;
+                            start_res != 0) {
                             m_pump_running = false;
                             m_state = AudioEngineState::STOPPED;
                             m_last_error = AudioEngineError::DeviceUnavailable;

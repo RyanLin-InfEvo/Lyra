@@ -77,8 +77,8 @@ tl::expected<ResolvedPlayback, PlaybackError> PlaybackService::play(
         m_next_resolved.reset();
     }
 
-    bool success = m_audio_engine.play(resolved_res->file_path, options.start_position_seconds);
-    if (!success) {
+    if (bool success = m_audio_engine.play(resolved_res->file_path, options.start_position_seconds);
+        !success) {
         {
             std::lock_guard<std::mutex> lock(m_mutex);
             if (m_current_resolved.has_value() && m_current_resolved->file_path == resolved_res->file_path) {
@@ -146,8 +146,8 @@ tl::expected<ResolvedPlayback, PlaybackError> PlaybackService::preload_next(
     }
 
     // Preload next track in AudioEngine OUTSIDE m_mutex (pre-allocates decoder buffers).
-    bool success = m_audio_engine.preload_next(resolved_res->file_path);
-    if (!success) {
+    if (bool success = m_audio_engine.preload_next(resolved_res->file_path);
+        !success) {
         return tl::unexpected(PlaybackError{
             PlaybackErrorCode::EngineError,
             "Failed to preload next audio track: " + resolved_res->file_path});
@@ -452,12 +452,11 @@ tl::expected<ResolvedPlayback, PlaybackError> PlaybackService::resolve_asset(
     resolved.format = normalize_file_extension(*find_res);
 
     // Reverse-lookup associated Audio entity to enrich playback metadata with stream fidelity attributes
-    auto pcm_hashes_res = m_asset_repo.get_audio_by_asset(file_hash);
-    if (pcm_hashes_res && !pcm_hashes_res->empty()) {
+    if (auto pcm_hashes_res = m_asset_repo.get_audio_by_asset(file_hash);
+        pcm_hashes_res && !pcm_hashes_res->empty()) {
         std::string pcm_hash = (*pcm_hashes_res)[0];
         resolved.pcm_hash = pcm_hash;
-        auto audio_res = m_audio_repo.get(pcm_hash);
-        if (audio_res) {
+        if (auto audio_res = m_audio_repo.get(pcm_hash); audio_res) {
             resolved.sample_rate = audio_res->sample_rate;
             resolved.bit_depth = audio_res->bit_depth;
             resolved.channels = audio_res->channels;
@@ -563,12 +562,11 @@ tl::expected<ResolvedPlayback, PlaybackError> PlaybackService::resolve_track(
 
     // Star Topology master resolution: arbitrate across the version family unless version is pinned
     if (!options.pin_version) {
-        auto family_res = m_audio_repo.get_related_versions(track.pcm_hash);
-        if (family_res && !family_res->empty()) {
+        if (auto family_res = m_audio_repo.get_related_versions(track.pcm_hash);
+            family_res && !family_res->empty()) {
             auto scored_versions = AudioScorer::score_and_sort_candidate_versions(*family_res, options.preferred_format);
             for (const auto &ver : scored_versions) {
-                auto res = resolve_audio(ver.pcm_hash, options);
-                if (res) {
+                if (auto res = resolve_audio(ver.pcm_hash, options); res) {
                     res->track_id = track.id;
                     return res;
                 }

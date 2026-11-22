@@ -85,8 +85,7 @@ tl::expected<int, std::string> ProcessRunner::run(
         read_fd.close(); // Close read end
 
         // Redirect stdin to /dev/null to prevent child from hanging on parent's stdin (get EOF id readed)
-        int dev_null = open("/dev/null", O_RDONLY);
-        if (dev_null != -1) {
+        if (int dev_null = open("/dev/null", O_RDONLY); dev_null != -1) {
             dup2(dev_null, STDIN_FILENO); // If the child process get hangs up, it gets an EOF immidiately
             ::close(dev_null);
         } else {

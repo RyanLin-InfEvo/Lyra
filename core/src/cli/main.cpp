@@ -73,8 +73,7 @@ int main(int argc, char *argv[]) {
     }
 
     // Initialize Database
-    int init_res = lyra_init(db_dir.c_str());
-    if (init_res != 0) {
+    if (int init_res = lyra_init(db_dir.c_str()); init_res != 0) {
         std::cerr << "Error: Failed to initialize database in directory: " << db_dir << "\n";
         return 1;
     }
@@ -108,8 +107,7 @@ int main(int argc, char *argv[]) {
                 std::vector<std::string> tokens = tokenize(line);
                 if (tokens.empty()) continue;
 
-                auto req_opt = parse_args_to_json(tokens);
-                if (req_opt) {
+                if (auto req_opt = parse_args_to_json(tokens); req_opt) {
                     run_dispatch(*req_opt, pretty);
                 }
             }
@@ -280,8 +278,7 @@ std::string get_opt(const std::vector<std::string> &args, const std::vector<std:
 }
 
 void add_param(json &params, const std::vector<std::string> &args, const std::string &name, const std::vector<std::string> &flags, bool is_int) {
-    std::string val = get_opt(args, flags);
-    if (!val.empty()) {
+    if (std::string val = get_opt(args, flags); !val.empty()) {
         if (is_int) {
             try {
                 params[name] = std::stoi(val);
@@ -300,8 +297,7 @@ bool check_positional_id(const std::vector<std::string> &cmd_args, const std::st
         std::cerr << "Error: " << cmd_name << " requires an <id> positional argument\n";
         return false;
     }
-    std::string id = cmd_args[2];
-    if (id.starts_with("-")) {
+    if (std::string id = cmd_args[2]; id.starts_with("-")) {
         std::cerr << "Error: " << cmd_name << " requires an <id> positional argument, but found flag: " << id << "\n";
         return false;
     }
@@ -634,8 +630,7 @@ int run_dispatch(const std::string &req_str, bool pretty) {
             std::cout << res_str << "\n";
         }
         if (j.contains("code") && j["code"].is_number_integer()) {
-            int code = j["code"].get<int>();
-            if (code >= 400) {
+            if (int code = j["code"].get<int>(); code >= 400) {
                 exit_code = 1;
             }
         }

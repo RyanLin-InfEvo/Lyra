@@ -12,8 +12,7 @@ SourceDataController::SourceDataController(ISourceDataRepository &repo)
 
 tl::expected<void, std::string> SourceDataController::create(SourceData &source_data) {
     source_data.id = UuidGenerator::generate_v4();
-    auto res = m_repo.insert(source_data);
-    if (!res) {
+    if (auto res = m_repo.insert(source_data); !res) {
         return res;
     }
     auto created = m_repo.get(source_data.id);

@@ -59,8 +59,7 @@ class SqliteEntityRepository {
                 entity_stmt.bind(2, m_entity_type);
                 entity_stmt.exec();
 
-                auto res = do_insert(db, entity);
-                if (!res) {
+                if (auto res = do_insert(db, entity); !res) {
                     return res;
                 }
 
@@ -83,15 +82,13 @@ class SqliteEntityRepository {
                 build_update(builder, data);
 
                 if (builder.empty()) {
-                    auto exists = get(data.id);
-                    if (!exists) {
+                    if (auto exists = get(data.id); !exists) {
                         return tl::unexpected(m_table_name + " ID not found.");
                     }
                     return {};
                 }
 
-                auto res = builder.execute(db);
-                if (!res) {
+                if (auto res = builder.execute(db); !res) {
                     return res;
                 }
 
@@ -113,8 +110,7 @@ class SqliteEntityRepository {
             SQLite::Statement query(db, sql);
             query.bind(1, id);
 
-            auto entity = SqliteHelper::fetch_one<TEntity>(query);
-            if (entity) {
+            if (auto entity = SqliteHelper::fetch_one<TEntity>(query); entity) {
                 return *entity;
             }
             return tl::unexpected(m_table_name + " not found.");
@@ -236,8 +232,7 @@ class SqliteEntityRepository {
                               SqliteHelper::quote_identifier("id") + " = ?";
             SQLite::Statement update_entity(db, sql);
             update_entity.bind(1, id);
-            int affected = update_entity.exec();
-            if (affected == 0) {
+            if (int affected = update_entity.exec(); affected == 0) {
                 return tl::unexpected(m_table_name + " with ID '" + id + "' not found.");
             }
             return {};

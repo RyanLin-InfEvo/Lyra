@@ -56,17 +56,17 @@ tl::expected<CoverResolutionResult, Error> CoverArtService::resolve_image(
 
     std::string path;
     if (!ext.empty()) {
-        auto cas_path = utils::StorageHelper::resolve_cas_path(m_storage_root, img.file_hash, ext);
-        if (std::filesystem::exists(cas_path)) {
+        if (auto cas_path = utils::StorageHelper::resolve_cas_path(m_storage_root, img.file_hash, ext);
+            std::filesystem::exists(cas_path)) {
             path = cas_path.string();
         }
     }
 
     if (path.empty()) {
-        auto cas_dir = utils::StorageHelper::resolve_cas_dir(m_storage_root, img.file_hash);
-        if (std::filesystem::exists(cas_dir)) {
-            auto find_res = utils::StorageHelper::find_file_by_prefix(cas_dir, img.file_hash);
-            if (find_res.has_value() && std::filesystem::exists(find_res.value())) {
+        if (auto cas_dir = utils::StorageHelper::resolve_cas_dir(m_storage_root, img.file_hash);
+            std::filesystem::exists(cas_dir)) {
+            if (auto find_res = utils::StorageHelper::find_file_by_prefix(cas_dir, img.file_hash);
+                find_res.has_value() && std::filesystem::exists(find_res.value())) {
                 path = find_res.value();
             }
         }
@@ -110,8 +110,8 @@ tl::expected<CoverResolutionResult, Error> CoverArtService::get_album_cover(cons
 
 tl::expected<CoverResolutionResult, Error> CoverArtService::get_track_cover(const std::string &track_id) {
     // 1. Direct track cover
-    auto images_res = m_image_repo.get_images_by_entity(track_id);
-    if (images_res && !images_res.value().empty()) {
+    if (auto images_res = m_image_repo.get_images_by_entity(track_id);
+        images_res && !images_res.value().empty()) {
         return resolve_image(images_res.value()[0], "track", track_id);
     }
 
@@ -123,8 +123,8 @@ tl::expected<CoverResolutionResult, Error> CoverArtService::get_track_cover(cons
 
     if (album_id_res.value().has_value()) {
         const auto &album_id = *album_id_res.value();
-        auto album_images_res = m_image_repo.get_images_by_entity(album_id);
-        if (album_images_res && !album_images_res.value().empty()) {
+        if (auto album_images_res = m_image_repo.get_images_by_entity(album_id);
+            album_images_res && !album_images_res.value().empty()) {
             return resolve_image(album_images_res.value()[0], "album", album_id);
         }
     }
@@ -133,18 +133,17 @@ tl::expected<CoverResolutionResult, Error> CoverArtService::get_track_cover(cons
 }
 
 tl::expected<CoverResolutionResult, Error> CoverArtService::get_artist_cover(const std::string &artist_id) {
-    auto artist_res = m_artist_repo.get(artist_id);
-    if (!artist_res) {
+    if (auto artist_res = m_artist_repo.get(artist_id); !artist_res) {
         return tl::unexpected(Error{ErrorType::ArtistNotFound, "Artist not found: " + artist_id});
     }
 
-    auto avatar_images = m_image_repo.get_images_by_entity(artist_id, "artist_avatar");
-    if (avatar_images && !avatar_images.value().empty()) {
+    if (auto avatar_images = m_image_repo.get_images_by_entity(artist_id, "artist_avatar");
+        avatar_images && !avatar_images.value().empty()) {
         return resolve_image(avatar_images.value()[0], "artist", artist_id);
     }
 
-    auto latest_album_cover = m_image_repo.get_artist_latest_album_cover(artist_id);
-    if (latest_album_cover) {
+    if (auto latest_album_cover = m_image_repo.get_artist_latest_album_cover(artist_id);
+        latest_album_cover) {
         return resolve_image(latest_album_cover.value(), "album", artist_id);
     }
 
@@ -152,13 +151,12 @@ tl::expected<CoverResolutionResult, Error> CoverArtService::get_artist_cover(con
 }
 
 tl::expected<CoverResolutionResult, Error> CoverArtService::get_playlist_cover(const std::string &playlist_id) {
-    auto playlist_res = m_playlist_repo.get(playlist_id);
-    if (!playlist_res) {
+    if (auto playlist_res = m_playlist_repo.get(playlist_id); !playlist_res) {
         return tl::unexpected(Error{ErrorType::PlaylistNotFound, "Playlist not found: " + playlist_id});
     }
 
-    auto playlist_images = m_image_repo.get_images_by_entity(playlist_id);
-    if (playlist_images && !playlist_images.value().empty()) {
+    if (auto playlist_images = m_image_repo.get_images_by_entity(playlist_id);
+        playlist_images && !playlist_images.value().empty()) {
         return resolve_image(playlist_images.value()[0], "playlist", playlist_id);
     }
 
@@ -168,8 +166,8 @@ tl::expected<CoverResolutionResult, Error> CoverArtService::get_playlist_cover(c
     }
 
     std::string first_track_id = first_track_res.value();
-    auto track_cover_res = get_track_cover(first_track_id);
-    if (track_cover_res) {
+    if (auto track_cover_res = get_track_cover(first_track_id);
+        track_cover_res) {
         return track_cover_res;
     }
 
@@ -194,8 +192,7 @@ tl::expected<std::vector<CoverResolutionResult>, Error> CoverArtService::get_ent
     std::vector<CoverResolutionResult> results;
     results.reserve(images_res.value().size());
     for (const auto &img : images_res.value()) {
-        auto res = resolve_image(img, "entity", entity_id);
-        if (res) {
+        if (auto res = resolve_image(img, "entity", entity_id); res) {
             results.push_back(std::move(res.value()));
         }
     }

@@ -99,8 +99,8 @@ tl::expected<Asset, std::string> SqliteAssetRepository::get(const std::string &f
         SQLite::Statement query(db, "SELECT * FROM Asset WHERE file_hash = ?");
         query.bind(1, file_hash);
 
-        auto asset = SqliteHelper::fetch_one(query, SqliteMappers::map_asset);
-        if (asset) {
+        if (auto asset = SqliteHelper::fetch_one(query, SqliteMappers::map_asset);
+            asset) {
             return *asset;
         }
         return tl::unexpected("Asset not found.");

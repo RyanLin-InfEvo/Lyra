@@ -91,18 +91,18 @@ std::optional<std::string> get_tag(const nlohmann::json &json_data, const std::s
     if (json_data.contains("format") && json_data["format"].is_object()) {
         const auto &fmt = json_data["format"];
         if (fmt.contains("tags") && fmt["tags"].is_object()) {
-            auto val = get_tag_case_insensitive(fmt["tags"], tag_name);
-            if (val) return val;
+            if (auto val = get_tag_case_insensitive(fmt["tags"], tag_name);
+                val) return val;
         }
     }
     // 2. Search Stream tags (only audio streams)
     if (json_data.contains("streams") && json_data["streams"].is_array()) {
         for (const auto &stream : json_data["streams"]) {
-            auto codec_type = get_json_string(stream, "codec_type");
-            if (codec_type && *codec_type == "audio") {
+            if (auto codec_type = get_json_string(stream, "codec_type");
+                codec_type && *codec_type == "audio") {
                 if (stream.contains("tags") && stream["tags"].is_object()) {
-                    auto val = get_tag_case_insensitive(stream["tags"], tag_name);
-                    if (val) return val;
+                    if (auto val = get_tag_case_insensitive(stream["tags"], tag_name);
+                        val) return val;
                 }
             }
         }
@@ -174,14 +174,11 @@ tl::expected<MediaMetadata, std::string> AudioHelper::extract_metadata(const std
                 continue;
 
             if (*codec_type == "audio") {
-                auto sr = get_json_int(stream, "sample_rate");
-                if (sr)
+                if (auto sr = get_json_int(stream, "sample_rate"); sr)
                     metadata.sample_rate = *sr;
-                auto ch = get_json_int(stream, "channels");
-                if (ch)
+                if (auto ch = get_json_int(stream, "channels"); ch)
                     metadata.channels = *ch;
-                auto dur = get_json_double(stream, "duration");
-                if (dur) {
+                if (auto dur = get_json_double(stream, "duration"); dur) {
                     audio_duration = *dur;
                     has_audio_duration = true;
                 }
@@ -189,21 +186,19 @@ tl::expected<MediaMetadata, std::string> AudioHelper::extract_metadata(const std
                 bool is_attached_pic = false;
                 if (stream.contains("disposition") && stream["disposition"].is_object()) {
                     auto disp = stream["disposition"];
-                    auto attached = get_json_int(disp, "attached_pic");
-                    if (attached && *attached == 1) {
+                    if (auto attached = get_json_int(disp, "attached_pic");
+                        attached && *attached == 1) {
                         is_attached_pic = true;
                         metadata.has_cover_art = true;
                     }
                 }
                 if (!is_attached_pic) {
-                    auto w = get_json_int(stream, "width");
-                    if (w)
+                    if (auto w = get_json_int(stream, "width"); w)
                         metadata.video_width = *w;
-                    auto h = get_json_int(stream, "height");
-                    if (h)
+                    if (auto h = get_json_int(stream, "height"); h)
                         metadata.video_height = *h;
-                    auto codec = get_json_string(stream, "codec_name");
-                    if (codec)
+                    if (auto codec = get_json_string(stream, "codec_name");
+                        codec)
                         metadata.video_codec = *codec;
                 }
             }
@@ -213,8 +208,8 @@ tl::expected<MediaMetadata, std::string> AudioHelper::extract_metadata(const std
     if (has_audio_duration) {
         metadata.duration = audio_duration;
     } else if (json_data.contains("format") && json_data["format"].is_object()) {
-        auto fmt_dur = get_json_double(json_data["format"], "duration");
-        if (fmt_dur) {
+        if (auto fmt_dur = get_json_double(json_data["format"], "duration");
+            fmt_dur) {
             metadata.duration = *fmt_dur;
         }
     }
@@ -512,8 +507,8 @@ AudioQualityInfo AudioHelper::evaluate_quality(const Audio &audio) {
             continue;
         }
 
-        bool primary_is_lossless = is_asset_lossless(*primary_asset);
-        if (current_lossless && !primary_is_lossless) {
+        if (bool primary_is_lossless = is_asset_lossless(*primary_asset);
+            current_lossless && !primary_is_lossless) {
             primary_asset = &asset;
         } else if (current_lossless == primary_is_lossless) {
             if (asset.file_size > primary_asset->file_size) {

@@ -103,8 +103,8 @@ tl::expected<Audio, std::string> SqliteAudioRepository::get(const std::string &p
         SQLite::Statement query(db, "SELECT * FROM Audio WHERE pcm_hash = ?");
         query.bind(1, pcm_hash);
 
-        auto audio = SqliteHelper::fetch_one(query, SqliteMappers::map_audio);
-        if (audio) {
+        if (auto audio = SqliteHelper::fetch_one(query, SqliteMappers::map_audio);
+            audio) {
             SQLite::Statement asset_query(
                 db,
                 "SELECT a.file_hash, a.mime_type, a.asset_type, a.file_size, a.created_at "
@@ -231,8 +231,7 @@ tl::expected<std::vector<Audio>, std::string> SqliteAudioRepository::get_related
         std::vector<Audio> results;
         results.reserve(hashes.size());
         for (const auto &h : hashes) {
-            auto audio_res = get(h);
-            if (audio_res) {
+            if (auto audio_res = get(h); audio_res) {
                 results.push_back(std::move(audio_res.value()));
             }
         }

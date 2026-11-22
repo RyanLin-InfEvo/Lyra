@@ -47,8 +47,8 @@ tl::expected<Image, std::string> SqliteImageRepository::get(const std::string &i
                                 "FROM Image WHERE image_hash = ?");
         query.bind(1, image_hash);
 
-        auto img = SqliteHelper::fetch_one(query, SqliteMappers::map_image);
-        if (img) {
+        if (auto img = SqliteHelper::fetch_one(query, SqliteMappers::map_image);
+            img) {
             return *img;
         }
         return tl::unexpected("Image not found.");
@@ -210,8 +210,8 @@ tl::expected<Image, std::string> SqliteImageRepository::get_artist_latest_album_
             "LIMIT 1");
         query.bind(1, artist_id);
 
-        auto img = SqliteHelper::fetch_one(query, SqliteMappers::map_image);
-        if (img) {
+        if (auto img = SqliteHelper::fetch_one(query, SqliteMappers::map_image);
+            img) {
             return *img;
         }
         return tl::unexpected("No album cover image found for artist.");

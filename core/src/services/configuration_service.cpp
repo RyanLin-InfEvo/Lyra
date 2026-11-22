@@ -300,8 +300,8 @@ const std::vector<SettingSpec> &ConfigurationService::get_specs() {
                     return ApiResponse::error(
                         {ErrorType::InvalidValue, "audio.output_device_id cannot be empty"});
                 }
-                bool is_custom = (svc.m_audio_engine && svc.m_audio_engine->is_custom_sink_set());
-                if (!is_custom && !is_valid_audio_device_id(dev)) {
+                if (bool is_custom = (svc.m_audio_engine && svc.m_audio_engine->is_custom_sink_set());
+                    !is_custom && !is_valid_audio_device_id(dev)) {
                     return ApiResponse::error(
                         {ErrorType::InvalidValue, "audio.output_device_id is unrecognized: " + dev});
                 }
@@ -603,8 +603,7 @@ void ConfigurationService::load_config() {
             continue;
         }
 
-        bool ok = spec.load_from_string(it->second, *this);
-        if (!ok) {
+        if (bool ok = spec.load_from_string(it->second, *this); !ok) {
             keys_to_heal.emplace_back(spec.full_key, spec.default_string);
             spec.reset_to_default(*this);
         }
@@ -944,8 +943,7 @@ tl::expected<json, json> ConfigurationService::update_config(const json &params)
         const std::string &section = it.key();
         for (auto sec_it = it.value().begin(); sec_it != it.value().end(); ++sec_it) {
             const auto *spec = find_spec(section, sec_it.key());
-            auto err = spec->validate(sec_it.value(), *this);
-            if (err) {
+            if (auto err = spec->validate(sec_it.value(), *this); err) {
                 lock.lock();
                 updating_guard.dismiss();
                 return tl::unexpected(*err);

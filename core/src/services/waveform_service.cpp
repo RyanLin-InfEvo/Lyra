@@ -393,8 +393,8 @@ tl::expected<WaveformData, std::string> WaveformService::get_or_compute_waveform
 
     // Step 1: Attempt to load from disk cache
     if (std::filesystem::exists(cache_file)) {
-        auto load_res = load_from_cache(storage_root, pcm_hash);
-        if (load_res.has_value() && load_res->points == BASE_POINTS) {
+        if (auto load_res = load_from_cache(storage_root, pcm_hash);
+            load_res.has_value() && load_res->points == BASE_POINTS) {
             base_data = std::move(load_res.value());
             cache_loaded = true;
         } else {
@@ -425,8 +425,8 @@ tl::expected<WaveformData, std::string> WaveformService::get_or_compute_waveform
         base_data.pcm_hash = pcm_hash;
 
         // Persist computed base waveform to cache for future requests
-        auto save_res = save_to_cache(storage_root, pcm_hash, base_data);
-        if (!save_res.has_value()) {
+        if (auto save_res = save_to_cache(storage_root, pcm_hash, base_data);
+            !save_res.has_value()) {
             fmt::print(
                 stderr,
                 "[Warning] Failed to save waveform cache for '{}': {}\n",

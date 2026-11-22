@@ -77,8 +77,7 @@ tl::expected<SourceData, std::string> SqliteSourceDataRepository::get(const std:
             "FROM Source_Data WHERE id = ?");
         query.bind(1, id);
 
-        auto sd = SqliteHelper::fetch_one<SourceData>(query);
-        if (sd) {
+        if (auto sd = SqliteHelper::fetch_one<SourceData>(query); sd) {
             return *sd;
         }
         return tl::unexpected("SourceData not found.");
@@ -102,8 +101,7 @@ tl::expected<SourceData, std::string> SqliteSourceDataRepository::get_by_asset(c
             "ORDER BY created_at DESC, rowid DESC LIMIT 1");
         query.bind(1, file_hash);
 
-        auto sd = SqliteHelper::fetch_one<SourceData>(query);
-        if (sd) {
+        if (auto sd = SqliteHelper::fetch_one<SourceData>(query); sd) {
             return *sd;
         }
         return tl::unexpected("SourceData not found.");
