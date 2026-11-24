@@ -280,3 +280,49 @@ class TestSourceData(BaseLyraTestCase):
                 self.dispatch("ImportTrack", {"source_path": wav1, "note": True}),
                 expected_type="InvalidValue",
             )
+
+    def test_source_data_text_format_validation(self):
+        """Test SingleLineText and MultilineText validation rules on source_data.* endpoints."""
+        file_hash = self._create_asset()
+
+        single_msg = "must be valid UTF-8 without control characters"
+        multi_msg = "must be valid UTF-8 without control characters other than tab, LF, or CR"
+
+        for bad_single in ("a\nb", "a\tb", "a\rb", "a\x1bb", "a\x00b", "a\x7fb", "a\u0085b"):
+            self.assertValidationError(
+                self.dispatch("source_data.get_by_asset", {"file_hash": bad_single}),
+                expected_type="InvalidValue",
+                expected_message_content=single_msg,
+            )
+            self.assertValidationError(
+                self.dispatch("source_data.create", {"file_hash": bad_single}),
+                expected_type="InvalidValue",
+                expected_message_content=single_msg,
+            )
+            self.assertValidationError(
+                self.dispatch("source_data.create", {"file_hash": file_hash, "source_type": bad_single}),
+                expected_type="InvalidValue",
+                expected_message_content=single_msg,
+            )
+            self.assertValidationError(
+                self.dispatch("source_data.create", {"file_hash": file_hash, "original_path": bad_single}),
+                expected_type="InvalidValue",
+                expected_message_content=single_msg,
+            )
+
+        # Multiline note allows \n, \t, \r, and ""
+        valid_note = "EAC Log:\n\tTrack 1\r\nCRCs matched"
+        res_ok = self.dispatch(
+            "source_data.create",
+            {"file_hash": file_hash, "source_type": "", "original_path": "", "note": valid_note},
+        )
+        self.assertResponseCode(res_ok, 201)
+        self.assertEqual(res_ok["data"]["note"], valid_note)
+
+        # Disallowed control chars in note rejected
+        for bad_multi in ("note\x1b[31m", "note\x0bline", "note\x00nul", "note\u0085nel"):
+            self.assertValidationError(
+                self.dispatch("source_data.create", {"file_hash": file_hash, "note": bad_multi}),
+                expected_type="InvalidValue",
+                expected_message_content=multi_msg,
+            )

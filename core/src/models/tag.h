@@ -32,6 +32,6 @@ struct TagUpdate {
 };
 
 NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(Tag, id, name, category, created_at)
-NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(TagUpdate, id, name, category)
+// NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(TagUpdate, id, name, category)
 
 } // namespace lyra

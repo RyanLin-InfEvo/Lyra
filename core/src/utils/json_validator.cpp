@@ -2,12 +2,15 @@
 //
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+#include <cmath>
+#include <fmt/core.h>
 #include <nlohmann/json.hpp>
 #include <optional>
 #include <regex>
 #include <string>
 #include <vector>
 
+#include "json_helper.h"
 #include "json_validator.h"
 #include "make_error.h"
 #include "utf8_helper.h"
@@ -88,6 +91,15 @@ std::optional<json> JsonValidator::validate(const json &params,
                 // Get string value
                 const std::string &str_val = params[rule.key].get_ref<const std::string &>();
 
+                // allow string empty ?
+                if (str_val.empty()) {
+                    if (!rule.allow_empty) {
+                        return ApiResponse::error({ErrorType::InvalidValue,
+                                                   "Value of key '" + current_path + "' should not be empty."});
+                    }
+                    continue;
+                }
+
                 // Check length if
                 // 1. too short
                 if (rule.min_length.has_value() && str_val.length() < rule.min_length.value()) {
@@ -119,10 +131,61 @@ std::optional<json> JsonValidator::validate(const json &params,
                 }
             } // TODO: If min_length.has_value() or max_length.has_value() but rule.expected_type != JsonFieldType::String, return error
 
+            // Special check for "Integer" overflow & bounds (with uint64_t > INT64_MAX overflow protection)
+            if (rule.expected_type == JsonFieldType::Integer) {
+                auto int_val = JsonHelper::try_get_int64(params[rule.key]);
+                if (!int_val) {
+                    if (rule.max_int.has_value()) {
+                        return ApiResponse::error(
+                            {ErrorType::OutOfRange,
+                             fmt::format("Value of key '{}' is out of range (must be <= {}).",
+                                         current_path, *rule.max_int)});
+                    }
+                    return ApiResponse::error(
+                        {ErrorType::OutOfRange,
+                         fmt::format("Value of key '{}' is out of range (exceeds maximum 64-bit signed integer).",
+                                     current_path)});
+                }
+                if (rule.min_int.has_value() && *int_val < *rule.min_int) {
+                    return ApiResponse::error(
+                        {ErrorType::OutOfRange,
+                         fmt::format("Value of key '{}' is out of range (must be >= {}).",
+                                     current_path, *rule.min_int)});
+                }
+                if (rule.max_int.has_value() && *int_val > *rule.max_int) {
+                    return ApiResponse::error(
+                        {ErrorType::OutOfRange,
+                         fmt::format("Value of key '{}' is out of range (must be <= {}).",
+                                     current_path, *rule.max_int)});
+                }
+            }
+
+            // Special check for "Number" finiteness and bounds
+            if (rule.expected_type == JsonFieldType::Number) {
+                const double num_val = params[rule.key].get<double>();
+                if (!std::isfinite(num_val)) {
+                    return ApiResponse::error(
+                        {ErrorType::InvalidValue,
+                         "Value of key '" + current_path + "' must be a finite number."});
+                }
+                if (rule.min_number.has_value() && !(num_val >= *rule.min_number)) {
+                    return ApiResponse::error(
+                        {ErrorType::OutOfRange,
+                         fmt::format("Value of key '{}' is out of range (must be >= {}).",
+                                     current_path, *rule.min_number)});
+                }
+                if (rule.max_number.has_value() && !(num_val <= *rule.max_number)) {
+                    return ApiResponse::error(
+                        {ErrorType::OutOfRange,
+                         fmt::format("Value of key '{}' is out of range (must be <= {}).",
+                                     current_path, *rule.max_number)});
+                }
+            }
+
             // Special check for "Year"
             if (rule.expected_type == JsonFieldType::Year) {
-                int64_t year_val = params[rule.key].get<int64_t>();
-                if (year_val < 1 || year_val > 3000) {
+                auto year_val = JsonHelper::try_get_int64(params[rule.key]);
+                if (!year_val || *year_val < 1 || *year_val > 3000) {
                     return ApiResponse::error({ErrorType::OutOfRange,
                                                "Value of key '" + current_path + "' is out of reasonable year range (1-3000)."});
                 }
@@ -130,8 +193,8 @@ std::optional<json> JsonValidator::validate(const json &params,
 
             // Special check for "Month"
             if (rule.expected_type == JsonFieldType::Month) {
-                int64_t month_val = params[rule.key].get<int64_t>();
-                if (month_val < 1 || month_val > 12) {
+                auto month_val = JsonHelper::try_get_int64(params[rule.key]);
+                if (!month_val || *month_val < 1 || *month_val > 12) {
                     return ApiResponse::error({ErrorType::OutOfRange,
                                                "Value of key '" + current_path + "' is out of reasonable month range (1-12)."});
                 }
@@ -139,18 +202,11 @@ std::optional<json> JsonValidator::validate(const json &params,
 
             // Special check for "Day"
             if (rule.expected_type == JsonFieldType::Day) {
-                int64_t day_val = params[rule.key].get<int64_t>();
-                if (day_val < 1 || day_val > 31) {
+                auto day_val = JsonHelper::try_get_int64(params[rule.key]);
+                if (!day_val || *day_val < 1 || *day_val > 31) {
                     return ApiResponse::error({ErrorType::OutOfRange,
                                                "Value of key '" + current_path + "' is out of reasonable day range (1-31)."});
                 }
-            }
-
-
-            // Check: if string is empty
-            if (rule.expected_type == JsonFieldType::String && params[rule.key].get_ref<const std::string &>().empty()) {
-                return ApiResponse::error({ErrorType::InvalidValue,
-                                           "Value of key '" + current_path + "' should not be empty."});
             }
 
             // Check: if object is not empty, and also if children is not empty

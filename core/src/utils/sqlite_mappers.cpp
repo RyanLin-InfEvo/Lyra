@@ -43,7 +43,7 @@ Track map_track(SQLite::Statement &query) {
     track.recording_month = SqliteHelper::get_optional<int>(query, "recording_month");
     track.recording_day = SqliteHelper::get_optional<int>(query, "recording_day");
     track.recording_location = SqliteHelper::get_optional<std::string>(query, "recording_location");
-    track.duration = SqliteHelper::get_optional<int>(query, "duration");
+    track.duration = SqliteHelper::get_optional<uint32_t>(query, "duration");
     track.isrc = SqliteHelper::get_optional<std::string>(query, "isrc");
     track.musicbrainz_id = SqliteHelper::get_optional<std::string>(query, "musicbrainz_id");
     track.ytm_id = SqliteHelper::get_optional<std::string>(query, "ytm_id");

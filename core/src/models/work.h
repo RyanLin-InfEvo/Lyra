@@ -40,6 +40,6 @@ struct WorkUpdate {
 };
 
 NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(Work, id, title, composition_start_year, composition_end_year, composition_date_text, iswc, musicbrainz_id)
-NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(WorkUpdate, id, title, composition_start_year, composition_end_year, composition_date_text, iswc, musicbrainz_id)
+// NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(WorkUpdate, id, title, composition_start_year, composition_end_year, composition_date_text, iswc, musicbrainz_id)
 
 } // namespace lyra

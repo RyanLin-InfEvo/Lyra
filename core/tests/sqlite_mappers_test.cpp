@@ -185,6 +185,17 @@ bool test_track_mapper() {
         }
     }
 
+    // Track with uint32_t duration > INT32_MAX (Audit Finding 5)
+    {
+        db.exec("INSERT INTO Track VALUES ('t3', NULL, 'pcm3', 'Long Duration', NULL, NULL, NULL, NULL, 3000000000, NULL, NULL, NULL, NULL);");
+        SQLite::Statement query(db, "SELECT * FROM Track WHERE id = 't3'");
+        auto track = SqliteHelper::fetch_one(query, SqliteMappers::map_track);
+        if (!track || !track->duration.has_value() || *track->duration != 3000000000u) {
+            std::cerr << "test_track_mapper failed for uint32_t duration > INT32_MAX!" << std::endl;
+            return false;
+        }
+    }
+
     return true;
 }
 

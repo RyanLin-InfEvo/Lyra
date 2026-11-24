@@ -5,6 +5,7 @@
  */
 
 #pragma once
+#include <cstdint>
 #include <nlohmann/json.hpp>
 #include <optional>
 #include <string>
@@ -40,7 +41,12 @@ struct ValidationRule {
     std::optional<size_t> min_length = std::nullopt;
     std::optional<size_t> max_length = std::nullopt;
 
-    std::vector<ValidationRule> children = {}; // for nested objects
+    std::vector<ValidationRule> children = {};       // for nested objects
+    bool allow_empty = false;                        // only applicable to JsonFieldType::String
+    std::optional<int64_t> min_int = std::nullopt;   // only applicable to JsonFieldType::Integer
+    std::optional<int64_t> max_int = std::nullopt;   // only applicable to JsonFieldType::Integer
+    std::optional<double> min_number = std::nullopt; // only applicable to JsonFieldType::Number
+    std::optional<double> max_number = std::nullopt; // only applicable to JsonFieldType::Number
 };
 
 class JsonValidator {

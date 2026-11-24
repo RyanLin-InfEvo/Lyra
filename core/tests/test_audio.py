@@ -9,6 +9,7 @@ import subprocess
 import sys
 import time
 import unittest
+import uuid
 from base_test_case import BaseLyraTestCase
 
 class TestAudioController(BaseLyraTestCase):
@@ -1395,6 +1396,211 @@ class TestAudioController(BaseLyraTestCase):
         res_missing_pcm = self.dispatch("GetResourcePath", {"pcm_hash": "pcm-non-existent-12345"})
         self.assertResponseCode(res_missing_pcm, 404)
         self.assertEqual(res_missing_pcm["error"]["type"], "AudioNotFound")
+
+    def test_playback_and_waveform_json_validation(self):
+        """Verify JsonValidator rules across audio.play, audio.compare_versions, audio.get_waveform, and audio.queue_next."""
+        # 1. Non-object params -> 400 InvalidCommandFormat
+        for cmd in ("audio.play", "audio.compare_versions", "audio.get_waveform", "audio.queue_next", "audio.preload_next", "audio.seek", "audio.set_volume"):
+            for bad_params in ([], 123, "bad", None):
+                res = self.raw_dispatch({"command": cmd, "params": bad_params})
+                self.assertValidationError(
+                    res,
+                    expected_type="InvalidCommandFormat",
+                    expected_message_content="'params' must be a JSON object",
+                )
+
+        # 2. SingleLineText & UUID rejections -> 400 InvalidValue (asserting exact SingleLineText error message)
+        bad_single = ["a\nb", "a\tb", "a\rb", "a\x1bb", "a\x00b", "a\x7fb", "a\u0085b"]
+        single_msg = "must be valid UTF-8 without control characters"
+        for bad in bad_single:
+            for field in ("file_path", "file_hash", "asset_id", "pcm_hash", "audio_id", "preferred_format", "format"):
+                self.assertValidationError(
+                    self.dispatch("audio.play", {field: bad}),
+                    expected_type="InvalidValue",
+                    expected_message_content=single_msg,
+                )
+                self.assertValidationError(
+                    self.dispatch("audio.queue_next", {field: bad}),
+                    expected_type="InvalidValue",
+                    expected_message_content=single_msg,
+                )
+            for field in ("pcm_hash", "preferred_format", "format"):
+                self.assertValidationError(
+                    self.dispatch("audio.get_waveform", {field: bad}),
+                    expected_type="InvalidValue",
+                    expected_message_content=single_msg,
+                )
+            for field in ("preferred_format", "format"):
+                self.assertValidationError(
+                    self.dispatch("audio.compare_versions", {"pcm_hashes": ["h1"], field: bad}),
+                    expected_type="InvalidValue",
+                    expected_message_content=single_msg,
+                )
+            self.assertValidationError(
+                self.dispatch("audio.compare_versions", {"pcm_hashes": [bad]}),
+                expected_type="InvalidValue",
+                expected_message_content="must be non-empty valid UTF-8 without control characters",
+            )
+
+        self.assertValidationError(
+            self.dispatch("audio.compare_versions", {"pcm_hashes": [""]}),
+            expected_type="InvalidValue",
+            expected_message_content="must be non-empty valid UTF-8 without control characters",
+        )
+
+        # Wrong option types & empty preferred_format
+        for bad_opt_payload, expected_msg in (
+            ({"file_path": "/tmp/nonexistent.wav", "start_position": "1.0"}, "not a expected type"),
+            ({"file_path": "/tmp/nonexistent.wav", "start_position_seconds": "1.0"}, "not a expected type"),
+            ({"file_path": "/tmp/nonexistent.wav", "pin_version": "yes"}, "not a expected type"),
+            ({"file_path": "/tmp/nonexistent.wav", "preferred_format": 123}, "not a expected type"),
+            ({"file_path": "/tmp/nonexistent.wav", "format": 123}, "not a expected type"),
+            ({"file_path": "/tmp/nonexistent.wav", "preferred_format": ""}, "should not be empty"),
+        ):
+            self.assertValidationError(
+                self.dispatch("audio.play", bad_opt_payload),
+                expected_type="InvalidValue",
+                expected_message_content=expected_msg,
+            )
+
+        for cmd in ("audio.play", "audio.compare_versions", "audio.get_waveform", "audio.queue_next"):
+            self.assertValidationError(
+                self.dispatch(cmd, {"track_id": "not-a-uuid"}),
+                expected_type="InvalidValue",
+                expected_message_content="not a vaild UUID",
+            )
+        for cmd in ("audio.play", "audio.queue_next"):
+            self.assertValidationError(
+                self.dispatch(cmd, {"id": "not-a-uuid"}),
+                expected_type="InvalidValue",
+                expected_message_content="not a vaild UUID",
+            )
+
+        # 3. Empty string contracts preserved -> MissingParameter (except queue_next file_path: "" without other ids clears queue)
+        for field in ("file_path", "file_hash", "asset_id", "track_id", "id", "pcm_hash", "audio_id"):
+            self.assertValidationError(
+                self.dispatch("audio.play", {field: ""}),
+                expected_type="MissingParameter",
+                expected_message_content="cannot be empty",
+            )
+        self.assertValidationError(
+            self.dispatch("audio.compare_versions", {"track_id": ""}),
+            expected_type="MissingParameter",
+            expected_message_content="cannot be empty",
+        )
+        self.assertValidationError(
+            self.dispatch("audio.get_waveform", {"track_id": ""}),
+            expected_type="MissingParameter",
+            expected_message_content="cannot be empty",
+        )
+        self.assertValidationError(
+            self.dispatch("audio.get_waveform", {"pcm_hash": ""}),
+            expected_type="MissingParameter",
+            expected_message_content="cannot be empty",
+        )
+
+        res_clear = self.dispatch("audio.queue_next", {"file_path": ""})
+        self.assertResponseCode(res_clear, 200)
+        self.assertFalse(res_clear["data"]["queued"])
+
+        # HIGH-2: queue_next with file_path="" AND another id must fail with MissingParameter, whereas all-null clears queue
+        res_empty_fp_with_tid = self.dispatch(
+            "audio.queue_next",
+            {"file_path": "", "track_id": str(uuid.uuid4())},
+        )
+        self.assertValidationError(
+            res_empty_fp_with_tid,
+            expected_type="MissingParameter",
+            expected_message_content="cannot be empty",
+        )
+
+        res_null_fp_and_tid = self.dispatch(
+            "audio.queue_next",
+            {"file_path": None, "track_id": None},
+        )
+        self.assertResponseCode(res_null_fp_and_tid, 200)
+        self.assertFalse(res_null_fp_and_tid["data"]["queued"])
+
+        # 4. Null track_id + pcm_hashes maps errors as AudioNotFound, not TrackNotFound
+        res_null_tid = self.dispatch(
+            "audio.compare_versions",
+            {"track_id": None, "pcm_hashes": ["non-existent-hash"]},
+        )
+        self.assertResponseCode(res_null_tid, 404)
+        self.assertEqual(res_null_tid["error"]["type"], "AudioNotFound")
+
+        # 5. HIGH-1: overlong path & directory path return 404 NotFound (no uncaught filesystem_error)
+        overlong_path = "/" + ("a" * 5000) + ".wav"
+        for cmd in ("audio.play", "audio.queue_next"):
+            for bad_path in (overlong_path, self.test_db_dir):
+                res_path = self.dispatch(cmd, {"file_path": bad_path})
+                self.assertResponseCode(res_path, 404)
+                self.assertEqual(res_path["error"]["type"], "NotFound")
+
+        # 6. LOW-2 & LOW-4: compare_versions validates pcm_hashes even when track_id is present; get_waveform checks points before DB
+        self.assertValidationError(
+            self.dispatch("audio.compare_versions", {"track_id": str(uuid.uuid4()), "pcm_hashes": [123]}),
+            expected_type="InvalidValue",
+            expected_message_content="pcm_hashes items must be strings",
+        )
+        self.assertValidationError(
+            self.dispatch("audio.get_waveform", {"track_id": str(uuid.uuid4()), "points": 5}),
+            expected_type="OutOfRange",
+            expected_message_content="must be >= 30",
+        )
+        for bad_pts in (1201, 9223372036854775808, 18446744073709551615):
+            self.assertValidationError(
+                self.dispatch("audio.get_waveform", {"track_id": str(uuid.uuid4()), "points": bad_pts}),
+                expected_type="OutOfRange",
+                expected_message_content="must be <= 1200",
+            )
+
+        # 7. HIGH-3: audio.seek alias null fallback & upfront position_seconds type validation + Finding 4 secondary empty-string checks
+        wav_seek = self._generate_wav_file("seek_alias_val.wav", 3.0)
+        self.assertResponseCode(self.dispatch("audio.play", {"file_path": wav_seek}), 200)
+        try:
+            res_seek_fallback = self.dispatch("audio.seek", {"position": None, "position_seconds": 1.0})
+            self.assertResponseCode(res_seek_fallback, 200)
+            self.assertAlmostEqual(res_seek_fallback["data"]["position"], 1.0, delta=0.2)
+
+            res_seek_bad_sec = self.dispatch("audio.seek", {"position": 1.0, "position_seconds": "not-a-number"})
+            self.assertValidationError(
+                res_seek_bad_sec,
+                expected_type="InvalidValue",
+                expected_message_content="must be a number",
+            )
+        finally:
+            self.dispatch("audio.stop", {})
+
+        # Finding 4: secondary empty-string parameters must not be silently ignored when a higher-priority ID is present
+        try:
+            self.assertValidationError(
+                self.dispatch("audio.play", {"file_path": wav_seek, "track_id": ""}),
+                expected_type="MissingParameter",
+                expected_message_content="track_id cannot be empty",
+            )
+            self.assertValidationError(
+                self.dispatch("audio.play", {"file_hash": "a" * 64, "asset_id": ""}),
+                expected_type="MissingParameter",
+                expected_message_content="file_hash cannot be empty",
+            )
+            self.assertValidationError(
+                self.dispatch("audio.queue_next", {"file_path": wav_seek, "track_id": ""}),
+                expected_type="MissingParameter",
+                expected_message_content="track_id cannot be empty",
+            )
+            self.assertValidationError(
+                self.dispatch("audio.get_waveform", {"track_id": str(uuid.uuid4()), "pcm_hash": ""}),
+                expected_type="MissingParameter",
+                expected_message_content="pcm_hash cannot be empty",
+            )
+            self.assertValidationError(
+                self.dispatch("audio.compare_versions", {"track_id": str(uuid.uuid4()), "pcm_hashes": []}),
+                expected_type="MissingParameter",
+                expected_message_content="pcm_hashes cannot be empty",
+            )
+        finally:
+            self.dispatch("audio.stop", {})
 
 
 

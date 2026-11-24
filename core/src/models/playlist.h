@@ -31,6 +31,6 @@ struct PlaylistUpdate {
 };
 
 NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(Playlist, id, title, description)
-NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(PlaylistUpdate, id, title, description)
+// NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(PlaylistUpdate, id, title, description)
 
 } // namespace lyra

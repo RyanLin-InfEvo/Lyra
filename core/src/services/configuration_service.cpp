@@ -6,7 +6,9 @@
 #include "services/audio_engine.h"
 #include "services/audio_sinks/audio_sink_factory.h"
 #include "services/database_context.h"
+#include "utils/json_helper.h"
 #include "utils/make_error.h"
+#include "utils/utf8_helper.h"
 
 #include <SQLiteCpp/SQLiteCpp.h>
 #include <algorithm>
@@ -117,14 +119,14 @@ const std::vector<SettingSpec> &ConfigurationService::get_specs() {
             .is_read_only = false,
             .default_string = std::to_string(DEFAULT_CACHE_SIZE_KB),
             .validate = [](const json &val, const ConfigurationService &) -> std::optional<json> {
-                int64_t v = val.get<int64_t>();
-                if (v < MIN_CACHE_SIZE_KB) {
-                    return ApiResponse::error(
-                        {ErrorType::OutOfRange, "database.cache_size_kb must be at least 1024 KiB"});
-                }
-                if (v > std::numeric_limits<int>::max()) {
+                auto v = JsonHelper::try_get_int64(val);
+                if (!v || *v > std::numeric_limits<int>::max()) {
                     return ApiResponse::error(
                         {ErrorType::OutOfRange, "database.cache_size_kb exceeds maximum integer value"});
+                }
+                if (*v < MIN_CACHE_SIZE_KB) {
+                    return ApiResponse::error(
+                        {ErrorType::OutOfRange, "database.cache_size_kb must be at least 1024 KiB"});
                 }
                 return std::nullopt;
             },
@@ -161,14 +163,14 @@ const std::vector<SettingSpec> &ConfigurationService::get_specs() {
             .is_read_only = false,
             .default_string = std::to_string(DEFAULT_MMAP_SIZE_BYTES),
             .validate = [](const json &val, const ConfigurationService &) -> std::optional<json> {
-                int64_t v = val.get<int64_t>();
-                if (v < MIN_MMAP_SIZE_BYTES) {
-                    return ApiResponse::error(
-                        {ErrorType::OutOfRange, "database.mmap_size_bytes cannot be negative"});
-                }
-                if (v > MAX_MMAP_SIZE_BYTES) {
+                auto v = JsonHelper::try_get_int64(val);
+                if (!v || *v > MAX_MMAP_SIZE_BYTES) {
                     return ApiResponse::error(
                         {ErrorType::OutOfRange, "database.mmap_size_bytes exceeds maximum allowed limit (100 GB)"});
+                }
+                if (*v < MIN_MMAP_SIZE_BYTES) {
+                    return ApiResponse::error(
+                        {ErrorType::OutOfRange, "database.mmap_size_bytes cannot be negative"});
                 }
                 return std::nullopt;
             },
@@ -205,14 +207,14 @@ const std::vector<SettingSpec> &ConfigurationService::get_specs() {
             .is_read_only = false,
             .default_string = std::to_string(DEFAULT_BUSY_TIMEOUT_MS),
             .validate = [](const json &val, const ConfigurationService &) -> std::optional<json> {
-                int64_t v = val.get<int64_t>();
-                if (v < MIN_BUSY_TIMEOUT_MS) {
-                    return ApiResponse::error(
-                        {ErrorType::OutOfRange, "database.busy_timeout_ms must be at least 1000 ms"});
-                }
-                if (v > std::numeric_limits<int>::max()) {
+                auto v = JsonHelper::try_get_int64(val);
+                if (!v || *v > std::numeric_limits<int>::max()) {
                     return ApiResponse::error(
                         {ErrorType::OutOfRange, "database.busy_timeout_ms exceeds maximum integer value"});
+                }
+                if (*v < MIN_BUSY_TIMEOUT_MS) {
+                    return ApiResponse::error(
+                        {ErrorType::OutOfRange, "database.busy_timeout_ms must be at least 1000 ms"});
                 }
                 return std::nullopt;
             },
@@ -249,16 +251,16 @@ const std::vector<SettingSpec> &ConfigurationService::get_specs() {
             .is_read_only = false,
             .default_string = std::to_string(DEFAULT_WAL_AUTOCHECKPOINT),
             .validate = [](const json &val, const ConfigurationService &) -> std::optional<json> {
-                int64_t v = val.get<int64_t>();
-                if (v < MIN_WAL_AUTOCHECKPOINT) {
-                    return ApiResponse::error(
-                        {ErrorType::OutOfRange,
-                         "database.wal_autocheckpoint must be at least 10 frames"});
-                }
-                if (v > std::numeric_limits<int>::max()) {
+                auto v = JsonHelper::try_get_int64(val);
+                if (!v || *v > std::numeric_limits<int>::max()) {
                     return ApiResponse::error(
                         {ErrorType::OutOfRange,
                          "database.wal_autocheckpoint exceeds maximum integer value"});
+                }
+                if (*v < MIN_WAL_AUTOCHECKPOINT) {
+                    return ApiResponse::error(
+                        {ErrorType::OutOfRange,
+                         "database.wal_autocheckpoint must be at least 10 frames"});
                 }
                 return std::nullopt;
             },
@@ -400,8 +402,8 @@ const std::vector<SettingSpec> &ConfigurationService::get_specs() {
             .is_read_only = false,
             .default_string = std::to_string(DEFAULT_BUFFER_SIZE_FRAMES),
             .validate = [](const json &val, const ConfigurationService &) -> std::optional<json> {
-                int64_t v = val.get<int64_t>();
-                if (v < MIN_BUFFER_SIZE_FRAMES || v > MAX_BUFFER_SIZE_FRAMES) {
+                auto v = JsonHelper::try_get_int64(val);
+                if (!v || *v < MIN_BUFFER_SIZE_FRAMES || *v > MAX_BUFFER_SIZE_FRAMES) {
                     return ApiResponse::error(
                         {ErrorType::OutOfRange,
                          fmt::format("audio.buffer_size_frames must be between {} and {} frames",
@@ -893,6 +895,15 @@ tl::expected<json, json> ConfigurationService::update_config(const json &params)
                 return tl::unexpected(ApiResponse::error(
                     {ErrorType::InvalidValue,
                      "'" + spec->full_key + "' must be " + expected_type_name}));
+            }
+
+            if (spec->type == SettingType::String) {
+                const std::string &str_val = val.get_ref<const std::string &>();
+                if (!utils::is_valid_utf8(str_val) || utils::contains_control_chars(str_val, false)) {
+                    return tl::unexpected(ApiResponse::error(
+                        {ErrorType::InvalidValue,
+                         "'" + spec->full_key + "' must be valid UTF-8 without control characters"}));
+                }
             }
         }
     }

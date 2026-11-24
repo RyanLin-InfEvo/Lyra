@@ -35,6 +35,6 @@ struct AlbumUpdate {
 };
 
 NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(Album, id, title, release_year, release_month, release_day)
-NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(AlbumUpdate, id, title, release_year, release_month, release_day)
+// NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(AlbumUpdate, id, title, release_year, release_month, release_day)
 
 } // namespace lyra

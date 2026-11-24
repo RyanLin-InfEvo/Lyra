@@ -89,6 +89,15 @@ bool test_copy_to_temp_and_cleanup(const std::string &temp_dir) {
         return false;
     }
 
+    // Audit Finding 2: overlong path (> NAME_MAX) must return expected error instead of throwing filesystem_error
+    const std::string overlong_src = "/" + std::string(5000, 'a') + ".wav";
+    auto overlong_res = StorageHelper::copy_to_temp(overlong_src, temp_path);
+    if (overlong_res.has_value() ||
+        overlong_res.error().find("Source path does not exist or is not a regular file") == std::string::npos) {
+        std::cerr << "Overlong copy_to_temp should return expected error without throwing" << std::endl;
+        return false;
+    }
+
     return true;
 }
 

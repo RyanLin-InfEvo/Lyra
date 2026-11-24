@@ -34,6 +34,6 @@ struct ArtistUpdate {
 };
 
 NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(Artist, id, name, musicbrainz_id, ytm_id, spotify_id)
-NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(ArtistUpdate, id, name, musicbrainz_id, ytm_id, spotify_id)
+// NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(ArtistUpdate, id, name, musicbrainz_id, ytm_id, spotify_id)
 
 } // namespace lyra

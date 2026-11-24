@@ -5,10 +5,10 @@
  */
 
 #pragma once
-#include <string>
-#include <optional>
-#include <nlohmann/json.hpp>
 #include "../utils/optional_helper.h"
+#include <nlohmann/json.hpp>
+#include <optional>
+#include <string>
 
 namespace lyra {
 
@@ -33,6 +33,6 @@ struct AssetUpdate {
 };
 
 NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(Asset, file_hash, mime_type, asset_type, file_size, created_at)
-NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(AssetUpdate, file_hash, mime_type, asset_type, file_size, created_at)
+// NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(AssetUpdate, file_hash, mime_type, asset_type, file_size, created_at)
 
 } // namespace lyra

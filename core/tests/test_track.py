@@ -281,3 +281,55 @@ class TesttrackController(BaseLyraTestCase):
             "recording_day": "15"
         })
         self.assertValidationError(res4, expected_type="InvalidValue")
+
+    def test_track_update_full_validation(self):
+        """Test UpdateTrack validates work_id UUID, dates, types, empty strings, and SingleLineText fields."""
+        res_create = self.dispatch("CreateTrack", {"pcm_hash": "pcm_upd_val", "title": "Valid Track"})
+        self.assertResponseCode(res_create, 201)
+        track_id = res_create["data"]["id"]
+
+        # Invalid work_id UUID
+        self.assertValidationError(
+            self.dispatch("UpdateTrack", {"id": track_id, "work_id": "not-a-uuid"}),
+            expected_type="InvalidValue",
+            expected_message_content="not a vaild UUID",
+        )
+
+        # Out-of-range year / month / day
+        for bad_date, expected_msg in (
+            ({"id": track_id, "recording_year": 0}, "reasonable year range"),
+            ({"id": track_id, "recording_year": 3001}, "reasonable year range"),
+            ({"id": track_id, "recording_month": 0}, "reasonable month range"),
+            ({"id": track_id, "recording_month": 13}, "reasonable month range"),
+            ({"id": track_id, "recording_day": 0}, "reasonable day range"),
+            ({"id": track_id, "recording_day": 32}, "reasonable day range"),
+        ):
+            self.assertValidationError(
+                self.dispatch("UpdateTrack", bad_date),
+                expected_type="OutOfRange",
+                expected_message_content=expected_msg,
+            )
+
+        # Wrong type duration -> InvalidValue (not InvalidCommandFormat)
+        self.assertValidationError(
+            self.dispatch("UpdateTrack", {"id": track_id, "duration": "180"}),
+            expected_type="InvalidValue",
+            expected_message_content="not a expected type",
+        )
+
+        # Control characters in SingleLineText fields -> InvalidValue
+        for field in ("pcm_hash", "title", "recording_location", "isrc", "musicbrainz_id", "ytm_id", "spotify_id"):
+            for bad in ("bad\nval", "bad\tval", "bad\x1bval", "bad\x00val", "bad\u0085val"):
+                self.assertValidationError(
+                    self.dispatch("UpdateTrack", {"id": track_id, field: bad}),
+                    expected_type="InvalidValue",
+                    expected_message_content="must be valid UTF-8 without control characters",
+                )
+
+        # Empty optional strings rejected
+        for field in ("title", "work_id", "isrc"):
+            self.assertValidationError(
+                self.dispatch("UpdateTrack", {"id": track_id, field: ""}),
+                expected_type="InvalidValue",
+                expected_message_content="should not be empty",
+            )

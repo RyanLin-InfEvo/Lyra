@@ -46,6 +46,6 @@ struct AudioUpdate {
 };
 
 NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(Audio, pcm_hash, parent_hash, quality_score, bit_depth, sample_rate, channels, duration, integrated_loudness, true_peak, assets)
-NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(AudioUpdate, pcm_hash, parent_hash, quality_score, bit_depth, sample_rate, channels, duration, integrated_loudness, true_peak)
+// NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(AudioUpdate, pcm_hash, parent_hash, quality_score, bit_depth, sample_rate, channels, duration, integrated_loudness, true_peak)
 
 } // namespace lyra

@@ -20,6 +20,7 @@
 #include <fstream>
 #include <future>
 #include <iostream>
+#include <limits>
 #include <mutex>
 #include <random>
 #include <thread>
@@ -2822,6 +2823,41 @@ int main(int argc, char *argv[]) {
         }
 
         std::cout << "  ✓ Test 36 (Persisted non-hex custom device ID self-healing and offline hex rejection) passed.\n";
+    }
+
+    // 39. Test 37: ConfigurationService raw invalid UTF-8 and uint64_t::max integer wraparound bounds
+    {
+        SqliteDatabaseContext db_ctx(":memory:");
+        ConfigurationService config_svc(db_ctx, "/tmp", nullptr);
+
+        for (const std::string &bad_utf8 : {std::string("\xFF"), std::string("\xC0\xAF"), std::string("\xED\xA0\x80")}) {
+            auto res = config_svc.update_config(json{{"audio", {{"output_device_id", bad_utf8}}}});
+            assert(!res.has_value());
+            assert(res.error().value("code", 0) == 400);
+            assert(res.error()["error"].value("type", "") == "InvalidValue");
+            const std::string msg = res.error()["error"].value("message", "");
+            assert(msg.find("must be valid UTF-8 without control characters") != std::string::npos);
+        }
+
+        const uint64_t u64_max = std::numeric_limits<uint64_t>::max();
+        {
+            auto res = config_svc.update_config(json{{"database", {{"mmap_size_bytes", u64_max}}}});
+            assert(!res.has_value());
+            assert(res.error().value("code", 0) == 400);
+            assert(res.error()["error"].value("type", "") == "OutOfRange");
+            const std::string msg = res.error()["error"].value("message", "");
+            assert(msg.find("exceeds maximum allowed limit") != std::string::npos);
+        }
+        {
+            auto res = config_svc.update_config(json{{"database", {{"cache_size_kb", u64_max}}}});
+            assert(!res.has_value());
+            assert(res.error().value("code", 0) == 400);
+            assert(res.error()["error"].value("type", "") == "OutOfRange");
+            const std::string msg = res.error()["error"].value("message", "");
+            assert(msg.find("exceeds maximum integer value") != std::string::npos);
+        }
+
+        std::cout << "  ✓ Test 37 (ConfigurationService raw invalid UTF-8 and uint64_t wraparound bounds) passed.\n";
     }
 
     // Clean up temporary test files

@@ -58,7 +58,8 @@ std::filesystem::path StorageHelper::generate_temp_path(const std::string &stora
 tl::expected<void, std::string> StorageHelper::copy_to_temp(const std::string &source_path, const std::filesystem::path &temp_path) {
     namespace fs = std::filesystem;
     const fs::path src_path(source_path);
-    if (!fs::is_regular_file(src_path)) {
+    std::error_code ec;
+    if (!fs::is_regular_file(src_path, ec) || ec) {
         return tl::unexpected("Source path does not exist or is not a regular file: " + source_path);
     }
 
