@@ -32,6 +32,15 @@ struct Track {
     std::optional<std::string> musicbrainz_id;
     std::optional<std::string> ytm_id;
     std::optional<std::string> spotify_id;
+
+    // Optional hydrated fields populated via SQLite LEFT JOIN (read-only derived metadata)
+    std::optional<std::string> artist_name;
+    std::optional<std::string> album_title;
+    std::optional<std::string> work_title;
+    std::optional<std::string> format;
+    std::optional<int> sample_rate;
+    std::optional<int> bit_depth;
+    std::optional<int> track_number;
 };
 
 struct TrackUpdate {
@@ -67,7 +76,7 @@ struct TrackArtistInfo {
     int position;
 };
 
-NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(Track, id, pcm_hash, work_id, title, recording_year, recording_month, recording_day, recording_location, duration, isrc, musicbrainz_id, ytm_id, spotify_id)
+NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(Track, id, pcm_hash, work_id, title, recording_year, recording_month, recording_day, recording_location, duration, isrc, musicbrainz_id, ytm_id, spotify_id, artist_name, album_title, work_title, format, sample_rate, bit_depth, track_number)
 // NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(TrackUpdate, id, pcm_hash, work_id, title, recording_year, recording_month, recording_day, recording_location, duration, isrc, musicbrainz_id, ytm_id, spotify_id)
 
 } // namespace lyra

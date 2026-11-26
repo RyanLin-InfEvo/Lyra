@@ -752,63 +752,128 @@ bool contains_case_insensitive(std::string_view str, std::string_view sub) {
     return it != str.end();
 }
 
+std::string extract_base_mime(std::string_view raw_mime) {
+    std::string lower = to_ascii_lower(trim_ascii(raw_mime));
+    if (const size_t semi = lower.find(';'); semi != std::string::npos) {
+        lower = trim_ascii(std::string_view(lower).substr(0, semi));
+    }
+    return lower;
+}
+
+std::string normalize_audio_subtype(std::string_view raw_subtype) {
+    if (raw_subtype.rfind("x-", 0) == 0) {
+        return std::string(raw_subtype.substr(2));
+    }
+    return std::string(raw_subtype);
+}
+
+std::optional<std::string> detect_format_from_extension(std::string_view value) {
+    const std::string trimmed = trim_ascii(value);
+    if (trimmed.empty()) {
+        return std::nullopt;
+    }
+    if (ends_with_case_insensitive(trimmed, ".flac")) return "FLAC";
+    if (ends_with_case_insensitive(trimmed, ".mp3")) return "MP3";
+    if (ends_with_case_insensitive(trimmed, ".wav")) return "WAV";
+    if (ends_with_case_insensitive(trimmed, ".alac")) return "ALAC";
+    if (ends_with_case_insensitive(trimmed, ".aiff") || ends_with_case_insensitive(trimmed, ".aif")) return "AIFF";
+    if (ends_with_case_insensitive(trimmed, ".aac") || ends_with_case_insensitive(trimmed, ".m4a")) return "AAC";
+    if (ends_with_case_insensitive(trimmed, ".ogg")) return "OGG";
+    if (ends_with_case_insensitive(trimmed, ".opus")) return "OPUS";
+    if (ends_with_case_insensitive(trimmed, ".webm")) return "WEBM";
+    return std::nullopt;
+}
+
+std::optional<std::string> detect_format_from_audio_subtype(std::string_view subtype) {
+    if (subtype == "flac") return "FLAC";
+    if (subtype == "mp3" || subtype == "mpeg") return "MP3";
+    if (subtype == "wav" || subtype == "wave") return "WAV";
+    if (subtype == "alac") return "ALAC";
+    if (subtype == "aiff" || subtype == "aif") return "AIFF";
+    if (subtype == "aac" || subtype == "mp4" || subtype == "m4a") return "AAC";
+    if (subtype == "ogg" || subtype == "vorbis") return "OGG";
+    if (subtype == "opus") return "OPUS";
+    if (subtype == "webm") return "WEBM";
+    return std::nullopt;
+}
+
+bool is_lossless_format_name(std::string_view fmt) {
+    return fmt == "FLAC" || fmt == "WAV" || fmt == "ALAC" || fmt == "AIFF";
+}
+
 bool is_asset_lossless(const Asset &asset) {
-    const std::string &mime = asset.mime_type;
-    const std::string &hash = asset.file_hash;
-
-    if (contains_case_insensitive(mime, "audio/flac") ||
-        contains_case_insensitive(mime, "audio/x-wav") ||
-        contains_case_insensitive(mime, "audio/wav") ||
-        contains_case_insensitive(mime, "audio/alac") ||
-        contains_case_insensitive(mime, "audio/aiff") ||
-        contains_case_insensitive(mime, "audio/x-aiff")) {
-        return true;
+    const std::string base_mime = extract_base_mime(asset.mime_type);
+    if (base_mime.rfind("audio/", 0) == 0) {
+        const std::string sub = normalize_audio_subtype(std::string_view(base_mime).substr(6));
+        if (!sub.empty() && sub != "octet-stream") {
+            if (auto fmt = detect_format_from_audio_subtype(sub)) {
+                return is_lossless_format_name(*fmt);
+            }
+            return false;
+        }
+        if (auto ext_fmt = detect_format_from_extension(asset.file_hash)) {
+            return is_lossless_format_name(*ext_fmt);
+        }
+        return false;
     }
 
-    if (ends_with_case_insensitive(mime, ".flac") || ends_with_case_insensitive(hash, ".flac") ||
-        ends_with_case_insensitive(mime, ".wav") || ends_with_case_insensitive(hash, ".wav") ||
-        ends_with_case_insensitive(mime, ".alac") || ends_with_case_insensitive(hash, ".alac") ||
-        ends_with_case_insensitive(mime, ".aiff") || ends_with_case_insensitive(hash, ".aiff") ||
-        ends_with_case_insensitive(mime, ".aif") || ends_with_case_insensitive(hash, ".aif")) {
-        return true;
+    if (base_mime == "application/ogg") {
+        return false;
+    }
+    if (base_mime.empty() || base_mime == "application/octet-stream") {
+        if (auto ext_fmt = detect_format_from_extension(asset.file_hash)) {
+            return is_lossless_format_name(*ext_fmt);
+        }
+        return false;
+    }
+    if (base_mime.find('/') != std::string::npos) {
+        return false;
     }
 
+    for (std::string_view candidate : {std::string_view(base_mime), std::string_view(asset.file_hash)}) {
+        if (auto ext_fmt = detect_format_from_extension(candidate)) {
+            return is_lossless_format_name(*ext_fmt);
+        }
+    }
     return false;
 }
 
 std::string detect_asset_codec(const Asset *asset, bool is_lossless) {
     if (asset) {
-        const std::string &mime = asset->mime_type;
-        const std::string &hash = asset->file_hash;
+        const std::string base_mime = extract_base_mime(asset->mime_type);
+        if (base_mime.rfind("audio/", 0) == 0) {
+            const std::string sub = normalize_audio_subtype(std::string_view(base_mime).substr(6));
+            if (!sub.empty() && sub != "octet-stream") {
+                if (auto fmt = detect_format_from_audio_subtype(sub); fmt && *fmt != "WEBM") {
+                    return *fmt;
+                }
+                return is_lossless ? "FLAC" : "MP3";
+            }
+            if (auto ext_fmt = detect_format_from_extension(asset->file_hash);
+                ext_fmt && *ext_fmt != "WEBM") {
+                return *ext_fmt;
+            }
+            return is_lossless ? "FLAC" : "MP3";
+        }
 
-        if (contains_case_insensitive(mime, "audio/flac") || ends_with_case_insensitive(mime, ".flac") || ends_with_case_insensitive(hash, ".flac")) {
-            return "FLAC";
-        }
-        if (contains_case_insensitive(mime, "audio/mp3") || contains_case_insensitive(mime, "audio/mpeg") || ends_with_case_insensitive(mime, ".mp3") || ends_with_case_insensitive(hash, ".mp3")) {
-            return "MP3";
-        }
-        if (contains_case_insensitive(mime, "audio/wav") || contains_case_insensitive(mime, "audio/x-wav") || ends_with_case_insensitive(mime, ".wav") || ends_with_case_insensitive(hash, ".wav")) {
-            return "WAV";
-        }
-        if (contains_case_insensitive(mime, "audio/alac") || ends_with_case_insensitive(mime, ".alac") || ends_with_case_insensitive(hash, ".alac")) {
-            return "ALAC";
-        }
-        if (contains_case_insensitive(mime, "audio/aiff") || contains_case_insensitive(mime, "audio/x-aiff") ||
-            ends_with_case_insensitive(mime, ".aiff") || ends_with_case_insensitive(hash, ".aiff") ||
-            ends_with_case_insensitive(mime, ".aif") || ends_with_case_insensitive(hash, ".aif")) {
-            return "AIFF";
-        }
-        if (contains_case_insensitive(mime, "audio/aac") || contains_case_insensitive(mime, "audio/mp4") || contains_case_insensitive(mime, "audio/m4a") ||
-            ends_with_case_insensitive(mime, ".aac") || ends_with_case_insensitive(hash, ".aac") ||
-            ends_with_case_insensitive(mime, ".m4a") || ends_with_case_insensitive(hash, ".m4a")) {
-            return "AAC";
-        }
-        if (contains_case_insensitive(mime, "audio/ogg") || contains_case_insensitive(mime, "audio/vorbis") ||
-            ends_with_case_insensitive(mime, ".ogg") || ends_with_case_insensitive(hash, ".ogg")) {
+        if (base_mime == "application/ogg") {
             return "OGG";
         }
-        if (contains_case_insensitive(mime, "audio/opus") || ends_with_case_insensitive(mime, ".opus") || ends_with_case_insensitive(hash, ".opus")) {
-            return "OPUS";
+        if (base_mime.empty() || base_mime == "application/octet-stream") {
+            if (auto ext_fmt = detect_format_from_extension(asset->file_hash);
+                ext_fmt && *ext_fmt != "WEBM") {
+                return *ext_fmt;
+            }
+            return is_lossless ? "FLAC" : "MP3";
+        }
+        if (base_mime.find('/') != std::string::npos) {
+            return is_lossless ? "FLAC" : "MP3";
+        }
+
+        for (std::string_view candidate : {std::string_view(base_mime), std::string_view(asset->file_hash)}) {
+            if (auto ext_fmt = detect_format_from_extension(candidate)) {
+                return (*ext_fmt != "WEBM") ? *ext_fmt : (is_lossless ? "FLAC" : "MP3");
+            }
         }
     }
     return is_lossless ? "FLAC" : "MP3";
@@ -1020,6 +1085,38 @@ bool AudioHelper::matches_format(const Asset &asset, const std::string &preferre
     return contains_case_insensitive(mime, fmt) ||
            ends_with_case_insensitive(mime, "." + fmt) ||
            ends_with_case_insensitive(hash, "." + fmt);
+}
+
+std::optional<std::string> AudioHelper::format_from_mime_type(
+    std::string_view mime_type,
+    std::string_view file_hash) {
+    const std::string base_mime = extract_base_mime(mime_type);
+    if (base_mime.rfind("audio/", 0) == 0) {
+        const std::string sub = normalize_audio_subtype(std::string_view(base_mime).substr(6));
+        if (sub.empty() || sub == "octet-stream") {
+            return detect_format_from_extension(file_hash);
+        }
+        if (auto known = detect_format_from_audio_subtype(sub)) {
+            return known;
+        }
+        return to_ascii_upper(sub);
+    }
+
+    if (base_mime == "application/ogg") {
+        return "OGG";
+    }
+    if (base_mime.empty() || base_mime == "application/octet-stream") {
+        return detect_format_from_extension(file_hash);
+    }
+    if (base_mime.find('/') != std::string::npos) {
+        // Ignore non-audio MIME types such as image/*, text/*, or video/*.
+        return std::nullopt;
+    }
+
+    if (auto ext_fmt = detect_format_from_extension(base_mime)) {
+        return ext_fmt;
+    }
+    return detect_format_from_extension(file_hash);
 }
 
 } // namespace utils

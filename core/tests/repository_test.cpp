@@ -1463,6 +1463,371 @@ bool test_playlist_repository_crud(SqliteDatabaseContext &ctx) {
     return true;
 }
 
+bool test_track_hydration_and_relations(SqliteDatabaseContext &ctx) {
+    std::cout << "Running test_track_hydration_and_relations..." << std::endl;
+    SqliteTrackRepository track_repo(ctx);
+    SqliteAlbumRepository album_repo(ctx);
+    SqliteArtistRepository artist_repo(ctx);
+    SqliteWorkRepository work_repo(ctx);
+    SqliteAssetRepository asset_repo(ctx);
+
+    Work work;
+    work.id = "work-hyd-1";
+    work.title = "Goldberg Variations";
+    assert(work_repo.insert(work).has_value());
+
+    Artist main_artist;
+    main_artist.id = "artist-hyd-main";
+    main_artist.name = "Glenn Gould";
+    assert(artist_repo.insert(main_artist).has_value());
+
+    Artist feat_artist;
+    feat_artist.id = "artist-hyd-feat";
+    feat_artist.name = "Featured Soloist";
+    assert(artist_repo.insert(feat_artist).has_value());
+
+    Artist empty_artist;
+    empty_artist.id = "artist-hyd-empty";
+    empty_artist.name = "Silent Artist";
+    assert(artist_repo.insert(empty_artist).has_value());
+
+    Album album1;
+    album1.id = "album-hyd-1";
+    album1.title = "1981 Studio Recording";
+    album1.release_year = 1981;
+    assert(album_repo.insert(album1).has_value());
+
+    Album album2;
+    album2.id = "album-hyd-2";
+    album2.title = "Complete Box Set";
+    album2.release_year = 2002;
+    assert(album_repo.insert(album2).has_value());
+
+    Album empty_album;
+    empty_album.id = "album-hyd-empty";
+    empty_album.title = "Empty Album";
+    assert(album_repo.insert(empty_album).has_value());
+
+    Audio audio_hires;
+    audio_hires.pcm_hash = "pcm-hyd-hires";
+    audio_hires.bit_depth = 24;
+    audio_hires.sample_rate = 96000;
+    audio_hires.channels = 2;
+    audio_hires.duration = 190.0;
+
+    Asset asset_mp3;
+    asset_mp3.file_hash = "file-hyd-mp3";
+    asset_mp3.mime_type = "audio/mpeg";
+    asset_mp3.asset_type = "audio";
+    asset_mp3.file_size = 50000000; // Larger than FLAC to genuinely prove lossless priority
+    assert(asset_repo.insert_asset_with_audio(asset_mp3, audio_hires).has_value());
+
+    Asset asset_wavpack;
+    asset_wavpack.file_hash = "file-hyd-wavpack";
+    asset_wavpack.mime_type = "audio/wavpack";
+    asset_wavpack.asset_type = "audio";
+    asset_wavpack.file_size = 60000000;
+    assert(asset_repo.insert_asset_with_audio(asset_wavpack, audio_hires).has_value());
+
+    Asset asset_param_wav;
+    asset_param_wav.file_hash = "file-hyd-param-wav";
+    asset_param_wav.mime_type = "audio/mpeg; comment=wav";
+    asset_param_wav.asset_type = "audio";
+    asset_param_wav.file_size = 70000000;
+    assert(asset_repo.insert_asset_with_audio(asset_param_wav, audio_hires).has_value());
+
+    Asset asset_flac;
+    asset_flac.file_hash = "file-hyd-flac";
+    asset_flac.mime_type = "audio/flac";
+    asset_flac.asset_type = "audio";
+    asset_flac.file_size = 10000000;
+    assert(asset_repo.insert_asset_with_audio(asset_flac, audio_hires).has_value());
+
+    Audio audio_aif;
+    audio_aif.pcm_hash = "pcm-hyd-aif";
+    audio_aif.bit_depth = 16;
+    audio_aif.sample_rate = 44100;
+    Asset asset_aif_mp3{"file-aif-mp3", "audio/mpeg", "audio", 20000000, ""};
+    Asset asset_aif{"file-aif-src", "audio/aif", "audio", 5000000, ""};
+    assert(asset_repo.insert_asset_with_audio(asset_aif_mp3, audio_aif).has_value());
+    assert(asset_repo.insert_asset_with_audio(asset_aif, audio_aif).has_value());
+
+    Audio audio_zero;
+    audio_zero.pcm_hash = "pcm-hyd-zero";
+    audio_zero.bit_depth = 0;
+    audio_zero.sample_rate = 0;
+    Asset asset_octet;
+    asset_octet.file_hash = "file-hyd-octet";
+    asset_octet.mime_type = "audio/octet-stream";
+    asset_octet.asset_type = "audio";
+    assert(asset_repo.insert_asset_with_audio(asset_octet, audio_zero).has_value());
+
+    // Track 1: full relations, including multiple artists/albums/assets (no row multiplication!)
+    Track t1;
+    t1.id = "track-hyd-1";
+    t1.pcm_hash = audio_hires.pcm_hash;
+    t1.work_id = work.id;
+    t1.title = "Aria Hydrated";
+    assert(track_repo.insert(t1).has_value());
+    assert(track_repo.add_artist({t1.id, feat_artist.id, ArtistRole::Featured, 1}).has_value());
+    assert(track_repo.add_artist({t1.id, main_artist.id, ArtistRole::Main, 2}).has_value());
+    assert(track_repo.add_album({t1.id, album1.id, 1}).has_value());
+    assert(track_repo.add_album({t1.id, album2.id, 7}).has_value());
+
+    // Track 2: NULL position in album1, shared main_artist
+    Track t2;
+    t2.id = "track-hyd-2";
+    t2.pcm_hash = audio_zero.pcm_hash;
+    t2.title = "Variation NULL Pos";
+    assert(track_repo.insert(t2).has_value());
+    assert(track_repo.add_artist({t2.id, main_artist.id, ArtistRole::Main, 1}).has_value());
+    assert(track_repo.add_album({t2.id, album1.id, std::nullopt}).has_value());
+
+    // Track 3: completely unlinked (NULL relations)
+    Track t3;
+    t3.id = "track-hyd-3";
+    t3.pcm_hash = "pcm-hyd-missing";
+    t3.title = "Orphan Hydrated";
+    assert(track_repo.insert(t3).has_value());
+
+    // Track 4: audio/aif lossless selection over larger MP3
+    Track t_aif;
+    t_aif.id = "track-hyd-aif";
+    t_aif.pcm_hash = audio_aif.pcm_hash;
+    t_aif.title = "AIF Lossless Priority";
+    assert(track_repo.insert(t_aif).has_value());
+    auto got_aif = track_repo.get(t_aif.id);
+    assert(got_aif.has_value() && got_aif->format == "AIFF");
+
+    // Verify get() hydration + lossless asset preference + main artist role priority
+    auto got1 = track_repo.get(t1.id);
+    assert(got1.has_value());
+    assert(got1->artist_name == "Glenn Gould");
+    assert(got1->album_title == "1981 Studio Recording");
+    assert(got1->work_title == "Goldberg Variations");
+    assert(got1->format == "FLAC");
+    assert(got1->sample_rate == 96000);
+    assert(got1->bit_depth == 24);
+    assert(got1->track_number == 1);
+
+    // Verify zero audio specs and audio/octet-stream stay nullopt
+    auto got2 = track_repo.get(t2.id);
+    assert(got2.has_value());
+    assert(got2->artist_name == "Glenn Gould");
+    assert(got2->album_title == "1981 Studio Recording");
+    assert(!got2->work_title.has_value());
+    assert(!got2->format.has_value());
+    assert(!got2->sample_rate.has_value());
+    assert(!got2->bit_depth.has_value());
+    assert(!got2->track_number.has_value());
+
+    // Verify NULL relations
+    auto got3 = track_repo.get(t3.id);
+    assert(got3.has_value());
+    assert(!got3->artist_name.has_value());
+    assert(!got3->album_title.has_value());
+    assert(!got3->work_title.has_value());
+    assert(!got3->format.has_value());
+    assert(!got3->sample_rate.has_value());
+    assert(!got3->bit_depth.has_value());
+    assert(!got3->track_number.has_value());
+
+    // Verify list() does not multiply rows on multi-artist / multi-album / multi-asset tracks
+    auto list_res = track_repo.list(0, 10, std::string("Hydrated"));
+    assert(list_res.has_value());
+    assert(list_res->total == 2);
+    assert(list_res->items.size() == 2);
+    assert(list_res->items[0].id == t1.id);
+    assert(list_res->items[0].format == "FLAC");
+    assert(list_res->items[1].id == t3.id);
+    assert(!list_res->items[1].artist_name.has_value());
+
+    // Verify get_by_title and get_by_pcm_hash return hydrated fields
+    auto by_title = track_repo.get_by_title("Aria Hydrated");
+    assert(by_title.has_value() && by_title->size() == 1);
+    assert(by_title->front().artist_name == "Glenn Gould");
+    assert(by_title->front().work_title == "Goldberg Variations");
+
+    auto by_pcm = track_repo.get_by_pcm_hash(audio_hires.pcm_hash);
+    assert(by_pcm.has_value() && by_pcm->size() == 1);
+    assert(by_pcm->front().format == "FLAC");
+
+    // Verify get_by_album ordering (position ASC, NULL last) and album anchoring
+    auto alb1_tracks = track_repo.get_by_album(album1.id);
+    assert(alb1_tracks.has_value() && alb1_tracks->size() == 2);
+    assert((*alb1_tracks)[0].id == t1.id);
+    assert((*alb1_tracks)[0].album_title == "1981 Studio Recording");
+    assert((*alb1_tracks)[0].track_number == 1);
+    assert((*alb1_tracks)[1].id == t2.id);
+    assert(!(*alb1_tracks)[1].track_number.has_value());
+
+    auto alb2_tracks = track_repo.get_by_album(album2.id);
+    assert(alb2_tracks.has_value() && alb2_tracks->size() == 1);
+    assert((*alb2_tracks)[0].album_title == "Complete Box Set");
+    assert((*alb2_tracks)[0].track_number == 7);
+
+    auto empty_alb_tracks = track_repo.get_by_album(empty_album.id);
+    assert(empty_alb_tracks.has_value() && empty_alb_tracks->empty());
+
+    auto missing_alb_tracks = track_repo.get_by_album("nonexistent-album");
+    assert(!missing_alb_tracks.has_value() && missing_alb_tracks.error() == "Album not found.");
+
+    // Verify get_by_artist (for main and featured artists)
+    auto main_tracks = track_repo.get_by_artist(main_artist.id);
+    assert(main_tracks.has_value() && main_tracks->size() == 2);
+    assert((*main_tracks)[0].id == t1.id);
+    assert((*main_tracks)[1].id == t2.id);
+
+    auto feat_tracks = track_repo.get_by_artist(feat_artist.id);
+    assert(feat_tracks.has_value() && feat_tracks->size() == 1);
+    assert((*feat_tracks)[0].id == t1.id);
+    assert((*feat_tracks)[0].artist_name == "Glenn Gould");
+
+    auto empty_art_tracks = track_repo.get_by_artist(empty_artist.id);
+    assert(empty_art_tracks.has_value() && empty_art_tracks->empty());
+
+    auto missing_art_tracks = track_repo.get_by_artist("nonexistent-artist");
+    assert(!missing_art_tracks.has_value() && missing_art_tracks.error() == "Artist not found.");
+
+    // Verify AlbumRepository::get_by_artist deduplication & ordering (year DESC, NULL last)
+    Album album_null_year;
+    album_null_year.id = "album-hyd-null-year";
+    album_null_year.title = "Unreleased Session";
+    assert(album_repo.insert(album_null_year).has_value());
+    assert(track_repo.add_album({t2.id, album_null_year.id, 1}).has_value());
+
+    auto art_albums = album_repo.get_by_artist(main_artist.id);
+    assert(art_albums.has_value() && art_albums->size() == 3);
+    assert((*art_albums)[0].id == album2.id);
+    assert((*art_albums)[1].id == album1.id);
+    assert((*art_albums)[2].id == album_null_year.id);
+
+    auto empty_art_albums = album_repo.get_by_artist(empty_artist.id);
+    assert(empty_art_albums.has_value() && empty_art_albums->empty());
+
+    auto missing_art_albums = album_repo.get_by_artist("nonexistent-artist");
+    assert(!missing_art_albums.has_value() && missing_art_albums.error() == "Artist not found.");
+
+    return true;
+}
+
+bool test_hydration_lossless_ranking_symmetry(SqliteDatabaseContext &ctx) {
+    std::cout << "Running test_hydration_lossless_ranking_symmetry..." << std::endl;
+    SqliteTrackRepository track_repo(ctx);
+    SqliteAssetRepository asset_repo(ctx);
+
+    // Case 1: Large decoys (lossy, non-audio, ';'-param-only, bare lossy, invalid whitespace)
+    // must NOT outrank a smaller genuine lossless asset.
+    Audio audio_fp;
+    audio_fp.pcm_hash = "pcm-sym-fp";
+    audio_fp.bit_depth = 24;
+    audio_fp.sample_rate = 96000;
+    audio_fp.channels = 2;
+    audio_fp.duration = 120.0;
+
+    Asset decoy_mpeg{"sym_mpeg.flac", "audio/mpeg", "audio", 50000000, ""};
+    Asset decoy_img{"sym_img.flac", "image/png", "image", 60000000, ""};
+    Asset decoy_semi{"sym_semi_noext", "; filename=demo.flac", "audio", 70000000, ""};
+    Asset decoy_dotmp3{"sym_dotmp3.flac", ".mp3", "audio", 80000000, ""};
+    Asset decoy_badspace{"sym_badspace.flac", "audio/ flac", "audio", 90000000, ""};
+    Asset real_flac{"sym_real_flac", "audio/flac", "audio", 10000000, ""};
+
+    assert(asset_repo.insert_asset_with_audio(decoy_mpeg, audio_fp).has_value());
+    assert(asset_repo.insert_asset_with_audio(decoy_img, audio_fp).has_value());
+    assert(asset_repo.insert_asset_with_audio(decoy_semi, audio_fp).has_value());
+    assert(asset_repo.insert_asset_with_audio(decoy_dotmp3, audio_fp).has_value());
+    assert(asset_repo.insert_asset_with_audio(decoy_badspace, audio_fp).has_value());
+    assert(asset_repo.insert_asset_with_audio(real_flac, audio_fp).has_value());
+
+    Track t_fp;
+    t_fp.id = "track-sym-fp";
+    t_fp.pcm_hash = audio_fp.pcm_hash;
+    t_fp.title = "Symmetry Case 1";
+    assert(track_repo.insert(t_fp).has_value());
+    auto got_fp = track_repo.get(t_fp.id);
+    assert(got_fp.has_value() && got_fp->format == "FLAC");
+
+    // Case 2: Bare lossless MIME with ';' params beats larger MP3.
+    Audio audio_bare_semi;
+    audio_bare_semi.pcm_hash = "pcm-sym-bare-semi";
+    audio_bare_semi.bit_depth = 16;
+    audio_bare_semi.sample_rate = 44100;
+    Asset bare_mp3_big{"sym_bare_mp3", "audio/mpeg", "audio", 50000000, ""};
+    Asset bare_semi_flac{"sym_bare_semi", "track.flac; path=a/b", "audio", 5000000, ""};
+    assert(asset_repo.insert_asset_with_audio(bare_mp3_big, audio_bare_semi).has_value());
+    assert(asset_repo.insert_asset_with_audio(bare_semi_flac, audio_bare_semi).has_value());
+
+    Track t_bare_semi;
+    t_bare_semi.id = "track-sym-bare-semi";
+    t_bare_semi.pcm_hash = audio_bare_semi.pcm_hash;
+    t_bare_semi.title = "Symmetry Case 2";
+    assert(track_repo.insert(t_bare_semi).has_value());
+    auto got_bare_semi = track_repo.get(t_bare_semi.id);
+    assert(got_bare_semi.has_value() && got_bare_semi->format == "FLAC");
+
+    // Case 3a: Whitespace (\t) padded lossless MIME beats larger MP3.
+    Audio audio_tab;
+    audio_tab.pcm_hash = "pcm-sym-tab";
+    audio_tab.bit_depth = 16;
+    audio_tab.sample_rate = 44100;
+    assert(asset_repo.insert_asset_with_audio(Asset{"sym_tab_mp3", "audio/mpeg", "audio", 50000000, ""}, audio_tab)
+               .has_value());
+    assert(asset_repo
+               .insert_asset_with_audio(Asset{"sym_tab_flac", "\taudio/flac\t; codecs=flac", "audio", 5000000, ""},
+                                        audio_tab)
+               .has_value());
+
+    Track t_tab;
+    t_tab.id = "track-sym-tab";
+    t_tab.pcm_hash = audio_tab.pcm_hash;
+    t_tab.title = "Symmetry Case 3a";
+    assert(track_repo.insert(t_tab).has_value());
+    auto got_tab = track_repo.get(t_tab.id);
+    assert(got_tab.has_value() && got_tab->format == "FLAC");
+
+    // Case 3b: audio/x-octet-stream + newline-padded .flac hash beats larger MP3.
+    Audio audio_xoct;
+    audio_xoct.pcm_hash = "pcm-sym-xoct";
+    audio_xoct.bit_depth = 16;
+    audio_xoct.sample_rate = 44100;
+    assert(asset_repo.insert_asset_with_audio(Asset{"sym_xoct_mp3", "audio/mpeg", "audio", 50000000, ""}, audio_xoct)
+               .has_value());
+    assert(asset_repo
+               .insert_asset_with_audio(Asset{"sym_xoct.flac\n", "audio/x-octet-stream", "audio", 5000000, ""},
+                                        audio_xoct)
+               .has_value());
+
+    Track t_xoct;
+    t_xoct.id = "track-sym-xoct";
+    t_xoct.pcm_hash = audio_xoct.pcm_hash;
+    t_xoct.title = "Symmetry Case 3b";
+    assert(track_repo.insert(t_xoct).has_value());
+    auto got_xoct = track_repo.get(t_xoct.id);
+    assert(got_xoct.has_value() && got_xoct->format == "FLAC");
+
+    // Case 3c: audio/x-aif beats larger MP3.
+    Audio audio_xaif;
+    audio_xaif.pcm_hash = "pcm-sym-xaif";
+    audio_xaif.bit_depth = 16;
+    audio_xaif.sample_rate = 44100;
+    assert(asset_repo.insert_asset_with_audio(Asset{"sym_xaif_mp3", "audio/mpeg", "audio", 50000000, ""}, audio_xaif)
+               .has_value());
+    assert(
+        asset_repo.insert_asset_with_audio(Asset{"sym_xaif_src", "audio/x-aif", "audio", 5000000, ""}, audio_xaif)
+            .has_value());
+
+    Track t_xaif;
+    t_xaif.id = "track-sym-xaif";
+    t_xaif.pcm_hash = audio_xaif.pcm_hash;
+    t_xaif.title = "Symmetry Case 3c";
+    assert(track_repo.insert(t_xaif).has_value());
+    auto got_xaif = track_repo.get(t_xaif.id);
+    assert(got_xaif.has_value() && got_xaif->format == "AIFF");
+
+    return true;
+}
+
+
 int main() {
     std::string db_path = "test_repo.db";
     std::filesystem::remove(db_path);
@@ -1484,6 +1849,9 @@ int main() {
         if (!test_work_repository_crud(ctx)) success = false;
         if (!test_track_repository_crud(ctx)) success = false;
         if (!test_playlist_repository_crud(ctx)) success = false;
+        if (!test_track_hydration_and_relations(ctx)) success = false;
+        if (!test_hydration_lossless_ranking_symmetry(ctx)) success = false;
+        if (!test_playlist_delete_and_reorder(ctx)) success = false;
         if (!test_entity_rollback_on_insert_failure(ctx)) success = false;
         if (!test_database_triggers_updated_at(ctx)) success = false;
     } catch (const std::exception &e) {

@@ -9,6 +9,7 @@
 #include <cstdint>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <tl/expected.hpp>
 #include <vector>
 
@@ -56,6 +57,9 @@ class AudioHelper {
     static AudioQualityInfo evaluate_quality(const Audio &audio);
     static AudioQualityInfo evaluate_quality(const Audio &audio, const Asset &asset);
     static bool matches_format(const Asset &asset, const std::string &preferred_format);
+    static std::optional<std::string> format_from_mime_type(
+        std::string_view mime_type,
+        std::string_view file_hash = "");
 };
 
 } // namespace utils

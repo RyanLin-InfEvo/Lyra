@@ -68,6 +68,8 @@ class Router {
     json handleUpdateArtist(const json &p);
     json handleGetArtist(const json &p);
     json handleListArtists(const json &p);
+    json handleGetArtistTracks(const json &p);
+    json handleGetArtistAlbums(const json &p);
 
     json handleCreateTrack(const json &p);
     json handleUpdateTrack(const json &p);
@@ -79,6 +81,7 @@ class Router {
     json handleUpdateAlbum(const json &p);
     json handleGetAlbum(const json &p);
     json handleListAlbums(const json &p);
+    json handleGetAlbumTracks(const json &p);
 
     json handleCreateAsset(const json &p);
     json handleUpdateAsset(const json &p);

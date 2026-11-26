@@ -3,8 +3,149 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 #include "sqlite_track_repository.h"
+#include <initializer_list>
+#include <string_view>
 
 namespace lyra {
+
+namespace {
+
+constexpr const char *kTrackHydratedSelectCols =
+    "t.*, "
+    "ar.name AS artist_name, "
+    "al.title AS album_title, "
+    "w.title AS work_title, "
+    "asst.mime_type AS asset_mime_type, "
+    "asst.file_hash AS asset_file_hash, "
+    "CASE WHEN au.sample_rate > 0 THEN au.sample_rate ELSE NULL END AS sample_rate, "
+    "CASE WHEN au.bit_depth > 0 THEN au.bit_depth ELSE NULL END AS bit_depth, ";
+
+std::string build_ext_match_sql(std::string_view expr, std::initializer_list<const char *> exts) {
+    std::string out;
+    bool first = true;
+    for (const char *ext : exts) {
+        if (!first) {
+            out += " OR ";
+        }
+        first = false;
+        out += expr;
+        out += " LIKE '%";
+        out += ext;
+        out += "'";
+    }
+    return out;
+}
+
+// Shared 1-to-1 LEFT JOIN clauses for Work, Audio, primary Artist, and primary Asset.
+const std::string &track_hydrated_common_joins() {
+    static const std::string kJoins = []() {
+        const std::string trim_chars = "' ' || CHAR(9) || CHAR(10) || CHAR(13)";
+        const std::string base_mime = "LOWER(TRIM(CASE "
+                                      "WHEN INSTR(COALESCE(a2.mime_type, ''), ';') > 0 "
+                                      "THEN SUBSTR(a2.mime_type, 1, INSTR(a2.mime_type, ';') - 1) "
+                                      "ELSE COALESCE(a2.mime_type, '') "
+                                      "END, " +
+                                      trim_chars + "))";
+        const std::string clean_hash = "LOWER(TRIM(COALESCE(a2.file_hash, ''), " + trim_chars + "))";
+        const std::string lossless_ext_hash = build_ext_match_sql(clean_hash, {".flac", ".wav", ".alac", ".aiff", ".aif"});
+        const std::string lossless_ext_mime = build_ext_match_sql(base_mime, {".flac", ".wav", ".alac", ".aiff", ".aif"});
+        const std::string lossy_ext_mime =
+            build_ext_match_sql(base_mime, {".mp3", ".aac", ".m4a", ".ogg", ".opus", ".webm"});
+
+        std::string sql = "LEFT JOIN Work w ON w.id = t.work_id "
+                          "LEFT JOIN Audio au ON au.pcm_hash = t.pcm_hash "
+                          "LEFT JOIN Track_Artist ta_primary " // Track_Artist, select a main artist
+                          "  ON ta_primary.track_id = t.id "
+                          " AND ta_primary.artist_id = ( "
+                          "     SELECT ta2.artist_id FROM Track_Artist ta2 "
+                          "     WHERE ta2.track_id = t.id "
+                          "     ORDER BY CASE WHEN ta2.role = 'main' THEN 0 ELSE 1 END ASC, "
+                          "              (ta2.position IS NULL) ASC, ta2.position ASC, "
+                          "              ta2.artist_id ASC "
+                          "     LIMIT 1 "
+                          " ) "                                                  //
+                          "LEFT JOIN Artist ar ON ar.id = ta_primary.artist_id " // Join the artist(s) just
+                          "LEFT JOIN Audio_Asset aa_primary "
+                          "  ON aa_primary.pcm_hash = t.pcm_hash "
+                          " AND aa_primary.file_hash = ( "
+                          "     SELECT aa2.file_hash FROM Audio_Asset aa2 "
+                          "     JOIN Asset a2 ON a2.file_hash = aa2.file_hash "
+                          "     WHERE aa2.pcm_hash = t.pcm_hash "
+                          "     ORDER BY CASE "
+                          "         WHEN (" +
+                          base_mime +
+                          ") IN ( "
+                          "             'audio/flac', 'audio/x-flac', "
+                          "             'audio/wav', 'audio/x-wav', 'audio/wave', 'audio/x-wave', "
+                          "             'audio/alac', 'audio/x-alac', "
+                          "             'audio/aiff', 'audio/x-aiff', 'audio/aif', 'audio/x-aif' "
+                          "         ) THEN 0 "
+                          "         WHEN (" +
+                          base_mime +
+                          ") IN ( "
+                          "             '', 'audio/octet-stream', 'audio/x-octet-stream', "
+                          "             'application/octet-stream', 'audio/', 'audio/x-' "
+                          "         ) THEN CASE WHEN (" +
+                          lossless_ext_hash +
+                          ") THEN 0 ELSE 1 END "
+                          "         WHEN INSTR(" +
+                          base_mime +
+                          ", '/') = 0 THEN CASE "
+                          "             WHEN (" +
+                          lossless_ext_mime +
+                          ") THEN 0 "
+                          "             WHEN (" +
+                          lossy_ext_mime +
+                          ") THEN 1 "
+                          "             WHEN (" +
+                          lossless_ext_hash +
+                          ") THEN 0 "
+                          "             ELSE 1 "
+                          "         END "
+                          "         ELSE 1 "
+                          "     END ASC, "
+                          "     COALESCE(a2.file_size, 0) DESC, "
+                          "     aa2.file_hash ASC "
+                          "     LIMIT 1 "
+                          " ) "
+                          "LEFT JOIN Asset asst ON asst.file_hash = aa_primary.file_hash ";
+        return sql;
+    }();
+    return kJoins;
+}
+
+// Primary Album LEFT JOIN ensuring at most 1 row per Track via PK-prefix subquery.
+constexpr const char *kTrackPrimaryAlbumJoin =
+    "LEFT JOIN Track_Album tal_primary "
+    "  ON tal_primary.track_id = t.id "
+    " AND tal_primary.album_id = ( "
+    "     SELECT tal2.album_id FROM Track_Album tal2 "
+    "     WHERE tal2.track_id = t.id "
+    "     ORDER BY (tal2.position IS NULL) ASC, tal2.position ASC, "
+    "              tal2.album_id ASC "
+    "     LIMIT 1 "
+    " ) "
+    "LEFT JOIN Album al ON al.id = tal_primary.album_id ";
+
+std::string build_hydrated_track_sql(std::string_view where_and_order_clause) {
+    std::string sql = "SELECT ";
+    sql += kTrackHydratedSelectCols;
+    sql += "tal_primary.position AS track_number FROM Track t ";
+    sql += track_hydrated_common_joins();
+    sql += kTrackPrimaryAlbumJoin;
+    sql += where_and_order_clause;
+    return sql;
+}
+
+bool record_exists(SQLite::Database &db, const char *sql, const std::string &id) {
+    SQLite::Statement stmt(db, sql);
+    stmt.bind(1, id);
+    const bool exists = stmt.executeStep();
+    stmt.reset();
+    return exists;
+}
+
+} // namespace
 
 SqliteTrackRepository::SqliteTrackRepository(IDatabaseContext &context)
     : SqliteEntityRepository(context, "Track", "track", "title") {}
@@ -18,20 +159,149 @@ tl::expected<void, std::string> SqliteTrackRepository::update(const TrackUpdate 
 }
 
 tl::expected<Track, std::string> SqliteTrackRepository::get(const std::string &track_id) {
-    return SqliteEntityRepository::get(track_id);
+    try {
+        auto &db = m_context.get_db();
+        SQLite::Statement query(db, build_hydrated_track_sql("WHERE t.id = ? LIMIT 1"));
+        query.bind(1, track_id);
+
+        if (auto track = SqliteHelper::fetch_one<Track>(query); track) {
+            return *track;
+        }
+        return tl::unexpected("Track not found.");
+    } catch (const std::exception &e) {
+        return tl::unexpected(e.what());
+    }
 }
 
 tl::expected<PaginatedResult<Track>, std::string> SqliteTrackRepository::list(
     int offset, int limit, const std::optional<std::string> &search) {
-    return SqliteEntityRepository::list(offset, limit, search);
+    try {
+        auto &db = m_context.get_db();
+
+        std::string where_clause;
+        if (search.has_value()) {
+            where_clause = R"( WHERE "title" LIKE ? ESCAPE '\' )";
+        }
+
+        const std::string count_sql = "SELECT COUNT(*) FROM \"Track\"" + where_clause;
+        std::string select_sql = "SELECT ";
+        select_sql += kTrackHydratedSelectCols;
+        select_sql += "tal_primary.position AS track_number FROM (SELECT * FROM \"Track\"";
+        select_sql += where_clause;
+        select_sql += R"( ORDER BY "title" ASC, "id" ASC LIMIT ? OFFSET ?) t )";
+        select_sql += track_hydrated_common_joins();
+        select_sql += kTrackPrimaryAlbumJoin;
+        select_sql += R"( ORDER BY t."title" ASC, t."id" ASC)";
+
+        int total = 0;
+        {
+            SQLite::Statement count_query(db, count_sql);
+            if (search.has_value()) {
+                std::string query_param = "%" + SqliteHelper::escape_like(search.value(), '\\') + "%";
+                count_query.bind(1, query_param);
+            }
+            if (!count_query.executeStep()) {
+                count_query.reset();
+                return tl::unexpected("Failed to get total count.");
+            }
+            total = count_query.getColumn(0).getInt();
+            count_query.reset();
+        }
+
+        SQLite::Statement select_query(db, select_sql);
+        int bind_idx = 1;
+        if (search.has_value()) {
+            std::string query_param = "%" + SqliteHelper::escape_like(search.value(), '\\') + "%";
+            select_query.bind(bind_idx++, query_param);
+        }
+        select_query.bind(bind_idx++, limit);
+        select_query.bind(bind_idx++, offset);
+
+        std::vector<Track> items = SqliteHelper::fetch_all<Track>(select_query, limit);
+
+        return PaginatedResult<Track>{
+            .items = std::move(items),
+            .total = total,
+            .offset = offset,
+            .limit = limit,
+        };
+    } catch (const std::exception &e) {
+        return tl::unexpected(e.what());
+    }
 }
 
 tl::expected<std::vector<Track>, std::string> SqliteTrackRepository::get_by_title(const std::string &title) {
-    return get_by_field("title", title);
+    try {
+        auto &db = m_context.get_db();
+        SQLite::Statement query(db, build_hydrated_track_sql("WHERE t.title = ? ORDER BY t.id ASC"));
+        query.bind(1, title);
+        return SqliteHelper::fetch_all<Track>(query);
+    } catch (const std::exception &e) {
+        return tl::unexpected(e.what());
+    }
 }
 
 tl::expected<std::vector<Track>, std::string> SqliteTrackRepository::get_by_pcm_hash(const std::string &pcm_hash) {
-    return get_by_field("pcm_hash", pcm_hash);
+    try {
+        auto &db = m_context.get_db();
+        SQLite::Statement query(db, build_hydrated_track_sql("WHERE t.pcm_hash = ? ORDER BY t.id ASC"));
+        query.bind(1, pcm_hash);
+        return SqliteHelper::fetch_all<Track>(query);
+    } catch (const std::exception &e) {
+        return tl::unexpected(e.what());
+    }
+}
+
+tl::expected<std::vector<Track>, std::string> SqliteTrackRepository::get_by_album(const std::string &album_id) {
+    try {
+        auto &db = m_context.get_db();
+        if (!record_exists(db, "SELECT 1 FROM Album WHERE id = ?", album_id)) {
+            return tl::unexpected("Album not found.");
+        }
+
+        // Anchor album_title and track_number directly to the queried album rather than
+        // a generic primary-album subquery so multi-album tracks reflect this album's position.
+        std::string sql = "SELECT ";
+        sql += kTrackHydratedSelectCols;
+        sql += "tal.position AS track_number "
+               "FROM Track_Album tal "
+               "INNER JOIN Track t ON t.id = tal.track_id "
+               "INNER JOIN Album al ON al.id = tal.album_id ";
+        sql += track_hydrated_common_joins();
+        sql += "WHERE tal.album_id = ? "
+               "ORDER BY (tal.position IS NULL) ASC, tal.position ASC, COALESCE(t.title, '') ASC, t.id ASC";
+
+        SQLite::Statement query(db, sql);
+        query.bind(1, album_id);
+        return SqliteHelper::fetch_all<Track>(query);
+    } catch (const std::exception &e) {
+        return tl::unexpected(e.what());
+    }
+}
+
+tl::expected<std::vector<Track>, std::string> SqliteTrackRepository::get_by_artist(const std::string &artist_id) {
+    try {
+        auto &db = m_context.get_db();
+        if (!record_exists(db, "SELECT 1 FROM Artist WHERE id = ?", artist_id)) {
+            return tl::unexpected("Artist not found.");
+        }
+
+        std::string sql = "SELECT ";
+        sql += kTrackHydratedSelectCols;
+        sql += "tal_primary.position AS track_number "
+               "FROM Track_Artist ta_filter "
+               "INNER JOIN Track t ON t.id = ta_filter.track_id ";
+        sql += track_hydrated_common_joins();
+        sql += kTrackPrimaryAlbumJoin;
+        sql += "WHERE ta_filter.artist_id = ? "
+               "ORDER BY COALESCE(t.title, '') ASC, t.id ASC";
+
+        SQLite::Statement query(db, sql);
+        query.bind(1, artist_id);
+        return SqliteHelper::fetch_all<Track>(query);
+    } catch (const std::exception &e) {
+        return tl::unexpected(e.what());
+    }
 }
 
 tl::expected<void, std::string> SqliteTrackRepository::do_insert(SQLite::Database &db, const Track &track) {

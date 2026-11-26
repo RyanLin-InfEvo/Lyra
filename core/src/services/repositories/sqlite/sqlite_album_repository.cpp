@@ -30,6 +30,34 @@ tl::expected<std::vector<Album>, std::string> SqliteAlbumRepository::get_by_titl
     return get_by_field("title", title);
 }
 
+tl::expected<std::vector<Album>, std::string> SqliteAlbumRepository::get_by_artist(const std::string &artist_id) {
+    try {
+        auto &db = m_context.get_db();
+        {
+            SQLite::Statement check_artist(db, "SELECT 1 FROM Artist WHERE id = ?");
+            check_artist.bind(1, artist_id);
+            const bool exists = check_artist.executeStep();
+            check_artist.reset();
+            if (!exists) {
+                return tl::unexpected("Artist not found.");
+            }
+        }
+
+        SQLite::Statement query(
+            db,
+            "SELECT DISTINCT al.* "
+            "FROM Album al "
+            "INNER JOIN Track_Album tal ON tal.album_id = al.id "
+            "INNER JOIN Track_Artist ta ON ta.track_id = tal.track_id "
+            "WHERE ta.artist_id = ? "
+            "ORDER BY (al.release_year IS NULL) ASC, al.release_year DESC, al.title ASC, al.id ASC");
+        query.bind(1, artist_id);
+        return SqliteHelper::fetch_all<Album>(query);
+    } catch (const std::exception &e) {
+        return tl::unexpected(e.what());
+    }
+}
+
 tl::expected<void, std::string> SqliteAlbumRepository::do_insert(SQLite::Database &db, const Album &album) {
     SQLite::Statement query(db,
                             "INSERT INTO Album (id, title, release_year, release_month, release_day) "

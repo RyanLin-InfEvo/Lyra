@@ -194,6 +194,48 @@ bool test_track_mapper() {
             std::cerr << "test_track_mapper failed for uint32_t duration > INT32_MAX!" << std::endl;
             return false;
         }
+        // Non-hydrated SELECT * FROM Track must keep derived fields as nullopt
+        if (track->artist_name.has_value() || track->album_title.has_value() ||
+            track->work_title.has_value() || track->format.has_value() ||
+            track->sample_rate.has_value() || track->bit_depth.has_value() ||
+            track->track_number.has_value()) {
+            std::cerr << "test_track_mapper non-hydrated query unexpectedly populated derived fields!" << std::endl;
+            return false;
+        }
+    }
+
+    // Hydrated Track columns (populated, NULL, and zero sample_rate/bit_depth)
+    {
+        SQLite::Statement query(
+            db,
+            "SELECT t.*, 'Artist Name' AS artist_name, 'Album Title' AS album_title, "
+            "'Work Title' AS work_title, 'audio/flac' AS asset_mime_type, 'f1.flac' AS asset_file_hash, "
+            "96000 AS sample_rate, 24 AS bit_depth, 4 AS track_number "
+            "FROM Track t WHERE t.id = 't1'");
+        auto track = SqliteHelper::fetch_one(query, SqliteMappers::map_track);
+        if (!track || track->artist_name != "Artist Name" || track->album_title != "Album Title" ||
+            track->work_title != "Work Title" || track->format != "FLAC" ||
+            track->sample_rate != 96000 || track->bit_depth != 24 || track->track_number != 4) {
+            std::cerr << "test_track_mapper failed for hydrated track!" << std::endl;
+            return false;
+        }
+    }
+
+    {
+        SQLite::Statement query(
+            db,
+            "SELECT t.*, NULL AS artist_name, NULL AS album_title, NULL AS work_title, "
+            "NULL AS asset_mime_type, NULL AS asset_file_hash, "
+            "0 AS sample_rate, 0 AS bit_depth, NULL AS track_number "
+            "FROM Track t WHERE t.id = 't2'");
+        auto track = SqliteHelper::fetch_one(query, SqliteMappers::map_track);
+        if (!track || track->artist_name.has_value() || track->album_title.has_value() ||
+            track->work_title.has_value() || track->format.has_value() ||
+            track->sample_rate.has_value() || track->bit_depth.has_value() ||
+            track->track_number.has_value()) {
+            std::cerr << "test_track_mapper failed for NULL/zero hydrated track!" << std::endl;
+            return false;
+        }
     }
 
     return true;

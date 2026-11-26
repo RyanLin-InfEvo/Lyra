@@ -5,6 +5,7 @@
  */
 
 #include "sqlite_mappers.h"
+#include "audio_helper.h"
 
 namespace lyra {
 namespace SqliteMappers {
@@ -48,6 +49,43 @@ Track map_track(SQLite::Statement &query) {
     track.musicbrainz_id = SqliteHelper::get_optional<std::string>(query, "musicbrainz_id");
     track.ytm_id = SqliteHelper::get_optional<std::string>(query, "ytm_id");
     track.spotify_id = SqliteHelper::get_optional<std::string>(query, "spotify_id");
+
+    if (SqliteHelper::has_column(query, "artist_name")) {
+        track.artist_name = SqliteHelper::get_optional<std::string>(query, "artist_name");
+    }
+    if (SqliteHelper::has_column(query, "album_title")) {
+        track.album_title = SqliteHelper::get_optional<std::string>(query, "album_title");
+    }
+    if (SqliteHelper::has_column(query, "work_title")) {
+        track.work_title = SqliteHelper::get_optional<std::string>(query, "work_title");
+    }
+    if (SqliteHelper::has_column(query, "asset_mime_type")) {
+        auto mime_opt = SqliteHelper::get_optional<std::string>(query, "asset_mime_type");
+        std::optional<std::string> hash_opt;
+        if (SqliteHelper::has_column(query, "asset_file_hash")) {
+            hash_opt = SqliteHelper::get_optional<std::string>(query, "asset_file_hash");
+        }
+        if ((mime_opt && !mime_opt->empty()) || (hash_opt && !hash_opt->empty())) {
+            track.format = utils::AudioHelper::format_from_mime_type(
+                mime_opt.value_or(""),
+                hash_opt.value_or(""));
+        }
+    } else if (SqliteHelper::has_column(query, "format")) {
+        track.format = SqliteHelper::get_optional<std::string>(query, "format");
+    }
+    if (SqliteHelper::has_column(query, "sample_rate")) {
+        if (auto sr = SqliteHelper::get_optional<int>(query, "sample_rate"); sr && *sr > 0) {
+            track.sample_rate = sr;
+        }
+    }
+    if (SqliteHelper::has_column(query, "bit_depth")) {
+        if (auto bd = SqliteHelper::get_optional<int>(query, "bit_depth"); bd && *bd > 0) {
+            track.bit_depth = bd;
+        }
+    }
+    if (SqliteHelper::has_column(query, "track_number")) {
+        track.track_number = SqliteHelper::get_optional<int>(query, "track_number");
+    }
     return track;
 }
 

@@ -8,6 +8,7 @@
 #include "../services/repositories/i_album_repository.h"
 #include <nlohmann/json.hpp>
 #include <tl/expected.hpp>
+#include <vector>
 
 namespace lyra {
 
@@ -23,6 +24,7 @@ class AlbumController {
     tl::expected<PaginatedResult<Album>, std::string> list(
         int offset, int limit, const std::optional<std::string> &search);
     tl::expected<std::vector<Album>, std::string> get_by_title(const std::string &title);
+    tl::expected<std::vector<Album>, std::string> get_by_artist(const std::string &artist_id);
 
   private:
     IAlbumRepository &m_repo;

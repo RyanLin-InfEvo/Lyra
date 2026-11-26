@@ -50,4 +50,12 @@ tl::expected<std::vector<Track>, std::string> TrackController::get_by_title(cons
     return m_repo.get_by_title(title);
 }
 
+tl::expected<std::vector<Track>, std::string> TrackController::get_by_album(const std::string &album_id) {
+    return m_repo.get_by_album(album_id);
+}
+
+tl::expected<std::vector<Track>, std::string> TrackController::get_by_artist(const std::string &artist_id) {
+    return m_repo.get_by_artist(artist_id);
+}
+
 } // namespace lyra

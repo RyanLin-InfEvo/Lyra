@@ -38,4 +38,8 @@ tl::expected<std::vector<Album>, std::string> AlbumController::get_by_title(cons
     return m_repo.get_by_title(title);
 }
 
+tl::expected<std::vector<Album>, std::string> AlbumController::get_by_artist(const std::string &artist_id) {
+    return m_repo.get_by_artist(artist_id);
+}
+
 } // namespace lyra

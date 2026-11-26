@@ -130,3 +130,62 @@ class TestExactQueries(BaseLyraTestCase):
 
         err_res = self.dispatch("GetPlaylistsByTitle", {"title": ""})
         self.assertValidationError(err_res, expected_type="InvalidValue")
+
+    def test_get_tracks_by_title_hydrated_and_null_safe(self):
+        """Test GetTracksByTitle hydrates linked metadata while keeping NULL relations safe."""
+        title = "Exact Query Hydrated Track"
+        pcm_hash = f"pcm-exact-{uuid.uuid4().hex[:8]}"
+        self.assertResponseCode(
+            self.dispatch("CreateAudio", {
+                "pcm_hash": pcm_hash,
+                "bit_depth": 24,
+                "sample_rate": 88200,
+                "channels": 2,
+                "duration": 100.0,
+            }),
+            201,
+        )
+        self.assertResponseCode(
+            self.dispatch("CreateAsset", {
+                "file_hash": f"file-exact-{uuid.uuid4().hex[:8]}",
+                "pcm_hash": pcm_hash,
+                "mime_type": "audio/x-wav",
+                "asset_type": "audio",
+                "file_size": 1024000,
+            }),
+            201,
+        )
+        res_artist = self.dispatch("CreateArtist", {"name": "Exact Query Artist"})
+        res_t1 = self.dispatch("CreateTrack", {"pcm_hash": pcm_hash, "title": title})
+        self.assertResponseCode(res_t1, 201)
+        self.assertResponseCode(
+            self.dispatch("AddTrackArtist", {
+                "track_id": res_t1["data"]["id"],
+                "artist_id": res_artist["data"]["id"],
+                "role": "main",
+                "position": 1,
+            }),
+            201,
+        )
+
+        # Second track with same title but completely unlinked
+        res_t2 = self.dispatch("CreateTrack", {"pcm_hash": "pcm-exact-unlinked", "title": title})
+        self.assertResponseCode(res_t2, 201)
+
+        res = self.dispatch("GetTracksByTitle", {"title": title})
+        self.assertResponseCode(res, 200)
+        self.assertEqual(len(res["data"]), 2)
+        by_id = {item["id"]: item for item in res["data"]}
+
+        hyd = by_id[res_t1["data"]["id"]]
+        self.assertEqual(hyd["artist_name"], "Exact Query Artist")
+        self.assertEqual(hyd["format"], "WAV")
+        self.assertEqual(hyd["sample_rate"], 88200)
+        self.assertEqual(hyd["bit_depth"], 24)
+        self.assertIsNone(hyd["album_title"])
+        self.assertIsNone(hyd["work_title"])
+        self.assertIsNone(hyd["track_number"])
+
+        plain = by_id[res_t2["data"]["id"]]
+        for key in ("artist_name", "album_title", "work_title", "format", "sample_rate", "bit_depth", "track_number"):
+            self.assertIsNone(plain[key])

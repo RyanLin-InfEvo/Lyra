@@ -227,6 +227,8 @@ void Router::init_handlers() {
     m_handlers["UpdateArtist"] = [this](const json &p) { return handleUpdateArtist(p); };
     m_handlers["GetArtist"] = [this](const json &p) { return handleGetArtist(p); };
     m_handlers["ListArtists"] = [this](const json &p) { return handleListArtists(p); };
+    m_handlers["GetArtistTracks"] = [this](const json &p) { return handleGetArtistTracks(p); };
+    m_handlers["GetArtistAlbums"] = [this](const json &p) { return handleGetArtistAlbums(p); };
 
     // Track
     m_handlers["CreateTrack"] = [this](const json &p) { return handleCreateTrack(p); };
@@ -240,6 +242,7 @@ void Router::init_handlers() {
     m_handlers["UpdateAlbum"] = [this](const json &p) { return handleUpdateAlbum(p); };
     m_handlers["GetAlbum"] = [this](const json &p) { return handleGetAlbum(p); };
     m_handlers["ListAlbums"] = [this](const json &p) { return handleListAlbums(p); };
+    m_handlers["GetAlbumTracks"] = [this](const json &p) { return handleGetAlbumTracks(p); };
 
     // Asset
     m_handlers["CreateAsset"] = [this](const json &p) { return handleCreateAsset(p); };
@@ -545,6 +548,36 @@ json Router::handleListArtists(const json &params) {
     return ApiResponse::error({ErrorType::DatabaseError, res.error()});
 }
 
+json Router::handleGetArtistTracks(const json &params) {
+    if (auto err = JsonValidator::validate(
+            params, {{"artist_id", Type::String, true, StringFormat::UUID}});
+        err) return *err;
+
+    auto res = m_track_controller->get_by_artist(params["artist_id"].get<std::string>());
+    if (res) {
+        return ApiResponse::success(res.value());
+    }
+    if (res.error().find("Artist not found") != std::string::npos) {
+        return ApiResponse::error({ErrorType::ArtistNotFound, res.error()});
+    }
+    return ApiResponse::error({ErrorType::DatabaseError, res.error()});
+}
+
+json Router::handleGetArtistAlbums(const json &params) {
+    if (auto err = JsonValidator::validate(
+            params, {{"artist_id", Type::String, true, StringFormat::UUID}});
+        err) return *err;
+
+    auto res = m_album_controller->get_by_artist(params["artist_id"].get<std::string>());
+    if (res) {
+        return ApiResponse::success(res.value());
+    }
+    if (res.error().find("Artist not found") != std::string::npos) {
+        return ApiResponse::error({ErrorType::ArtistNotFound, res.error()});
+    }
+    return ApiResponse::error({ErrorType::DatabaseError, res.error()});
+}
+
 // --- Track Handlers ---
 
 json Router::handleCreateTrack(const json &params) {
@@ -750,6 +783,21 @@ json Router::handleListAlbums(const json &params) {
     auto res = m_album_controller->list(p.offset, p.limit, p.search);
     if (res) {
         return ApiResponse::success(res.value());
+    }
+    return ApiResponse::error({ErrorType::DatabaseError, res.error()});
+}
+
+json Router::handleGetAlbumTracks(const json &params) {
+    if (auto err = JsonValidator::validate(
+            params, {{"album_id", Type::String, true, StringFormat::UUID}});
+        err) return *err;
+
+    auto res = m_track_controller->get_by_album(params["album_id"].get<std::string>());
+    if (res) {
+        return ApiResponse::success(res.value());
+    }
+    if (res.error().find("Album not found") != std::string::npos) {
+        return ApiResponse::error({ErrorType::AlbumNotFound, res.error()});
     }
     return ApiResponse::error({ErrorType::DatabaseError, res.error()});
 }

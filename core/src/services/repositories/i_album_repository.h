@@ -9,6 +9,7 @@
 #include <optional>
 #include <string>
 #include <tl/expected.hpp>
+#include <vector>
 
 namespace lyra {
 
@@ -22,6 +23,7 @@ class IAlbumRepository {
     virtual tl::expected<PaginatedResult<Album>, std::string> list(
         int offset, int limit, const std::optional<std::string> &search) = 0;
     virtual tl::expected<std::vector<Album>, std::string> get_by_title(const std::string &title) = 0;
+    virtual tl::expected<std::vector<Album>, std::string> get_by_artist(const std::string &artist_id) = 0;
 };
 
 } // namespace lyra

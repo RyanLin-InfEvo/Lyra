@@ -2,7 +2,12 @@
 #
 # SPDX-License-Identifier: AGPL-3.0-or-later
 
+import math
+import os
+import struct
+import subprocess
 import uuid
+import wave
 from base_test_case import BaseLyraTestCase
 
 class TestAlbumController(BaseLyraTestCase):
@@ -127,3 +132,83 @@ class TestAlbumController(BaseLyraTestCase):
             "release_day": "15"
         })
         self.assertValidationError(res4, expected_type="InvalidValue")
+
+    def _create_tagged_wav(self, filename, tags, freq=440.0):
+        raw_path = os.path.join(self.test_db_dir, f"raw_{uuid.uuid4().hex[:8]}.wav")
+        out_path = os.path.join(self.test_db_dir, filename)
+        sample_rate = 44100
+        num_frames = int(0.2 * sample_rate)
+        with wave.open(raw_path, "wb") as wf:
+            wf.setnchannels(2)
+            wf.setsampwidth(2)
+            wf.setframerate(sample_rate)
+            samples = [int(15000.0 * math.sin(2.0 * math.pi * freq * (i / sample_rate)))
+                       for i in range(num_frames) for _ in range(2)]
+            wf.writeframes(struct.pack("<" + "h" * len(samples), *samples))
+        cmd = ["ffmpeg", "-y", "-v", "error", "-i", raw_path]
+        for k, v in tags.items():
+            cmd.extend(["-metadata", f"{k}={v}"])
+        cmd.append(out_path)
+        subprocess.run(cmd, check=True)
+        os.remove(raw_path)
+        return out_path
+
+    def test_get_album_tracks_ordered_hydrated_and_errors(self):
+        """Test GetAlbumTracks returns position-ordered hydrated tracks, empty list, and 400/404 errors."""
+        # Import tracks in reverse track-number order plus one without track number (NULL position)
+        w2 = self._create_tagged_wav("alb_t2.wav", {
+            "title": "Second Song",
+            "artist": "Album Artist",
+            "album": "Ordered Album",
+            "track": "2",
+        }, freq=520.0)
+        w1 = self._create_tagged_wav("alb_t1.wav", {
+            "title": "First Song",
+            "artist": "Album Artist",
+            "album": "Ordered Album",
+            "track": "1",
+        }, freq=440.0)
+        w_null = self._create_tagged_wav("alb_tnull.wav", {
+            "title": "Bonus Null Pos",
+            "artist": "Album Artist",
+            "album": "Ordered Album",
+        }, freq=660.0)
+
+        r2 = self.dispatch("ImportTrack", {"source_path": w2})
+        r1 = self.dispatch("ImportTrack", {"source_path": w1})
+        rn = self.dispatch("ImportTrack", {"source_path": w_null})
+        self.assertResponseCode(r2, 200)
+        self.assertResponseCode(r1, 200)
+        self.assertResponseCode(rn, 200)
+        album_id = r1["data"]["album_id"]
+
+        res_tracks = self.dispatch("GetAlbumTracks", {"album_id": album_id})
+        self.assertResponseCode(res_tracks, 200)
+        items = res_tracks["data"]
+        self.assertEqual(len(items), 3)
+        self.assertEqual(items[0]["id"], r1["data"]["track_id"])
+        self.assertEqual(items[0]["track_number"], 1)
+        self.assertEqual(items[0]["album_title"], "Ordered Album")
+        self.assertEqual(items[0]["artist_name"], "Album Artist")
+        self.assertEqual(items[0]["format"], "WAV")
+        self.assertEqual(items[1]["id"], r2["data"]["track_id"])
+        self.assertEqual(items[1]["track_number"], 2)
+        self.assertEqual(items[2]["id"], rn["data"]["track_id"])
+        self.assertIsNone(items[2]["track_number"])
+
+        # Empty album -> 200 []
+        res_empty_alb = self.dispatch("CreateAlbum", {"title": "Empty Album"})
+        self.assertResponseCode(res_empty_alb, 201)
+        res_empty = self.dispatch("GetAlbumTracks", {"album_id": res_empty_alb["data"]["id"]})
+        self.assertResponseCode(res_empty, 200)
+        self.assertEqual(res_empty["data"], [])
+
+        # Non-existent album & wrong-entity-type UUID (Track UUID) -> 404 AlbumNotFound
+        for bad_alb_id in (str(uuid.uuid4()), r1["data"]["track_id"]):
+            res_404 = self.dispatch("GetAlbumTracks", {"album_id": bad_alb_id})
+            self.assertResponseCode(res_404, 404)
+            self.assertEqual(res_404["error"]["type"], "AlbumNotFound")
+
+        # Validation errors
+        self.assertValidationError(self.dispatch("GetAlbumTracks", {}), expected_type="MissingParameter")
+        self.assertValidationError(self.dispatch("GetAlbumTracks", {"album_id": "bad-uuid"}), expected_type="InvalidValue")

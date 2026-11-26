@@ -31,6 +31,8 @@ class SqliteTrackRepository : public ITrackRepository, public SqliteEntityReposi
 
     tl::expected<std::vector<Track>, std::string> get_by_title(const std::string &title) override;
     tl::expected<std::vector<Track>, std::string> get_by_pcm_hash(const std::string &pcm_hash) override;
+    tl::expected<std::vector<Track>, std::string> get_by_album(const std::string &album_id) override;
+    tl::expected<std::vector<Track>, std::string> get_by_artist(const std::string &artist_id) override;
 
   protected:
     tl::expected<void, std::string> do_insert(SQLite::Database &db, const Track &track) override;

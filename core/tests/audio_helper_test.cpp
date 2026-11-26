@@ -4,6 +4,7 @@
  * SPDX-License-Identifier: AGPL-3.0-or-later
  */
 
+#include "../src/models/asset.h"
 #include "../src/models/audio.h"
 #include "../src/utils/audio_helper.h"
 #include <cassert>
@@ -571,6 +572,128 @@ bool test_matches_format() {
     return true;
 }
 
+bool test_format_from_mime_type_and_lossless() {
+    std::cout << "Running test_format_from_mime_type_and_lossless..." << std::endl;
+
+    assert(AudioHelper::format_from_mime_type("audio/flac") == "FLAC");
+    assert(AudioHelper::format_from_mime_type("audio/x-flac") == "FLAC");
+    assert(AudioHelper::format_from_mime_type("audio/flac; codecs=flac") == "FLAC");
+    assert(AudioHelper::format_from_mime_type("audio/x-mpeg") == "MP3");
+    assert(AudioHelper::format_from_mime_type("audio/x-m4a") == "AAC");
+    assert(AudioHelper::format_from_mime_type("application/ogg") == "OGG");
+    assert(AudioHelper::format_from_mime_type("audio/ogg; codecs=opus") == "OGG");
+    assert(AudioHelper::format_from_mime_type("audio/mpeg4-generic") == "MPEG4-GENERIC");
+    assert(AudioHelper::format_from_mime_type("audio/wavpack") == "WAVPACK");
+    assert(AudioHelper::format_from_mime_type("audio/x-wavpack") == "WAVPACK");
+    assert(AudioHelper::format_from_mime_type("audio/dsf") == "DSF");
+
+    assert(!AudioHelper::format_from_mime_type("application/octet-stream").has_value());
+    assert(!AudioHelper::format_from_mime_type("audio/octet-stream").has_value());
+    assert(!AudioHelper::format_from_mime_type("image/png").has_value());
+    assert(!AudioHelper::format_from_mime_type("text/plain").has_value());
+    assert(!AudioHelper::format_from_mime_type("video/mp4").has_value());
+    assert(!AudioHelper::format_from_mime_type("audio/").has_value());
+    assert(!AudioHelper::format_from_mime_type("audio/x-").has_value());
+    assert(!AudioHelper::format_from_mime_type("   ").has_value());
+
+    assert(AudioHelper::format_from_mime_type("", "abc.flac") == "FLAC");
+    assert(AudioHelper::format_from_mime_type("audio/octet-stream", "abc.wav") == "WAV");
+    assert(AudioHelper::format_from_mime_type("application/octet-stream", "abc.mp3") == "MP3");
+
+    lyra::Audio audio;
+    audio.bit_depth = 24;
+    audio.sample_rate = 96000;
+    audio.channels = 2;
+    audio.duration = 180.0;
+
+    lyra::Asset x_flac;
+    x_flac.file_hash = "hash_no_ext";
+    x_flac.mime_type = "audio/x-flac";
+    x_flac.file_size = 30000000;
+    auto q_x_flac = AudioHelper::evaluate_quality(audio, x_flac);
+    assert(q_x_flac.is_lossless);
+    assert(q_x_flac.format == "FLAC 24-bit / 96kHz");
+
+    lyra::Asset wavpack;
+    wavpack.file_hash = "hash_wv";
+    wavpack.mime_type = "audio/wavpack";
+    wavpack.file_size = 20000000;
+    auto q_wv = AudioHelper::evaluate_quality(audio, wavpack);
+    assert(!q_wv.is_lossless);
+    assert(q_wv.format == "MP3 24-bit / 96kHz");
+
+    // Explicit lossy / non-audio MIME must not fall through to .flac extension
+    lyra::Asset lossy_with_flac_ext{"demo.flac", "audio/mpeg", "audio", 5000000, ""};
+    auto q_lossy_ext = AudioHelper::evaluate_quality(audio, lossy_with_flac_ext);
+    assert(!q_lossy_ext.is_lossless);
+    assert(q_lossy_ext.format == "MP3 24-bit / 96kHz");
+
+    lyra::Asset lossy_with_param{"hash_param", "audio/mpeg; filename=demo.flac", "audio", 5000000, ""};
+    auto q_lossy_param = AudioHelper::evaluate_quality(audio, lossy_with_param);
+    assert(!q_lossy_param.is_lossless);
+    assert(q_lossy_param.format == "MP3 24-bit / 96kHz");
+
+    lyra::Asset image_with_flac_ext{"cover.flac", "image/png", "image", 5000000, ""};
+    auto q_img_ext = AudioHelper::evaluate_quality(audio, image_with_flac_ext);
+    assert(!q_img_ext.is_lossless);
+    assert(q_img_ext.format == "MP3 24-bit / 96kHz");
+    assert(!AudioHelper::format_from_mime_type(image_with_flac_ext.mime_type, image_with_flac_ext.file_hash).has_value());
+
+    lyra::Asset aif_asset{"hash_aif", "audio/x-aif", "audio", 20000000, ""};
+    auto q_aif = AudioHelper::evaluate_quality(audio, aif_asset);
+    assert(q_aif.is_lossless);
+    assert(q_aif.format == "AIFF 24-bit / 96kHz");
+
+    // Bare extension MIME, non-slash fallback, whitespace, and RFC 2045 symmetry cases
+    assert(AudioHelper::format_from_mime_type(".flac", "hash_no_ext") == "FLAC");
+    lyra::Asset bare_flac{"hash_no_ext", ".flac", "audio", 20000000, ""};
+    auto q_bare_flac = AudioHelper::evaluate_quality(audio, bare_flac);
+    assert(q_bare_flac.is_lossless);
+    assert(q_bare_flac.format == "FLAC 24-bit / 96kHz");
+
+    assert(AudioHelper::format_from_mime_type(".mp3", "abc.flac") == "MP3");
+    lyra::Asset bare_mp3_flac_hash{"abc.flac", ".mp3", "audio", 20000000, ""};
+    auto q_bare_mp3 = AudioHelper::evaluate_quality(audio, bare_mp3_flac_hash);
+    assert(!q_bare_mp3.is_lossless);
+    assert(q_bare_mp3.format == "MP3 24-bit / 96kHz");
+
+    assert(AudioHelper::format_from_mime_type("foo.webm", "bar.flac") == "WEBM");
+    lyra::Asset bare_webm_flac_hash{"bar.flac", "foo.webm", "audio", 20000000, ""};
+    auto q_bare_webm = AudioHelper::evaluate_quality(audio, bare_webm_flac_hash);
+    assert(!q_bare_webm.is_lossless);
+    assert(q_bare_webm.format == "MP3 24-bit / 96kHz");
+
+    assert(AudioHelper::format_from_mime_type("\t audio/flac \t; codecs=flac", "h") == "FLAC");
+    lyra::Asset tab_flac{"h", "\t audio/flac \t; codecs=flac", "audio", 20000000, ""};
+    assert(AudioHelper::evaluate_quality(audio, tab_flac).is_lossless);
+
+    assert(AudioHelper::format_from_mime_type("", "abc.flac\n") == "FLAC");
+    lyra::Asset newline_hash{"abc.flac\n", "", "audio", 20000000, ""};
+    assert(AudioHelper::evaluate_quality(audio, newline_hash).is_lossless);
+
+    assert(AudioHelper::format_from_mime_type("audio/x-octet-stream", "abc.flac") == "FLAC");
+    lyra::Asset x_octet{"abc.flac", "audio/x-octet-stream", "audio", 20000000, ""};
+    assert(AudioHelper::evaluate_quality(audio, x_octet).is_lossless);
+
+    // RFC 2045 forbids internal whitespace around '/' or within subtype tokens
+    lyra::Asset space_after_slash{"abc.flac", "audio/ flac", "audio", 20000000, ""};
+    assert(!AudioHelper::evaluate_quality(audio, space_after_slash).is_lossless);
+
+    lyra::Asset space_after_x{"abc.flac", "audio/x- flac", "audio", 20000000, ""};
+    assert(!AudioHelper::evaluate_quality(audio, space_after_x).is_lossless);
+
+    // Parameter-only / ';'-parameter edge cases
+    assert(!AudioHelper::format_from_mime_type("; filename=demo.flac", "hash_no_ext").has_value());
+    lyra::Asset semi_only{"hash_no_ext", "; filename=demo.flac", "audio", 20000000, ""};
+    assert(!AudioHelper::evaluate_quality(audio, semi_only).is_lossless);
+
+    assert(AudioHelper::format_from_mime_type("track.flac; path=a/b", "hash_no_ext") == "FLAC");
+    lyra::Asset bare_flac_param{"hash_no_ext", "track.flac; path=a/b", "audio", 20000000, ""};
+    assert(AudioHelper::evaluate_quality(audio, bare_flac_param).is_lossless);
+
+    return true;
+}
+
 int main() {
     setup_fixtures();
 
@@ -587,6 +710,7 @@ int main() {
         if (!test_evaluate_quality()) success = false;
         if (!test_evaluate_asset_quality()) success = false;
         if (!test_matches_format()) success = false;
+        if (!test_format_from_mime_type_and_lossless()) success = false;
     } catch (const std::exception &e) {
         std::cerr << "Exception caught during tests: " << e.what() << std::endl;
         success = false;

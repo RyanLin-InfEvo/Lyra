@@ -20,6 +20,7 @@ class SqliteAlbumRepository : public IAlbumRepository, public SqliteEntityReposi
     tl::expected<PaginatedResult<Album>, std::string> list(
         int offset, int limit, const std::optional<std::string> &search) override;
     tl::expected<std::vector<Album>, std::string> get_by_title(const std::string &title) override;
+    tl::expected<std::vector<Album>, std::string> get_by_artist(const std::string &artist_id) override;
 
   protected:
     tl::expected<void, std::string> do_insert(SQLite::Database &db, const Album &album) override;

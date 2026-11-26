@@ -2,7 +2,12 @@
 #
 # SPDX-License-Identifier: AGPL-3.0-or-later
 
+import math
+import os
+import struct
+import subprocess
 import uuid
+import wave
 from base_test_case import BaseLyraTestCase
 
 class TesttrackController(BaseLyraTestCase):
@@ -333,3 +338,76 @@ class TesttrackController(BaseLyraTestCase):
                 expected_type="InvalidValue",
                 expected_message_content="should not be empty",
             )
+
+    def _create_tagged_wav(self, filename, tags):
+        raw_path = os.path.join(self.test_db_dir, f"raw_{uuid.uuid4().hex[:8]}.wav")
+        out_path = os.path.join(self.test_db_dir, filename)
+        sample_rate = 48000
+        num_frames = int(0.25 * sample_rate)
+        with wave.open(raw_path, "wb") as wf:
+            wf.setnchannels(2)
+            wf.setsampwidth(2)
+            wf.setframerate(sample_rate)
+            samples = [int(15000.0 * math.sin(2.0 * math.pi * 440.0 * (i / sample_rate)))
+                       for i in range(num_frames) for _ in range(2)]
+            wf.writeframes(struct.pack("<" + "h" * len(samples), *samples))
+        cmd = ["ffmpeg", "-y", "-v", "error", "-i", raw_path]
+        for k, v in tags.items():
+            cmd.extend(["-metadata", f"{k}={v}"])
+        cmd.append(out_path)
+        subprocess.run(cmd, check=True)
+        os.remove(raw_path)
+        return out_path
+
+    def test_track_hydration_full_and_null(self):
+        """Test GetTrack returns hydrated derived fields when linked and NULL when unlinked."""
+        # 1. Unlinked track: derived fields must be None and backward-compatible fields intact
+        res_plain = self.dispatch("CreateTrack", {"pcm_hash": "pcm-plain-hydration", "title": "Plain Track"})
+        self.assertResponseCode(res_plain, 201)
+        plain_id = res_plain["data"]["id"]
+
+        res_get_plain = self.dispatch("GetTrack", {"id": plain_id})
+        self.assertResponseCode(res_get_plain, 200)
+        pdata = res_get_plain["data"]
+        self.assertEqual(pdata["id"], plain_id)
+        self.assertEqual(pdata["title"], "Plain Track")
+        for key in ("artist_name", "album_title", "work_title", "format", "sample_rate", "bit_depth", "track_number"):
+            self.assertIn(key, pdata)
+            self.assertIsNone(pdata[key])
+
+        # 2. Track linked to Audio with sample_rate=0, bit_depth=0 -> coerced to None (not 0)
+        self.dispatch("CreateAudio", {"pcm_hash": "pcm-zero-specs", "sample_rate": 0, "bit_depth": 0})
+        res_zero = self.dispatch("CreateTrack", {"pcm_hash": "pcm-zero-specs", "title": "Zero Specs Track"})
+        self.assertResponseCode(res_zero, 201)
+        res_get_zero = self.dispatch("GetTrack", {"id": res_zero["data"]["id"]})
+        self.assertResponseCode(res_get_zero, 200)
+        self.assertIsNone(res_get_zero["data"]["sample_rate"])
+        self.assertIsNone(res_get_zero["data"]["bit_depth"])
+
+        # 3. Fully linked track via ImportTrack + Work
+        wav_path = self._create_tagged_wav("hydrated.wav", {
+            "title": "Hydrated Song",
+            "artist": "Hydrated Artist",
+            "album": "Hydrated Album",
+            "track": "4/10",
+        })
+        res_imp = self.dispatch("ImportTrack", {"source_path": wav_path})
+        self.assertResponseCode(res_imp, 200)
+        track_id = res_imp["data"]["track_id"]
+
+        res_work = self.dispatch("CreateWork", {"title": "Hydrated Work"})
+        self.assertResponseCode(res_work, 201)
+        work_id = res_work["data"]["id"]
+        self.assertResponseCode(self.dispatch("UpdateTrack", {"id": track_id, "work_id": work_id}), 200)
+
+        res_get = self.dispatch("GetTrack", {"id": track_id})
+        self.assertResponseCode(res_get, 200)
+        tdata = res_get["data"]
+        self.assertEqual(tdata["title"], "Hydrated Song")
+        self.assertEqual(tdata["artist_name"], "Hydrated Artist")
+        self.assertEqual(tdata["album_title"], "Hydrated Album")
+        self.assertEqual(tdata["work_title"], "Hydrated Work")
+        self.assertEqual(tdata["format"], "WAV")
+        self.assertEqual(tdata["sample_rate"], 48000)
+        self.assertEqual(tdata["bit_depth"], 16)
+        self.assertEqual(tdata["track_number"], 4)

@@ -266,7 +266,8 @@ void SqliteDatabaseContext::init_schema() {
     m_db.exec("CREATE INDEX IF NOT EXISTS idx_Work_title ON Work (title);");
     m_db.exec("CREATE INDEX IF NOT EXISTS idx_Audio_parent_hash ON Audio (parent_hash);");
     m_db.exec("CREATE INDEX IF NOT EXISTS idx_Asset_asset_type ON Asset (asset_type);");
-    m_db.exec("CREATE INDEX IF NOT EXISTS idx_TrackAlbum_Album ON Track_Album (album_id);");
+    m_db.exec("DROP INDEX IF EXISTS idx_TrackAlbum_Album;");
+    m_db.exec("CREATE INDEX IF NOT EXISTS idx_TrackAlbum_album_position ON Track_Album (album_id, position, track_id);");
     m_db.exec("CREATE INDEX IF NOT EXISTS idx_TrackArtist_artist_id ON Track_Artist (artist_id);");
     m_db.exec("CREATE INDEX IF NOT EXISTS idx_AudioAsset_file_hash ON Audio_Asset (file_hash);");
 

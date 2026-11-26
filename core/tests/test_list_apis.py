@@ -145,3 +145,111 @@ class TestListAPIs(BaseLyraTestCase):
         self.assertEqual(res["data"]["total"], 2)
         self.assertEqual(res["data"]["items"][0]["title"], "Work A")
         self.assertEqual(res["data"]["items"][1]["title"], "Work B")
+
+
+class TestListTracksHydration(BaseLyraTestCase):
+
+    def test_list_tracks_hydration_no_row_multiplication(self):
+        """Test ListTracks hydrates derived fields without duplicating tracks when multiple relations exist."""
+        pcm_hash = f"pcm-list-hyd-{uuid.uuid4().hex[:8]}"
+        self.assertResponseCode(
+            self.dispatch("CreateAudio", {
+                "pcm_hash": pcm_hash,
+                "bit_depth": 24,
+                "sample_rate": 96000,
+                "channels": 2,
+                "duration": 180.0,
+            }),
+            201,
+        )
+        # Attach two assets (larger lossy + smaller lossless) -> hydration must pick lossless FLAC over file_size
+        self.assertResponseCode(
+            self.dispatch("CreateAsset", {
+                "file_hash": f"file-mp3-{uuid.uuid4().hex[:8]}",
+                "pcm_hash": pcm_hash,
+                "mime_type": "audio/mpeg",
+                "asset_type": "audio",
+                "file_size": 50000000,
+            }),
+            201,
+        )
+        self.assertResponseCode(
+            self.dispatch("CreateAsset", {
+                "file_hash": f"file-flac-{uuid.uuid4().hex[:8]}",
+                "pcm_hash": pcm_hash,
+                "mime_type": "audio/flac",
+                "asset_type": "audio",
+                "file_size": 10000000,
+            }),
+            201,
+        )
+
+        res_work = self.dispatch("CreateWork", {"title": "List Hydration Work"})
+        res_art_main = self.dispatch("CreateArtist", {"name": "Primary List Artist"})
+        res_art_feat = self.dispatch("CreateArtist", {"name": "Featured List Artist"})
+        res_track = self.dispatch("CreateTrack", {
+            "pcm_hash": pcm_hash,
+            "work_id": res_work["data"]["id"],
+            "title": "List Hydrated Track",
+        })
+        self.assertResponseCode(res_track, 201)
+        track_id = res_track["data"]["id"]
+
+        self.assertResponseCode(
+            self.dispatch("AddTrackArtist", {
+                "track_id": track_id,
+                "artist_id": res_art_feat["data"]["id"],
+                "role": "featured",
+                "position": 1,
+            }),
+            201,
+        )
+        self.assertResponseCode(
+            self.dispatch("AddTrackArtist", {
+                "track_id": track_id,
+                "artist_id": res_art_main["data"]["id"],
+                "role": "main",
+                "position": 2,
+            }),
+            201,
+        )
+
+        res_list = self.dispatch("ListTracks", {"search": "List Hydrated Track"})
+        self.assertResponseCode(res_list, 200)
+        self.assertEqual(res_list["data"]["total"], 1)
+        self.assertEqual(len(res_list["data"]["items"]), 1)
+        item = res_list["data"]["items"][0]
+        self.assertEqual(item["id"], track_id)
+        self.assertEqual(item["artist_name"], "Primary List Artist")
+        self.assertEqual(item["work_title"], "List Hydration Work")
+        self.assertEqual(item["format"], "FLAC")
+        self.assertEqual(item["sample_rate"], 96000)
+        self.assertEqual(item["bit_depth"], 24)
+        self.assertIsNone(item["album_title"])
+        self.assertIsNone(item["track_number"])
+
+        # Add two more hydrated tracks and verify multi-page pagination (limit=2, offset=0 / offset=2)
+        t_alpha = self.dispatch("CreateTrack", {"pcm_hash": pcm_hash, "title": "Alpha Hydrated Track"})["data"]["id"]
+        t_zeta = self.dispatch("CreateTrack", {"pcm_hash": "pcm-unlinked-zeta", "title": "Zeta Plain Track"})["data"]["id"]
+        self.assertResponseCode(
+            self.dispatch("AddTrackArtist", {
+                "track_id": t_alpha,
+                "artist_id": res_art_main["data"]["id"],
+                "role": "main",
+                "position": 1,
+            }),
+            201,
+        )
+
+        page1 = self.dispatch("ListTracks", {"offset": 0, "limit": 2})
+        self.assertResponseCode(page1, 200)
+        self.assertEqual(page1["data"]["total"], 3)
+        self.assertEqual([t["id"] for t in page1["data"]["items"]], [t_alpha, track_id])
+        self.assertEqual(page1["data"]["items"][0]["artist_name"], "Primary List Artist")
+        self.assertEqual(page1["data"]["items"][0]["format"], "FLAC")
+
+        page2 = self.dispatch("ListTracks", {"offset": 2, "limit": 2})
+        self.assertResponseCode(page2, 200)
+        self.assertEqual(page2["data"]["total"], 3)
+        self.assertEqual([t["id"] for t in page2["data"]["items"]], [t_zeta])
+        self.assertIsNone(page2["data"]["items"][0]["artist_name"])
