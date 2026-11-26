@@ -19,6 +19,7 @@ import '../../../design_system/widgets/lyra_input.dart';
 import '../../../design_system/widgets/lyra_settings_layout.dart';
 import '../../../design_system/widgets/lyra_spinner.dart';
 import '../../../design_system/widgets/lyra_switch.dart';
+import '../../../design_system/widgets/lyra_toast.dart';
 import '../controllers/backend_settings_controller.dart';
 import '../controllers/cas_controller.dart';
 import '../models/engine_config.dart';
@@ -59,6 +60,10 @@ class BackendSettingsTab extends StatefulWidget {
 }
 
 class _BackendSettingsTabState extends State<BackendSettingsTab> {
+  static const int _minBusyTimeoutMs = 1000;
+  static const int _maxBusyTimeoutMs = 300000;
+  static const int _maxParallelThreads = 1024;
+
   late BackendSettingsSection _currentSection = widget.initialSection;
   late final ShadSliderController _sliderController;
   late final TextEditingController _busyTimeoutController;
@@ -70,6 +75,8 @@ class _BackendSettingsTabState extends State<BackendSettingsTab> {
   int? _lastSyncedWalAutocheckpoint;
   int? _lastBufferFrames;
   bool? _lastExclusiveMode;
+  int _lastDraftResetEpoch = 0;
+  bool _lastIsRestartPending = false;
   bool _restartBannerDismissedByUser = false;
 
   String? _busyTimeoutError;
@@ -77,6 +84,17 @@ class _BackendSettingsTabState extends State<BackendSettingsTab> {
 
   bool get _hasValidationErrors =>
       _busyTimeoutError != null || _walAutocheckpointError != null;
+
+  int _effectiveMaxThreads(IngestionPipelineConfig ingestion) {
+    final committedThreads = controller.config.ingestion.parallelThreads;
+    final maxConfigured = committedThreads > ingestion.parallelThreads
+        ? committedThreads
+        : ingestion.parallelThreads;
+    final rawMax = ingestion.detectedCpuCores > maxConfigured
+        ? ingestion.detectedCpuCores
+        : maxConfigured;
+    return rawMax.clamp(1, _maxParallelThreads);
+  }
 
   BackendSettingsController get controller => widget.controller;
   CasController? get casController => widget.casController;
@@ -95,11 +113,11 @@ class _BackendSettingsTabState extends State<BackendSettingsTab> {
 
     final ingestion = widget.controller.pendingConfig.ingestion;
     final initialVal =
-        (ingestion.parallelThreads == 0
+        (ingestion.parallelThreads <= 0
                 ? ingestion.detectedCpuCores
                 : ingestion.parallelThreads)
             .toDouble()
-            .clamp(1.0, 128.0);
+            .clamp(1.0, _effectiveMaxThreads(ingestion).toDouble());
     _sliderController = ShadSliderController(initialValue: initialVal);
 
     final pending = widget.controller.pendingConfig;
@@ -108,6 +126,8 @@ class _BackendSettingsTabState extends State<BackendSettingsTab> {
     _lastSyncedWalAutocheckpoint = db.walAutocheckpoint;
     _lastBufferFrames = pending.audio.bufferSizeFrames;
     _lastExclusiveMode = pending.audio.exclusiveMode;
+    _lastDraftResetEpoch = widget.controller.draftResetEpoch;
+    _lastIsRestartPending = widget.controller.isRestartPending;
 
     _busyTimeoutController = TextEditingController(text: '${db.busyTimeoutMs}');
     _walAutocheckpointController = TextEditingController(
@@ -138,52 +158,67 @@ class _BackendSettingsTabState extends State<BackendSettingsTab> {
     if (!mounted) return;
     final pending = controller.pendingConfig;
 
-    final isAuto = pending.ingestion.parallelThreads == 0;
+    final isAuto = pending.ingestion.parallelThreads <= 0;
     final targetSliderVal =
         (isAuto
                 ? pending.ingestion.detectedCpuCores
                 : pending.ingestion.parallelThreads)
             .toDouble()
-            .clamp(1.0, 128.0);
+            .clamp(1.0, _effectiveMaxThreads(pending.ingestion).toDouble());
     if (_sliderController.value != targetSliderVal) {
       _sliderController.value = targetSliderVal;
     }
 
-    if (!_busyTimeoutFocusNode.hasFocus) {
-      if (pending.database.busyTimeoutMs != _lastSyncedBusyTimeout) {
-        _lastSyncedBusyTimeout = pending.database.busyTimeoutMs;
-        _busyTimeoutController.text = '$_lastSyncedBusyTimeout';
-        _busyTimeoutError = null;
-      } else if (!controller.isDirty) {
-        _lastSyncedBusyTimeout = pending.database.busyTimeoutMs;
-        if (_busyTimeoutController.text != '$_lastSyncedBusyTimeout') {
+    final bool draftWasReset =
+        controller.draftResetEpoch != _lastDraftResetEpoch;
+    if (draftWasReset) {
+      _lastDraftResetEpoch = controller.draftResetEpoch;
+      _lastSyncedBusyTimeout = pending.database.busyTimeoutMs;
+      _busyTimeoutController.text = '$_lastSyncedBusyTimeout';
+      _busyTimeoutError = null;
+      _lastSyncedWalAutocheckpoint = pending.database.walAutocheckpoint;
+      _walAutocheckpointController.text = '$_lastSyncedWalAutocheckpoint';
+      _walAutocheckpointError = null;
+    } else {
+      if (!_busyTimeoutFocusNode.hasFocus) {
+        if (pending.database.busyTimeoutMs != _lastSyncedBusyTimeout) {
+          _lastSyncedBusyTimeout = pending.database.busyTimeoutMs;
           _busyTimeoutController.text = '$_lastSyncedBusyTimeout';
+          _busyTimeoutError = null;
+        } else if (!controller.isDirty) {
+          _lastSyncedBusyTimeout = pending.database.busyTimeoutMs;
+          if (_busyTimeoutController.text != '$_lastSyncedBusyTimeout') {
+            _busyTimeoutController.text = '$_lastSyncedBusyTimeout';
+          }
+          _busyTimeoutError = null;
         }
-        _busyTimeoutError = null;
       }
-    }
 
-    if (!_walAutocheckpointFocusNode.hasFocus) {
-      if (pending.database.walAutocheckpoint != _lastSyncedWalAutocheckpoint) {
-        _lastSyncedWalAutocheckpoint = pending.database.walAutocheckpoint;
-        _walAutocheckpointController.text = '$_lastSyncedWalAutocheckpoint';
-        _walAutocheckpointError = null;
-      } else if (!controller.isDirty) {
-        _lastSyncedWalAutocheckpoint = pending.database.walAutocheckpoint;
-        if (_walAutocheckpointController.text !=
-            '$_lastSyncedWalAutocheckpoint') {
+      if (!_walAutocheckpointFocusNode.hasFocus) {
+        if (pending.database.walAutocheckpoint !=
+            _lastSyncedWalAutocheckpoint) {
+          _lastSyncedWalAutocheckpoint = pending.database.walAutocheckpoint;
           _walAutocheckpointController.text = '$_lastSyncedWalAutocheckpoint';
+          _walAutocheckpointError = null;
+        } else if (!controller.isDirty) {
+          _lastSyncedWalAutocheckpoint = pending.database.walAutocheckpoint;
+          if (_walAutocheckpointController.text !=
+              '$_lastSyncedWalAutocheckpoint') {
+            _walAutocheckpointController.text = '$_lastSyncedWalAutocheckpoint';
+          }
+          _walAutocheckpointError = null;
         }
-        _walAutocheckpointError = null;
       }
     }
 
     if (pending.audio.bufferSizeFrames != _lastBufferFrames ||
-        pending.audio.exclusiveMode != _lastExclusiveMode) {
+        pending.audio.exclusiveMode != _lastExclusiveMode ||
+        (controller.isRestartPending && !_lastIsRestartPending)) {
       _lastBufferFrames = pending.audio.bufferSizeFrames;
       _lastExclusiveMode = pending.audio.exclusiveMode;
       _restartBannerDismissedByUser = false;
     }
+    _lastIsRestartPending = controller.isRestartPending;
 
     setState(() {});
   }
@@ -216,6 +251,9 @@ class _BackendSettingsTabState extends State<BackendSettingsTab> {
     _lastSyncedWalAutocheckpoint = db.walAutocheckpoint;
     _lastBufferFrames = pending.audio.bufferSizeFrames;
     _lastExclusiveMode = pending.audio.exclusiveMode;
+    _lastDraftResetEpoch = widget.controller.draftResetEpoch;
+    _lastIsRestartPending = widget.controller.isRestartPending;
+    _restartBannerDismissedByUser = false;
     _busyTimeoutError = null;
     _walAutocheckpointError = null;
     _busyTimeoutController.text = '${db.busyTimeoutMs}';
@@ -223,11 +261,11 @@ class _BackendSettingsTabState extends State<BackendSettingsTab> {
 
     final ingestion = pending.ingestion;
     final initialVal =
-        (ingestion.parallelThreads == 0
+        (ingestion.parallelThreads <= 0
                 ? ingestion.detectedCpuCores
                 : ingestion.parallelThreads)
             .toDouble()
-            .clamp(1.0, 128.0);
+            .clamp(1.0, _effectiveMaxThreads(ingestion).toDouble());
     _sliderController.value = initialVal;
   }
 
@@ -260,7 +298,7 @@ class _BackendSettingsTabState extends State<BackendSettingsTab> {
     final pending = controller.pendingConfig;
 
     return LyraSettingsLayout<BackendSettingsSection>(
-      sidebarWidth: 200.0,
+      sidebarWidth: 250.0,
       selectedSection: _currentSection,
       onSectionChanged: (section) {
         setState(() => _currentSection = section);
@@ -818,12 +856,14 @@ class _BackendSettingsTabState extends State<BackendSettingsTab> {
                       setState(() {
                         if (val.trim().isEmpty) {
                           _busyTimeoutError =
-                              'Value must be between 0 and 300,000 ms';
+                              'Value must be between 1,000 and 300,000 ms';
                         } else {
                           final parsed = int.tryParse(val);
-                          if (parsed == null || parsed < 0 || parsed > 300000) {
+                          if (parsed == null ||
+                              parsed < _minBusyTimeoutMs ||
+                              parsed > _maxBusyTimeoutMs) {
                             _busyTimeoutError =
-                                'Value must be between 0 and 300,000 ms';
+                                'Value must be between 1,000 and 300,000 ms';
                           } else {
                             _busyTimeoutError = null;
                             _lastSyncedBusyTimeout = parsed;
@@ -917,7 +957,17 @@ class _BackendSettingsTabState extends State<BackendSettingsTab> {
     LyraThemeTokens tokens,
     EngineConfig pending,
   ) {
-    final isAuto = pending.ingestion.parallelThreads == 0;
+    final isAuto = pending.ingestion.parallelThreads <= 0;
+    final maxThreads = _effectiveMaxThreads(pending.ingestion);
+    final safeDetectedCores = pending.ingestion.detectedCpuCores.clamp(
+      1,
+      _maxParallelThreads,
+    );
+    final displayThreads = pending.ingestion.parallelThreads.clamp(
+      1,
+      maxThreads,
+    );
+    final canSlide = !isAuto && maxThreads > 1;
 
     return LyraCard(
       padding: const EdgeInsets.all(LyraSpacing.xl),
@@ -965,18 +1015,18 @@ class _BackendSettingsTabState extends State<BackendSettingsTab> {
                         value: isAuto,
                         onChanged: (checked) {
                           controller.setParallelThreads(
-                            checked ? 0 : pending.ingestion.detectedCpuCores,
+                            checked ? 0 : safeDetectedCores,
                           );
                         },
                         label: Text(
-                          'Auto (Detected ${pending.ingestion.detectedCpuCores} CPU cores)',
+                          'Auto (Detected $safeDetectedCores CPU cores)',
                           style: LyraTypography.p(tokens),
                         ),
                       ),
                       Text(
                         isAuto
-                            ? 'Auto (${pending.ingestion.detectedCpuCores} threads)'
-                            : '${pending.ingestion.parallelThreads} / 128 threads',
+                            ? 'Auto ($safeDetectedCores threads)'
+                            : '$displayThreads / $maxThreads threads',
                         style: LyraTypography.small(tokens).copyWith(
                           fontFamily: 'monospace',
                           color: tokens.textMuted,
@@ -987,15 +1037,15 @@ class _BackendSettingsTabState extends State<BackendSettingsTab> {
                 ),
                 const SizedBox(height: LyraSpacing.sm),
                 Opacity(
-                  opacity: isAuto ? 0.4 : 1.0,
+                  opacity: canSlide ? 1.0 : 0.4,
                   child: ShadSlider(
                     key: const ValueKey('worker_threads_slider'),
                     min: 1.0,
-                    max: 128.0,
+                    max: maxThreads > 1 ? maxThreads.toDouble() : 2.0,
                     controller: _sliderController,
-                    enabled: !isAuto,
+                    enabled: canSlide,
                     onChanged: (val) {
-                      if (!isAuto) {
+                      if (canSlide) {
                         controller.setParallelThreads(val.round());
                       }
                     },
@@ -1038,17 +1088,13 @@ class _BackendSettingsTabState extends State<BackendSettingsTab> {
 
   Widget? _buildStickyActionBar(LyraThemeTokens tokens) {
     final isDirty = controller.isDirty;
-    final statusMsg = controller.statusMessage;
     final errorMsg = controller.errorMessage;
     final showRestartBanner =
         (controller.restartRequired || controller.isRestartPending) &&
         !_restartBannerDismissedByUser;
     final showActions = isDirty || _hasValidationErrors;
 
-    if (!showActions &&
-        statusMsg == null &&
-        errorMsg == null &&
-        !showRestartBanner) {
+    if (!showActions && errorMsg == null && !showRestartBanner) {
       return null;
     }
 
@@ -1094,7 +1140,7 @@ class _BackendSettingsTabState extends State<BackendSettingsTab> {
                   const SizedBox(width: LyraSpacing.sm),
                   Expanded(
                     child: Text(
-                      'Hardware buffer or exclusive mode adjustments require audio engine restart.',
+                      'Audio engine will restart to apply hardware buffer or exclusive mode changes.',
                       style: LyraTypography.small(
                         tokens,
                       ).copyWith(fontWeight: FontWeight.w500),
@@ -1122,65 +1168,87 @@ class _BackendSettingsTabState extends State<BackendSettingsTab> {
               ),
             ),
           ],
-          Row(
-            children: [
-              if (statusMsg != null)
-                Expanded(
-                  child: Text(
-                    statusMsg,
-                    style: LyraTypography.small(tokens).copyWith(
-                      fontWeight: FontWeight.w600,
-                      color: tokens.success,
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final messageWidget = errorMsg != null
+                  ? Text(
+                      errorMsg,
+                      style: LyraTypography.small(tokens).copyWith(
+                        fontWeight: FontWeight.w600,
+                        color: tokens.destructive,
+                      ),
+                      overflow: TextOverflow.ellipsis,
+                    )
+                  : null;
+
+              if (!showActions) {
+                return messageWidget ?? const SizedBox.shrink();
+              }
+
+              final discardButton = LyraButton.outline(
+                size: LyraButtonSize.sm,
+                height: 32.0,
+                onPressed: controller.isSaving ? null : _handleDiscardChanges,
+                child: const Text('Discard Changes'),
+              );
+              final saveButton = LyraButton.primary(
+                size: LyraButtonSize.sm,
+                height: 32.0,
+                onPressed:
+                    (controller.isSaving || !isDirty || _hasValidationErrors)
+                    ? null
+                    : () => _handleSave(context),
+                child: controller.isSaving
+                    ? Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          LyraSpinner(
+                            size: 14.0,
+                            color: tokens.primaryForeground,
+                          ),
+                          const SizedBox(width: LyraSpacing.xs),
+                          const Text('Saving...'),
+                        ],
+                      )
+                    : const Text('Save Engine Settings'),
+              );
+
+              if (constraints.maxWidth >= 560.0) {
+                return Row(
+                  children: [
+                    if (messageWidget != null)
+                      Expanded(child: messageWidget)
+                    else
+                      const Spacer(),
+                    if (messageWidget != null)
+                      const SizedBox(width: LyraSpacing.md),
+                    discardButton,
+                    const SizedBox(width: LyraSpacing.sm),
+                    saveButton,
+                  ],
+                );
+              }
+
+              return Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  if (messageWidget != null) ...[
+                    messageWidget,
+                    const SizedBox(height: LyraSpacing.sm),
+                  ],
+                  Align(
+                    alignment: Alignment.centerRight,
+                    child: Wrap(
+                      alignment: WrapAlignment.end,
+                      spacing: LyraSpacing.sm,
+                      runSpacing: LyraSpacing.sm,
+                      children: [discardButton, saveButton],
                     ),
-                    overflow: TextOverflow.ellipsis,
                   ),
-                )
-              else if (errorMsg != null)
-                Expanded(
-                  child: Text(
-                    errorMsg,
-                    style: LyraTypography.small(tokens).copyWith(
-                      fontWeight: FontWeight.w600,
-                      color: tokens.destructive,
-                    ),
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                )
-              else
-                const Spacer(),
-              if (showActions) ...[
-                if (statusMsg != null || errorMsg != null)
-                  const SizedBox(width: LyraSpacing.md),
-                LyraButton.outline(
-                  size: LyraButtonSize.sm,
-                  height: 32.0,
-                  onPressed: controller.isSaving ? null : _handleDiscardChanges,
-                  child: const Text('Discard Changes'),
-                ),
-                const SizedBox(width: LyraSpacing.sm),
-                LyraButton.primary(
-                  size: LyraButtonSize.sm,
-                  height: 32.0,
-                  onPressed:
-                      (controller.isSaving || !isDirty || _hasValidationErrors)
-                      ? null
-                      : () => _handleSave(context),
-                  child: controller.isSaving
-                      ? Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            LyraSpinner(
-                              size: 14.0,
-                              color: tokens.primaryForeground,
-                            ),
-                            const SizedBox(width: LyraSpacing.xs),
-                            const Text('Saving...'),
-                          ],
-                        )
-                      : const Text('Save Engine Settings'),
-                ),
-              ],
-            ],
+                ],
+              );
+            },
           ),
         ],
       ),
@@ -1216,7 +1284,16 @@ class _BackendSettingsTabState extends State<BackendSettingsTab> {
     );
 
     if (confirmed == true && mounted) {
-      await controller.saveConfig();
+      final saved = await controller.saveConfig();
+      if (saved && context.mounted) {
+        LyraToaster.maybeOf(context)?.show(
+          LyraToast(
+            title: 'Engine settings saved',
+            message: 'Configuration changes have been applied.',
+            variant: LyraToastVariant.success,
+          ),
+        );
+      }
     }
   }
 

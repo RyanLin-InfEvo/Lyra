@@ -30,8 +30,8 @@ bool _parseBool(dynamic value, {required bool defaultValue}) {
 /// Volume control modes supported by the core audio engine.
 enum AudioVolumeMode {
   linear('linear', 'Linear'),
-  logarithmicDb('logarithmic_db', 'Logarithmic dB'),
-  bitPerfectLock0dB('bit_perfect_lock_0db', 'Bit-Perfect Lock 0dB');
+  log('log', 'Logarithmic dB'),
+  fixed('fixed', 'Fixed (0 dB)');
 
   final String value;
   final String label;
@@ -39,17 +39,15 @@ enum AudioVolumeMode {
   const AudioVolumeMode(this.value, this.label);
 
   static AudioVolumeMode fromValue(String? value) {
-    if (value == null) return AudioVolumeMode.bitPerfectLock0dB;
+    if (value == null) return AudioVolumeMode.fixed;
     switch (value) {
       case 'linear':
         return AudioVolumeMode.linear;
-      case 'logarithmic_db':
-        return AudioVolumeMode.logarithmicDb;
-      case 'bit_perfect_lock_0db':
-      case 'bitperfect_lock_0db':
-        return AudioVolumeMode.bitPerfectLock0dB;
+      case 'log':
+        return AudioVolumeMode.log;
+      case 'fixed':
       default:
-        return AudioVolumeMode.bitPerfectLock0dB;
+        return AudioVolumeMode.fixed;
     }
   }
 }
@@ -297,9 +295,9 @@ class AudioEngineHardwareConfig {
   factory AudioEngineHardwareConfig.defaults() {
     return const AudioEngineHardwareConfig(
       outputDeviceId: 'default',
-      bufferSizeFrames: 512,
-      exclusiveMode: true,
-      volumeMode: AudioVolumeMode.bitPerfectLock0dB,
+      bufferSizeFrames: 256,
+      exclusiveMode: false,
+      volumeMode: AudioVolumeMode.fixed,
       resamplerQuality: ResamplerQuality.soxrHq,
       dsdMode: DsdMode.dop,
     );
@@ -310,9 +308,9 @@ class AudioEngineHardwareConfig {
       outputDeviceId: json['output_device_id']?.toString() ?? 'default',
       bufferSizeFrames: _parseInt(
         json['buffer_size_frames'],
-        defaultValue: 512,
+        defaultValue: 256,
       ),
-      exclusiveMode: _parseBool(json['exclusive_mode'], defaultValue: true),
+      exclusiveMode: _parseBool(json['exclusive_mode'], defaultValue: false),
       volumeMode: AudioVolumeMode.fromValue(json['volume_mode']?.toString()),
       resamplerQuality: ResamplerQuality.fromValue(
         json['resampler_quality']?.toString(),

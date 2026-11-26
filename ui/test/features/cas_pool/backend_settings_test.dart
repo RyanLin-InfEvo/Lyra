@@ -5,6 +5,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shadcn_ui/shadcn_ui.dart';
+import 'package:ui/core/bridge/lyra_bridge.dart';
 import 'package:ui/core/bridge/mock_lyra_bridge.dart';
 import 'package:ui/design_system/contracts/lyra_contracts.dart';
 import 'package:ui/design_system/factory/lyra_design_system_scope.dart';
@@ -14,11 +15,13 @@ import 'package:ui/design_system/widgets/lyra_button.dart';
 import 'package:ui/design_system/widgets/lyra_checkbox.dart';
 import 'package:ui/design_system/widgets/lyra_copy_button.dart';
 import 'package:ui/design_system/widgets/lyra_switch.dart';
+import 'package:ui/design_system/widgets/lyra_toast.dart';
 import 'package:ui/features/audio/models/audio_device.dart';
 import 'package:ui/features/cas_pool/controllers/backend_settings_controller.dart';
 import 'package:ui/features/cas_pool/controllers/cas_controller.dart';
 import 'package:ui/features/cas_pool/models/engine_config.dart';
 import 'package:ui/features/cas_pool/widgets/backend_settings_tab.dart';
+import 'package:ui/features/cas_pool/widgets/engine_config_diff_dialog.dart';
 
 Widget _buildBackendSettingsTabTest({
   required BackendSettingsController controller,
@@ -29,6 +32,7 @@ Widget _buildBackendSettingsTabTest({
   BackendSettingsSection initialSection = BackendSettingsSection.audioHardware,
   ValueChanged<BackendSettingsSection>? onSectionChanged,
   ValueNotifier<ThemeMode>? themeNotifier,
+  LyraToastController? toastController,
 }) {
   final themeModeNotifier =
       themeNotifier ?? ValueNotifier<ThemeMode>(ThemeMode.dark);
@@ -51,23 +55,36 @@ Widget _buildBackendSettingsTabTest({
               : const ShadZincColorScheme.light(),
         );
 
+        final tab = BackendSettingsTab(
+          controller: controller,
+          casController: casController,
+          onVerifyAll: onVerifyAll,
+          onRequestPrune: onRequestPrune,
+          onRequestClearWaveforms: onRequestClearWaveforms,
+          initialSection: initialSection,
+          onSectionChanged: onSectionChanged,
+        );
+
+        final scaffold = Scaffold(
+          body: toastController == null
+              ? tab
+              : Stack(
+                  children: [
+                    tab,
+                    const Positioned.fill(child: LyraToastStack()),
+                  ],
+                ),
+        );
+
         return ShadTheme(
           data: shadTheme,
           child: LyraDesignSystemScope(
             factory: factory,
             tokens: tokens,
             themeModeNotifier: themeModeNotifier,
-            child: Scaffold(
-              body: BackendSettingsTab(
-                controller: controller,
-                casController: casController,
-                onVerifyAll: onVerifyAll,
-                onRequestPrune: onRequestPrune,
-                onRequestClearWaveforms: onRequestClearWaveforms,
-                initialSection: initialSection,
-                onSectionChanged: onSectionChanged,
-              ),
-            ),
+            child: toastController == null
+                ? scaffold
+                : LyraToastScope(controller: toastController, child: scaffold),
           ),
         );
       },
@@ -92,12 +109,9 @@ void main() {
       expect(config.database.walAutocheckpoint, equals(1000));
 
       expect(config.audio.outputDeviceId, equals('default'));
-      expect(config.audio.bufferSizeFrames, equals(512));
-      expect(config.audio.exclusiveMode, isTrue);
-      expect(
-        config.audio.volumeMode,
-        equals(AudioVolumeMode.bitPerfectLock0dB),
-      );
+      expect(config.audio.bufferSizeFrames, equals(256));
+      expect(config.audio.exclusiveMode, isFalse);
+      expect(config.audio.volumeMode, equals(AudioVolumeMode.fixed));
       expect(config.audio.resamplerQuality, equals(ResamplerQuality.soxrHq));
       expect(config.audio.dsdMode, equals(DsdMode.dop));
 
@@ -120,14 +134,14 @@ void main() {
       final original = EngineConfig.defaults();
       final modified = original.copyWith(
         audio: original.audio.copyWith(
-          bufferSizeFrames: 256,
-          exclusiveMode: false,
+          bufferSizeFrames: 512,
+          exclusiveMode: true,
         ),
         database: original.database.copyWith(cacheSizeKb: 262144),
       );
 
-      expect(modified.audio.bufferSizeFrames, equals(256));
-      expect(modified.audio.exclusiveMode, isFalse);
+      expect(modified.audio.bufferSizeFrames, equals(512));
+      expect(modified.audio.exclusiveMode, isTrue);
       expect(modified.database.cacheSizeKb, equals(262144));
 
       // Unchanged fields remain identical
@@ -136,26 +150,16 @@ void main() {
       expect(modified.isModifiedFrom(original), isTrue);
     });
 
-    test('Enum fromValue parses valid strings, aliases, and fallbacks', () {
+    test('Enum fromValue parses valid strings and fallbacks', () {
       expect(
         AudioVolumeMode.fromValue('linear'),
         equals(AudioVolumeMode.linear),
       );
-      expect(
-        AudioVolumeMode.fromValue('logarithmic_db'),
-        equals(AudioVolumeMode.logarithmicDb),
-      );
-      expect(
-        AudioVolumeMode.fromValue('bit_perfect_lock_0db'),
-        equals(AudioVolumeMode.bitPerfectLock0dB),
-      );
-      expect(
-        AudioVolumeMode.fromValue('bitperfect_lock_0db'),
-        equals(AudioVolumeMode.bitPerfectLock0dB),
-      );
+      expect(AudioVolumeMode.fromValue('log'), equals(AudioVolumeMode.log));
+      expect(AudioVolumeMode.fromValue('fixed'), equals(AudioVolumeMode.fixed));
       expect(
         AudioVolumeMode.fromValue('invalid_mode'),
-        equals(AudioVolumeMode.bitPerfectLock0dB),
+        equals(AudioVolumeMode.fixed),
       );
 
       expect(
@@ -214,8 +218,8 @@ void main() {
           },
           'audio': {
             'output_device_id': 'dac-01',
-            'buffer_size_frames': '256',
-            'exclusive_mode': 0,
+            'buffer_size_frames': '512',
+            'exclusive_mode': 1,
             'volume_mode': 'linear',
             'resampler_quality': 'native',
             'dsd_mode': 'pcm_transcode',
@@ -233,8 +237,8 @@ void main() {
         expect(parsed.database.mmapSizeBytes, equals(1073741824));
         expect(parsed.database.busyTimeoutMs, equals(60000));
         expect(parsed.database.walAutocheckpoint, equals(2000));
-        expect(parsed.audio.bufferSizeFrames, equals(256));
-        expect(parsed.audio.exclusiveMode, isFalse);
+        expect(parsed.audio.bufferSizeFrames, equals(512));
+        expect(parsed.audio.exclusiveMode, isTrue);
         expect(parsed.ingestion.parallelThreads, equals(8));
         expect(parsed.ingestion.detectedCpuCores, equals(32));
       },
@@ -269,21 +273,21 @@ void main() {
     test(
       'Modifying hardware buffer size marks isDirty and restartRequired',
       () {
-        controller.setBufferSize(256);
+        controller.setBufferSize(512);
 
         expect(controller.isDirty, isTrue);
         expect(controller.restartRequired, isTrue);
-        expect(controller.pendingConfig.audio.bufferSizeFrames, equals(256));
-        expect(controller.config.audio.bufferSizeFrames, equals(512));
+        expect(controller.pendingConfig.audio.bufferSizeFrames, equals(512));
+        expect(controller.config.audio.bufferSizeFrames, equals(256));
       },
     );
 
     test('Modifying exclusive mode marks isDirty and restartRequired', () {
-      controller.setExclusiveMode(false);
+      controller.setExclusiveMode(true);
 
       expect(controller.isDirty, isTrue);
       expect(controller.restartRequired, isTrue);
-      expect(controller.pendingConfig.audio.exclusiveMode, isFalse);
+      expect(controller.pendingConfig.audio.exclusiveMode, isTrue);
     });
 
     test(
@@ -309,19 +313,73 @@ void main() {
       expect(controller.pendingConfig, equals(controller.config));
     });
 
-    test('restoreDefaults() resets draft to system defaults', () {
-      controller.setOutputDevice('custom-dac');
-      controller.setBufferSize(64);
+    test(
+      'restoreDefaults() resets draft to system defaults and preserves read-only fields',
+      () {
+        final loadedConfig = EngineConfig.defaults(storageRoot: '/var/lib/lyra')
+            .copyWith(
+              audio: EngineConfig.defaults().audio.copyWith(
+                outputDeviceId: 'custom-dac',
+                bufferSizeFrames: 64,
+                exclusiveMode: true,
+                volumeMode: AudioVolumeMode.linear,
+              ),
+              ingestion: const IngestionPipelineConfig(
+                parallelThreads: 8,
+                detectedCpuCores: 32,
+                mode: IngestionMode.fast,
+              ),
+            );
+        final seededController = BackendSettingsController(
+          bridge: bridge,
+          initialConfig: loadedConfig,
+          autoLoad: false,
+        );
+        addTearDown(seededController.dispose);
 
-      controller.restoreDefaults();
+        seededController.restoreDefaults();
 
-      expect(controller.pendingConfig.audio.bufferSizeFrames, equals(512));
-      expect(controller.pendingConfig.audio.outputDeviceId, equals('default'));
-    });
+        expect(
+          seededController.pendingConfig.audio.bufferSizeFrames,
+          equals(256),
+        );
+        expect(seededController.pendingConfig.audio.exclusiveMode, isFalse);
+        expect(
+          seededController.pendingConfig.audio.volumeMode,
+          equals(AudioVolumeMode.fixed),
+        );
+        expect(
+          seededController.pendingConfig.audio.outputDeviceId,
+          equals('default'),
+        );
+        expect(
+          seededController.pendingConfig.ingestion.parallelThreads,
+          equals(0),
+        );
+        expect(
+          seededController.pendingConfig.ingestion.mode,
+          equals(IngestionMode.full),
+        );
+        expect(
+          seededController.pendingConfig.storage,
+          equals(loadedConfig.storage),
+        );
+        expect(
+          seededController.pendingConfig.ingestion.detectedCpuCores,
+          equals(32),
+        );
+
+        final diffs = computeEngineConfigDiff(
+          loadedConfig,
+          seededController.pendingConfig,
+        );
+        expect(diffs.where((d) => d.section == 'Storage Engine'), isEmpty);
+      },
+    );
 
     test('saveConfig() dispatches to bridge and commits changes', () async {
       controller.setBufferSize(1024);
-      controller.setExclusiveMode(false);
+      controller.setExclusiveMode(true);
       expect(controller.isDirty, isTrue);
 
       final success = await controller.saveConfig();
@@ -330,7 +388,7 @@ void main() {
       expect(controller.isDirty, isFalse);
       expect(controller.restartRequired, isFalse);
       expect(controller.config.audio.bufferSizeFrames, equals(1024));
-      expect(controller.config.audio.exclusiveMode, isFalse);
+      expect(controller.config.audio.exclusiveMode, isTrue);
       expect(
         controller.statusMessage,
         equals('Engine settings saved successfully.'),
@@ -356,7 +414,7 @@ void main() {
       controller.addListener(() => notifyCount++);
 
       controller.setOutputDevice('usb-dac-01');
-      controller.setVolumeMode(AudioVolumeMode.logarithmicDb);
+      controller.setVolumeMode(AudioVolumeMode.log);
       controller.setResamplerQuality(ResamplerQuality.native);
       controller.setDsdMode(DsdMode.pcmTranscode);
       controller.setDatabaseMmapSize(268435456);
@@ -372,7 +430,7 @@ void main() {
       );
       expect(
         controller.pendingConfig.audio.volumeMode,
-        equals(AudioVolumeMode.logarithmicDb),
+        equals(AudioVolumeMode.log),
       );
       expect(
         controller.pendingConfig.audio.resamplerQuality,
@@ -406,7 +464,7 @@ void main() {
             'message': 'Device error',
           },
         );
-        controller.setBufferSize(256);
+        controller.setBufferSize(512);
         expect(controller.isDirty, isTrue);
 
         final success = await controller.saveConfig();
@@ -414,7 +472,76 @@ void main() {
         expect(success, isFalse);
         expect(controller.isDirty, isTrue);
         expect(controller.errorMessage, equals('Device error'));
-        expect(controller.config.audio.bufferSizeFrames, equals(512));
+        expect(controller.config.audio.bufferSizeFrames, equals(256));
+      },
+    );
+
+    test(
+      'loadConfig() and saveConfig() extract structured Core error.message and sync canonical config on save',
+      () async {
+        bridge.registerMockHandler(
+          'system.get_config',
+          (payload) async => {
+            'code': 400,
+            'status': 'error',
+            'error': {
+              'type': 'InvalidValue',
+              'message': 'Structured load error from Core',
+            },
+          },
+        );
+        await controller.loadConfig();
+        expect(
+          controller.errorMessage,
+          equals('Structured load error from Core'),
+        );
+
+        bridge.registerMockHandler(
+          'system.set_config',
+          (payload) async => {
+            'code': 400,
+            'status': 'error',
+            'error': {
+              'type': 'OutOfRange',
+              'message': 'database.busy_timeout_ms must be at least 1000 ms',
+            },
+          },
+        );
+        controller.setBusyTimeout(500);
+        final failed = await controller.saveConfig();
+        expect(failed, isFalse);
+        expect(
+          controller.errorMessage,
+          equals('database.busy_timeout_ms must be at least 1000 ms'),
+        );
+
+        bridge.registerMockHandler(
+          'system.set_config',
+          (payload) async => {
+            'code': 200,
+            'status': 'success',
+            'data': {
+              'storage': {
+                'storage_root': '/srv/lyra',
+                'database_path': '/srv/lyra/lyra.db',
+                'cas_objects_dir': '/srv/lyra/objects',
+              },
+              'database': controller.pendingConfig.database.toJson(),
+              'audio': controller.pendingConfig.audio.toJson(),
+              'ingestion': {
+                'parallel_threads':
+                    controller.pendingConfig.ingestion.parallelThreads,
+                'detected_cpu_cores': 24,
+                'mode': controller.pendingConfig.ingestion.mode.value,
+              },
+            },
+          },
+        );
+        final ok = await controller.saveConfig();
+        expect(ok, isTrue);
+        expect(controller.config.storage.storageRoot, equals('/srv/lyra'));
+        expect(controller.config.ingestion.detectedCpuCores, equals(24));
+        expect(controller.pendingConfig, equals(controller.config));
       },
     );
 
@@ -422,20 +549,127 @@ void main() {
       'saveConfig() does not mutate state or schedule timer if controller is disposed while awaiting',
       () async {
         final completer = Completer<Map<String, dynamic>>();
-        bridge.registerMockHandler(
-          'system.set_config',
-          (payload) => completer.future,
-        );
+        final handlerStarted = Completer<void>();
+        bool bridgeCalled = false;
+        bridge.registerMockHandler('system.set_config', (payload) {
+          bridgeCalled = true;
+          if (!handlerStarted.isCompleted) {
+            handlerStarted.complete();
+          }
+          return completer.future;
+        });
 
-        controller.setBufferSize(256);
+        controller.setBufferSize(512);
+        expect(controller.isDirty, isTrue);
         final saveFuture = controller.saveConfig();
 
+        await handlerStarted.future;
+        expect(bridgeCalled, isTrue);
         controller.dispose();
         completer.complete({'code': 200, 'message': 'Success'});
 
         final result = await saveFuture;
         expect(result, isFalse);
         expect(controller.statusMessage, isNull);
+      },
+    );
+
+    test(
+      'loadConfig() and saveConfig() extract clean message from LyraBridgeException (MEDIUM-1)',
+      () async {
+        bridge.registerMockHandler(
+          'system.get_config',
+          (payload) =>
+              throw const LyraBridgeException('Core rejected load', code: 500),
+        );
+        await controller.loadConfig();
+        expect(controller.errorMessage, equals('Core rejected load'));
+        expect(controller.errorMessage, isNot(contains('LyraBridgeException')));
+
+        bridge.registerMockHandler(
+          'system.set_config',
+          (payload) => throw const LyraBridgeException(
+            'Fallback msg',
+            code: 400,
+            details: {
+              'error': {
+                'message': 'database.busy_timeout_ms must be at least 1000 ms',
+              },
+            },
+          ),
+        );
+        controller.setBufferSize(512);
+        final ok = await controller.saveConfig();
+        expect(ok, isFalse);
+        expect(
+          controller.errorMessage,
+          equals('database.busy_timeout_ms must be at least 1000 ms'),
+        );
+      },
+    );
+
+    test(
+      'saveConfig() preserves storage on partial data and preserves concurrent in-flight edits (MEDIUM-2)',
+      () async {
+        final seeded = EngineConfig.defaults(storageRoot: '/srv/lyra');
+        final ctrl = BackendSettingsController(
+          bridge: bridge,
+          initialConfig: seeded,
+          autoLoad: false,
+        );
+        addTearDown(ctrl.dispose);
+
+        // 1. Partial response omitting storage/audio/ingestion must not wipe storageRoot
+        bridge.registerMockHandler(
+          'system.set_config',
+          (payload) async => {
+            'code': 200,
+            'status': 'success',
+            'data': {
+              'database': {
+                'cache_size_kb': 262144,
+                'mmap_size_bytes': 536870912,
+                'busy_timeout_ms': 30000,
+                'wal_autocheckpoint': 1000,
+              },
+            },
+          },
+        );
+        ctrl.setDatabaseCacheSize(262144);
+        final partialOk = await ctrl.saveConfig();
+        expect(partialOk, isTrue);
+        expect(ctrl.config.storage.storageRoot, equals('/srv/lyra'));
+        expect(ctrl.config.database.cacheSizeKb, equals(262144));
+
+        // 2. Concurrent edit while saveConfig() is awaiting must not be clobbered
+        final completer = Completer<Map<String, dynamic>>();
+        bridge.registerMockHandler(
+          'system.set_config',
+          (payload) => completer.future,
+        );
+
+        ctrl.setBufferSize(512);
+        final saveFuture = ctrl.saveConfig();
+
+        // User edits cacheSizeKb while save is in flight
+        ctrl.setDatabaseCacheSize(524288);
+        expect(ctrl.pendingConfig.database.cacheSizeKb, equals(524288));
+
+        final canonicalCommitted = ctrl.config
+            .copyWith(audio: ctrl.config.audio.copyWith(bufferSizeFrames: 512))
+            .toJson();
+        completer.complete({
+          'code': 200,
+          'status': 'success',
+          'data': canonicalCommitted,
+        });
+
+        final inFlightOk = await saveFuture;
+        expect(inFlightOk, isTrue);
+        expect(ctrl.config.audio.bufferSizeFrames, equals(512));
+        expect(ctrl.config.database.cacheSizeKb, equals(262144));
+        expect(ctrl.pendingConfig.database.cacheSizeKb, equals(524288));
+        expect(ctrl.isDirty, isTrue);
       },
     );
 
@@ -535,7 +769,7 @@ void main() {
           'data': {'restart_required': true},
         },
       );
-      controller.setBufferSize(256);
+      controller.setBufferSize(512);
       await controller.saveConfig();
 
       expect(controller.isRestartPending, isTrue);
@@ -548,13 +782,13 @@ void main() {
     test(
       'loadConfig() does not overwrite pendingConfig when isDirty is true',
       () async {
-        controller.setBufferSize(256);
+        controller.setBufferSize(512);
         expect(controller.isDirty, isTrue);
 
         await controller.loadConfig();
 
         expect(controller.isDirty, isTrue);
-        expect(controller.pendingConfig.audio.bufferSizeFrames, equals(256));
+        expect(controller.pendingConfig.audio.bufferSizeFrames, equals(512));
       },
     );
 
@@ -566,7 +800,7 @@ void main() {
       );
 
       final initialConfig = controller.config;
-      controller.setBufferSize(256);
+      controller.setBufferSize(512);
       final loadFuture = controller.loadConfig();
       controller.dispose();
 
@@ -698,22 +932,22 @@ void main() {
         expect(find.text('Save Engine Settings'), findsNothing);
         expect(find.text('Discard Changes'), findsNothing);
 
-        // Tap buffer size 256 pill
-        final pill256 = find.widgetWithText(LyraButton, '256');
-        expect(pill256, findsOneWidget);
-        await tester.tap(pill256);
+        // Tap buffer size 512 pill
+        final pill512 = find.widgetWithText(LyraButton, '512');
+        expect(pill512, findsOneWidget);
+        await tester.tap(pill512);
         await tester.pumpAndSettle();
 
         expect(controller.isDirty, isTrue);
         expect(controller.restartRequired, isTrue);
-        expect(controller.pendingConfig.audio.bufferSizeFrames, equals(256));
+        expect(controller.pendingConfig.audio.bufferSizeFrames, equals(512));
 
         // Action bar is now visible
         expect(find.text('Save Engine Settings'), findsOneWidget);
         expect(find.text('Discard Changes'), findsOneWidget);
         expect(
           find.text(
-            'Hardware buffer or exclusive mode adjustments require audio engine restart.',
+            'Audio engine will restart to apply hardware buffer or exclusive mode changes.',
           ),
           findsOneWidget,
         );
@@ -741,7 +975,7 @@ void main() {
 
         expect(controller.isDirty, isTrue);
         expect(controller.restartRequired, isTrue);
-        expect(controller.pendingConfig.audio.exclusiveMode, isFalse);
+        expect(controller.pendingConfig.audio.exclusiveMode, isTrue);
         expect(find.text('Save Engine Settings'), findsOneWidget);
       },
     );
@@ -838,12 +1072,210 @@ void main() {
 
         expect(controller.isDirty, isTrue);
         expect(controller.pendingConfig.ingestion.parallelThreads, equals(16));
-        expect(find.text('16 / 128 threads'), findsOneWidget);
+        expect(find.text('16 / 16 threads'), findsOneWidget);
 
         final updatedSlider = tester.widget<ShadSlider>(
           find.byType(ShadSlider),
         );
         expect(updatedSlider.enabled, isTrue);
+        expect(updatedSlider.max, equals(16.0));
+      },
+    );
+
+    testWidgets(
+      'Worker threads slider scales dynamically across single-core, migrated >cores, and high-core hosts',
+      (tester) async {
+        tester.view.physicalSize = const Size(1280, 1000);
+        tester.view.devicePixelRatio = 1.0;
+        addTearDown(tester.view.resetPhysicalSize);
+
+        // 1. Single-core host (detectedCpuCores: 1, parallelThreads: 1)
+        final singleCoreCtrl = BackendSettingsController(
+          bridge: bridge,
+          initialConfig: EngineConfig.defaults().copyWith(
+            ingestion: const IngestionPipelineConfig(
+              parallelThreads: 1,
+              detectedCpuCores: 1,
+              mode: IngestionMode.full,
+            ),
+          ),
+          autoLoad: false,
+        );
+        addTearDown(singleCoreCtrl.dispose);
+
+        await tester.pumpWidget(
+          _buildBackendSettingsTabTest(
+            controller: singleCoreCtrl,
+            initialSection: BackendSettingsSection.ingestionPipeline,
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        expect(find.text('1 / 1 threads'), findsOneWidget);
+        final singleSlider = tester.widget<ShadSlider>(find.byType(ShadSlider));
+        expect(singleSlider.enabled, isFalse);
+        expect(singleSlider.min, isNotNull);
+        expect(singleSlider.max, greaterThan(singleSlider.min!));
+
+        // 2. Migrated DB with parallelThreads (24) > detectedCpuCores (8)
+        final migratedCtrl = BackendSettingsController(
+          bridge: bridge,
+          initialConfig: EngineConfig.defaults().copyWith(
+            ingestion: const IngestionPipelineConfig(
+              parallelThreads: 24,
+              detectedCpuCores: 8,
+              mode: IngestionMode.full,
+            ),
+          ),
+          autoLoad: false,
+        );
+        addTearDown(migratedCtrl.dispose);
+
+        await tester.pumpWidget(
+          _buildBackendSettingsTabTest(
+            controller: migratedCtrl,
+            initialSection: BackendSettingsSection.ingestionPipeline,
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        expect(find.text('24 / 24 threads'), findsOneWidget);
+        final migratedSlider = tester.widget<ShadSlider>(
+          find.byType(ShadSlider),
+        );
+        expect(migratedSlider.enabled, isTrue);
+        expect(migratedSlider.max, equals(24.0));
+
+        // Lowering draft below committed value keeps max anchored at 24.0 (no ratchet)
+        migratedCtrl.setParallelThreads(20);
+        await tester.pumpAndSettle();
+        expect(find.text('20 / 24 threads'), findsOneWidget);
+        final afterDragSlider = tester.widget<ShadSlider>(
+          find.byType(ShadSlider),
+        );
+        expect(afterDragSlider.max, equals(24.0));
+
+        // 3. High-core workstation (detectedCpuCores: 192, parallelThreads: 64)
+        final highCoreCtrl = BackendSettingsController(
+          bridge: bridge,
+          initialConfig: EngineConfig.defaults().copyWith(
+            ingestion: const IngestionPipelineConfig(
+              parallelThreads: 64,
+              detectedCpuCores: 192,
+              mode: IngestionMode.full,
+            ),
+          ),
+          autoLoad: false,
+        );
+        addTearDown(highCoreCtrl.dispose);
+
+        await tester.pumpWidget(
+          _buildBackendSettingsTabTest(
+            controller: highCoreCtrl,
+            initialSection: BackendSettingsSection.ingestionPipeline,
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        expect(find.text('64 / 192 threads'), findsOneWidget);
+        final highCoreSlider = tester.widget<ShadSlider>(
+          find.byType(ShadSlider),
+        );
+        expect(highCoreSlider.enabled, isTrue);
+        expect(highCoreSlider.max, equals(192.0));
+
+        // 4. Out-of-bounds display readouts are safely clamped (LOW-1)
+        final zeroCoresCtrl = BackendSettingsController(
+          bridge: bridge,
+          initialConfig: EngineConfig.defaults().copyWith(
+            ingestion: const IngestionPipelineConfig(
+              parallelThreads: 0,
+              detectedCpuCores: 0,
+              mode: IngestionMode.full,
+            ),
+          ),
+          autoLoad: false,
+        );
+        addTearDown(zeroCoresCtrl.dispose);
+        await tester.pumpWidget(
+          _buildBackendSettingsTabTest(
+            controller: zeroCoresCtrl,
+            initialSection: BackendSettingsSection.ingestionPipeline,
+          ),
+        );
+        await tester.pumpAndSettle();
+        expect(find.text('Auto (Detected 1 CPU cores)'), findsOneWidget);
+        expect(find.text('Auto (1 threads)'), findsOneWidget);
+
+        final overMaxCtrl = BackendSettingsController(
+          bridge: bridge,
+          initialConfig: EngineConfig.defaults().copyWith(
+            ingestion: const IngestionPipelineConfig(
+              parallelThreads: 2048,
+              detectedCpuCores: 8,
+              mode: IngestionMode.full,
+            ),
+          ),
+          autoLoad: false,
+        );
+        addTearDown(overMaxCtrl.dispose);
+        await tester.pumpWidget(
+          _buildBackendSettingsTabTest(
+            controller: overMaxCtrl,
+            initialSection: BackendSettingsSection.ingestionPipeline,
+          ),
+        );
+        await tester.pumpAndSettle();
+        expect(find.text('1024 / 1024 threads'), findsOneWidget);
+      },
+    );
+
+    testWidgets(
+      'restoreDefaults() clears stale busy_timeout validation error and resets text (MEDIUM-3)',
+      (tester) async {
+        tester.view.physicalSize = const Size(1280, 1000);
+        tester.view.devicePixelRatio = 1.0;
+        addTearDown(tester.view.resetPhysicalSize);
+
+        final seededCtrl = BackendSettingsController(
+          bridge: bridge,
+          initialConfig: EngineConfig.defaults().copyWith(
+            database: DatabaseEngineConfig.defaults().copyWith(
+              cacheSizeKb: 262144,
+              busyTimeoutMs: 30000,
+            ),
+          ),
+          autoLoad: false,
+        );
+        addTearDown(seededCtrl.dispose);
+
+        await tester.pumpWidget(
+          _buildBackendSettingsTabTest(
+            controller: seededCtrl,
+            initialSection: BackendSettingsSection.databaseEngine,
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        await tester.enterText(
+          find.byKey(const ValueKey('busy_timeout_input')).first,
+          '500',
+        );
+        await tester.pumpAndSettle();
+        expect(
+          find.byKey(const ValueKey('busy_timeout_error')),
+          findsOneWidget,
+        );
+
+        seededCtrl.restoreDefaults();
+        await tester.pumpAndSettle();
+
+        expect(find.byKey(const ValueKey('busy_timeout_error')), findsNothing);
+        expect(find.text('30000'), findsOneWidget);
+        final saveBtn = tester.widget<LyraButton>(
+          find.widgetWithText(LyraButton, 'Save Engine Settings'),
+        );
+        expect(saveBtn.onPressed, isNotNull);
       },
     );
 
@@ -870,7 +1302,7 @@ void main() {
 
         expect(controller.isDirty, isFalse);
         expect(controller.restartRequired, isFalse);
-        expect(controller.pendingConfig.audio.bufferSizeFrames, equals(512));
+        expect(controller.pendingConfig.audio.bufferSizeFrames, equals(256));
         expect(find.text('Save Engine Settings'), findsNothing);
       },
     );
@@ -882,8 +1314,14 @@ void main() {
         tester.view.devicePixelRatio = 1.0;
         addTearDown(tester.view.resetPhysicalSize);
 
+        final toastController = LyraToastController(autoDismiss: false);
+        addTearDown(toastController.dispose);
+
         await tester.pumpWidget(
-          _buildBackendSettingsTabTest(controller: controller),
+          _buildBackendSettingsTabTest(
+            controller: controller,
+            toastController: toastController,
+          ),
         );
         await tester.pumpAndSettle();
 
@@ -908,10 +1346,11 @@ void main() {
 
         expect(controller.isDirty, isFalse);
         expect(controller.config.audio.bufferSizeFrames, equals(1024));
-        expect(
-          find.text('Engine settings saved successfully.'),
-          findsOneWidget,
-        );
+        expect(toastController.toasts, hasLength(1));
+        expect(toastController.toasts.first.variant, LyraToastVariant.success);
+        expect(toastController.toasts.first.title, 'Engine settings saved');
+        expect(find.text('Engine settings saved'), findsOneWidget);
+        expect(find.text('Engine settings saved successfully.'), findsNothing);
         await tester.pump(const Duration(seconds: 3));
         await tester.pumpAndSettle();
       },
@@ -1003,19 +1442,25 @@ void main() {
       },
     );
 
-    testWidgets('Save success status text renders with tokens.success color', (
+    testWidgets('Save success emits success LyraToast notification', (
       tester,
     ) async {
       tester.view.physicalSize = const Size(1280, 1000);
       tester.view.devicePixelRatio = 1.0;
       addTearDown(tester.view.resetPhysicalSize);
 
+      final toastController = LyraToastController(autoDismiss: false);
+      addTearDown(toastController.dispose);
+
       await tester.pumpWidget(
-        _buildBackendSettingsTabTest(controller: controller),
+        _buildBackendSettingsTabTest(
+          controller: controller,
+          toastController: toastController,
+        ),
       );
       await tester.pumpAndSettle();
 
-      controller.setBufferSize(256);
+      controller.setBufferSize(512);
       await tester.pumpAndSettle();
 
       await tester.tap(find.widgetWithText(LyraButton, 'Save Engine Settings'));
@@ -1026,14 +1471,11 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      final successTextFinder = find.text(
-        'Engine settings saved successfully.',
-      );
-      expect(successTextFinder, findsOneWidget);
-
-      final textWidget = tester.widget<Text>(successTextFinder);
-      final tokens = LyraThemeTokens.dark();
-      expect(textWidget.style?.color, equals(tokens.success));
+      expect(toastController.toasts, hasLength(1));
+      expect(toastController.toasts.first.variant, LyraToastVariant.success);
+      expect(toastController.toasts.first.title, 'Engine settings saved');
+      expect(find.text('Engine settings saved'), findsOneWidget);
+      expect(find.text('Engine settings saved successfully.'), findsNothing);
 
       await tester.pump(const Duration(seconds: 3));
       await tester.pumpAndSettle();
@@ -1051,7 +1493,7 @@ void main() {
         );
         await tester.pumpAndSettle();
 
-        controller.setBufferSize(256);
+        controller.setBufferSize(512);
         bridge.registerMockHandler(
           'system.set_config',
           (payload) async => {
@@ -1137,7 +1579,7 @@ void main() {
           findsNothing,
         );
 
-        controller.setBufferSize(256);
+        controller.setBufferSize(512);
         await tester.pumpAndSettle();
 
         final warningIconFinder = find.byIcon(LucideIcons.triangleAlert);
@@ -1216,10 +1658,10 @@ void main() {
         await tester.pumpAndSettle();
 
         // 1. Modify buffer size in Audio Hardware
-        await tester.tap(find.widgetWithText(LyraButton, '256'));
+        await tester.tap(find.widgetWithText(LyraButton, '512'));
         await tester.pumpAndSettle();
         expect(controller.isDirty, isTrue);
-        expect(controller.pendingConfig.audio.bufferSizeFrames, equals(256));
+        expect(controller.pendingConfig.audio.bufferSizeFrames, equals(512));
 
         // Sticky action bar is visible
         expect(find.text('Save Engine Settings'), findsOneWidget);
@@ -1243,14 +1685,14 @@ void main() {
         // 3. Switch back to Audio Hardware and verify modifications persisted
         await tester.tap(find.text('Audio Hardware'));
         await tester.pumpAndSettle();
-        expect(controller.pendingConfig.audio.bufferSizeFrames, equals(256));
+        expect(controller.pendingConfig.audio.bufferSizeFrames, equals(512));
 
         // 4. Tap Discard Changes -> both revert to committed
         await tester.tap(find.widgetWithText(LyraButton, 'Discard Changes'));
         await tester.pumpAndSettle();
 
         expect(controller.isDirty, isFalse);
-        expect(controller.pendingConfig.audio.bufferSizeFrames, equals(512));
+        expect(controller.pendingConfig.audio.bufferSizeFrames, equals(256));
         expect(controller.pendingConfig.database.cacheSizeKb, equals(131072));
         expect(find.text('Save Engine Settings'), findsNothing);
       },
@@ -1363,7 +1805,7 @@ void main() {
         expect(controller.isRestartPending, isTrue);
         expect(
           find.text(
-            'Hardware buffer or exclusive mode adjustments require audio engine restart.',
+            'Audio engine will restart to apply hardware buffer or exclusive mode changes.',
           ),
           findsOneWidget,
         );
@@ -1692,13 +2134,30 @@ void main() {
         await tester.pumpAndSettle();
 
         expect(
-          find.text('Value must be between 0 and 300,000 ms'),
+          find.text('Value must be between 1,000 and 300,000 ms'),
           findsOneWidget,
         );
         final saveBtn1 = tester.widget<LyraButton>(
           find.widgetWithText(LyraButton, 'Save Engine Settings'),
         );
         expect(saveBtn1.onPressed, isNull);
+
+        // 1b. Enter below Core lower bound (0 and 999 < 1,000)
+        for (final belowMin in ['0', '999']) {
+          await tester.enterText(
+            find.byKey(const ValueKey('busy_timeout_input')).first,
+            belowMin,
+          );
+          await tester.pumpAndSettle();
+          expect(
+            find.text('Value must be between 1,000 and 300,000 ms'),
+            findsOneWidget,
+          );
+          final saveBtnLow = tester.widget<LyraButton>(
+            find.widgetWithText(LyraButton, 'Save Engine Settings'),
+          );
+          expect(saveBtnLow.onPressed, isNull);
+        }
 
         // 2. Clear input to empty string ""
         await tester.enterText(
@@ -1708,7 +2167,7 @@ void main() {
         await tester.pumpAndSettle();
 
         expect(
-          find.text('Value must be between 0 and 300,000 ms'),
+          find.text('Value must be between 1,000 and 300,000 ms'),
           findsOneWidget,
         );
         final saveBtn2 = tester.widget<LyraButton>(
@@ -1716,15 +2175,15 @@ void main() {
         );
         expect(saveBtn2.onPressed, isNull);
 
-        // 3. Enter valid timeout -> error disappears
+        // 3. Enter valid boundary timeout (1000) -> error disappears
         await tester.enterText(
           find.byKey(const ValueKey('busy_timeout_input')).first,
-          '15000',
+          '1000',
         );
         await tester.pumpAndSettle();
 
         expect(
-          find.text('Value must be between 0 and 300,000 ms'),
+          find.text('Value must be between 1,000 and 300,000 ms'),
           findsNothing,
         );
         final saveBtn3 = tester.widget<LyraButton>(
@@ -1762,14 +2221,14 @@ void main() {
         );
         await tester.pumpAndSettle();
 
-        // 1. Modify buffer size to 256 -> restartRequired = true
-        await tester.tap(find.widgetWithText(LyraButton, '256'));
+        // 1. Modify buffer size to 512 -> restartRequired = true
+        await tester.tap(find.widgetWithText(LyraButton, '512'));
         await tester.pumpAndSettle();
 
         expect(controller.restartRequired, isTrue);
         expect(
           find.text(
-            'Hardware buffer or exclusive mode adjustments require audio engine restart.',
+            'Audio engine will restart to apply hardware buffer or exclusive mode changes.',
           ),
           findsOneWidget,
         );
@@ -1785,7 +2244,7 @@ void main() {
         // Banner MUST be hidden now
         expect(
           find.text(
-            'Hardware buffer or exclusive mode adjustments require audio engine restart.',
+            'Audio engine will restart to apply hardware buffer or exclusive mode changes.',
           ),
           findsNothing,
         );
@@ -1797,10 +2256,56 @@ void main() {
         // Banner should reappear
         expect(
           find.text(
-            'Hardware buffer or exclusive mode adjustments require audio engine restart.',
+            'Audio engine will restart to apply hardware buffer or exclusive mode changes.',
           ),
           findsOneWidget,
         );
+      },
+    );
+
+    testWidgets(
+      'Saving buffer size change with default MockLyraBridge clears restart banner',
+      (tester) async {
+        tester.view.physicalSize = const Size(1280, 1000);
+        tester.view.devicePixelRatio = 1.0;
+        addTearDown(tester.view.resetPhysicalSize);
+
+        await tester.pumpWidget(
+          _buildBackendSettingsTabTest(controller: controller),
+        );
+        await tester.pumpAndSettle();
+
+        await tester.tap(find.widgetWithText(LyraButton, '512'));
+        await tester.pumpAndSettle();
+
+        expect(controller.restartRequired, isTrue);
+        expect(
+          find.text(
+            'Audio engine will restart to apply hardware buffer or exclusive mode changes.',
+          ),
+          findsOneWidget,
+        );
+
+        await tester.tap(
+          find.widgetWithText(LyraButton, 'Save Engine Settings'),
+        );
+        await tester.pumpAndSettle();
+        await tester.tap(
+          find.byKey(const Key('diff_dialog_confirm_button')).first,
+        );
+        await tester.pumpAndSettle();
+
+        expect(controller.restartRequired, isFalse);
+        expect(controller.isRestartPending, isFalse);
+        expect(
+          find.text(
+            'Audio engine will restart to apply hardware buffer or exclusive mode changes.',
+          ),
+          findsNothing,
+        );
+
+        await tester.pump(const Duration(seconds: 3));
+        await tester.pumpAndSettle();
       },
     );
   });

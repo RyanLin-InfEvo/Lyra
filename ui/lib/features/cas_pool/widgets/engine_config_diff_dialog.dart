@@ -520,6 +520,7 @@ class EngineConfigDiffDialog extends StatelessWidget {
                 color: tokens.destructive,
                 decoration: TextDecoration.lineThrough,
                 decorationColor: tokens.destructive.withValues(alpha: 0.6),
+                fontWeight: FontWeight.w500,
                 fontFamily: 'monospace',
               ),
               overflow: TextOverflow.ellipsis,
@@ -570,7 +571,7 @@ class EngineConfigDiffDialog extends StatelessWidget {
               newValue,
               style: LyraTypography.small(tokens).copyWith(
                 color: emeraldColor,
-                fontWeight: FontWeight.bold,
+                fontWeight: FontWeight.w500,
                 fontFamily: 'monospace',
               ),
               overflow: TextOverflow.ellipsis,

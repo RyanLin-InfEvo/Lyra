@@ -25,6 +25,7 @@ class BackendSettingsController extends ChangeNotifier {
   Timer? _statusTimer;
   bool _disposed = false;
   bool _isRestartPending = false;
+  int _draftResetEpoch = 0;
 
   BackendSettingsController({
     LyraBridge? bridge,
@@ -71,6 +72,9 @@ class BackendSettingsController extends ChangeNotifier {
   /// Whether an audio engine restart is pending on the backend.
   bool get isRestartPending => _isRestartPending;
 
+  /// Monotonically incremented whenever [resetDraft] or [restoreDefaults] resets the draft.
+  int get draftResetEpoch => _draftResetEpoch;
+
   /// Acknowledges the pending restart notice.
   void acknowledgeRestart() {
     if (_isRestartPending) {
@@ -84,6 +88,19 @@ class BackendSettingsController extends ChangeNotifier {
   bool get restartRequired =>
       _pendingConfig.audio.bufferSizeFrames != _config.audio.bufferSizeFrames ||
       _pendingConfig.audio.exclusiveMode != _config.audio.exclusiveMode;
+
+  String _extractErrorMessage(Map<String, dynamic> response, String fallback) {
+    final err = response['error'];
+    if (err is Map && err['message'] != null) {
+      final msg = err['message'].toString();
+      if (msg.isNotEmpty) return msg;
+    }
+    final topMsg = response['message']?.toString();
+    if (topMsg != null && topMsg.isNotEmpty) {
+      return topMsg;
+    }
+    return fallback;
+  }
 
   /// Asynchronously loads configuration and audio output devices from the backend.
   Future<void> loadConfig() async {
@@ -111,9 +128,10 @@ class BackendSettingsController extends ChangeNotifier {
           (code != null && (code < 200 || code >= 300));
 
       if (isConfigError) {
-        _errorMessage =
-            configResp['message']?.toString() ??
-            'Failed to load engine configuration.';
+        _errorMessage = _extractErrorMessage(
+          configResp,
+          'Failed to load engine configuration.',
+        );
         return;
       }
 
@@ -139,6 +157,11 @@ class BackendSettingsController extends ChangeNotifier {
               .toList();
         }
       }
+    } on LyraBridgeException catch (e) {
+      if (_disposed) return;
+      _errorMessage = e.details != null
+          ? _extractErrorMessage(e.details!, e.message)
+          : e.message;
     } catch (e) {
       if (_disposed) return;
       _errorMessage = 'Failed to load engine configuration: $e';
@@ -158,10 +181,11 @@ class BackendSettingsController extends ChangeNotifier {
     _statusMessage = null;
     notifyListeners();
 
+    final submittedConfig = _pendingConfig;
     try {
       final response = await _bridge.executeCommand(
         'system.set_config',
-        _pendingConfig.toSavePayload(),
+        submittedConfig.toSavePayload(),
       );
       if (_disposed) return false;
 
@@ -175,8 +199,23 @@ class BackendSettingsController extends ChangeNotifier {
           (isExplicitSuccess != null || status != null || code != null);
 
       if (isOk) {
-        _config = _pendingConfig;
         final respData = response['data'];
+        EngineConfig committedConfig = submittedConfig;
+        if (respData is Map &&
+            respData.containsKey('database') &&
+            respData.containsKey('audio') &&
+            respData.containsKey('ingestion')) {
+          final parsed = EngineConfig.fromJson(
+            respData.cast<String, dynamic>(),
+          );
+          committedConfig = respData.containsKey('storage')
+              ? parsed
+              : parsed.copyWith(storage: _config.storage);
+        }
+        _config = committedConfig;
+        if (_pendingConfig == submittedConfig) {
+          _pendingConfig = _config;
+        }
         final bool restartRequiredByServer =
             (respData is Map && respData['restart_required'] == true) ||
             response['restart_required'] == true;
@@ -194,11 +233,18 @@ class BackendSettingsController extends ChangeNotifier {
         });
         return true;
       } else {
-        _errorMessage =
-            response['message']?.toString() ??
-            'Failed to save engine settings.';
+        _errorMessage = _extractErrorMessage(
+          response,
+          'Failed to save engine settings.',
+        );
         return false;
       }
+    } on LyraBridgeException catch (e) {
+      if (_disposed) return false;
+      _errorMessage = e.details != null
+          ? _extractErrorMessage(e.details!, e.message)
+          : e.message;
+      return false;
     } catch (e) {
       if (_disposed) return false;
       _errorMessage = 'Failed to save engine configuration: $e';
@@ -214,15 +260,25 @@ class BackendSettingsController extends ChangeNotifier {
   /// Discards all pending modifications and reverts the draft to the committed config.
   void resetDraft() {
     _pendingConfig = _config;
+    _draftResetEpoch++;
     _errorMessage = null;
     _statusMessage = null;
     _statusTimer?.cancel();
     notifyListeners();
   }
 
-  /// Resets the pending draft to the system default configuration.
+  /// Resets the pending draft to the system default configuration, preserving read-only fields.
   void restoreDefaults() {
-    _pendingConfig = EngineConfig.defaults();
+    final defaults = EngineConfig.defaults(
+      storageRoot: _config.storage.storageRoot,
+    );
+    _pendingConfig = defaults.copyWith(
+      storage: _config.storage,
+      ingestion: defaults.ingestion.copyWith(
+        detectedCpuCores: _config.ingestion.detectedCpuCores,
+      ),
+    );
+    _draftResetEpoch++;
     _errorMessage = null;
     _statusMessage = null;
     _statusTimer?.cancel();

@@ -100,8 +100,8 @@ void main() {
       final pending = current.copyWith(
         audio: current.audio.copyWith(
           outputDeviceId: 'usb-dac-01',
-          exclusiveMode: false,
-          bufferSizeFrames: 256,
+          exclusiveMode: true,
+          bufferSizeFrames: 512,
           volumeMode: AudioVolumeMode.linear,
           resamplerQuality: ResamplerQuality.native,
           dsdMode: DsdMode.pcmTranscode,
@@ -117,15 +117,15 @@ void main() {
       expect(deviceDiff.newValue, equals('Topping DX7 Pro+'));
 
       final exclDiff = diffs.firstWhere((d) => d.label == 'Exclusive Mode');
-      expect(exclDiff.oldValue, equals('Enabled'));
-      expect(exclDiff.newValue, equals('Disabled'));
+      expect(exclDiff.oldValue, equals('Disabled'));
+      expect(exclDiff.newValue, equals('Enabled'));
 
       final bufDiff = diffs.firstWhere((d) => d.label == 'Buffer Size');
-      expect(bufDiff.oldValue, equals('512 frames'));
-      expect(bufDiff.newValue, equals('256 frames'));
+      expect(bufDiff.oldValue, equals('256 frames'));
+      expect(bufDiff.newValue, equals('512 frames'));
 
       final volDiff = diffs.firstWhere((d) => d.label == 'Volume Strategy');
-      expect(volDiff.oldValue, equals('Bit-Perfect Lock 0dB'));
+      expect(volDiff.oldValue, equals('Fixed (0 dB)'));
       expect(volDiff.newValue, equals('Linear'));
 
       final resampDiff = diffs.firstWhere(
@@ -342,6 +342,37 @@ void main() {
           find.byKey(const Key('engine_config_diff_dialog')),
           findsOneWidget,
         );
+      },
+    );
+
+    testWidgets(
+      'Before and After cells use identical monospace font family and weight',
+      (tester) async {
+        tester.view.physicalSize = const Size(1280, 900);
+        tester.view.devicePixelRatio = 1.0;
+        addTearDown(tester.view.resetPhysicalSize);
+
+        const diffs = [
+          EngineConfigDiffItem(
+            section: 'Audio Hardware',
+            label: 'Buffer Size',
+            oldValue: '256 frames',
+            newValue: '512 frames',
+          ),
+        ];
+
+        await tester.pumpWidget(
+          _buildDialogHarness(diffs: diffs, restartRequired: false),
+        );
+        await tester.pumpAndSettle();
+
+        final oldText = tester.widget<Text>(find.text('256 frames'));
+        final newText = tester.widget<Text>(find.text('512 frames'));
+
+        expect(oldText.style?.fontFamily, equals('monospace'));
+        expect(newText.style?.fontFamily, equals('monospace'));
+        expect(oldText.style?.fontWeight, equals(FontWeight.w500));
+        expect(newText.style?.fontWeight, equals(FontWeight.w500));
       },
     );
   });

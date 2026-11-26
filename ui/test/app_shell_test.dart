@@ -2993,12 +2993,7 @@ void main() {
         await tester.tap(find.text('Engine Settings'));
         await tester.pumpAndSettle();
 
-        expect(
-          find.text(
-            'Output device selection, exclusive mode, hardware buffer frames, volume strategy, and resampler profiles.',
-          ),
-          findsOneWidget,
-        );
+        expect(find.text('Audio Hardware'), findsOneWidget);
 
         // 4. Click back to 'Storage Overview'
         await tester.tap(find.text('Storage Overview'));

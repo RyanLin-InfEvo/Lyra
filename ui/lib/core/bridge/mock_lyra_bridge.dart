@@ -1020,26 +1020,6 @@ class MockLyraBridge implements LyraBridge {
     };
 
     _mockHandlers['system.set_config'] = (params) async {
-      bool restartRequired = false;
-      final audioParams = params['audio'];
-      if (audioParams is Map) {
-        if (audioParams.containsKey('buffer_size_frames')) {
-          final newFrames = (audioParams['buffer_size_frames'] as num?)
-              ?.toInt();
-          if (newFrames != null &&
-              newFrames != _mockEngineConfig.audio.bufferSizeFrames) {
-            restartRequired = true;
-          }
-        }
-        if (audioParams.containsKey('exclusive_mode')) {
-          final newExclusive = audioParams['exclusive_mode'] as bool?;
-          if (newExclusive != null &&
-              newExclusive != _mockEngineConfig.audio.exclusiveMode) {
-            restartRequired = true;
-          }
-        }
-      }
-
       // Merge incoming partial or full config parameters
       final currentJson = _mockEngineConfig.toJson();
       for (final entry in params.entries) {
@@ -1058,7 +1038,7 @@ class MockLyraBridge implements LyraBridge {
       return {
         'code': 200,
         'status': 'success',
-        'data': {'restart_required': restartRequired, 'success': true},
+        'data': {..._mockEngineConfig.toJson(), 'success': true},
         'message': 'Engine configuration updated successfully.',
       };
     };

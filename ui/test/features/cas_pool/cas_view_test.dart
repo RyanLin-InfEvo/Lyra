@@ -195,12 +195,6 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('Engine Settings'), findsOneWidget);
-      expect(
-        find.text(
-          'Output device selection, exclusive mode, hardware buffer frames, volume strategy, and resampler profiles.',
-        ),
-        findsOneWidget,
-      );
       expect(find.text('Audio Hardware'), findsOneWidget);
       expect(find.text('Database Engine'), findsOneWidget);
       expect(find.text('Ingestion Pipeline'), findsOneWidget);
