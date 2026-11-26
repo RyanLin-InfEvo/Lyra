@@ -275,11 +275,13 @@ void Router::init_handlers() {
     m_handlers["UpdatePlaylist"] = [this](const json &p) { return handleUpdatePlaylist(p); };
     m_handlers["GetPlaylist"] = [this](const json &p) { return handleGetPlaylist(p); };
     m_handlers["ListPlaylists"] = [this](const json &p) { return handleListPlaylists(p); };
+    m_handlers["DeletePlaylist"] = [this](const json &p) { return handleDeletePlaylist(p); };
 
     // Playlist-Track
     m_handlers["AddPlaylistTrack"] = [this](const json &p) { return handleAddPlaylistTrack(p); };
     m_handlers["RemovePlaylistTrack"] = [this](const json &p) { return handleRemovePlaylistTrack(p); };
     m_handlers["GetPlaylistTracks"] = [this](const json &p) { return handleGetPlaylistTracks(p); };
+    m_handlers["ReorderPlaylistTracks"] = [this](const json &p) { return handleReorderPlaylistTracks(p); };
 
     // Exact query endpoints
     m_handlers["GetTracksByTitle"] = [this](const json &p) { return handleGetTracksByTitle(p); };
@@ -1384,6 +1386,34 @@ json Router::handleListPlaylists(const json &params) {
     return ApiResponse::error({ErrorType::DatabaseError, res.error()});
 }
 
+json Router::handleDeletePlaylist(const json &params) {
+    if (auto err = JsonValidator::validate(
+            params, {{"id", Type::String, false, StringFormat::UUID},
+                     {"playlist_id", Type::String, false, StringFormat::UUID}});
+        err) return *err;
+
+    auto id_opt = JsonHelper::get_optional<std::string>(params, "id");
+    auto playlist_id_opt = JsonHelper::get_optional<std::string>(params, "playlist_id");
+    if (!id_opt && !playlist_id_opt) {
+        return ApiResponse::error({ErrorType::MissingParameter, "Missing 'id' or 'playlist_id' parameter"});
+    }
+    if (id_opt && playlist_id_opt && *id_opt != *playlist_id_opt) {
+        return ApiResponse::error({ErrorType::InvalidValue, "Conflicting 'id' and 'playlist_id' parameters"});
+    }
+    const std::string &target_id = id_opt ? *id_opt : *playlist_id_opt;
+
+    auto res = m_playlist_controller->delete_playlist(target_id);
+    if (res) {
+        json response = ApiResponse::success({{"id", target_id}});
+        response["message"] = "Delete Playlist success.";
+        return response;
+    }
+    if (res.error().find("Playlist not found") != std::string::npos) {
+        return ApiResponse::error({ErrorType::PlaylistNotFound, res.error()});
+    }
+    return ApiResponse::error({ErrorType::DatabaseError, res.error()});
+}
+
 json Router::handleAddPlaylistTrack(const json &params) {
     if (auto err = JsonValidator::validate(params, {{"playlist_id", Type::String, true, StringFormat::UUID},
                                                     {"track_id", Type::String, true, StringFormat::UUID},
@@ -1440,6 +1470,45 @@ json Router::handleGetPlaylistTracks(const json &params) {
     if (tracks) return ApiResponse::success(tracks.value());
 
     return ApiResponse::error({ErrorType::DatabaseError, tracks.error()});
+}
+
+/**
+ * @brief Handles 'ReorderPlaylistTracks' to atomically reorder tracks in a playlist.
+ *
+ * UI Usage Notes:
+ * - Index semantics: `old_index` and `new_index` are 0-based destination indices in `[0, count - 1]`
+ *   (e.g., moving index `0` to `2` on `[A, B, C]` yields `[B, C, A]`).
+ * - Flutter `ReorderableListView.onReorder(oldIndex, newIndex)` passes `newIndex` relative to the
+ *   pre-removal list (so dragging down passes `newIndex == count` at the end). UI callers MUST apply
+ *   `if (oldIndex < newIndex) newIndex -= 1;` before calling this RPC, because `new_index >= count`
+ *   is rejected with HTTP 400 `OutOfRange`.
+ */
+json Router::handleReorderPlaylistTracks(const json &params) {
+    if (auto err = JsonValidator::validate(
+            params, {{"playlist_id", Type::String, true, StringFormat::UUID},
+                     {.key = "old_index", .expected_type = Type::Integer, .is_required = true, .min_int = 0, .max_int = kIntMax},
+                     {.key = "new_index", .expected_type = Type::Integer, .is_required = true, .min_int = 0, .max_int = kIntMax}});
+        err) return *err;
+
+    const std::string playlist_id = params["playlist_id"].get<std::string>();
+    const int old_index = params["old_index"].get<int>();
+    const int new_index = params["new_index"].get<int>();
+
+    auto res = m_playlist_controller->reorder_tracks(playlist_id, old_index, new_index);
+    if (res) {
+        json response = ApiResponse::success({{"playlist_id", playlist_id}, {"track_ids", res.value()}});
+        response["message"] = "Reorder PlaylistTracks success.";
+        return response;
+    }
+
+    const std::string &err_msg = res.error();
+    if (err_msg.find("Playlist not found") != std::string::npos) {
+        return ApiResponse::error({ErrorType::PlaylistNotFound, err_msg});
+    }
+    if (err_msg.find("Index out of range") != std::string::npos) {
+        return ApiResponse::error({ErrorType::OutOfRange, err_msg});
+    }
+    return ApiResponse::error({ErrorType::DatabaseError, err_msg});
 }
 
 json Router::handleGetTracksByTitle(const json &params) {

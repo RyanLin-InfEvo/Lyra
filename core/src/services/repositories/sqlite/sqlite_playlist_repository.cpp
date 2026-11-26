@@ -112,7 +112,9 @@ tl::expected<std::vector<std::string>, std::string> SqlitePlaylistRepository::ge
         auto &db = m_context.get_db();
 
         SQLite::Statement query(
-            db, "SELECT track_id FROM Playlist_Track WHERE playlist_id = ? ORDER BY position ASC, track_id ASC");
+            db,
+            "SELECT track_id FROM Playlist_Track WHERE playlist_id = ? "
+            "ORDER BY (position IS NULL) ASC, position ASC, track_id ASC");
         query.bind(1, playlist_id);
         return SqliteHelper::fetch_all(query, [](SQLite::Statement &q) {
             return q.getColumn(0).getString();
@@ -127,7 +129,9 @@ tl::expected<std::string, std::string> SqlitePlaylistRepository::get_first_track
     try {
         auto &db = m_context.get_db();
         SQLite::Statement query(
-            db, "SELECT track_id FROM Playlist_Track WHERE playlist_id = ? ORDER BY position ASC LIMIT 1");
+            db,
+            "SELECT track_id FROM Playlist_Track WHERE playlist_id = ? "
+            "ORDER BY (position IS NULL) ASC, position ASC, track_id ASC LIMIT 1");
         query.bind(1, playlist_id);
 
         auto track_id = SqliteHelper::fetch_one(query, [](SQLite::Statement &q) {
@@ -136,6 +140,128 @@ tl::expected<std::string, std::string> SqlitePlaylistRepository::get_first_track
         if (track_id)
             return *track_id;
         return tl::unexpected("Playlist is empty.");
+    } catch (const std::exception &e) {
+        return tl::unexpected(e.what());
+    }
+}
+
+tl::expected<void, std::string> SqlitePlaylistRepository::delete_playlist(
+    const std::string &playlist_id) {
+    try {
+        return m_context.with_transaction([&]() -> tl::expected<void, std::string> {
+            auto &db = m_context.get_db();
+
+            {
+                SQLite::Statement check_playlist(db, "SELECT 1 FROM Playlist WHERE id = ?");
+                check_playlist.bind(1, playlist_id);
+                const bool exists = check_playlist.executeStep();
+                check_playlist.reset();
+                if (!exists) {
+                    return tl::unexpected("Playlist not found.");
+                }
+            }
+
+            {
+                SQLite::Statement del_tracks(db, "DELETE FROM Playlist_Track WHERE playlist_id = ?");
+                del_tracks.bind(1, playlist_id);
+                del_tracks.exec();
+                del_tracks.reset();
+            }
+
+            {
+                SQLite::Statement del_playlist(db, "DELETE FROM Playlist WHERE id = ?");
+                del_playlist.bind(1, playlist_id);
+                const int affected = del_playlist.exec();
+                del_playlist.reset();
+                if (affected == 0) {
+                    return tl::unexpected("Playlist not found.");
+                }
+            }
+
+            {
+                SQLite::Statement del_entity(
+                    db, "DELETE FROM Entity WHERE id = ? AND entity_type = 'playlist'");
+                del_entity.bind(1, playlist_id);
+                const int affected = del_entity.exec();
+                del_entity.reset();
+                if (affected == 0) {
+                    return tl::unexpected("Playlist not found.");
+                }
+            }
+
+            return {};
+        });
+    } catch (const std::exception &e) {
+        return tl::unexpected(e.what());
+    }
+}
+
+tl::expected<std::vector<std::string>, std::string> SqlitePlaylistRepository::reorder_tracks(
+    const std::string &playlist_id, int old_index, int new_index) {
+    try {
+        return m_context.with_transaction([&]() -> tl::expected<std::vector<std::string>, std::string> {
+            auto &db = m_context.get_db();
+
+            {
+                SQLite::Statement check_playlist(db, "SELECT 1 FROM Playlist WHERE id = ?");
+                check_playlist.bind(1, playlist_id);
+                const bool exists = check_playlist.executeStep();
+                check_playlist.reset();
+                if (!exists) {
+                    return tl::unexpected("Playlist not found.");
+                }
+            }
+
+            std::vector<std::string> track_ids;
+            {
+                SQLite::Statement select_tracks(
+                    db,
+                    "SELECT track_id FROM Playlist_Track WHERE playlist_id = ? "
+                    "ORDER BY (position IS NULL) ASC, position ASC, track_id ASC");
+                select_tracks.bind(1, playlist_id);
+                track_ids = SqliteHelper::fetch_all(select_tracks, [](SQLite::Statement &q) {
+                    return q.getColumn(0).getString();
+                });
+            }
+
+            if (track_ids.empty() || old_index < 0 || new_index < 0 ||
+                static_cast<size_t>(old_index) >= track_ids.size() ||
+                static_cast<size_t>(new_index) >= track_ids.size()) {
+                return tl::unexpected("Index out of range.");
+            }
+
+            if (old_index == new_index) {
+                return track_ids;
+            }
+
+            std::string moved = std::move(track_ids[static_cast<size_t>(old_index)]);
+            track_ids.erase(track_ids.begin() + old_index);
+            track_ids.insert(track_ids.begin() + new_index, std::move(moved));
+
+            {
+                SQLite::Statement update_stmt(
+                    db,
+                    "UPDATE Playlist_Track SET position = ? WHERE playlist_id = ? AND track_id = ?");
+                for (size_t i = 0; i < track_ids.size(); ++i) {
+                    update_stmt.reset();
+                    update_stmt.clearBindings();
+                    update_stmt.bind(1, static_cast<int>(i));
+                    update_stmt.bind(2, playlist_id);
+                    update_stmt.bind(3, track_ids[i]);
+                    if (update_stmt.exec() != 1) {
+                        update_stmt.reset();
+                        return tl::unexpected("Failed to update playlist track position.");
+                    }
+                }
+                update_stmt.reset();
+            }
+
+            if (auto touch_res = touch_entity(playlist_id); !touch_res) {
+                return tl::unexpected(touch_res.error());
+            }
+
+            return track_ids;
+        });
     } catch (const std::exception &e) {
         return tl::unexpected(e.what());
     }

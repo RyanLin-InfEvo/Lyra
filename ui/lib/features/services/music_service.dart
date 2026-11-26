@@ -93,6 +93,16 @@ abstract class MusicService {
   });
 
   /// Reorder tracks within the specified playlist.
+  ///
+  /// Note: This interface currently follows Flutter `ReorderableListView.onReorder`
+  /// pre-removal index semantics (as used by `AppShell` and `MockMusicService`),
+  /// where dragging down may pass `newIndex == trackCount`.
+  ///
+  /// Core RPC `ReorderPlaylistTracks` expects 0-based destination indices in
+  /// `[0, trackCount - 1]` (inclusive). A Core FFI `MusicService` implementation
+  /// MUST normalize `if (oldIndex < newIndex) newIndex -= 1;` inside its RPC
+  /// adapter (avoid double-decrementing at the `AppShell` call site), otherwise
+  /// `newIndex == trackCount` will be rejected with `OutOfRange`.
   Future<void> reorderPlaylistTracks(
     String playlistId,
     int oldIndex,

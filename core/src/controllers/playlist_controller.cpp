@@ -53,4 +53,13 @@ tl::expected<std::vector<Playlist>, std::string> PlaylistController::get_by_titl
     return m_repo.get_by_title(title);
 }
 
+tl::expected<void, std::string> PlaylistController::delete_playlist(const std::string &playlist_id) {
+    return m_repo.delete_playlist(playlist_id);
+}
+
+tl::expected<std::vector<std::string>, std::string> PlaylistController::reorder_tracks(
+    const std::string &playlist_id, int old_index, int new_index) {
+    return m_repo.reorder_tracks(playlist_id, old_index, new_index);
+}
+
 } // namespace lyra

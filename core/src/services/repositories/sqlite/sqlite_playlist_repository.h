@@ -27,6 +27,9 @@ class SqlitePlaylistRepository : public IPlaylistRepository, public SqliteEntity
     tl::expected<std::vector<std::string>, std::string> get_tracks(const std::string &playlist_id) override;
     tl::expected<std::string, std::string> get_first_track_id(const std::string &playlist_id) override;
     tl::expected<std::vector<Playlist>, std::string> get_by_title(const std::string &title) override;
+    tl::expected<void, std::string> delete_playlist(const std::string &playlist_id) override;
+    tl::expected<std::vector<std::string>, std::string> reorder_tracks(
+        const std::string &playlist_id, int old_index, int new_index) override;
 
   protected:
     tl::expected<void, std::string> do_insert(SQLite::Database &db, const Playlist &playlist) override;

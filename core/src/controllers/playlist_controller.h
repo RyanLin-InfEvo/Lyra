@@ -27,6 +27,12 @@ class PlaylistController {
     tl::expected<void, std::string> remove_track(const std::string &playlist_id, const std::string &track_id);
     tl::expected<std::vector<std::string>, std::string> get_tracks(const std::string &playlist_id);
     tl::expected<std::vector<Playlist>, std::string> get_by_title(const std::string &title);
+    tl::expected<void, std::string> delete_playlist(const std::string &playlist_id);
+
+    /// Atomically reorders tracks using 0-based destination indices in `[0, count - 1]`.
+    /// UI callers using Flutter `ReorderableListView.onReorder` must decrement `newIndex` when `oldIndex < newIndex`.
+    tl::expected<std::vector<std::string>, std::string> reorder_tracks(
+        const std::string &playlist_id, int old_index, int new_index);
 
   private:
     IPlaylistRepository &m_repo;

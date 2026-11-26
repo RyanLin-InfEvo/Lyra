@@ -1856,6 +1856,147 @@ bool test_hydration_lossless_ranking_symmetry(SqliteDatabaseContext &ctx) {
     return true;
 }
 
+bool test_playlist_delete_and_reorder(SqliteDatabaseContext &ctx) {
+    std::cout << "Running test_playlist_delete_and_reorder..." << std::endl;
+    SqlitePlaylistRepository repo(ctx);
+    SqliteTrackRepository track_repo(ctx);
+
+    Track ta{"track-reord-a", "pcm-reord-a", std::nullopt, "Song A"};
+    Track tb{"track-reord-b", "pcm-reord-b", std::nullopt, "Song B"};
+    Track tc{"track-reord-c", "pcm-reord-c", std::nullopt, "Song C"};
+    assert(track_repo.insert(ta).has_value());
+    assert(track_repo.insert(tb).has_value());
+    assert(track_repo.insert(tc).has_value());
+
+    Playlist pl;
+    pl.id = "playlist-reord-1";
+    pl.title = "Reorder Test";
+    assert(repo.insert(pl).has_value());
+
+    // Empty playlist reorder -> Index out of range.
+    auto empty_reord = repo.reorder_tracks(pl.id, 0, 0);
+    assert(!empty_reord.has_value());
+    assert(empty_reord.error() == "Index out of range.");
+
+    assert(repo.add_track(pl.id, ta.id, 0).has_value());
+    assert(repo.add_track(pl.id, tb.id, 1).has_value());
+    assert(repo.add_track(pl.id, tc.id, 2).has_value());
+
+    // Move forward: 0 -> 2 => [B, C, A]
+    auto fwd = repo.reorder_tracks(pl.id, 0, 2);
+    assert(fwd.has_value());
+    assert((*fwd) == (std::vector<std::string>{tb.id, tc.id, ta.id}));
+    assert(repo.get_tracks(pl.id).value() == (*fwd));
+
+    // Move backward: 2 -> 0 => [A, B, C]
+    auto bwd = repo.reorder_tracks(pl.id, 2, 0);
+    assert(bwd.has_value());
+    assert((*bwd) == (std::vector<std::string>{ta.id, tb.id, tc.id}));
+    assert(repo.get_tracks(pl.id).value() == (*bwd));
+
+    // No-op: 1 -> 1
+    auto noop = repo.reorder_tracks(pl.id, 1, 1);
+    assert(noop.has_value());
+    assert((*noop) == (std::vector<std::string>{ta.id, tb.id, tc.id}));
+
+    // Out of bounds checks leave order untouched
+    for (auto [o, n] : std::vector<std::pair<int, int>>{{-1, 0}, {0, -1}, {3, 0}, {0, 3}}) {
+        auto bad = repo.reorder_tracks(pl.id, o, n);
+        assert(!bad.has_value());
+        assert(bad.error() == "Index out of range.");
+        assert(repo.get_tracks(pl.id).value() == (std::vector<std::string>{ta.id, tb.id, tc.id}));
+    }
+
+    // Atomic transaction rollback test via SQLite BEFORE UPDATE trigger
+    {
+        auto &db = ctx.get_db();
+        db.exec(
+            "CREATE TRIGGER trg_test_fail_reorder BEFORE UPDATE ON Playlist_Track "
+            "WHEN NEW.track_id = 'track-reord-a' "
+            "BEGIN SELECT RAISE(ABORT, 'simulated mid-reorder failure'); END;");
+
+        auto failed_reorder = repo.reorder_tracks(pl.id, 0, 2);
+        db.exec("DROP TRIGGER IF EXISTS trg_test_fail_reorder;");
+
+        assert(!failed_reorder.has_value());
+        // Verify all positions rolled back intact to [0, 1, 2] for [A, B, C]
+        assert(repo.get_tracks(pl.id).value() == (std::vector<std::string>{ta.id, tb.id, tc.id}));
+        SQLite::Statement pos_stmt(
+            db, "SELECT track_id, position FROM Playlist_Track WHERE playlist_id = ? ORDER BY position ASC");
+        pos_stmt.bind(1, pl.id);
+        std::vector<std::pair<std::string, int>> rows;
+        while (pos_stmt.executeStep()) {
+            rows.emplace_back(pos_stmt.getColumn(0).getString(), pos_stmt.getColumn(1).getInt());
+        }
+        pos_stmt.reset();
+        assert(rows.size() == 3);
+        assert(rows[0] == std::make_pair(ta.id, 0));
+        assert(rows[1] == std::make_pair(tb.id, 1));
+        assert(rows[2] == std::make_pair(tc.id, 2));
+    }
+
+    // Passing a Track ID to delete_playlist / reorder_tracks must fail with Playlist not found and not delete Track
+    auto del_track_as_pl = repo.delete_playlist(ta.id);
+    assert(!del_track_as_pl.has_value());
+    assert(del_track_as_pl.error() == "Playlist not found.");
+    assert(track_repo.get(ta.id).has_value());
+
+    auto reord_missing = repo.reorder_tracks("nonexistent-playlist", 0, 1);
+    assert(!reord_missing.has_value());
+    assert(reord_missing.error() == "Playlist not found.");
+
+    // Delete playlist atomically removes Playlist_Track, Playlist, and Entity while keeping Tracks
+    assert(repo.delete_playlist(pl.id).has_value());
+    assert(!repo.get(pl.id).has_value());
+    assert(repo.get_tracks(pl.id).value().empty());
+    {
+        auto &db = ctx.get_db();
+        SQLite::Statement check_ent(db, "SELECT 1 FROM Entity WHERE id = ?");
+        check_ent.bind(1, pl.id);
+        assert(!check_ent.executeStep());
+        check_ent.reset();
+    }
+    assert(track_repo.get(ta.id).has_value());
+    assert(track_repo.get(tb.id).has_value());
+    assert(track_repo.get(tc.id).has_value());
+
+    auto del_again = repo.delete_playlist(pl.id);
+    assert(!del_again.has_value());
+    assert(del_again.error() == "Playlist not found.");
+
+    // NULL-position ordering & reorder: NULL position sorts LAST (not first)
+    Playlist pl_null;
+    pl_null.id = "playlist-null-pos";
+    pl_null.title = "Null Pos Playlist";
+    assert(repo.insert(pl_null).has_value());
+    assert(repo.add_track(pl_null.id, ta.id, 0).has_value());
+    assert(repo.add_track(pl_null.id, tb.id, 1).has_value());
+    assert(repo.add_track(pl_null.id, tc.id, std::nullopt).has_value());
+
+    auto null_tracks = repo.get_tracks(pl_null.id);
+    assert(null_tracks.has_value());
+    assert((*null_tracks) == (std::vector<std::string>{ta.id, tb.id, tc.id}));
+
+    auto first_non_null = repo.get_first_track_id(pl_null.id);
+    assert(first_non_null.has_value() && *first_non_null == ta.id);
+
+    auto reord_null = repo.reorder_tracks(pl_null.id, 2, 0);
+    assert(reord_null.has_value());
+    assert((*reord_null) == (std::vector<std::string>{tc.id, ta.id, tb.id}));
+    assert(repo.get_tracks(pl_null.id).value() == (*reord_null));
+
+    // All-NULL positions: deterministic tie-breaking on track_id ASC in get_first_track_id
+    Playlist pl_all_null;
+    pl_all_null.id = "playlist-all-null-pos";
+    pl_all_null.title = "All Null Pos Playlist";
+    assert(repo.insert(pl_all_null).has_value());
+    assert(repo.add_track(pl_all_null.id, tb.id, std::nullopt).has_value());
+    assert(repo.add_track(pl_all_null.id, ta.id, std::nullopt).has_value());
+    auto first_tie = repo.get_first_track_id(pl_all_null.id);
+    assert(first_tie.has_value() && *first_tie == ta.id);
+
+    return true;
+}
 
 int main() {
     std::string db_path = "test_repo.db";

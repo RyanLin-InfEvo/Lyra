@@ -109,9 +109,11 @@ class Router {
     json handleUpdatePlaylist(const json &p);
     json handleGetPlaylist(const json &p);
     json handleListPlaylists(const json &p);
+    json handleDeletePlaylist(const json &p);
     json handleAddPlaylistTrack(const json &p);
     json handleRemovePlaylistTrack(const json &p);
     json handleGetPlaylistTracks(const json &p);
+    json handleReorderPlaylistTracks(const json &p);
 
     json handleGetTracksByTitle(const json &p);
     json handleGetArtistsByName(const json &p);

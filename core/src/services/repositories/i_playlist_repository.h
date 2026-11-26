@@ -36,6 +36,19 @@ class IPlaylistRepository {
         const std::string &playlist_id) = 0;
     virtual tl::expected<std::vector<Playlist>, std::string> get_by_title(
         const std::string &title) = 0;
+
+    virtual tl::expected<void, std::string> delete_playlist(
+        const std::string &playlist_id) = 0;
+
+    /**
+     * @brief Atomically reorders a track inside a playlist within a single transaction.
+     *
+     * @note `old_index` and `new_index` are 0-based destination indices in `[0, count - 1]`.
+     *       Callers using Flutter `ReorderableListView.onReorder(oldIndex, newIndex)` must
+     *       adjust `if (oldIndex < newIndex) newIndex -= 1;` before calling this method.
+     */
+    virtual tl::expected<std::vector<std::string>, std::string> reorder_tracks(
+        const std::string &playlist_id, int old_index, int new_index) = 0;
 };
 
 } // namespace lyra
