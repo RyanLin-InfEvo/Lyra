@@ -684,27 +684,32 @@ class TestAudioController(BaseLyraTestCase):
     def test_get_waveform_cache_acceleration(self):
         """Test waveform cache creation and cache hit performance acceleration"""
         wav_path = self._generate_wav_file("cached_waveform.wav", 2.0)
-        res_ingest = self.dispatch("IngestAsset", {"source_path": wav_path})
-        self.assertResponseCode(res_ingest, 200)
-        pcm_hash = res_ingest["data"]["audio"]["pcm_hash"]
+        set_fast = self.dispatch("system.set_config", {"ingestion": {"mode": "fast"}})
+        self.assertResponseCode(set_fast, 200)
+        try:
+            res_ingest = self.dispatch("IngestAsset", {"source_path": wav_path})
+            self.assertResponseCode(res_ingest, 200)
+            pcm_hash = res_ingest["data"]["audio"]["pcm_hash"]
 
-        cache_file = os.path.join(self.test_db_dir, ".cache", "waveforms", f"{pcm_hash}.bin")
-        self.assertFalse(os.path.exists(cache_file))
+            cache_file = os.path.join(self.test_db_dir, ".cache", "waveforms", f"{pcm_hash}.bin")
+            self.assertFalse(os.path.exists(cache_file))
 
-        # First call: computes and creates binary cache
-        res_1 = self.dispatch("audio.get_waveform", {"pcm_hash": pcm_hash})
-        self.assertResponseCode(res_1, 200)
+            # First call: computes and creates binary cache
+            res_1 = self.dispatch("audio.get_waveform", {"pcm_hash": pcm_hash})
+            self.assertResponseCode(res_1, 200)
 
-        self.assertTrue(os.path.exists(cache_file))
-        # 16 bytes header + 1000 points * 12 bytes = 12016 bytes
-        self.assertEqual(os.path.getsize(cache_file), 12016)
+            self.assertTrue(os.path.exists(cache_file))
+            # 16 bytes header + 1000 points * 12 bytes = 12016 bytes
+            self.assertEqual(os.path.getsize(cache_file), 12016)
 
-        # Second call: cache hit
-        res_2 = self.dispatch("audio.get_waveform", {"pcm_hash": pcm_hash})
-        self.assertResponseCode(res_2, 200)
+            # Second call: cache hit
+            res_2 = self.dispatch("audio.get_waveform", {"pcm_hash": pcm_hash})
+            self.assertResponseCode(res_2, 200)
 
-        self.assertEqual(res_1["data"]["peaks"], res_2["data"]["peaks"])
-        self.assertEqual(res_1["data"]["rms"], res_2["data"]["rms"])
+            self.assertEqual(res_1["data"]["peaks"], res_2["data"]["peaks"])
+            self.assertEqual(res_1["data"]["rms"], res_2["data"]["rms"])
+        finally:
+            self.dispatch("system.set_config", {"ingestion": {"mode": "full"}})
 
     def test_get_waveform_cache_corruption_self_healing(self):
         """Test that corrupted cache file is detected, removed, and self-healed"""

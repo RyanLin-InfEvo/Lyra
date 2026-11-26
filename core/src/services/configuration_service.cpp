@@ -15,27 +15,144 @@
 #include <cmath>
 #include <filesystem>
 #include <fmt/core.h>
+#include <initializer_list>
 #include <limits>
 #include <optional>
+#include <string_view>
 #include <unordered_map>
 #include <vector>
 
 namespace lyra {
 
+namespace {
+
+SettingSpec make_read_only_spec(std::string category,
+                                std::string key,
+                                SettingType type) {
+    std::string full_key = category + "." + key;
+    std::string err_msg = full_key + " is read-only and cannot be modified";
+    return SettingSpec{
+        .category = std::move(category),
+        .key = std::move(key),
+        .full_key = std::move(full_key),
+        .type = type,
+        .is_persisted = false,
+        .is_read_only = true,
+        .default_string = "",
+        .validate = [err_msg](const json &, const ConfigurationService &) -> std::optional<json> {
+            return ApiResponse::error({ErrorType::InvalidValue, err_msg});
+        },
+        .load_from_string = [](const std::string &, ConfigurationService &) -> bool { return true; },
+        .reset_to_default = [](ConfigurationService &) {},
+        .has_changed = [](const json &, const ConfigurationService &) -> bool { return false; },
+        .to_db_string = [](const json &) -> std::string { return ""; },
+        .commit_value = [](const json &, ConfigurationService &) {},
+        .apply = [](const json &, ConfigurationService &) {},
+    };
+}
+
+SettingSpec make_enum_string_spec(std::string category,
+                                  std::string key,
+                                  std::string default_val,
+                                  std::vector<std::string> allowed_values,
+                                  std::string ConfigurationService::*member_ptr) {
+    std::string full_key = category + "." + key;
+    std::string allowed_list;
+    for (size_t i = 0; i < allowed_values.size(); ++i) {
+        if (i > 0) allowed_list += ", ";
+        allowed_list += allowed_values[i];
+    }
+    std::string err_msg = full_key + " must be one of: " + allowed_list;
+
+    auto is_allowed = [allowed_values](std::string_view v) {
+        return std::find(allowed_values.begin(), allowed_values.end(), v) != allowed_values.end();
+    };
+
+    return SettingSpec{
+        .category = std::move(category),
+        .key = std::move(key),
+        .full_key = std::move(full_key),
+        .type = SettingType::String,
+        .is_persisted = true,
+        .is_read_only = false,
+        .default_string = default_val,
+        .validate = [is_allowed, err_msg](const json &val, const ConfigurationService &) -> std::optional<json> {
+            if (!is_allowed(val.get_ref<const std::string &>())) {
+                return ApiResponse::error({ErrorType::InvalidValue, err_msg});
+            }
+            return std::nullopt;
+        },
+        .load_from_string = [is_allowed, member_ptr](const std::string &str, ConfigurationService &svc) -> bool {
+            if (!is_allowed(str)) {
+                return false;
+            }
+            svc.*member_ptr = str;
+            return true;
+        },
+        .reset_to_default = [default_val, member_ptr](ConfigurationService &svc) { svc.*member_ptr = default_val; },
+        .has_changed = [member_ptr](const json &val, const ConfigurationService &svc) -> bool {
+            return val.get_ref<const std::string &>() != svc.*member_ptr;
+        },
+        .to_db_string = [](const json &val) -> std::string { return val.get<std::string>(); },
+        .commit_value = [member_ptr](const json &val, ConfigurationService &svc) { svc.*member_ptr = val.get<std::string>(); },
+        .apply = [](const json &, ConfigurationService &) {},
+    };
+}
+
+std::string normalize_storage_dir(const std::string &path_str) {
+    if (path_str.empty()) {
+        return "";
+    }
+    const auto norm_path = std::filesystem::path(path_str).lexically_normal();
+    std::string normalized = norm_path.string();
+    const size_t min_len = std::max<size_t>(1, norm_path.root_path().string().size());
+#ifdef _WIN32
+    auto is_sep = [](char c) { return c == '/' || c == '\\'; };
+#else
+    auto is_sep = [](char c) { return c == '/'; };
+#endif
+    while (normalized.size() > min_len && is_sep(normalized.back())) {
+        normalized.pop_back();
+    }
+    return normalized;
+}
+
+std::string resolve_database_path(const std::string &storage_root, const std::string &database_path) {
+    if (!database_path.empty()) {
+        return std::filesystem::path(database_path).lexically_normal().string();
+    }
+    if (storage_root.empty()) {
+        return "";
+    }
+    return (std::filesystem::path(storage_root) / "lyra.db").lexically_normal().string();
+}
+
+std::string resolve_cas_objects_dir(const std::string &storage_root) {
+    if (storage_root.empty()) {
+        return "";
+    }
+    return (std::filesystem::path(storage_root) / "objects").lexically_normal().string();
+}
+
+} // namespace
+
 ConfigurationService::ConfigurationService(IDatabaseContext &db_context,
                                            const std::string &storage_root,
-                                           AudioEngine *audio_engine)
+                                           AudioEngine *audio_engine,
+                                           const std::string &database_path)
     : m_db_context(db_context),
-      m_storage_root(storage_root),
+      m_storage_root(normalize_storage_dir(storage_root)),
+      m_database_path(resolve_database_path(m_storage_root, database_path)),
+      m_cas_objects_dir(resolve_cas_objects_dir(m_storage_root)),
       m_audio_engine(audio_engine) {
+    seed_defaults();
+    load_config();
     if (m_audio_engine) {
         m_audio_engine->set_config_downgrade_callback(
             [this](const std::string &category, const std::string &key, const nlohmann::json &value) {
                 sync_runtime_downgrade(category, key, value);
             });
     }
-    seed_defaults();
-    load_config();
     apply_runtime_settings();
 }
 
@@ -124,6 +241,11 @@ const std::vector<SettingSpec> &ConfigurationService::get_specs() {
                     return ApiResponse::error(
                         {ErrorType::OutOfRange, "database.cache_size_kb exceeds maximum integer value"});
                 }
+                if (*v > MAX_CACHE_SIZE_KB) {
+                    return ApiResponse::error(
+                        {ErrorType::OutOfRange,
+                         fmt::format("database.cache_size_kb must be at most {} KiB (4 GiB)", MAX_CACHE_SIZE_KB)});
+                }
                 if (*v < MIN_CACHE_SIZE_KB) {
                     return ApiResponse::error(
                         {ErrorType::OutOfRange, "database.cache_size_kb must be at least 1024 KiB"});
@@ -134,7 +256,7 @@ const std::vector<SettingSpec> &ConfigurationService::get_specs() {
                 try {
                     size_t idx = 0;
                     int64_t parsed = std::stoll(str, &idx);
-                    if (idx != str.size() || parsed < MIN_CACHE_SIZE_KB || parsed > std::numeric_limits<int>::max()) {
+                    if (idx != str.size() || parsed < MIN_CACHE_SIZE_KB || parsed > MAX_CACHE_SIZE_KB) {
                         return false;
                     }
                     svc.m_cache_size_kb = static_cast<int>(parsed);
@@ -538,6 +660,84 @@ const std::vector<SettingSpec> &ConfigurationService::get_specs() {
             .commit_value = [](const json &, ConfigurationService &) {},
             .apply = [](const json &, ConfigurationService &) {},
         },
+        // storage.database_path (read-only)
+        make_read_only_spec("storage", "database_path", SettingType::String),
+        // storage.cas_objects_dir (read-only)
+        make_read_only_spec("storage", "cas_objects_dir", SettingType::String),
+        // Note: audio.volume_mode, audio.resampler_quality, audio.dsd_mode, and
+        // ingestion.parallel_threads are validated and persisted contract keys;
+        // live DSP / worker-pool runtime wiring is deferred to dedicated engine tasks.
+        // audio.volume_mode
+        make_enum_string_spec("audio",
+                              "volume_mode",
+                              DEFAULT_VOLUME_MODE,
+                              {"linear", "log", "fixed"},
+                              &ConfigurationService::m_volume_mode),
+        // audio.resampler_quality
+        make_enum_string_spec("audio",
+                              "resampler_quality",
+                              DEFAULT_RESAMPLER_QUALITY,
+                              {"native", "sinc_medium", "soxr_hq"},
+                              &ConfigurationService::m_resampler_quality),
+        // audio.dsd_mode
+        make_enum_string_spec("audio",
+                              "dsd_mode",
+                              DEFAULT_DSD_MODE,
+                              {"dop", "pcm_transcode"},
+                              &ConfigurationService::m_dsd_mode),
+        // ingestion.parallel_threads
+        {
+            .category = "ingestion",
+            .key = "parallel_threads",
+            .full_key = "ingestion.parallel_threads",
+            .type = SettingType::Int,
+            .is_persisted = true,
+            .is_read_only = false,
+            .default_string = std::to_string(DEFAULT_INGESTION_PARALLEL_THREADS),
+            .validate = [](const json &val, const ConfigurationService &) -> std::optional<json> {
+                auto v = JsonHelper::try_get_int64(val);
+                if (!v || *v > MAX_INGESTION_PARALLEL_THREADS) {
+                    return ApiResponse::error(
+                        {ErrorType::OutOfRange,
+                         fmt::format("ingestion.parallel_threads must be at most {}",
+                                     MAX_INGESTION_PARALLEL_THREADS)});
+                }
+                if (*v < MIN_INGESTION_PARALLEL_THREADS) {
+                    return ApiResponse::error(
+                        {ErrorType::OutOfRange, "ingestion.parallel_threads cannot be negative"});
+                }
+                return std::nullopt;
+            },
+            .load_from_string = [](const std::string &str, ConfigurationService &svc) -> bool {
+                try {
+                    size_t idx = 0;
+                    int64_t parsed = std::stoll(str, &idx);
+                    if (idx != str.size() || parsed < MIN_INGESTION_PARALLEL_THREADS ||
+                        parsed > MAX_INGESTION_PARALLEL_THREADS) {
+                        return false;
+                    }
+                    svc.m_ingestion_parallel_threads = static_cast<int>(parsed);
+                    return true;
+                } catch (...) {
+                    return false;
+                }
+            },
+            .reset_to_default = [](ConfigurationService &svc) { svc.m_ingestion_parallel_threads = DEFAULT_INGESTION_PARALLEL_THREADS; },
+            .has_changed = [](const json &val, const ConfigurationService &svc) -> bool {
+                return val.get<int>() != svc.m_ingestion_parallel_threads;
+            },
+            .to_db_string = [](const json &val) -> std::string { return std::to_string(val.get<int>()); },
+            .commit_value = [](const json &val, ConfigurationService &svc) { svc.m_ingestion_parallel_threads = val.get<int>(); },
+            .apply = [](const json &, ConfigurationService &) {},
+        },
+        // ingestion.detected_cpu_cores (read-only)
+        make_read_only_spec("ingestion", "detected_cpu_cores", SettingType::Int),
+        // ingestion.mode
+        make_enum_string_spec("ingestion",
+                              "mode",
+                              DEFAULT_INGESTION_MODE,
+                              {"fast", "full"},
+                              &ConfigurationService::m_ingestion_mode),
     };
     return specs;
 }
@@ -634,19 +834,34 @@ void ConfigurationService::load_config() {
     }
 }
 
-json ConfigurationService::get_config_json_unlocked() const {
-    return json{
-        {"storage", {{"storage_root", m_storage_root}}},
-        {"database",
-         {{"cache_size_kb", m_cache_size_kb},
-          {"mmap_size_bytes", m_mmap_size_bytes},
-          {"busy_timeout_ms", m_busy_timeout_ms},
-          {"wal_autocheckpoint", m_wal_autocheckpoint}}},
-        {"audio",
-         {{"output_device_id", m_output_device_id},
-          {"volume", m_volume},
-          {"buffer_size_frames", m_buffer_size_frames},
-          {"exclusive_mode", m_exclusive_mode}}}};
+int ConfigurationService::detect_cpu_cores() {
+    unsigned int hw = std::thread::hardware_concurrency();
+    return hw > 0 ? static_cast<int>(hw) : 1;
+}
+
+std::string ConfigurationService::get_volume_mode() const {
+    std::lock_guard<std::mutex> lock(m_mutex);
+    return m_volume_mode;
+}
+
+std::string ConfigurationService::get_resampler_quality() const {
+    std::lock_guard<std::mutex> lock(m_mutex);
+    return m_resampler_quality;
+}
+
+std::string ConfigurationService::get_dsd_mode() const {
+    std::lock_guard<std::mutex> lock(m_mutex);
+    return m_dsd_mode;
+}
+
+int ConfigurationService::get_ingestion_parallel_threads() const {
+    std::lock_guard<std::mutex> lock(m_mutex);
+    return m_ingestion_parallel_threads;
+}
+
+std::string ConfigurationService::get_ingestion_mode() const {
+    std::lock_guard<std::mutex> lock(m_mutex);
+    return m_ingestion_mode;
 }
 
 json ConfigurationService::get_config_json() const {
@@ -658,7 +873,14 @@ json ConfigurationService::get_config_json() const {
     double volume;
     int buffer_size_frames;
     bool exclusive_mode;
+    std::string volume_mode;
+    std::string resampler_quality;
+    std::string dsd_mode;
+    int ingestion_parallel_threads;
+    std::string ingestion_mode;
     std::string storage_root;
+    std::string database_path;
+    std::string cas_objects_dir;
     bool updating;
     AudioEngine *engine;
 
@@ -672,7 +894,14 @@ json ConfigurationService::get_config_json() const {
         volume = m_volume;
         buffer_size_frames = m_buffer_size_frames;
         exclusive_mode = m_exclusive_mode;
+        volume_mode = m_volume_mode;
+        resampler_quality = m_resampler_quality;
+        dsd_mode = m_dsd_mode;
+        ingestion_parallel_threads = m_ingestion_parallel_threads;
+        ingestion_mode = m_ingestion_mode;
         storage_root = m_storage_root;
+        database_path = m_database_path;
+        cas_objects_dir = m_cas_objects_dir;
         updating = m_is_updating;
         engine = m_audio_engine;
     }
@@ -685,7 +914,10 @@ json ConfigurationService::get_config_json() const {
     }
 
     return json{
-        {"storage", {{"storage_root", storage_root}}},
+        {"storage",
+         {{"storage_root", storage_root},
+          {"database_path", database_path},
+          {"cas_objects_dir", cas_objects_dir}}},
         {"database",
          {{"cache_size_kb", cache_size_kb},
           {"mmap_size_bytes", mmap_size_bytes},
@@ -695,7 +927,14 @@ json ConfigurationService::get_config_json() const {
          {{"output_device_id", output_device_id},
           {"volume", volume},
           {"buffer_size_frames", buffer_size_frames},
-          {"exclusive_mode", exclusive_mode}}}};
+          {"exclusive_mode", exclusive_mode},
+          {"volume_mode", volume_mode},
+          {"resampler_quality", resampler_quality},
+          {"dsd_mode", dsd_mode}}},
+        {"ingestion",
+         {{"parallel_threads", ingestion_parallel_threads},
+          {"detected_cpu_cores", detect_cpu_cores()},
+          {"mode", ingestion_mode}}}};
 }
 
 void ConfigurationService::apply_cache_size(int kb) {

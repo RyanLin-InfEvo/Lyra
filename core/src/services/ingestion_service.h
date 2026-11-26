@@ -6,6 +6,7 @@
 
 #pragma once
 
+#include <filesystem>
 #include <memory>
 #include <nlohmann/json.hpp>
 #include <optional>
@@ -31,6 +32,7 @@ class ITrackRepository;
 class IImageRepository;
 class ISourceDataRepository;
 class TextService;
+class ConfigurationService;
 
 struct AssetIngestResult {
     Asset asset;
@@ -68,7 +70,8 @@ class IngestionService {
         const std::string &storage_root,
         IImageRepository *image_repo = nullptr,
         ISourceDataRepository *source_data_repo = nullptr,
-        TextService *text_service = nullptr);
+        TextService *text_service = nullptr,
+        const ConfigurationService *config_service = nullptr);
 
     tl::expected<AssetIngestResult, std::string> ingest_asset(
         const std::string &source_path,
@@ -77,6 +80,17 @@ class IngestionService {
     tl::expected<TrackImportResult, std::string> import_track(const TrackImportRequest &request);
 
   private:
+    tl::expected<AssetIngestResult, std::string> ingest_asset_internal(
+        const std::string &source_path,
+        const std::string &source_type,
+        const std::string &note,
+        bool precompute_waveform,
+        std::filesystem::path *out_audio_path = nullptr);
+
+    void precompute_waveform_if_needed(
+        const std::string &pcm_hash,
+        const std::filesystem::path &audio_file_path) const;
+
     IDatabaseContext &m_db_context;
     IAssetRepository &m_asset_repo;
     IAudioRepository &m_audio_repo;
@@ -87,6 +101,7 @@ class IngestionService {
     IImageRepository *m_image_repo;
     ISourceDataRepository *m_source_data_repo;
     TextService *m_text_service;
+    const ConfigurationService *m_config_service;
 };
 
 } // namespace lyra

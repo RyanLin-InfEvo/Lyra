@@ -166,6 +166,8 @@ Router::Router(const std::string &db_path) {
     m_track_controller = std::make_unique<TrackController>(*m_track_repo);
     m_work_controller = std::make_unique<WorkController>(*m_work_repo);
     m_audio_engine = std::make_unique<AudioEngine>();
+    m_configuration_service = std::make_unique<ConfigurationService>(
+        *m_db_context, m_storage_root, m_audio_engine.get(), db_path);
     m_text_service = std::make_unique<TextService>(
         *m_db_context,
         *m_asset_repo,
@@ -181,7 +183,8 @@ Router::Router(const std::string &db_path) {
         m_storage_root,
         m_image_repo.get(),
         m_source_data_repo.get(),
-        m_text_service.get());
+        m_text_service.get(),
+        m_configuration_service.get());
     m_cover_art_service = std::make_unique<CoverArtService>(
         *m_image_repo,
         *m_track_repo,
@@ -196,9 +199,6 @@ Router::Router(const std::string &db_path) {
         *m_track_repo,
         *m_audio_repo,
         *m_asset_repo);
-
-    m_configuration_service = std::make_unique<ConfigurationService>(
-        *m_db_context, m_storage_root, m_audio_engine.get());
 
     init_handlers();
 }

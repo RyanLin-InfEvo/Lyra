@@ -204,8 +204,10 @@ tl::expected<void, std::string> WaveformService::save_to_cache(
     // Atomically move temporary cache file to final destination
     std::filesystem::rename(tmp_file, target_file, ec);
     if (ec) {
-        std::filesystem::remove(tmp_file, ec);
-        return tl::make_unexpected("Failed to atomically rename cache file: " + ec.message());
+        const std::string rename_err = ec.message();
+        std::error_code rm_ec;
+        std::filesystem::remove(tmp_file, rm_ec);
+        return tl::make_unexpected("Failed to atomically rename cache file: " + rename_err);
     }
 
     return {};

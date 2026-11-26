@@ -28,11 +28,18 @@ class TestSystemConfig(BaseLyraTestCase):
                 "volume": 1.0,
                 "buffer_size_frames": 256,
                 "exclusive_mode": False,
+                "volume_mode": "fixed",
+                "resampler_quality": "soxr_hq",
+                "dsd_mode": "dop",
+            },
+            "ingestion": {
+                "parallel_threads": 0,
+                "mode": "full",
             },
         })
 
     def test_get_config_defaults(self):
-        """Test system.get_config returns the expected default dictionary without phantom settings."""
+        """Test system.get_config returns the expected default dictionary aligned with EngineConfig."""
         res = self.dispatch("system.get_config", {})
         self.assertResponseCode(res, 200)
 
@@ -40,11 +47,20 @@ class TestSystemConfig(BaseLyraTestCase):
         self.assertIn("storage", data)
         self.assertIn("database", data)
         self.assertIn("audio", data)
+        self.assertIn("ingestion", data)
 
         # Storage subsystem
         self.assertEqual(
             os.path.normpath(data["storage"].get("storage_root")),
             os.path.normpath(self.test_db_dir),
+        )
+        self.assertEqual(
+            os.path.normpath(data["storage"].get("database_path")),
+            os.path.normpath(os.path.join(self.test_db_dir, "lyra.db")),
+        )
+        self.assertEqual(
+            os.path.normpath(data["storage"].get("cas_objects_dir")),
+            os.path.normpath(os.path.join(self.test_db_dir, "objects")),
         )
 
         # Database subsystem
@@ -56,15 +72,22 @@ class TestSystemConfig(BaseLyraTestCase):
         # Audio subsystem
         self.assertEqual(data["audio"].get("output_device_id"), "default")
         self.assertAlmostEqual(data["audio"].get("volume"), 1.0, places=2)
+        self.assertEqual(data["audio"].get("volume_mode"), "fixed")
+        self.assertEqual(data["audio"].get("resampler_quality"), "soxr_hq")
+        self.assertEqual(data["audio"].get("dsd_mode"), "dop")
 
-        # Anti-Phantom / YAGNI assertions: Ensure no un-implemented subsystems exist
+        # Ingestion subsystem
+        self.assertEqual(data["ingestion"].get("parallel_threads"), 0)
+        detected_cores = data["ingestion"].get("detected_cpu_cores")
+        self.assertIsInstance(detected_cores, int)
+        self.assertNotIsInstance(detected_cores, bool)
+        self.assertGreaterEqual(detected_cores, 1)
+        self.assertEqual(data["ingestion"].get("mode"), "full")
+
+        # Anti-Phantom assertions: Ensure top-level phantom keys do not exist
         self.assertNotIn("dsd_mode", data)
         self.assertNotIn("resampler_quality", data)
         self.assertNotIn("volume_mode", data)
-        self.assertNotIn("ingestion", data)
-        self.assertNotIn("dsd_mode", data.get("audio", {}))
-        self.assertNotIn("resampler_quality", data.get("audio", {}))
-        self.assertNotIn("volume_mode", data.get("audio", {}))
 
         # Ensure no restart_required flag
         self.assertNotIn("restart_required", data)
@@ -162,16 +185,42 @@ class TestSystemConfig(BaseLyraTestCase):
 
     def test_boundary_validation_numeric_ranges(self):
         """Test boundary limits strictly reject out-of-range values and accept edge values."""
-        # 1. cache_size_kb >= 1024
+        # 1. cache_size_kb: 1024 <= cache_size_kb <= 4194304 (4 GiB)
         res = self.dispatch("system.set_config", {"database": {"cache_size_kb": 1023}})
         self.assertValidationError(res, expected_type="OutOfRange", expected_message_content="cache_size_kb")
 
         res = self.dispatch("system.set_config", {"database": {"cache_size_kb": -1}})
         self.assertValidationError(res, expected_type="OutOfRange", expected_message_content="cache_size_kb")
 
+        res = self.dispatch("system.set_config", {"database": {"cache_size_kb": 4194305}})
+        self.assertValidationError(res, expected_type="OutOfRange", expected_message_content="cache_size_kb")
+
         res = self.dispatch("system.set_config", {"database": {"cache_size_kb": 1024}})
         self.assertResponseCode(res, 200)
         self.assertEqual(res["data"]["database"]["cache_size_kb"], 1024)
+
+        res = self.dispatch("system.set_config", {"database": {"cache_size_kb": 4194304}})
+        self.assertResponseCode(res, 200)
+        self.assertEqual(res["data"]["database"]["cache_size_kb"], 4194304)
+
+        # 6. ingestion.parallel_threads: 0 <= parallel_threads <= 1024
+        res = self.dispatch("system.set_config", {"ingestion": {"parallel_threads": -1}})
+        self.assertValidationError(res, expected_type="OutOfRange", expected_message_content="parallel_threads")
+
+        res = self.dispatch("system.set_config", {"ingestion": {"parallel_threads": 1025}})
+        self.assertValidationError(res, expected_type="OutOfRange", expected_message_content="parallel_threads")
+
+        res = self.dispatch("system.set_config", {"ingestion": {"parallel_threads": 2147483648}})
+        self.assertValidationError(res, expected_type="OutOfRange", expected_message_content="parallel_threads")
+
+        for wraparound_val in (2**63, 2**64 - 1):
+            res = self.dispatch("system.set_config", {"ingestion": {"parallel_threads": wraparound_val}})
+            self.assertValidationError(res, expected_type="OutOfRange", expected_message_content="parallel_threads")
+
+        for valid_threads in (0, 1, 1024):
+            res = self.dispatch("system.set_config", {"ingestion": {"parallel_threads": valid_threads}})
+            self.assertResponseCode(res, 200)
+            self.assertEqual(res["data"]["ingestion"]["parallel_threads"], valid_threads)
 
         # 2. mmap_size_bytes >= 0
         res = self.dispatch("system.set_config", {"database": {"mmap_size_bytes": -1}})
@@ -749,5 +798,354 @@ class TestSystemConfig(BaseLyraTestCase):
         # Verify router is restored
         cfg_res = self.dispatch("system.get_config", {})
         self.assertResponseCode(cfg_res, 200)
+
+    def _generate_wav_file(self, filename, duration_sec=0.5, sample_rate=44100, amplitude=12000):
+        import math
+        path = os.path.join(self.test_db_dir, filename)
+        num_frames = int(sample_rate * duration_sec)
+        with wave.open(path, "wb") as wf:
+            wf.setnchannels(2)
+            wf.setsampwidth(2)
+            wf.setframerate(sample_rate)
+            samples = []
+            freq = 220.0 + (amplitude % 500)
+            for i in range(num_frames):
+                val = int(amplitude * math.sin(2.0 * math.pi * freq * i / sample_rate))
+                samples.append(val)
+                samples.append(val)
+            wf.writeframes(struct.pack(f"<{len(samples)}h", *samples))
+        return path
+
+    def test_ui_engine_config_save_payload_contract(self):
+        """Test system.set_config accepts the full EngineConfig.toSavePayload() structure and persists across reinit."""
+        # Pre-set a custom volume to ensure toSavePayload() (which omits audio.volume) preserves it
+        vol_res = self.dispatch("system.set_config", {"audio": {"volume": 0.42}})
+        self.assertResponseCode(vol_res, 200)
+
+        save_payload = {
+            "database": {
+                "cache_size_kb": 262144,
+                "mmap_size_bytes": 1073741824,
+                "busy_timeout_ms": 45000,
+                "wal_autocheckpoint": 2000,
+            },
+            "audio": {
+                "output_device_id": "default",
+                "buffer_size_frames": 512,
+                "exclusive_mode": True,
+                "volume_mode": "log",
+                "resampler_quality": "sinc_medium",
+                "dsd_mode": "pcm_transcode",
+            },
+            "ingestion": {
+                "parallel_threads": 12,
+                "mode": "fast",
+            },
+        }
+        res = self.dispatch("system.set_config", save_payload)
+        self.assertResponseCode(res, 200)
+        data = res.get("data", {})
+
+        # Verify read-only fields remain present in response
+        self.assertEqual(
+            os.path.normpath(data["storage"]["database_path"]),
+            os.path.normpath(os.path.join(self.test_db_dir, "lyra.db")),
+        )
+        self.assertEqual(
+            os.path.normpath(data["storage"]["cas_objects_dir"]),
+            os.path.normpath(os.path.join(self.test_db_dir, "objects")),
+        )
+        self.assertGreaterEqual(data["ingestion"]["detected_cpu_cores"], 1)
+
+        # Verify updated values & preserved volume
+        self.assertEqual(data["database"]["cache_size_kb"], 262144)
+        self.assertEqual(data["database"]["mmap_size_bytes"], 1073741824)
+        self.assertEqual(data["database"]["busy_timeout_ms"], 45000)
+        self.assertEqual(data["database"]["wal_autocheckpoint"], 2000)
+        self.assertAlmostEqual(data["audio"]["volume"], 0.42, places=2)
+        self.assertEqual(data["audio"]["buffer_size_frames"], 512)
+        self.assertIs(data["audio"]["exclusive_mode"], True)
+        self.assertEqual(data["audio"]["volume_mode"], "log")
+        self.assertEqual(data["audio"]["resampler_quality"], "sinc_medium")
+        self.assertEqual(data["audio"]["dsd_mode"], "pcm_transcode")
+        self.assertEqual(data["ingestion"]["parallel_threads"], 12)
+        self.assertEqual(data["ingestion"]["mode"], "fast")
+
+        # Verify persistence in SQLite and across lyra_init
+        init_res = self.lib.lyra_init(self.test_db_dir.encode("utf-8"))
+        self.assertEqual(init_res, 0)
+
+        get_res = self.dispatch("system.get_config", {})
+        self.assertResponseCode(get_res, 200)
+        restored = get_res.get("data", {})
+        self.assertAlmostEqual(restored["audio"]["volume"], 0.42, places=2)
+        self.assertEqual(restored["audio"]["volume_mode"], "log")
+        self.assertEqual(restored["audio"]["resampler_quality"], "sinc_medium")
+        self.assertEqual(restored["audio"]["dsd_mode"], "pcm_transcode")
+        self.assertEqual(restored["ingestion"]["parallel_threads"], 12)
+        self.assertEqual(restored["ingestion"]["mode"], "fast")
+
+    def test_audio_and_ingestion_enum_validation(self):
+        """Test valid enum transitions and strict rejection of invalid enum values and types."""
+        enum_cases = [
+            ("audio", "volume_mode", ["linear", "log", "fixed"],
+             ["", "LINEAR", "bit_perfect_lock_0db", "logarithmic_db", "bitperfect_lock_0db", "replaygain", 1, True, None, ["linear"]]),
+            ("audio", "resampler_quality", ["native", "sinc_medium", "soxr_hq"],
+             ["", "NATIVE", "vhq", "soxr_vhq", 2, False, None, {"q": "native"}]),
+            ("audio", "dsd_mode", ["dop", "pcm_transcode"],
+             ["", "DOP", "native", "dsd_native", 0, True, None, ["dop"]]),
+            ("ingestion", "mode", ["fast", "full"],
+             ["", "FAST", "FULL", "partial", 1, False, None, []]),
+        ]
+
+        for section, key, valid_values, invalid_values in enum_cases:
+            for val in valid_values:
+                res = self.dispatch("system.set_config", {section: {key: val}})
+                self.assertResponseCode(res, 200)
+                self.assertEqual(res["data"][section][key], val)
+
+                get_res = self.dispatch("system.get_config", {})
+                self.assertResponseCode(get_res, 200)
+                self.assertEqual(get_res["data"][section][key], val)
+
+            last_valid = valid_values[-1]
+            for bad in invalid_values:
+                err_res = self.dispatch("system.set_config", {section: {key: bad}})
+                self.assertValidationError(err_res, expected_type="InvalidValue", expected_message_content=key)
+                # Ensure state did not mutate on failure
+                after_res = self.dispatch("system.get_config", {})
+                self.assertEqual(after_res["data"][section][key], last_valid)
+
+    def test_parallel_threads_type_validation(self):
+        """Test strict integer type validation for ingestion.parallel_threads."""
+        for bad_val in ["4", 2.5, True, False, None, [4], {"threads": 4}]:
+            res = self.dispatch("system.set_config", {"ingestion": {"parallel_threads": bad_val}})
+            self.assertValidationError(res, expected_type="InvalidValue", expected_message_content="parallel_threads")
+
+    def test_read_only_keys_strict_rejection(self):
+        """Test storage.database_path, storage.cas_objects_dir, and ingestion.detected_cpu_cores strictly reject any write."""
+        cfg = self.dispatch("system.get_config", {})
+        self.assertResponseCode(cfg, 200)
+        cur_db_path = cfg["data"]["storage"]["database_path"]
+        cur_cas_dir = cfg["data"]["storage"]["cas_objects_dir"]
+        cur_cores = cfg["data"]["ingestion"]["detected_cpu_cores"]
+
+        read_only_cases = [
+            ("storage", "database_path", "/tmp/evil.db", cur_db_path, 123),
+            ("storage", "cas_objects_dir", "/tmp/evil_objects", cur_cas_dir, False),
+            ("ingestion", "detected_cpu_cores", cur_cores + 1, cur_cores, "16"),
+        ]
+
+        for section, key, diff_val, same_val, wrong_type_val in read_only_cases:
+            for candidate in (diff_val, same_val, wrong_type_val):
+                res = self.dispatch("system.set_config", {section: {key: candidate}})
+                self.assertValidationError(res, expected_type="InvalidValue", expected_message_content=key)
+
+            # Mixed payload with a valid mutable key must reject atomically without mutating the valid key
+            mixed_res = self.dispatch("system.set_config", {
+                section: {key: same_val},
+                "audio": {"volume": 0.33},
+            })
+            self.assertValidationError(mixed_res, expected_type="InvalidValue", expected_message_content=key)
+            check_res = self.dispatch("system.get_config", {})
+            self.assertAlmostEqual(check_res["data"]["audio"]["volume"], 1.0, places=2)
+
+    def test_new_config_keys_db_self_healing_and_idempotency(self):
+        """Test corrupted/missing DB rows for new keys self-heal on init and idempotent updates skip DB writes."""
+        self.execute_raw_sqls([
+            ("UPDATE System_Config SET value = '4194305' WHERE key = 'database.cache_size_kb';", ()),
+            ("UPDATE System_Config SET value = 'invalid_vol_mode' WHERE key = 'audio.volume_mode';", ()),
+            ("UPDATE System_Config SET value = 'bad_resampler' WHERE key = 'audio.resampler_quality';", ()),
+            ("UPDATE System_Config SET value = 'bad_dsd' WHERE key = 'audio.dsd_mode';", ()),
+            ("UPDATE System_Config SET value = '1025' WHERE key = 'ingestion.parallel_threads';", ()),
+            ("DELETE FROM System_Config WHERE key = 'ingestion.mode';", ()),
+        ])
+
+        init_res = self.lib.lyra_init(self.test_db_dir.encode("utf-8"))
+        self.assertEqual(init_res, 0)
+
+        get_res = self.dispatch("system.get_config", {})
+        self.assertResponseCode(get_res, 200)
+        data = get_res["data"]
+        self.assertEqual(data["database"]["cache_size_kb"], 131072)
+        self.assertEqual(data["audio"]["volume_mode"], "fixed")
+        self.assertEqual(data["audio"]["resampler_quality"], "soxr_hq")
+        self.assertEqual(data["audio"]["dsd_mode"], "dop")
+        self.assertEqual(data["ingestion"]["parallel_threads"], 0)
+        self.assertEqual(data["ingestion"]["mode"], "full")
+
+        # Also test negative parallel_threads self-heals
+        self.execute_raw_sqls([
+            ("UPDATE System_Config SET value = '-1' WHERE key = 'ingestion.parallel_threads';", ()),
+        ])
+        self.assertEqual(self.lib.lyra_init(self.test_db_dir.encode("utf-8")), 0)
+        self.assertEqual(
+            self.dispatch("system.get_config", {})["data"]["ingestion"]["parallel_threads"],
+            0,
+        )
+
+        # Verify idempotency on new keys (timestamps in System_Config must not change)
+        res_set = self.dispatch("system.set_config", {
+            "audio": {
+                "volume_mode": "linear",
+                "resampler_quality": "native",
+                "dsd_mode": "pcm_transcode",
+            },
+            "ingestion": {
+                "parallel_threads": 8,
+                "mode": "fast",
+            },
+        })
+        self.assertResponseCode(res_set, 200)
+
+        # Backdate updated_at so 1-second SQLite datetime('now') aliasing cannot mask an unwanted write
+        self.execute_raw_sqls([
+            ("UPDATE System_Config SET updated_at = '2000-01-01 00:00:00';", ()),
+        ])
+
+        db_path = os.path.join(self.test_db_dir, "lyra.db")
+        conn = sqlite3.connect(db_path)
+        cursor = conn.cursor()
+        cursor.execute("SELECT key, updated_at FROM System_Config ORDER BY key")
+        before_ts = dict(cursor.fetchall())
+        conn.close()
+
+        res_same = self.dispatch("system.set_config", {
+            "audio": {
+                "volume_mode": "linear",
+                "resampler_quality": "native",
+                "dsd_mode": "pcm_transcode",
+            },
+            "ingestion": {
+                "parallel_threads": 8,
+                "mode": "fast",
+            },
+        })
+        self.assertResponseCode(res_same, 200)
+
+        conn = sqlite3.connect(db_path)
+        cursor = conn.cursor()
+        cursor.execute("SELECT key, updated_at FROM System_Config ORDER BY key")
+        after_ts = dict(cursor.fetchall())
+        conn.close()
+        self.assertEqual(before_ts, after_ts)
+
+    def test_ingestion_mode_waveform_precomputation(self):
+        """Test ingestion.mode ('fast' vs 'full') controls post-ingestion waveform precomputation for IngestAsset and ImportTrack."""
+        import shutil
+        created_files = []
+        created_dirs = []
+        try:
+            # 1. Fast mode: IngestAsset and ImportTrack skip waveform precomputation
+            res_fast = self.dispatch("system.set_config", {"ingestion": {"mode": "fast"}})
+            self.assertResponseCode(res_fast, 200)
+
+            wav_fast_asset = self._generate_wav_file("wf_fast_asset.wav", duration_sec=0.5, amplitude=10100)
+            wav_fast_track = self._generate_wav_file("wf_fast_track.wav", duration_sec=0.5, amplitude=10200)
+            wav_fast_reimport = self._generate_wav_file("wf_fast_reimport.wav", duration_sec=0.5, amplitude=10500)
+            wav_nonfatal_dir = self._generate_wav_file("wf_nonfatal_dir.wav", duration_sec=0.5, amplitude=10600)
+            created_files.extend([wav_fast_asset, wav_fast_track, wav_fast_reimport, wav_nonfatal_dir])
+
+            ingest_fast = self.dispatch("IngestAsset", {"source_path": wav_fast_asset})
+            self.assertResponseCode(ingest_fast, 200)
+            pcm_fast_asset = ingest_fast["data"]["audio"]["pcm_hash"]
+            cache_fast_asset = os.path.join(self.test_db_dir, ".cache", "waveforms", f"{pcm_fast_asset}.bin")
+            self.assertFalse(os.path.exists(cache_fast_asset))
+
+            import_fast = self.dispatch("ImportTrack", {"source_path": wav_fast_track})
+            self.assertResponseCode(import_fast, 200)
+            pcm_fast_track = import_fast["data"]["pcm_hash"]
+            cache_fast_track = os.path.join(self.test_db_dir, ".cache", "waveforms", f"{pcm_fast_track}.bin")
+            self.assertFalse(os.path.exists(cache_fast_track))
+
+            ingest_reimport_prep = self.dispatch("IngestAsset", {"source_path": wav_fast_reimport})
+            self.assertResponseCode(ingest_reimport_prep, 200)
+            pcm_fast_reimport = ingest_reimport_prep["data"]["audio"]["pcm_hash"]
+            cache_fast_reimport = os.path.join(self.test_db_dir, ".cache", "waveforms", f"{pcm_fast_reimport}.bin")
+            self.assertFalse(os.path.exists(cache_fast_reimport))
+
+            ingest_nonfatal_prep = self.dispatch("IngestAsset", {"source_path": wav_nonfatal_dir})
+            self.assertResponseCode(ingest_nonfatal_prep, 200)
+            pcm_nonfatal = ingest_nonfatal_prep["data"]["audio"]["pcm_hash"]
+            cache_nonfatal_dir = os.path.join(self.test_db_dir, ".cache", "waveforms", f"{pcm_nonfatal}.bin")
+            self.assertFalse(os.path.exists(cache_nonfatal_dir))
+
+            # On-demand audio.get_waveform still lazily computes and caches the waveform
+            wf_lazy = self.dispatch("audio.get_waveform", {"pcm_hash": pcm_fast_track})
+            self.assertResponseCode(wf_lazy, 200)
+            self.assertTrue(os.path.exists(cache_fast_track))
+            self.assertEqual(os.path.getsize(cache_fast_track), 12016)
+
+            # 2. Full mode: IngestAsset and ImportTrack precompute waveform caches automatically
+            res_full = self.dispatch("system.set_config", {"ingestion": {"mode": "full"}})
+            self.assertResponseCode(res_full, 200)
+
+            wav_full_asset = self._generate_wav_file("wf_full_asset.wav", duration_sec=0.5, amplitude=10300)
+            wav_full_track = self._generate_wav_file("wf_full_track.wav", duration_sec=0.5, amplitude=10400)
+            created_files.extend([wav_full_asset, wav_full_track])
+
+            ingest_full = self.dispatch("IngestAsset", {"source_path": wav_full_asset})
+            self.assertResponseCode(ingest_full, 200)
+            pcm_full_asset = ingest_full["data"]["audio"]["pcm_hash"]
+            cache_full_asset = os.path.join(self.test_db_dir, ".cache", "waveforms", f"{pcm_full_asset}.bin")
+            self.assertTrue(os.path.exists(cache_full_asset))
+            self.assertEqual(os.path.getsize(cache_full_asset), 12016)
+            with open(cache_full_asset, "rb") as f:
+                self.assertEqual(f.read(4), b"LWAV")
+
+            import_full = self.dispatch("ImportTrack", {"source_path": wav_full_track})
+            self.assertResponseCode(import_full, 200)
+            pcm_full_track = import_full["data"]["pcm_hash"]
+            cache_full_track = os.path.join(self.test_db_dir, ".cache", "waveforms", f"{pcm_full_track}.bin")
+            self.assertTrue(os.path.exists(cache_full_track))
+            self.assertEqual(os.path.getsize(cache_full_track), 12016)
+            with open(cache_full_track, "rb") as f:
+                self.assertEqual(f.read(4), b"LWAV")
+
+            # 3. Re-ingesting the deduplicated fast-mode asset under full mode fills in its missing waveform cache
+            self.assertFalse(os.path.exists(cache_fast_asset))
+            reingest = self.dispatch("IngestAsset", {"source_path": wav_fast_asset})
+            self.assertResponseCode(reingest, 200)
+            self.assertTrue(os.path.exists(cache_fast_asset))
+            self.assertEqual(os.path.getsize(cache_fast_asset), 12016)
+
+            # 4. ImportTrack on an existing fast-mode asset under full mode fills in its missing waveform cache
+            self.assertFalse(os.path.exists(cache_fast_reimport))
+            reimport = self.dispatch("ImportTrack", {"source_path": wav_fast_reimport})
+            self.assertResponseCode(reimport, 200)
+            self.assertTrue(os.path.exists(cache_fast_reimport))
+            self.assertEqual(os.path.getsize(cache_fast_reimport), 12016)
+
+            # 5. Corrupted waveform cache self-heals when re-ingesting in full mode
+            with open(cache_full_asset, "wb") as f:
+                f.write(b"CORRUPT")
+            self.assertEqual(os.path.getsize(cache_full_asset), 7)
+            heal_res = self.dispatch("IngestAsset", {"source_path": wav_full_asset})
+            self.assertResponseCode(heal_res, 200)
+            self.assertEqual(os.path.getsize(cache_full_asset), 12016)
+            with open(cache_full_asset, "rb") as f:
+                self.assertEqual(f.read(4), b"LWAV")
+
+            # 6. Waveform cache write failure (non-empty directory blocking target path) is non-fatal for ingestion
+            os.makedirs(cache_nonfatal_dir, exist_ok=True)
+            created_dirs.append(cache_nonfatal_dir)
+            blocker_file = os.path.join(cache_nonfatal_dir, "blocker")
+            with open(blocker_file, "wb") as f:
+                f.write(b"block")
+            nonfatal_res = self.dispatch("IngestAsset", {"source_path": wav_nonfatal_dir})
+            self.assertResponseCode(nonfatal_res, 200)
+            self.assertTrue(os.path.isdir(cache_nonfatal_dir))
+            self.assertTrue(os.path.exists(blocker_file))
+        finally:
+            for d in created_dirs:
+                if os.path.isdir(d):
+                    shutil.rmtree(d, ignore_errors=True)
+            for p in created_files:
+                if os.path.exists(p):
+                    try:
+                        os.remove(p)
+                    except OSError:
+                        pass
+
 
 

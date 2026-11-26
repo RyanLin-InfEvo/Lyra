@@ -25,6 +25,7 @@
 #include "../models/relation_types.h"
 #include "../models/source_data.h"
 #include "../models/track.h"
+#include "../services/configuration_service.h"
 #include "../services/database_context.h"
 #include "../services/repositories/i_album_repository.h"
 #include "../services/repositories/i_artist_repository.h"
@@ -34,6 +35,7 @@
 #include "../services/repositories/i_source_data_repository.h"
 #include "../services/repositories/i_track_repository.h"
 #include "../services/text_service.h"
+#include "../services/waveform_service.h"
 #include "../utils/audio_helper.h"
 #include "../utils/sha256.h"
 #include "../utils/storage_helper.h"
@@ -168,7 +170,8 @@ IngestionService::IngestionService(
     const std::string &storage_root,
     IImageRepository *image_repo,
     ISourceDataRepository *source_data_repo,
-    TextService *text_service)
+    TextService *text_service,
+    const ConfigurationService *config_service)
     : m_db_context(db_context),
       m_asset_repo(asset_repo),
       m_audio_repo(audio_repo),
@@ -178,12 +181,46 @@ IngestionService::IngestionService(
       m_storage_root(storage_root),
       m_image_repo(image_repo),
       m_source_data_repo(source_data_repo),
-      m_text_service(text_service) {}
+      m_text_service(text_service),
+      m_config_service(config_service) {}
+
+void IngestionService::precompute_waveform_if_needed(
+    const std::string &pcm_hash,
+    const std::filesystem::path &audio_file_path) const {
+    if (!m_config_service || m_config_service->get_ingestion_mode() != "full" ||
+        pcm_hash.empty() || audio_file_path.empty()) {
+        return;
+    }
+
+    try {
+        auto wf_res = WaveformService::get_or_compute_waveform(
+            m_storage_root, pcm_hash, audio_file_path, WaveformService::BASE_POINTS);
+        if (!wf_res) {
+            std::cerr << "[WARN] Waveform precomputation skipped for pcm_hash " << pcm_hash
+                      << ": " << wf_res.error() << "\n";
+        }
+    } catch (const std::exception &e) {
+        std::cerr << "[WARN] Waveform precomputation threw exception for pcm_hash " << pcm_hash
+                  << ": " << e.what() << "\n";
+    } catch (...) {
+        std::cerr << "[WARN] Waveform precomputation threw unknown exception for pcm_hash "
+                  << pcm_hash << "\n";
+    }
+}
 
 tl::expected<AssetIngestResult, std::string> IngestionService::ingest_asset(
     const std::string &source_path,
     const std::string &source_type,
-    const std::string &note) { // Locally
+    const std::string &note) {
+    return ingest_asset_internal(source_path, source_type, note, true, nullptr);
+}
+
+tl::expected<AssetIngestResult, std::string> IngestionService::ingest_asset_internal(
+    const std::string &source_path,
+    const std::string &source_type,
+    const std::string &note,
+    bool precompute_waveform,
+    std::filesystem::path *out_audio_path) { // Locally
     const std::string ext = std::filesystem::path(source_path).extension().string();
     const std::filesystem::path temp_path = utils::StorageHelper::generate_temp_path(m_storage_root, ext);
 
@@ -220,6 +257,30 @@ tl::expected<AssetIngestResult, std::string> IngestionService::ingest_asset(
         AssetIngestResult res;
         res.asset = existing_asset_res.value();
         res.metadata = metadata;
+
+        // Resolve the audio file path: prefer an existing CAS entry (by hash prefix,
+        // then exact extension), falling back to source_path if not stored in CAS.
+        std::filesystem::path resolved_audio_path;
+        auto cas_dir = utils::StorageHelper::resolve_cas_dir(m_storage_root, file_hash);
+        if (auto found_res = utils::StorageHelper::find_file_by_prefix(cas_dir, file_hash);
+            found_res.has_value()) {
+            resolved_audio_path = found_res.value();
+        } else {
+            auto candidate = utils::StorageHelper::resolve_cas_path(m_storage_root, file_hash, ext);
+            std::error_code ec;
+            if (std::filesystem::is_regular_file(candidate, ec) && !ec) {
+                resolved_audio_path = std::move(candidate);
+            } else {
+                resolved_audio_path = source_path;
+            }
+        }
+        if (out_audio_path) {
+            *out_audio_path = resolved_audio_path;
+        }
+        // Precompute waveform cache for the existing asset if requested
+        if (precompute_waveform) {
+            precompute_waveform_if_needed(audio.pcm_hash, resolved_audio_path);
+        }
         return res;
     }
 
@@ -390,6 +451,13 @@ tl::expected<AssetIngestResult, std::string> IngestionService::ingest_asset(
         }
     }
 
+    if (out_audio_path) {
+        *out_audio_path = target_path;
+    }
+    if (precompute_waveform) {
+        precompute_waveform_if_needed(pcm_hash, target_path);
+    }
+
     AssetIngestResult res;
     res.asset = asset;
     res.metadata = audio;
@@ -409,8 +477,10 @@ tl::expected<TrackImportResult, std::string> IngestionService::import_track(cons
     // 2. Begin transaction
     auto tx = m_db_context.begin_transaction();
 
-    // 3. Ingest asset
-    auto ingest_res = ingest_asset(request.source_path, request.source_type, request.note);
+    // 3. Ingest asset (defer waveform computation until after outer tx commits)
+    std::filesystem::path ingested_audio_path;
+    auto ingest_res = ingest_asset_internal(
+        request.source_path, request.source_type, request.note, false, &ingested_audio_path);
     if (!ingest_res) {
         return tl::unexpected("Asset ingestion failed: " + ingest_res.error());
     }
@@ -585,9 +655,12 @@ tl::expected<TrackImportResult, std::string> IngestionService::import_track(cons
         }
     }
 
-    // 11. Commit transaction and release RAII guard before post-commit lyrics step
+    // 11. Commit transaction and release RAII guard before post-commit tasks
     tx->commit();
     tx.reset();
+
+    // 11b. Post-commit waveform precomputation (when ingestion.mode == "full")
+    precompute_waveform_if_needed(track.pcm_hash, ingested_audio_path);
 
     // 12. Post-commit non-blocking embedded lyrics extraction (never reads sibling .lrc files)
     std::vector<Text> imported_texts;

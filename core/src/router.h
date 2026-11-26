@@ -191,11 +191,11 @@ class Router {
     std::unique_ptr<TrackController> m_track_controller;
     std::unique_ptr<WorkController> m_work_controller;
     std::unique_ptr<AudioEngine> m_audio_engine;
+    std::unique_ptr<ConfigurationService> m_configuration_service;
     std::unique_ptr<TextService> m_text_service;
     std::unique_ptr<IngestionService> m_ingestion_service;
     std::unique_ptr<CoverArtService> m_cover_art_service;
     std::unique_ptr<PlaybackService> m_playback_service;
-    std::unique_ptr<ConfigurationService> m_configuration_service;
 
     // Handler Mapping
     using Handler = std::function<json(const json &)>;

@@ -56,8 +56,9 @@ struct SettingSpec {
 
 class ConfigurationService {
   public:
-    static constexpr int DEFAULT_CACHE_SIZE_KB = 131072; // 128 MiB
-    static constexpr int MIN_CACHE_SIZE_KB = 1024;       // 1 MiB
+    static constexpr int DEFAULT_CACHE_SIZE_KB = 128 * 1024;  // 128 MiB
+    static constexpr int MIN_CACHE_SIZE_KB = 1024;            // 1 MiB
+    static constexpr int MAX_CACHE_SIZE_KB = 4 * 1024 * 1024; // 4 GiB
 
     static constexpr int64_t DEFAULT_MMAP_SIZE_BYTES = 536870912; // 512 MiB
     static constexpr int64_t MIN_MMAP_SIZE_BYTES = 0;
@@ -78,9 +79,19 @@ class ConfigurationService {
 
     static constexpr bool DEFAULT_EXCLUSIVE_MODE = false;
 
+    static constexpr const char *DEFAULT_VOLUME_MODE = "fixed";
+    static constexpr const char *DEFAULT_RESAMPLER_QUALITY = "soxr_hq";
+    static constexpr const char *DEFAULT_DSD_MODE = "dop";
+
+    static constexpr int DEFAULT_INGESTION_PARALLEL_THREADS = 0;
+    static constexpr int MIN_INGESTION_PARALLEL_THREADS = 0;
+    static constexpr int MAX_INGESTION_PARALLEL_THREADS = 1024;
+    static constexpr const char *DEFAULT_INGESTION_MODE = "full";
+
     ConfigurationService(IDatabaseContext &db_context,
                          const std::string &storage_root,
-                         AudioEngine *audio_engine = nullptr);
+                         AudioEngine *audio_engine = nullptr,
+                         const std::string &database_path = "");
     ~ConfigurationService();
 
     void sync_runtime_downgrade(const std::string &category, const std::string &key, const nlohmann::json &value);
@@ -103,6 +114,14 @@ class ConfigurationService {
     void apply_exclusive_mode(bool exclusive);
 
     const std::string &get_storage_root() const { return m_storage_root; }
+    const std::string &get_database_path() const { return m_database_path; }
+    const std::string &get_cas_objects_dir() const { return m_cas_objects_dir; }
+    std::string get_volume_mode() const;
+    std::string get_resampler_quality() const;
+    std::string get_dsd_mode() const;
+    int get_ingestion_parallel_threads() const;
+    std::string get_ingestion_mode() const;
+    static int detect_cpu_cores();
 
     static const std::vector<SettingSpec> &get_specs();
     static const SettingSpec *find_spec(const std::string &category, const std::string &key);
@@ -113,6 +132,8 @@ class ConfigurationService {
 
     IDatabaseContext &m_db_context;
     std::string m_storage_root;
+    std::string m_database_path;
+    std::string m_cas_objects_dir;
     AudioEngine *m_audio_engine{nullptr};
 
     mutable std::mutex m_mutex;
@@ -127,10 +148,14 @@ class ConfigurationService {
     double m_volume{DEFAULT_VOLUME};
     int m_buffer_size_frames{DEFAULT_BUFFER_SIZE_FRAMES};
     bool m_exclusive_mode{DEFAULT_EXCLUSIVE_MODE};
+    std::string m_volume_mode{DEFAULT_VOLUME_MODE};
+    std::string m_resampler_quality{DEFAULT_RESAMPLER_QUALITY};
+    std::string m_dsd_mode{DEFAULT_DSD_MODE};
+    int m_ingestion_parallel_threads{DEFAULT_INGESTION_PARALLEL_THREADS};
+    std::string m_ingestion_mode{DEFAULT_INGESTION_MODE};
 
     void seed_defaults();
     void load_config();
-    json get_config_json_unlocked() const;
 };
 
 } // namespace lyra

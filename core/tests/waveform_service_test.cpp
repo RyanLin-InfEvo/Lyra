@@ -13,6 +13,7 @@
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <system_error>
 #include <thread>
 #include <vector>
 
@@ -291,6 +292,36 @@ int main(int argc, char *argv[]) {
             w.join();
         }
         std::cout << "  ✓ 8. Multi-threaded concurrency passed.\n";
+    }
+
+    // 9. save_to_cache rename failure preserves real rename error and cleans temp file
+    {
+        const std::string fail_hash = "pcm-rename-fail-dir";
+        const auto target_dir = WaveformService::get_cache_path(storage_root, fail_hash);
+        std::filesystem::create_directories(target_dir);
+        {
+            std::ofstream blocker(target_dir / "blocker", std::ios::binary);
+            blocker << "block";
+        }
+
+        WaveformData sample_data;
+        sample_data.pcm_hash = fail_hash;
+        sample_data.points = 10;
+        sample_data.peaks.assign(10, {-0.5f, 0.5f});
+        sample_data.rms.assign(10, 0.25f);
+
+        auto save_res = WaveformService::save_to_cache(storage_root, fail_hash, sample_data);
+        assert(!save_res.has_value());
+        assert(save_res.error().find("Failed to atomically rename cache file:") != std::string::npos);
+        assert(save_res.error().find(": " + std::error_code().message()) == std::string::npos);
+
+        const auto cache_dir = target_dir.parent_path();
+        for (const auto &entry : std::filesystem::directory_iterator(cache_dir)) {
+            assert(entry.path().extension() != ".tmp");
+        }
+
+        std::filesystem::remove_all(target_dir);
+        std::cout << "  ✓ 9. save_to_cache rename error preservation passed.\n";
     }
 
     // Clean up
