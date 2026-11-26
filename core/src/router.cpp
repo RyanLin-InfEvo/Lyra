@@ -257,6 +257,7 @@ void Router::init_handlers() {
     m_handlers["UpdateAudio"] = [this](const json &p) { return handleUpdateAudio(p); };
     m_handlers["GetAudio"] = [this](const json &p) { return handleGetAudio(p); };
     m_handlers["ListAudio"] = [this](const json &p) { return handleListAudio(p); };
+    m_handlers["GetAudioVersions"] = [this](const json &p) { return handleGetAudioVersions(p); };
 
     // Work
     m_handlers["CreateWork"] = [this](const json &p) { return handleCreateWork(p); };
@@ -1032,6 +1033,62 @@ json Router::handleListAudio(const json &params) {
     auto res = m_audio_controller->list(p.offset, p.limit, p.search);
     if (res) {
         return ApiResponse::success(res.value());
+    }
+    return ApiResponse::error({ErrorType::DatabaseError, res.error()});
+}
+
+/**
+ * @brief Handles 'GetAudioVersions' to retrieve the Star Topology audio version family with linked Assets.
+ *
+ * UI Usage Notes:
+ * - Exclusive lookup modes (strict XOR): provide EITHER `pcm_hash` OR `track_id` (not both).
+ * - Returns an array of `Audio` objects ordered with the Master Audio first (`parent_hash == ""`),
+ *   followed by derived versions, each hydrated with its associated `assets` array.
+ */
+json Router::handleGetAudioVersions(const json &params) {
+    if (auto err = JsonValidator::validate(
+            params, {{"track_id", Type::String, false, StringFormat::UUID},
+                     {"pcm_hash", Type::String, false, StringFormat::SingleLineText}});
+        err) return *err;
+
+    const bool has_track = JsonHelper::has_value(params, "track_id");
+    const bool has_pcm = JsonHelper::has_value(params, "pcm_hash");
+    if (!has_track && !has_pcm) {
+        return ApiResponse::error({ErrorType::MissingParameter, "Must provide either 'pcm_hash' or 'track_id'."});
+    }
+    if (has_track && has_pcm) {
+        return ApiResponse::error({ErrorType::InvalidValue, "Cannot provide both 'pcm_hash' and 'track_id'."});
+    }
+
+    std::string pcm_hash;
+    if (has_track) {
+        auto track_res = m_track_controller->get(params["track_id"].get<std::string>());
+        if (!track_res) {
+            if (track_res.error().find("Track not found") != std::string::npos) {
+                return ApiResponse::error({ErrorType::TrackNotFound, track_res.error()});
+            }
+            return ApiResponse::error({ErrorType::DatabaseError, track_res.error()});
+        }
+        if (track_res->pcm_hash.empty()) {
+            return ApiResponse::error({ErrorType::AudioNotFound, "Track has no associated audio."});
+        }
+        pcm_hash = track_res->pcm_hash;
+    } else {
+        const std::string raw_hash = params["pcm_hash"].get<std::string>();
+        const size_t start = raw_hash.find_first_not_of(" \t\r\n");
+        if (start == std::string::npos) {
+            return ApiResponse::error({ErrorType::InvalidValue, "Value of key 'pcm_hash' should not be blank."});
+        }
+        const size_t end = raw_hash.find_last_not_of(" \t\r\n");
+        pcm_hash = raw_hash.substr(start, end - start + 1);
+    }
+
+    auto res = m_audio_controller->get_related_versions(pcm_hash);
+    if (res) {
+        return ApiResponse::success(res.value());
+    }
+    if (res.error().find("Audio not found") != std::string::npos) {
+        return ApiResponse::error({ErrorType::AudioNotFound, res.error()});
     }
     return ApiResponse::error({ErrorType::DatabaseError, res.error()});
 }

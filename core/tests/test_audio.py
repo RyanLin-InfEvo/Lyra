@@ -1602,6 +1602,146 @@ class TestAudioController(BaseLyraTestCase):
         finally:
             self.dispatch("audio.stop", {})
 
+    def test_get_audio_versions_star_topology_and_validation(self):
+        """Test GetAudioVersions via pcm_hash and track_id with Star Topology, Assets, and strict XOR errors."""
+        master_pcm = "pcm-ver-master"
+        child_a = "pcm-ver-child-a"
+        child_b = "pcm-ver-child-b"
+
+        self.assertResponseCode(self.dispatch("CreateAudio", {
+            "pcm_hash": master_pcm,
+            "bit_depth": 24,
+            "sample_rate": 96000,
+            "channels": 2,
+            "duration": 200.0,
+        }), 201)
+        self.assertResponseCode(self.dispatch("CreateAsset", {
+            "file_hash": "file-ver-master-flac",
+            "pcm_hash": master_pcm,
+            "mime_type": "audio/flac",
+            "asset_type": "audio",
+            "file_size": 45000000,
+        }), 201)
+        self.assertResponseCode(self.dispatch("CreateAsset", {
+            "file_hash": "file-ver-master-aaa",
+            "pcm_hash": master_pcm,
+            "mime_type": "audio/x-wav",
+            "asset_type": "audio",
+            "file_size": 55000000,
+        }), 201)
+
+        self.assertResponseCode(self.dispatch("CreateAudio", {
+            "pcm_hash": child_a,
+            "parent_hash": master_pcm,
+            "bit_depth": 16,
+            "sample_rate": 44100,
+            "channels": 2,
+            "duration": 200.0,
+        }), 201)
+        self.assertResponseCode(self.dispatch("CreateAsset", {
+            "file_hash": "file-ver-child-a-mp3",
+            "pcm_hash": child_a,
+            "mime_type": "audio/mpeg",
+            "asset_type": "audio",
+            "file_size": 8000000,
+        }), 201)
+
+        self.assertResponseCode(self.dispatch("CreateAudio", {
+            "pcm_hash": child_b,
+            "parent_hash": master_pcm,
+            "bit_depth": 16,
+            "sample_rate": 48000,
+            "channels": 2,
+            "duration": 200.0,
+        }), 201)
+
+        res_track = self.dispatch("CreateTrack", {"pcm_hash": child_a, "title": "Version Track"})
+        self.assertResponseCode(res_track, 201)
+        track_id = res_track["data"]["id"]
+
+        # 1. Lookup via child pcm_hash -> Master first, all 3 family nodes, linked assets hydrated
+        res_by_child = self.dispatch("GetAudioVersions", {"pcm_hash": child_a})
+        self.assertResponseCode(res_by_child, 200)
+        versions = res_by_child["data"]
+        self.assertEqual(len(versions), 3)
+        self.assertEqual(versions[0]["pcm_hash"], master_pcm)
+        self.assertEqual(versions[0]["parent_hash"], "")
+        self.assertEqual(len(versions[0]["assets"]), 2)
+        self.assertEqual(versions[0]["assets"][0]["file_hash"], "file-ver-master-aaa")
+        self.assertEqual(versions[0]["assets"][0]["mime_type"], "audio/x-wav")
+        self.assertEqual(versions[0]["assets"][1]["file_hash"], "file-ver-master-flac")
+        self.assertEqual(versions[0]["assets"][1]["mime_type"], "audio/flac")
+        self.assertEqual({v["pcm_hash"] for v in versions[1:]}, {child_a, child_b})
+
+        # 2. Lookup via track_id -> identical Star Topology result
+        res_by_track = self.dispatch("GetAudioVersions", {"track_id": track_id})
+        self.assertResponseCode(res_by_track, 200)
+        self.assertEqual(res_by_track["data"], versions)
+
+        # 3. Null companion key is accepted when the other XOR key is present
+        res_null_companion = self.dispatch("GetAudioVersions", {"pcm_hash": master_pcm, "track_id": None})
+        self.assertResponseCode(res_null_companion, 200)
+        self.assertEqual(len(res_null_companion["data"]), 3)
+
+        # 4. Strict XOR & validation error matrix
+        self.assertValidationError(self.dispatch("GetAudioVersions", {}), expected_type="MissingParameter")
+        self.assertValidationError(self.dispatch("GetAudioVersions", {"pcm_hash": None, "track_id": None}), expected_type="MissingParameter")
+        self.assertValidationError(
+            self.dispatch("GetAudioVersions", {"pcm_hash": master_pcm, "track_id": track_id}),
+            expected_type="InvalidValue",
+            expected_message_content="Cannot provide both",
+        )
+        self.assertValidationError(self.dispatch("GetAudioVersions", {"track_id": "bad-uuid"}), expected_type="InvalidValue")
+        self.assertValidationError(self.dispatch("GetAudioVersions", {"pcm_hash": ""}), expected_type="InvalidValue")
+        self.assertValidationError(self.dispatch("GetAudioVersions", {"pcm_hash": "   "}), expected_type="InvalidValue")
+        self.assertValidationError(self.dispatch("GetAudioVersions", {"pcm_hash": "abc\ndef"}), expected_type="InvalidValue")
+        self.assertValidationError(self.dispatch("GetAudioVersions", {"pcm_hash": 123}), expected_type="InvalidValue")
+
+        # 5. Not found errors (TrackNotFound & AudioNotFound)
+        res_nf_track = self.dispatch("GetAudioVersions", {"track_id": str(uuid.uuid4())})
+        self.assertResponseCode(res_nf_track, 404)
+        self.assertEqual(res_nf_track["error"]["type"], "TrackNotFound")
+
+        res_nf_audio = self.dispatch("GetAudioVersions", {"pcm_hash": "non-existent-pcm-ver"})
+        self.assertResponseCode(res_nf_audio, 404)
+        self.assertEqual(res_nf_audio["error"]["type"], "AudioNotFound")
+
+        res_orphan_track = self.dispatch("CreateTrack", {"pcm_hash": "missing-audio-ver", "title": "Orphan Ver"})
+        res_nf_track_audio = self.dispatch("GetAudioVersions", {"track_id": res_orphan_track["data"]["id"]})
+        self.assertResponseCode(res_nf_track_audio, 404)
+        self.assertEqual(res_nf_track_audio["error"]["type"], "AudioNotFound")
+
+        # 6. Dangling parent_hash auto-healing via GetAudioVersions
+        dangling_pcm = "pcm-ver-dangling"
+        self.assertResponseCode(self.dispatch("CreateAudio", {
+            "pcm_hash": dangling_pcm,
+            "parent_hash": master_pcm,
+            "bit_depth": 16,
+            "sample_rate": 44100,
+        }), 201)
+        db_path = os.path.join(self.test_db_dir, "lyra.db")
+        conn = sqlite3.connect(db_path)
+        conn.execute("PRAGMA foreign_keys = OFF;")
+        conn.execute("UPDATE Audio SET parent_hash = 'non-existent-parent-ver' WHERE pcm_hash = ?", (dangling_pcm,))
+        conn.commit()
+        conn.close()
+
+        res_healed = self.dispatch("GetAudioVersions", {"pcm_hash": dangling_pcm})
+        self.assertResponseCode(res_healed, 200)
+        self.assertEqual(len(res_healed["data"]), 1)
+        self.assertEqual(res_healed["data"][0]["pcm_hash"], dangling_pcm)
+        self.assertEqual(res_healed["data"][0]["parent_hash"], "")
+
+
+class TestGetAudioVersionsDbError(BaseLyraTestCase):
+
+    def test_get_audio_versions_track_db_error_returns_500(self):
+        """Test GetAudioVersions maps Track query database errors to 500 DatabaseError, not 404 TrackNotFound."""
+        self.execute_raw_sql("DROP TABLE Track_Artist;")
+        res = self.dispatch("GetAudioVersions", {"track_id": str(uuid.uuid4())})
+        self.assertResponseCode(res, 500)
+        self.assertEqual(res["error"]["type"], "DatabaseError")
+
 
 
 

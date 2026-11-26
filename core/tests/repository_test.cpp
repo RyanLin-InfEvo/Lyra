@@ -487,10 +487,11 @@ bool test_audio_get_related_versions(SqliteDatabaseContext &ctx) {
     child2.bit_depth = 16;
     assert(repo.insert(child2).has_value());
 
-    // Query from child1 should return root and all children
+    // Query from child1 should return root and all children (Master first)
     auto family_from_child1 = repo.get_related_versions("pcm-family-child-1");
     assert(family_from_child1.has_value());
     assert(family_from_child1->size() == 3);
+    assert((*family_from_child1)[0].pcm_hash == "pcm-family-root");
 
     // Verify all 3 hashes are present
     std::vector<std::string> returned_hashes;
@@ -501,10 +502,38 @@ bool test_audio_get_related_versions(SqliteDatabaseContext &ctx) {
     assert(std::find(returned_hashes.begin(), returned_hashes.end(), "pcm-family-child-1") != returned_hashes.end());
     assert(std::find(returned_hashes.begin(), returned_hashes.end(), "pcm-family-child-2") != returned_hashes.end());
 
-    // Query from root
+    // Query from root (attach two assets in reverse hash order -> verify deterministic file_hash ASC)
+    SqliteAssetRepository asset_repo(ctx);
+    Asset asset_z{"file-z-asset", "audio/mpeg", "audio", 8000000, ""};
+    Asset asset_a{"file-a-asset", "audio/flac", "audio", 40000000, ""};
+    assert(asset_repo.insert_asset_with_audio(asset_z, root_audio).has_value());
+    assert(asset_repo.insert_asset_with_audio(asset_a, root_audio).has_value());
+
     auto family_from_root = repo.get_related_versions("pcm-family-root");
     assert(family_from_root.has_value());
     assert(family_from_root->size() == 3);
+    assert((*family_from_root)[0].pcm_hash == "pcm-family-root");
+    assert((*family_from_root)[0].assets.size() == 2);
+    assert((*family_from_root)[0].assets[0].file_hash == "file-a-asset");
+    assert((*family_from_root)[0].assets[1].file_hash == "file-z-asset");
+
+    // Verify get_related_versions propagates DB errors instead of returning false "Audio not found."
+    {
+        const std::string err_db_path = "test_repo_audio_err.db";
+        std::filesystem::remove(err_db_path);
+        {
+            SqliteDatabaseContext err_ctx(err_db_path);
+            SqliteAudioRepository err_audio_repo(err_ctx);
+            Audio a;
+            a.pcm_hash = "pcm-err-check";
+            assert(err_audio_repo.insert(a).has_value());
+            err_ctx.get_db().exec("DROP TABLE Audio_Asset;");
+            auto db_err_res = err_audio_repo.get_related_versions("pcm-err-check");
+            assert(!db_err_res.has_value());
+            assert(db_err_res.error() != "Audio not found.");
+        }
+        std::filesystem::remove(err_db_path);
+    }
 
     // 4. Dangling parent_hash auto-healing (simulating corrupted / legacy imported data)
     ctx.get_db().exec("PRAGMA foreign_keys = OFF;");

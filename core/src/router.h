@@ -94,6 +94,7 @@ class Router {
     json handleUpdateAudio(const json &p);
     json handleGetAudio(const json &p);
     json handleListAudio(const json &p);
+    json handleGetAudioVersions(const json &p);
 
     json handleCreateWork(const json &p);
     json handleUpdateWork(const json &p);
