@@ -117,7 +117,7 @@ To maintain repository hygiene and ensure clean code integration, all agents mus
 *   Follow semantic commit format (`type(scope): description`), timing rules, and full working-tree scope requirements defined in [GEMINI.md](../GEMINI.md) Section 5.
 
 ### F. Self-Correction & Adversarial Code Audit
-*   Before finalizing any task, complete the self-correction checks and mandatory independent read-only adversarial code audit (`TypeName: "research"`, `Model: "inherit"`) governed by [GEMINI.md](../GEMINI.md) Section 3.
+*   Before finalizing any task, complete the self-correction checks and mandatory independent read-only adversarial code audit (`TypeName: "lyra-auditor"`, `Model: "inherit"`) governed by [GEMINI.md](../GEMINI.md) Section 3.
 
 ---
 

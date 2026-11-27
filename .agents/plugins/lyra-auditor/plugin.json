@@ -1,0 +1,6 @@
+{
+  "name": "lyra-auditor",
+  "displayName": "Lyra Adversarial Auditor",
+  "version": "1.0.0",
+  "description": "Independent read-only adversarial code audit subagent for the Lyra codebase, enforcing four-dimensional seam audits, anti-overfitting remediation checks, and verbatim evidence reporting."
+}

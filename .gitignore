@@ -55,7 +55,8 @@ lyra_storage/
 
 # Agents
 .agents/skills/
-.agents/plugins/
+.agents/plugins/*
+!.agents/plugins/lyra-auditor/
 
 # Images_temp*
 lyra*.png
